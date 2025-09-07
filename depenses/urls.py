@@ -15,4 +15,9 @@ urlpatterns = [
     path('<int:depense_id>/valider/', views.valider_depense, name='valider_depense'),
     path('<int:depense_id>/marquer-payee/', views.marquer_payee, name='marquer_payee'),
     
+    # Gestion des catégories
+    path('categories/', views.gestion_categories, name='gestion_categories'),
+    path('categories/<int:categorie_id>/modifier/', views.modifier_categorie, name='modifier_categorie'),
+    path('categories/<int:categorie_id>/supprimer/', views.supprimer_categorie, name='supprimer_categorie'),
+    
 ]

@@ -302,3 +302,81 @@ def marquer_payee(request, depense_id):
     
     return redirect('depenses:detail_depense', depense_id=depense_id)
 
+@login_required
+@can_modify_expenses
+def gestion_categories(request):
+    """Gestion des catégories de dépenses"""
+    # Filtrer par école pour non-admin
+    categories = CategorieDepense.objects.all()
+    if not user_is_admin(request.user):
+        # Pour les non-admin, on peut afficher toutes les catégories car elles sont globales
+        # mais on peut limiter les actions selon les permissions
+        pass
+    
+    if request.method == 'POST':
+        form = CategorieDepenseForm(request.POST)
+        if form.is_valid():
+            categorie = form.save()
+            messages.success(request, f'Catégorie "{categorie.nom}" créée avec succès.')
+            return redirect('depenses:gestion_categories')
+    else:
+        form = CategorieDepenseForm()
+    
+    # Pagination
+    paginator = Paginator(categories.order_by('nom'), 10)
+    page_number = request.GET.get('page')
+    categories_page = paginator.get_page(page_number)
+    
+    context = {
+        'categories': categories_page,
+        'form': form,
+        'title': 'Gestion des catégories de dépenses',
+    }
+    
+    return render(request, 'depenses/gestion_categories.html', context)
+
+@login_required
+@can_modify_expenses
+def modifier_categorie(request, categorie_id):
+    """Modifier une catégorie de dépense"""
+    categorie = get_object_or_404(CategorieDepense, id=categorie_id)
+    
+    if request.method == 'POST':
+        form = CategorieDepenseForm(request.POST, instance=categorie)
+        if form.is_valid():
+            categorie = form.save()
+            messages.success(request, f'Catégorie "{categorie.nom}" modifiée avec succès.')
+            return redirect('depenses:gestion_categories')
+    else:
+        form = CategorieDepenseForm(instance=categorie)
+    
+    context = {
+        'form': form,
+        'categorie': categorie,
+        'title': 'Modifier la catégorie',
+    }
+    
+    return render(request, 'depenses/form_categorie.html', context)
+
+@login_required
+@can_delete_expenses
+def supprimer_categorie(request, categorie_id):
+    """Supprimer une catégorie de dépense"""
+    categorie = get_object_or_404(CategorieDepense, id=categorie_id)
+    
+    if request.method == 'POST':
+        # Vérifier s'il y a des dépenses liées à cette catégorie
+        if categorie.depense_set.exists():
+            messages.error(request, 'Impossible de supprimer cette catégorie car elle est utilisée par des dépenses.')
+        else:
+            nom_categorie = categorie.nom
+            categorie.delete()
+            messages.success(request, f'Catégorie "{nom_categorie}" supprimée avec succès.')
+        return redirect('depenses:gestion_categories')
+    
+    context = {
+        'categorie': categorie,
+        'title': 'Supprimer la catégorie',
+    }
+    
+    return render(request, 'depenses/confirm_delete_categorie.html', context)
