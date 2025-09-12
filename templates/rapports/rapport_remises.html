@@ -183,7 +183,6 @@
                                                         <th>Motif</th>
                                                         <th class="text-end">Montant remise</th>
                                                         <th class="text-end">Montant final</th>
-                                                        <th class="text-end">Total après remise</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -207,40 +206,36 @@
                                                                 {{ remise.remise.get_motif_display }}
                                                             </span>
                                                         </td>
-                                                        <td class="text-end">
+                                                        <td class="text-end montant-remise-cell" data-montant="{{ remise.montant_remise }}">
                                                             <span class="montant-remise">
                                                                 -{{ remise.montant_remise|floatformat:0 }} GNF
                                                             </span>
                                                         </td>
-                                                        <td class="text-end">
+                                                        <td class="text-end montant-final-cell" data-montant="{{ remise.paiement.montant }}">
                                                             <strong>{{ remise.paiement.montant|floatformat:0 }} GNF</strong>
-                                                        </td>
-                                                        <td class="text-end">
-                                                            <strong class="text-success total-apres-remise" 
-                                                                    data-montant-final="{{ remise.paiement.montant }}" 
-                                                                    data-montant-remise="{{ remise.montant_remise }}">
-                                                                <!-- Calculé par JavaScript -->
-                                                            </strong>
                                                         </td>
                                                     </tr>
                                                     {% endfor %}
                                                 </tbody>
                                                 <tfoot class="table-light">
                                                     <tr>
-                                                        <th colspan="6" class="text-end">Total des remises :</th>
+                                                        <th colspan="6" class="text-end">Totaux :</th>
                                                         <th class="text-end">
-                                                            <span class="montant-remise">
-                                                                -{{ stats_remises.total_remises|floatformat:0 }} GNF
+                                                            <span class="montant-remise" id="total-remises">
+                                                                <!-- Calculé par JavaScript -->
                                                             </span>
                                                         </th>
                                                         <th class="text-end">
-                                                            <strong id="total-final-apres-remises" class="text-success">
+                                                            <strong id="total-montants-finals">
                                                                 <!-- Calculé par JavaScript -->
                                                             </strong>
                                                         </th>
-                                                        <th class="text-end">
-                                                            <strong id="grand-total-apres-remises" class="text-primary">
-                                                                <!-- Total général calculé par JavaScript -->
+                                                    </tr>
+                                                    <tr>
+                                                        <th colspan="6" class="text-end">Différence (Final - Remise) :</th>
+                                                        <th colspan="2" class="text-end">
+                                                            <strong class="text-success" id="difference-totale">
+                                                                <!-- Calculé par JavaScript -->
                                                             </strong>
                                                         </th>
                                                     </tr>
@@ -280,53 +275,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Calcul du total après remise pour chaque ligne
-    let grandTotal = 0;
+    // Calcul des totaux des montants remise et final
+    let totalRemises = 0;
     let totalMontantsFinals = 0;
-    const totalsApresRemise = document.querySelectorAll('.total-apres-remise');
     
-    console.log('Nombre d\'éléments trouvés:', totalsApresRemise.length);
-    
-    totalsApresRemise.forEach(function(element, index) {
-        const montantFinalStr = element.getAttribute('data-montant-final');
-        const montantRemiseStr = element.getAttribute('data-montant-remise');
-        
-        console.log(`Ligne ${index + 1}:`);
-        console.log('- Montant final (string):', montantFinalStr);
-        console.log('- Montant remise (string):', montantRemiseStr);
-        
-        const montantFinal = parseFloat(montantFinalStr) || 0;
-        const montantRemise = parseFloat(montantRemiseStr) || 0;
-        
-        console.log('- Montant final (number):', montantFinal);
-        console.log('- Montant remise (number):', montantRemise);
-        
-        // Calcul correct: Montant final - Montant remise
-        const totalApresRemise = montantFinal - montantRemise;
-        
-        console.log('- Total après remise:', totalApresRemise);
-        
-        // Afficher le total après remise (formaté avec séparateurs)
-        element.innerHTML = Math.round(totalApresRemise).toLocaleString('fr-FR') + ' GNF';
-        
-        // Ajouter aux totaux
-        grandTotal += totalApresRemise;
-        totalMontantsFinals += montantFinal;
+    // Calculer total des remises
+    const montantRemiseCells = document.querySelectorAll('.montant-remise-cell');
+    montantRemiseCells.forEach(function(cell) {
+        const montant = parseFloat(cell.getAttribute('data-montant')) || 0;
+        totalRemises += montant;
     });
     
-    console.log('Grand total:', grandTotal);
-    console.log('Total montants finals:', totalMontantsFinals);
+    // Calculer total des montants finaux
+    const montantFinalCells = document.querySelectorAll('.montant-final-cell');
+    montantFinalCells.forEach(function(cell) {
+        const montant = parseFloat(cell.getAttribute('data-montant')) || 0;
+        totalMontantsFinals += montant;
+    });
     
-    // Afficher le grand total dans le footer
-    const grandTotalElement = document.getElementById('grand-total-apres-remises');
-    if (grandTotalElement) {
-        grandTotalElement.innerHTML = Math.round(grandTotal).toLocaleString('fr-FR') + ' GNF';
+    // Calculer la différence
+    const difference = totalMontantsFinals - totalRemises;
+    
+    // Afficher les totaux
+    const totalRemisesElement = document.getElementById('total-remises');
+    if (totalRemisesElement) {
+        totalRemisesElement.innerHTML = '-' + Math.round(totalRemises).toLocaleString('fr-FR') + ' GNF';
     }
     
-    // Afficher le total des montants finaux
-    const totalFinalElement = document.getElementById('total-final-apres-remises');
-    if (totalFinalElement) {
-        totalFinalElement.innerHTML = Math.round(totalMontantsFinals).toLocaleString('fr-FR') + ' GNF';
+    const totalMontantsFinalsElement = document.getElementById('total-montants-finals');
+    if (totalMontantsFinalsElement) {
+        totalMontantsFinalsElement.innerHTML = Math.round(totalMontantsFinals).toLocaleString('fr-FR') + ' GNF';
+    }
+    
+    const differenceElement = document.getElementById('difference-totale');
+    if (differenceElement) {
+        differenceElement.innerHTML = Math.round(difference).toLocaleString('fr-FR') + ' GNF';
     }
 });
 </script>
