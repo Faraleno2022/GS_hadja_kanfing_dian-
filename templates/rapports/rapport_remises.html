@@ -282,36 +282,34 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Calcul du total après remise pour chaque ligne
     let grandTotal = 0;
+    let totalMontantsFinals = 0;
     const totalsApresRemise = document.querySelectorAll('.total-apres-remise');
     
     totalsApresRemise.forEach(function(element) {
         const montantFinal = parseFloat(element.getAttribute('data-montant-final')) || 0;
         const montantRemise = parseFloat(element.getAttribute('data-montant-remise')) || 0;
+        
+        // Calcul correct: Montant final - Montant remise
         const totalApresRemise = montantFinal - montantRemise;
         
-        // Afficher le total après remise
-        element.textContent = totalApresRemise.toLocaleString('fr-FR') + ' GNF';
+        // Afficher le total après remise (formaté avec séparateurs)
+        element.innerHTML = Math.round(totalApresRemise).toLocaleString('fr-FR') + ' GNF';
         
-        // Ajouter au grand total
+        // Ajouter aux totaux
         grandTotal += totalApresRemise;
+        totalMontantsFinals += montantFinal;
     });
     
     // Afficher le grand total dans le footer
     const grandTotalElement = document.getElementById('grand-total-apres-remises');
     if (grandTotalElement) {
-        grandTotalElement.textContent = grandTotal.toLocaleString('fr-FR') + ' GNF';
+        grandTotalElement.innerHTML = Math.round(grandTotal).toLocaleString('fr-FR') + ' GNF';
     }
     
-    // Calculer et afficher le total des montants finaux
-    let totalMontantsFinals = 0;
-    totalsApresRemise.forEach(function(element) {
-        const montantFinal = parseFloat(element.getAttribute('data-montant-final')) || 0;
-        totalMontantsFinals += montantFinal;
-    });
-    
+    // Afficher le total des montants finaux
     const totalFinalElement = document.getElementById('total-final-apres-remises');
     if (totalFinalElement) {
-        totalFinalElement.textContent = totalMontantsFinals.toLocaleString('fr-FR') + ' GNF';
+        totalFinalElement.innerHTML = Math.round(totalMontantsFinals).toLocaleString('fr-FR') + ' GNF';
     }
 });
 </script>
