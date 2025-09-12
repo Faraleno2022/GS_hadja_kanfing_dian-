@@ -183,6 +183,7 @@
                                                         <th>Motif</th>
                                                         <th class="text-end">Montant remise</th>
                                                         <th class="text-end">Montant final</th>
+                                                        <th class="text-end">Total après remise</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -214,6 +215,13 @@
                                                         <td class="text-end">
                                                             <strong>{{ remise.paiement.montant|floatformat:0 }} GNF</strong>
                                                         </td>
+                                                        <td class="text-end">
+                                                            <strong class="text-success total-apres-remise" 
+                                                                    data-montant-final="{{ remise.paiement.montant }}" 
+                                                                    data-montant-remise="{{ remise.montant_remise }}">
+                                                                <!-- Calculé par JavaScript -->
+                                                            </strong>
+                                                        </td>
                                                     </tr>
                                                     {% endfor %}
                                                 </tbody>
@@ -225,7 +233,16 @@
                                                                 -{{ stats_remises.total_remises|floatformat:0 }} GNF
                                                             </span>
                                                         </th>
-                                                        <th></th>
+                                                        <th class="text-end">
+                                                            <strong id="total-final-apres-remises" class="text-success">
+                                                                <!-- Calculé par JavaScript -->
+                                                            </strong>
+                                                        </th>
+                                                        <th class="text-end">
+                                                            <strong id="grand-total-apres-remises" class="text-primary">
+                                                                <!-- Total général calculé par JavaScript -->
+                                                            </strong>
+                                                        </th>
                                                     </tr>
                                                 </tfoot>
                                             </table>
@@ -262,6 +279,40 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+    
+    // Calcul du total après remise pour chaque ligne
+    let grandTotal = 0;
+    const totalsApresRemise = document.querySelectorAll('.total-apres-remise');
+    
+    totalsApresRemise.forEach(function(element) {
+        const montantFinal = parseFloat(element.getAttribute('data-montant-final')) || 0;
+        const montantRemise = parseFloat(element.getAttribute('data-montant-remise')) || 0;
+        const totalApresRemise = montantFinal - montantRemise;
+        
+        // Afficher le total après remise
+        element.textContent = totalApresRemise.toLocaleString('fr-FR') + ' GNF';
+        
+        // Ajouter au grand total
+        grandTotal += totalApresRemise;
+    });
+    
+    // Afficher le grand total dans le footer
+    const grandTotalElement = document.getElementById('grand-total-apres-remises');
+    if (grandTotalElement) {
+        grandTotalElement.textContent = grandTotal.toLocaleString('fr-FR') + ' GNF';
+    }
+    
+    // Calculer et afficher le total des montants finaux
+    let totalMontantsFinals = 0;
+    totalsApresRemise.forEach(function(element) {
+        const montantFinal = parseFloat(element.getAttribute('data-montant-final')) || 0;
+        totalMontantsFinals += montantFinal;
+    });
+    
+    const totalFinalElement = document.getElementById('total-final-apres-remises');
+    if (totalFinalElement) {
+        totalFinalElement.textContent = totalMontantsFinals.toLocaleString('fr-FR') + ' GNF';
+    }
 });
 </script>
 {% endblock %}
