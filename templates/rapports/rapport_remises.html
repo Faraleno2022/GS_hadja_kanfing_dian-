@@ -285,12 +285,26 @@ document.addEventListener('DOMContentLoaded', function() {
     let totalMontantsFinals = 0;
     const totalsApresRemise = document.querySelectorAll('.total-apres-remise');
     
-    totalsApresRemise.forEach(function(element) {
-        const montantFinal = parseFloat(element.getAttribute('data-montant-final')) || 0;
-        const montantRemise = parseFloat(element.getAttribute('data-montant-remise')) || 0;
+    console.log('Nombre d\'éléments trouvés:', totalsApresRemise.length);
+    
+    totalsApresRemise.forEach(function(element, index) {
+        const montantFinalStr = element.getAttribute('data-montant-final');
+        const montantRemiseStr = element.getAttribute('data-montant-remise');
+        
+        console.log(`Ligne ${index + 1}:`);
+        console.log('- Montant final (string):', montantFinalStr);
+        console.log('- Montant remise (string):', montantRemiseStr);
+        
+        const montantFinal = parseFloat(montantFinalStr) || 0;
+        const montantRemise = parseFloat(montantRemiseStr) || 0;
+        
+        console.log('- Montant final (number):', montantFinal);
+        console.log('- Montant remise (number):', montantRemise);
         
         // Calcul correct: Montant final - Montant remise
         const totalApresRemise = montantFinal - montantRemise;
+        
+        console.log('- Total après remise:', totalApresRemise);
         
         // Afficher le total après remise (formaté avec séparateurs)
         element.innerHTML = Math.round(totalApresRemise).toLocaleString('fr-FR') + ' GNF';
@@ -299,6 +313,9 @@ document.addEventListener('DOMContentLoaded', function() {
         grandTotal += totalApresRemise;
         totalMontantsFinals += montantFinal;
     });
+    
+    console.log('Grand total:', grandTotal);
+    console.log('Total montants finals:', totalMontantsFinals);
     
     // Afficher le grand total dans le footer
     const grandTotalElement = document.getElementById('grand-total-apres-remises');
