@@ -974,11 +974,22 @@ def rapport_remises_detaille(request):
         'paiement__eleve__classe__ecole', 'remise'
     ).order_by('-paiement__date_paiement')
     
+    # Calcul des totaux
+    total_remises = remises_appliquees.aggregate(
+        total=Sum('montant_remise')
+    )['total'] or Decimal('0')
+    
+    total_montants_finals = remises_appliquees.aggregate(
+        total=Sum('paiement__montant')
+    )['total'] or Decimal('0')
+    
+    difference_totale = total_montants_finals - total_remises
+    
     # Statistiques des remises
     stats_remises = {
-        'total_remises': remises_appliquees.aggregate(
-            total=Sum('montant_remise')
-        )['total'] or Decimal('0'),
+        'total_remises': total_remises,
+        'total_montants_finals': total_montants_finals,
+        'difference_totale': difference_totale,
         'nombre_paiements_avec_remise': remises_appliquees.values('paiement').distinct().count(),
         'nombre_eleves_beneficiaires': remises_appliquees.values('paiement__eleve').distinct().count(),
     }

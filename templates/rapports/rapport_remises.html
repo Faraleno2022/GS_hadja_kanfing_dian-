@@ -206,12 +206,12 @@
                                                                 {{ remise.remise.get_motif_display }}
                                                             </span>
                                                         </td>
-                                                        <td class="text-end montant-remise-cell" data-montant="{{ remise.montant_remise }}">
+                                                        <td class="text-end">
                                                             <span class="montant-remise">
                                                                 -{{ remise.montant_remise|floatformat:0 }} GNF
                                                             </span>
                                                         </td>
-                                                        <td class="text-end montant-final-cell" data-montant="{{ remise.paiement.montant }}">
+                                                        <td class="text-end">
                                                             <strong>{{ remise.paiement.montant|floatformat:0 }} GNF</strong>
                                                         </td>
                                                     </tr>
@@ -221,22 +221,18 @@
                                                     <tr>
                                                         <th colspan="6" class="text-end">Totaux :</th>
                                                         <th class="text-end">
-                                                            <span class="montant-remise" id="total-remises">
-                                                                <!-- Calculé par JavaScript -->
+                                                            <span class="montant-remise">
+                                                                -{{ stats_remises.total_remises|floatformat:0 }} GNF
                                                             </span>
                                                         </th>
                                                         <th class="text-end">
-                                                            <strong id="total-montants-finals">
-                                                                <!-- Calculé par JavaScript -->
-                                                            </strong>
+                                                            <strong>{{ stats_remises.total_montants_finals|floatformat:0 }} GNF</strong>
                                                         </th>
                                                     </tr>
                                                     <tr>
                                                         <th colspan="6" class="text-end">Différence (Final - Remise) :</th>
                                                         <th colspan="2" class="text-end">
-                                                            <strong class="text-success" id="difference-totale">
-                                                                <!-- Calculé par JavaScript -->
-                                                            </strong>
+                                                            <strong class="text-success">{{ stats_remises.difference_totale|floatformat:0 }} GNF</strong>
                                                         </th>
                                                     </tr>
                                                 </tfoot>
@@ -275,42 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Calcul des totaux des montants remise et final
-    let totalRemises = 0;
-    let totalMontantsFinals = 0;
-    
-    // Calculer total des remises
-    const montantRemiseCells = document.querySelectorAll('.montant-remise-cell');
-    montantRemiseCells.forEach(function(cell) {
-        const montant = parseFloat(cell.getAttribute('data-montant')) || 0;
-        totalRemises += montant;
-    });
-    
-    // Calculer total des montants finaux
-    const montantFinalCells = document.querySelectorAll('.montant-final-cell');
-    montantFinalCells.forEach(function(cell) {
-        const montant = parseFloat(cell.getAttribute('data-montant')) || 0;
-        totalMontantsFinals += montant;
-    });
-    
-    // Calculer la différence
-    const difference = totalMontantsFinals - totalRemises;
-    
-    // Afficher les totaux
-    const totalRemisesElement = document.getElementById('total-remises');
-    if (totalRemisesElement) {
-        totalRemisesElement.innerHTML = '-' + Math.round(totalRemises).toLocaleString('fr-FR') + ' GNF';
-    }
-    
-    const totalMontantsFinalsElement = document.getElementById('total-montants-finals');
-    if (totalMontantsFinalsElement) {
-        totalMontantsFinalsElement.innerHTML = Math.round(totalMontantsFinals).toLocaleString('fr-FR') + ' GNF';
-    }
-    
-    const differenceElement = document.getElementById('difference-totale');
-    if (differenceElement) {
-        differenceElement.innerHTML = Math.round(difference).toLocaleString('fr-FR') + ' GNF';
-    }
+    // Les totaux sont maintenant calculés côté Django, plus besoin de JavaScript pour les calculs
 });
 </script>
 {% endblock %}
