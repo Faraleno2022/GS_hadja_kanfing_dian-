@@ -1552,3 +1552,44 @@ def fiche_inscription_pdf(request, eleve_id):
     c.save()
     
     return response
+
+@login_required
+def ajax_rechercher_responsable_telephone(request):
+    """Vue AJAX pour rechercher un responsable par numéro de téléphone"""
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
+    
+    telephone = request.GET.get('telephone', '').strip()
+    if not telephone:
+        return JsonResponse({'success': False, 'error': 'Numéro de téléphone requis'})
+    
+    try:
+        # Recherche par téléphone exact ou partiel
+        responsables = Responsable.objects.filter(
+            Q(telephone__icontains=telephone) |
+            Q(telephone__endswith=telephone[-8:]) if len(telephone) >= 8 else Q()
+        ).values('id', 'prenom', 'nom', 'relation', 'telephone', 'email', 'profession', 'adresse')[:5]
+        
+        responsables_list = list(responsables)
+        
+        # Log de l'activité
+        JournalActivite.objects.create(
+            user=request.user,
+            action='RECHERCHE',
+            type_objet='RESPONSABLE',
+            description=f"Recherche responsable par téléphone: {telephone}",
+            adresse_ip=request.META.get('REMOTE_ADDR', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'responsables': responsables_list,
+            'count': len(responsables_list)
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Erreur lors de la recherche: {str(e)}'
+        })

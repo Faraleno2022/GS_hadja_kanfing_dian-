@@ -244,6 +244,26 @@
                                     <div class="text-danger small mt-1">{{ form.responsable_principal.errors.0 }}</div>
                                 {% endif %}
                                 <div class="form-text">Choisissez dans la liste des responsables déjà enregistrés</div>
+                                
+                                <!-- Recherche par téléphone -->
+                                <div class="mt-3">
+                                    <label class="form-label">Ou rechercher par téléphone</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="search-telephone" placeholder="Entrez le numéro de téléphone...">
+                                        <button type="button" class="btn btn-outline-primary" id="btn-rechercher-existant">
+                                            <i class="fas fa-search"></i> Rechercher
+                                        </button>
+                                    </div>
+                                    <div class="form-text">Recherchez un responsable existant par son numéro de téléphone</div>
+                                    
+                                    <!-- Zone de résultats de recherche -->
+                                    <div id="resultats-recherche-existant" class="mt-2" style="display: none;">
+                                        <div class="alert alert-info">
+                                            <strong>Responsables trouvés :</strong>
+                                            <div id="liste-responsables-existant"></div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -289,11 +309,24 @@
                             <div class="col-md-6">
                                 <div class="form-group">
                                     <label class="form-label">Téléphone <span class="required">*</span></label>
-                                    {{ responsable_principal_form.telephone }}
+                                    <div class="input-group">
+                                        {{ responsable_principal_form.telephone }}
+                                        <button type="button" class="btn btn-outline-primary" id="btn-rechercher-responsable">
+                                            <i class="fas fa-search"></i> Rechercher
+                                        </button>
+                                    </div>
                                     {% if responsable_principal_form.telephone.errors %}
                                         <div class="text-danger small mt-1">{{ responsable_principal_form.telephone.errors.0 }}</div>
                                     {% endif %}
                                     <div class="form-text">Entrez 8 à 9 chiffres (local) ou un numéro avec indicatif (+224XXXXXXXXX). Le numéro sera normalisé automatiquement à l'enregistrement.</div>
+                                    
+                                    <!-- Zone de résultats de recherche -->
+                                    <div id="resultats-recherche" class="mt-2" style="display: none;">
+                                        <div class="alert alert-info">
+                                            <strong>Responsables trouvés :</strong>
+                                            <div id="liste-responsables"></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -520,6 +553,226 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Mettre à jour les statistiques toutes les 30 secondes (optionnel)
     setInterval(updateStatistics, 30000);
+    
+    // Fonctionnalité de recherche de responsable par téléphone (pour nouveau responsable)
+    const btnRechercher = document.getElementById('btn-rechercher-responsable');
+    const inputTelephone = document.querySelector('input[name="resp_principal-telephone"]');
+    const resultatsRecherche = document.getElementById('resultats-recherche');
+    const listeResponsables = document.getElementById('liste-responsables');
+    
+    // Fonctionnalité de recherche pour responsable existant
+    const btnRechercherExistant = document.getElementById('btn-rechercher-existant');
+    const inputTelephoneExistant = document.getElementById('search-telephone');
+    const resultatsRechercheExistant = document.getElementById('resultats-recherche-existant');
+    const listeResponsablesExistant = document.getElementById('liste-responsables-existant');
+    const selectResponsablePrincipal = document.querySelector('select[name="responsable_principal"]');
+    
+    // Fonction commune pour la recherche
+    function rechercherResponsable(telephone, onSuccess, onError) {
+        fetch(`{% url 'eleves:ajax_rechercher_responsable_telephone' %}?telephone=${encodeURIComponent(telephone)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    onSuccess(data);
+                } else {
+                    onError(data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Erreur:', error);
+                onError('Erreur lors de la recherche');
+            });
+    }
+    
+    // Recherche pour responsable existant
+    if (btnRechercherExistant && inputTelephoneExistant) {
+        btnRechercherExistant.addEventListener('click', function() {
+            const telephone = inputTelephoneExistant.value.trim();
+            
+            if (!telephone) {
+                alert('Veuillez entrer un numéro de téléphone');
+                return;
+            }
+            
+            btnRechercherExistant.disabled = true;
+            btnRechercherExistant.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recherche...';
+            
+            rechercherResponsable(telephone, 
+                function(data) {
+                    if (data.responsables.length > 0) {
+                        let html = '<div class="list-group">';
+                        data.responsables.forEach(resp => {
+                            html += `
+                                <div class="list-group-item list-group-item-action" style="cursor: pointer;" 
+                                     onclick="selectionnerResponsableExistant(${resp.id}, '${resp.prenom}', '${resp.nom}', '${resp.relation}')">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">${resp.prenom} ${resp.nom}</h6>
+                                        <small>${resp.telephone}</small>
+                                    </div>
+                                    <p class="mb-1"><strong>Relation:</strong> ${resp.relation}</p>
+                                    ${resp.email ? `<small><strong>Email:</strong> ${resp.email}</small><br>` : ''}
+                                    ${resp.profession ? `<small><strong>Profession:</strong> ${resp.profession}</small>` : ''}
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                        html += '<div class="mt-2"><small class="text-muted">Cliquez sur un responsable pour le sélectionner</small></div>';
+                        
+                        listeResponsablesExistant.innerHTML = html;
+                        resultatsRechercheExistant.style.display = 'block';
+                    } else {
+                        listeResponsablesExistant.innerHTML = '<p class="text-muted">Aucun responsable trouvé avec ce numéro de téléphone.</p>';
+                        resultatsRechercheExistant.style.display = 'block';
+                    }
+                },
+                function(error) {
+                    alert('Erreur: ' + error);
+                }
+            ).finally(() => {
+                btnRechercherExistant.disabled = false;
+                btnRechercherExistant.innerHTML = '<i class="fas fa-search"></i> Rechercher';
+            });
+        });
+    }
+    
+    if (btnRechercher && inputTelephone) {
+        btnRechercher.addEventListener('click', function() {
+            const telephone = inputTelephone.value.trim();
+            
+            if (!telephone) {
+                alert('Veuillez entrer un numéro de téléphone');
+                return;
+            }
+            
+            // Désactiver le bouton pendant la recherche
+            btnRechercher.disabled = true;
+            btnRechercher.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recherche...';
+            
+            // Requête AJAX
+            fetch(`{% url 'eleves:ajax_rechercher_responsable_telephone' %}?telephone=${encodeURIComponent(telephone)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.responsables.length > 0) {
+                            // Afficher les résultats
+                            let html = '<div class="list-group">';
+                            data.responsables.forEach(resp => {
+                                html += `
+                                    <div class="list-group-item list-group-item-action" style="cursor: pointer;" 
+                                         onclick="remplirResponsable(${resp.id}, '${resp.prenom}', '${resp.nom}', '${resp.relation}', '${resp.telephone}', '${resp.email || ''}', '${resp.profession || ''}', '${resp.adresse || ''}')">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1">${resp.prenom} ${resp.nom}</h6>
+                                            <small>${resp.telephone}</small>
+                                        </div>
+                                        <p class="mb-1"><strong>Relation:</strong> ${resp.relation}</p>
+                                        ${resp.email ? `<small><strong>Email:</strong> ${resp.email}</small><br>` : ''}
+                                        ${resp.profession ? `<small><strong>Profession:</strong> ${resp.profession}</small>` : ''}
+                                    </div>
+                                `;
+                            });
+                            html += '</div>';
+                            html += '<div class="mt-2"><small class="text-muted">Cliquez sur un responsable pour remplir automatiquement les champs</small></div>';
+                            
+                            listeResponsables.innerHTML = html;
+                            resultatsRecherche.style.display = 'block';
+                        } else {
+                            listeResponsables.innerHTML = '<p class="text-muted">Aucun responsable trouvé avec ce numéro de téléphone.</p>';
+                            resultatsRecherche.style.display = 'block';
+                        }
+                    } else {
+                        alert('Erreur: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur:', error);
+                    alert('Erreur lors de la recherche');
+                })
+                .finally(() => {
+                    // Réactiver le bouton
+                    btnRechercher.disabled = false;
+                    btnRechercher.innerHTML = '<i class="fas fa-search"></i> Rechercher';
+                });
+        });
+    }
 });
+
+// Fonction globale pour remplir les champs du responsable
+function remplirResponsable(id, prenom, nom, relation, telephone, email, profession, adresse) {
+    // Remplir les champs du formulaire
+    const prenomField = document.querySelector('input[name="resp_principal-prenom"]');
+    const nomField = document.querySelector('input[name="resp_principal-nom"]');
+    const relationField = document.querySelector('select[name="resp_principal-relation"]');
+    const telephoneField = document.querySelector('input[name="resp_principal-telephone"]');
+    const emailField = document.querySelector('input[name="resp_principal-email"]');
+    const professionField = document.querySelector('input[name="resp_principal-profession"]');
+    const adresseField = document.querySelector('textarea[name="resp_principal-adresse"]');
+    
+    if (prenomField) prenomField.value = prenom;
+    if (nomField) nomField.value = nom;
+    if (relationField) relationField.value = relation;
+    if (telephoneField) telephoneField.value = telephone;
+    if (emailField) emailField.value = email;
+    if (professionField) professionField.value = profession;
+    if (adresseField) adresseField.value = adresse;
+    
+    // Masquer les résultats
+    document.getElementById('resultats-recherche').style.display = 'none';
+    
+    // Afficher un message de confirmation
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success alert-dismissible fade show mt-2';
+    alert.innerHTML = `
+        <strong>Responsable trouvé!</strong> Les informations de ${prenom} ${nom} ont été remplies automatiquement.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insérer l'alerte après le champ téléphone
+    const telephoneGroup = telephoneField.closest('.form-group');
+    telephoneGroup.appendChild(alert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
+
+// Fonction pour sélectionner un responsable existant
+function selectionnerResponsableExistant(id, prenom, nom, relation) {
+    // Sélectionner dans le dropdown
+    const selectResponsable = document.querySelector('select[name="responsable_principal"]');
+    if (selectResponsable) {
+        selectResponsable.value = id;
+        
+        // Déclencher l'événement change pour que le formulaire soit mis à jour
+        selectResponsable.dispatchEvent(new Event('change'));
+    }
+    
+    // Masquer les résultats
+    document.getElementById('resultats-recherche-existant').style.display = 'none';
+    
+    // Vider le champ de recherche
+    document.getElementById('search-telephone').value = '';
+    
+    // Afficher un message de confirmation
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success alert-dismissible fade show mt-2';
+    alert.innerHTML = `
+        <strong>Responsable sélectionné!</strong> ${prenom} ${nom} (${relation}) a été sélectionné.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insérer l'alerte après la zone de recherche
+    const searchGroup = document.getElementById('search-telephone').closest('.form-group');
+    searchGroup.appendChild(alert);
+    
+    // Supprimer l'alerte après 5 secondes
+    setTimeout(() => {
+        if (alert.parentNode) {
+            alert.remove();
+        }
+    }, 5000);
+}
 </script>
 {% endblock %}

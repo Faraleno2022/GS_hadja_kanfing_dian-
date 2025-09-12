@@ -854,7 +854,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     'eleve': eleve,
                 })
 
-            # 1) Bloquer si la tranche ciblée est déjà soldée
+            # 1) Validation du montant saisi vs montant du type de paiement
             type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
             try:
                 fi_due = int(ech.frais_inscription_du or 0)
@@ -868,38 +868,301 @@ def ajouter_paiement(request, eleve_id:int=None):
             except Exception:
                 fi_due = fi_payee = t1_due = t1_payee = t2_due = t2_payee = t3_due = t3_payee = 0
 
-            if 'inscription' in type_nom and fi_payee >= fi_due:
-                messages.error(request, "L'inscription est déjà totalement payée pour cet élève. Aucune somme supplémentaire n'est autorisée pour l'inscription.")
-                return render(request, 'paiements/form_paiement.html', {
-                    'titre_page': titre_page,
-                    'action': action,
-                    'form': form,
-                    'eleve': eleve,
-                })
-            if ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom) and t1_payee >= t1_due:
-                messages.error(request, "La 1ère tranche est déjà totalement payée pour cet élève.")
-                return render(request, 'paiements/form_paiement.html', {
-                    'titre_page': titre_page,
-                    'action': action,
-                    'form': form,
-                    'eleve': eleve,
-                })
-            if ('tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom) and t2_payee >= t2_due:
-                messages.error(request, "La 2ème tranche est déjà totalement payée pour cet élève.")
-                return render(request, 'paiements/form_paiement.html', {
-                    'titre_page': titre_page,
-                    'action': action,
-                    'form': form,
-                    'eleve': eleve,
-                })
-            if ('tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom) and t3_payee >= t3_due:
-                messages.error(request, "La 3ème tranche est déjà totalement payée pour cet élève.")
-                return render(request, 'paiements/form_paiement.html', {
-                    'titre_page': titre_page,
-                    'action': action,
-                    'form': form,
-                    'eleve': eleve,
-                })
+            # Validation du montant selon le type de paiement
+            montant_saisi = int(paiement.montant or 0)
+            montant_attendu = 0
+            type_description = ""
+            
+            if 'inscription' in type_nom:
+                montant_attendu = fi_due
+                type_description = "frais d'inscription"
+            elif 'tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom:
+                montant_attendu = t1_due + t2_due
+                type_description = "Tranche 1 + Tranche 2"
+            elif 'tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom:
+                montant_attendu = t2_due + t3_due
+                type_description = "Tranche 2 + Tranche 3"
+            elif 'tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom:
+                montant_attendu = t1_due
+                type_description = "1ère tranche"
+            elif 'tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom:
+                montant_attendu = t2_due
+                type_description = "2ème tranche"
+            elif 'tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom:
+                montant_attendu = t3_due
+                type_description = "3ème tranche"
+            
+            # Vérifier si le montant correspond au type sélectionné
+            if montant_attendu > 0 and montant_saisi != montant_attendu:
+                # Vérifier si c'est un paiement partiel (montant inférieur)
+                if montant_saisi < montant_attendu:
+                    # Demander confirmation pour paiement partiel
+                    confirmation_partiel = request.POST.get('confirmation_paiement_partiel')
+                    if not confirmation_partiel:
+                        # Message d'erreur en rouge et gras
+                        from django.utils.safestring import mark_safe
+                        message_html = mark_safe(
+                            f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                            f'⚠️ ATTENTION: Le montant saisi ({montant_saisi:,} GNF) est inférieur au montant standard '
+                            f'pour {type_description} ({montant_attendu:,} GNF).</span><br>'
+                            f'<strong>S\'agit-il d\'un paiement partiel ?</strong> Si oui, confirmez ci-dessous.'
+                        )
+                        messages.error(request, message_html)
+                        return render(request, 'paiements/form_paiement.html', {
+                            'titre_page': titre_page,
+                            'action': action,
+                            'form': form,
+                            'eleve': eleve,
+                            'montant_attendu': montant_attendu,
+                            'montant_saisi': montant_saisi,
+                            'type_description': type_description,
+                            'show_partial_confirmation': True,
+                        })
+                else:
+                    # Montant supérieur au montant standard
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Le montant saisi ({montant_saisi:,} GNF) est supérieur au montant standard '
+                        f'pour {type_description} ({montant_attendu:,} GNF).</span><br>'
+                        f'<strong>Veuillez vérifier le montant ou changer le type de paiement.</strong>'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+
+            # 2) Bloquer si la tranche ciblée est déjà soldée ou risque de sur-paiement
+            
+            # Vérification pour l'inscription
+            if 'inscription' in type_nom:
+                if fi_payee >= fi_due:
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: L\'inscription est déjà totalement payée pour cet élève.</span><br>'
+                        f'<strong>Montant dû:</strong> {fi_due:,} GNF | <strong>Déjà payé:</strong> {fi_payee:,} GNF<br>'
+                        f'<strong>Aucune somme supplémentaire n\'est autorisée pour l\'inscription.</strong>'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                elif (fi_payee + montant_saisi) > fi_due:
+                    from django.utils.safestring import mark_safe
+                    sur_paiement = (fi_payee + montant_saisi) - fi_due
+                    montant_max = fi_due - fi_payee
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour l\'inscription!</span><br>'
+                        f'<strong>Montant dû:</strong> {fi_due:,} GNF | <strong>Déjà payé:</strong> {fi_payee:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+            
+            # Vérification pour Tranche 1 + Tranche 2
+            elif ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom):
+                # Vérifier si les deux tranches sont complètement soldées
+                if (t1_payee >= t1_due) and (t2_payee >= t2_due):
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Les tranches 1 et 2 sont déjà totalement payées pour cet élève.</span><br>'
+                        f'<strong>Tranche 1 - Dû:</strong> {t1_due:,} GNF | <strong>Payé:</strong> {t1_payee:,} GNF<br>'
+                        f'<strong>Tranche 2 - Dû:</strong> {t2_due:,} GNF | <strong>Payé:</strong> {t2_payee:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                # Vérifier uniquement les sur-paiements (pas les paiements partiels)
+                elif ((t1_payee + t2_payee) + montant_saisi) > (t1_due + t2_due):
+                    from django.utils.safestring import mark_safe
+                    total_paye = t1_payee + t2_payee
+                    total_du = t1_due + t2_due
+                    sur_paiement = (total_paye + montant_saisi) - total_du
+                    montant_max = total_du - total_paye
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour Tranche 1 + Tranche 2!</span><br>'
+                        f'<strong>Total dû (T1+T2):</strong> {total_du:,} GNF | <strong>Déjà payé:</strong> {total_paye:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+            
+            # Vérification pour Tranche 2 + Tranche 3
+            elif ('tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom):
+                # Vérifier si les deux tranches sont complètement soldées
+                if (t2_payee >= t2_due) and (t3_payee >= t3_due):
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Les tranches 2 et 3 sont déjà totalement payées pour cet élève.</span><br>'
+                        f'<strong>Tranche 2 - Dû:</strong> {t2_due:,} GNF | <strong>Payé:</strong> {t2_payee:,} GNF<br>'
+                        f'<strong>Tranche 3 - Dû:</strong> {t3_due:,} GNF | <strong>Payé:</strong> {t3_payee:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                # Vérifier uniquement les sur-paiements (pas les paiements partiels)
+                elif ((t2_payee + t3_payee) + montant_saisi) > (t2_due + t3_due):
+                    from django.utils.safestring import mark_safe
+                    total_paye = t2_payee + t3_payee
+                    total_du = t2_due + t3_due
+                    sur_paiement = (total_paye + montant_saisi) - total_du
+                    montant_max = total_du - total_paye
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour Tranche 2 + Tranche 3!</span><br>'
+                        f'<strong>Total dû (T2+T3):</strong> {total_du:,} GNF | <strong>Déjà payé:</strong> {total_paye:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+            
+            # Vérification pour la 1ère tranche
+            elif ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom):
+                # Bloquer uniquement si complètement soldée
+                if t1_payee >= t1_due:
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: La 1ère tranche est déjà totalement payée pour cet élève.</span><br>'
+                        f'<strong>Montant dû:</strong> {t1_due:,} GNF | <strong>Déjà payé:</strong> {t1_payee:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                # Bloquer uniquement les sur-paiements (pas les paiements partiels)
+                elif (t1_payee + montant_saisi) > t1_due:
+                    from django.utils.safestring import mark_safe
+                    sur_paiement = (t1_payee + montant_saisi) - t1_due
+                    montant_max = t1_due - t1_payee
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour la 1ère tranche!</span><br>'
+                        f'<strong>Montant dû:</strong> {t1_due:,} GNF | <strong>Déjà payé:</strong> {t1_payee:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+            
+            # Vérification pour la 2ème tranche
+            elif ('tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom):
+                # Bloquer uniquement si complètement soldée
+                if t2_payee >= t2_due:
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: La 2ème tranche est déjà totalement payée pour cet élève.</span><br>'
+                        f'<strong>Montant dû:</strong> {t2_due:,} GNF | <strong>Déjà payé:</strong> {t2_payee:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                # Bloquer uniquement les sur-paiements (pas les paiements partiels)
+                elif (t2_payee + montant_saisi) > t2_due:
+                    from django.utils.safestring import mark_safe
+                    sur_paiement = (t2_payee + montant_saisi) - t2_due
+                    montant_max = t2_due - t2_payee
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour la 2ème tranche!</span><br>'
+                        f'<strong>Montant dû:</strong> {t2_due:,} GNF | <strong>Déjà payé:</strong> {t2_payee:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+            
+            # Vérification pour la 3ème tranche
+            elif ('tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom):
+                # Bloquer uniquement si complètement soldée
+                if t3_payee >= t3_due:
+                    from django.utils.safestring import mark_safe
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: La 3ème tranche est déjà totalement payée pour cet élève.</span><br>'
+                        f'<strong>Montant dû:</strong> {t3_due:,} GNF | <strong>Déjà payé:</strong> {t3_payee:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
+                # Bloquer uniquement les sur-paiements (pas les paiements partiels)
+                elif (t3_payee + montant_saisi) > t3_due:
+                    from django.utils.safestring import mark_safe
+                    sur_paiement = (t3_payee + montant_saisi) - t3_due
+                    montant_max = t3_due - t3_payee
+                    message_html = mark_safe(
+                        f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
+                        f'❌ ERREUR: Sur-paiement détecté pour la 3ème tranche!</span><br>'
+                        f'<strong>Montant dû:</strong> {t3_due:,} GNF | <strong>Déjà payé:</strong> {t3_payee:,} GNF<br>'
+                        f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
+                        f'<strong>Montant maximum autorisé:</strong> {montant_max:,} GNF'
+                    )
+                    messages.error(request, message_html)
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                    })
 
             # 2) Bloquer les sur-paiements par rapport au total annuel dû (incluant inscription + tranches)
             try:
