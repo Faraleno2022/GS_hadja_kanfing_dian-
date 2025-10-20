@@ -1,0 +1,460 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load static_versioned %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Hero section plein écran */
+  .hero-wrapper {
+    margin-top: -70px; /* Compenser la navbar fixe */
+    margin-left: -15px;
+    margin-right: -15px;
+    position: relative;
+    overflow: hidden;
+    /* Utiliser une couleur neutre claire pour éviter l'effet d'écran noir */
+    background-color: #f3f4f6;
+  }
+
+  .hero-image {
+    width: 100vw; /* Pleine largeur de la fenêtre */
+    height: 100vh; /* Pleine hauteur de la fenêtre */
+    object-fit: cover;
+    object-position: center center;
+    border-radius: 0;
+    display: block;
+    /* Optimisations de performance */
+    will-change: transform;
+    transform: translateZ(0);
+    /* Fond neutre sous l'image, évite le flash noir avant chargement */
+    background-color: transparent;
+  }
+
+  /* Overlay pour améliorer la lisibilité du texte */
+  .hero-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(0, 123, 255, 0.1) 0%,
+      rgba(0, 0, 0, 0.3) 100%
+    );
+    z-index: 1;
+  }
+
+  /* Texte superposé sur l'image */
+  .hero-content {
+    position: absolute;
+    bottom: 50px;
+    left: 50px;
+    right: 50px;
+    z-index: 2;
+    color: white;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  }
+
+  .hero-title {
+    font-size: 3.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .hero-subtitle {
+    font-size: 1.5rem;
+    font-weight: 300;
+    opacity: 0.9;
+  }
+
+  /* Bouton de défilement */
+  .scroll-indicator {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    color: white;
+    font-size: 2rem;
+    animation: bounce 2s infinite;
+    cursor: pointer;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  }
+
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+      transform: translateX(-50%) translateY(0);
+    }
+    40% {
+      transform: translateX(-50%) translateY(-10px);
+    }
+    60% {
+      transform: translateX(-50%) translateY(-5px);
+    }
+  }
+
+  /* Section de contenu avec espacement */
+  .content-section {
+    margin-top: 2rem;
+    padding-top: 3rem;
+  }
+
+  .presentation-card {
+    border: 1px solid #e9ecef;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .presentation-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+  }
+
+  .presentation-body {
+    padding: 2.5rem !important;
+  }
+
+  .presentation-title {
+    font-size: 1.75rem;
+    color: #007bff;
+  }
+
+  .presentation-body p {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    color: #555;
+  }
+
+  /* Images des cartes avec lazy loading */
+  .image-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .image-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+  }
+
+  .image-card .card-img-top {
+    width: 100%;
+    height: 360px;
+    object-fit: cover;
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+    transition: transform 0.3s ease;
+    /* Optimisations de performance */
+    will-change: transform;
+    transform: translateZ(0);
+    /* Couleur neutre pour le placeholder au lieu du noir */
+    background-color: #f3f4f6;
+  }
+
+  .image-card:hover .card-img-top {
+    transform: scale(1.05);
+  }
+
+  /* Responsive design */
+  @media (max-width: 768px) {
+    .hero-title {
+      font-size: 2.5rem;
+    }
+
+    .hero-subtitle {
+      font-size: 1.2rem;
+    }
+
+    .hero-content {
+      bottom: 30px;
+      left: 20px;
+      right: 20px;
+    }
+
+    .hero-image {
+      height: 70vh; /* Réduire la hauteur sur mobile */
+    }
+  }
+
+  @media (max-width: 480px) {
+    .hero-title {
+      font-size: 2rem;
+    }
+
+    .hero-subtitle {
+      font-size: 1rem;
+    }
+
+    .hero-image {
+      height: 60vh;
+    }
+  }
+
+  /* Placeholder de chargement (neutre, sans shimmer pour ne pas ralentir) */
+  .image-loading { background: #f3f4f6; }
+</style>
+<!-- Préchargement critique de l'image héro optimisée (WebP pour vitesse maximale) -->
+<link rel="preload" as="image" href="{% static 'images/optimized/ecole.webp' %}" type="image/webp" imagesizes="100vw">
+<!-- Préchargement des images de cartes pour éviter le lazy loading sur le viewport initial -->
+<link rel="preload" as="image" href="{% static 'images/optimized/carte1.webp' %}" type="image/webp" media="(min-width: 768px)">
+<link rel="preload" as="image" href="{% static 'images/optimized/carte2.webp' %}" type="image/webp" media="(min-width: 768px)">
+{% endblock %}
+
+{% block breadcrumb %}{% endblock %}
+
+{% block content %}
+<div class="hero-wrapper">
+
+  <!-- Image héro optimisée avec WebP et fallback JPEG -->
+  <picture>
+    <source type="image/webp" 
+            srcset="{% static 'images/optimized/ecole.webp' %}"
+            media="(min-width: 1px)">
+    <img src="{% static 'images/optimized/ecole_optimized.jpg' %}" 
+         alt="Myschool" 
+         class="hero-image" 
+         loading="eager" 
+         decoding="sync" 
+         fetchpriority="high" 
+         width="1920" 
+         height="1080">
+  </picture>
+  
+
+  <!-- Overlay pour améliorer la lisibilité -->
+  <div class="hero-overlay"></div>
+
+  <!-- Contenu superposé -->
+  <div class="hero-content">
+    <h1 class="hero-title">G.S Hadja Kanfing Diané</h1>
+    <p class="hero-subtitle" style="display:none;"></p>
+    <p class="mt-3" style="font-size: 1.1rem; max-width: 600px;">
+      Gestion scolaire moderne • Automatisation • Décisions éclairées
+    </p>
+  </div>
+
+  <!-- Indicateur de défilement -->
+  <div class="scroll-indicator" onclick="scrollToContent()">
+    <i class="fas fa-chevron-down"></i>
+  </div>
+</div>
+
+<!-- Section de contenu -->
+<div class="container content-section py-5" id="content-section">
+  <div class="card presentation-card mb-4">
+    <div class="card-body presentation-body">
+      <h2 class="presentation-title">
+        <i class="fas fa-school me-2"></i>Présentation de Myschool
+      </h2>
+      <p class="mb-3">
+        Myschool est un système de gestion scolaire moderne, conçu pour simplifier et automatiser l’administration des établissements d’enseignement.
+        Grâce à son interface intuitive et ses outils puissants, Myschool offre :
+      </p>
+      <div class="row g-4">
+        <div class="col-md-6">
+          <h5 class="text-primary mb-2"><i class="fas fa-money-bill-wave me-2"></i>Gestion financière</h5>
+          <ul class="mb-3">
+            <li>Suivi et gestion des frais de scolarité</li>
+            <li>Identification rapide des retards de paiement</li>
+            <li>Gestion des relances automatiques et des paiements soldés</li>
+            <li>Gestion des dépenses scolaires</li>
+          </ul>
+          <h5 class="text-success mb-2"><i class="fas fa-users-cog me-2"></i>Ressources humaines</h5>
+          <ul class="mb-3">
+            <li>Établissement de l’état de salaire des enseignants</li>
+            <li>Impression des bulletins de paie</li>
+          </ul>
+        </div>
+        <div class="col-md-6">
+          <h5 class="text-warning mb-2"><i class="fas fa-bus me-2"></i>Vie scolaire</h5>
+          <ul class="mb-3">
+            <li>Gestion des abonnements au transport scolaire (bus)</li>
+            <li>Gestion complète des notes et résultats</li>
+            <li>Génération et impression des cartes scolaires</li>
+          </ul>
+          <h5 class="text-info mb-2"><i class="fas fa-chart-line me-2"></i>Suivi et analyse</h5>
+          <ul class="mb-0">
+            <li>Production de statistiques scolaires détaillées</li>
+            <li>Tableaux de bord pour faciliter la prise de décision</li>
+          </ul>
+        </div>
+      </div>
+      <div class="alert alert-success mt-4 mb-0" role="alert">
+        ✅ Avec Myschool, les établissements scolaires disposent d’un outil fiable et performant pour gagner du temps,
+        réduire les erreurs administratives et améliorer la qualité de gestion.
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between">
+      <div class="mb-3 mb-md-0">
+        <h5 class="mb-1"><i class="fas fa-plus-circle text-primary me-2"></i>Créer une nouvelle école</h5>
+        <p class="text-muted mb-0">Soumettez la création de votre école avec son logo. Un administrateur validera la demande et configurera les échéances.</p>
+      </div>
+      <a href="{% url 'eleves:creer_ecole' %}" class="btn btn-primary">
+        <i class="fas fa-building me-2"></i>Créer une école
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Section des images de présentation -->
+<div class="container pb-5">
+  <div class="row g-4">
+    <div class="col-md-6">
+      <div class="card shadow-sm image-card">
+
+        <!-- Image optimisée WebP avec fallback JPEG -->
+        <picture>
+          <source type="image/webp" 
+                  srcset="{% static 'images/optimized/carte1.webp' %}"
+                  media="(min-width: 1px)">
+          <img src="{% static 'images/optimized/carte1_optimized.jpg' %}" 
+               alt="Nos installations modernes" 
+               class="card-img-top" 
+               loading="eager" 
+               decoding="async" 
+               width="1200" 
+               height="800">
+        </picture>
+
+        <div class="card-body">
+          <h5 class="card-title text-primary">
+            <i class="fas fa-building me-2"></i>Installations Modernes
+          </h5>
+          <p class="card-text text-muted">
+            Des espaces d'apprentissage équipés des dernières technologies pour offrir
+            une éducation de qualité dans un environnement stimulant.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card shadow-sm image-card">
+
+
+        <!-- Image optimisée WebP avec fallback JPEG -->
+        <picture>
+          <source type="image/webp" 
+                  srcset="{% static 'images/optimized/carte2.webp' %}"
+                  media="(min-width: 1px)">
+          <img src="{% static 'images/optimized/carte2_optimized.jpg' %}" 
+               alt="Notre équipe pédagogique" 
+               class="card-img-top" 
+               loading="eager" 
+               decoding="async" 
+               width="1200" 
+               height="800">
+        </picture>
+
+        <div class="card-body">
+          <h5 class="card-title text-primary">
+            <i class="fas fa-users me-2"></i>Équipe Pédagogique
+          </h5>
+          <p class="card-text text-muted">
+            Une équipe d'enseignants qualifiés et dévoués, engagés dans la réussite
+            et l'épanouissement de chaque élève.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section statistiques rapides -->
+  <div class="row mt-5">
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="text-center">
+        <div class="display-4 text-primary mb-2">
+          <i class="fas fa-graduation-cap"></i>
+        </div>
+        <h4 class="text-primary">500+</h4>
+        <p class="text-muted">Élèves</p>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="text-center">
+        <div class="display-4 text-success mb-2">
+          <i class="fas fa-chalkboard-teacher"></i>
+        </div>
+        <h4 class="text-success">30+</h4>
+        <p class="text-muted">Enseignants</p>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="text-center">
+        <div class="display-4 text-warning mb-2">
+          <i class="fas fa-trophy"></i>
+        </div>
+        <h4 class="text-warning">95%</h4>
+        <p class="text-muted">Taux de réussite</p>
+      </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+      <div class="text-center">
+        <div class="display-4 text-info mb-2">
+          <i class="fas fa-calendar-alt"></i>
+        </div>
+        <h4 class="text-info">15+</h4>
+        <p class="text-muted">Années d'expérience</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note technique -->
+  <div class="text-center mt-4">
+    <small class="text-muted">
+      <i class="fas fa-sync-alt me-1"></i>
+      Les images se rechargent automatiquement lors des modifications
+    </small>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/image-reload.js' %}"></script>
+<script>
+// Fonction de défilement fluide
+function scrollToContent() {
+  document.getElementById('content-section').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+}
+
+// Optimisations de performance - Version allégée pour vitesse maximale
+document.addEventListener('DOMContentLoaded', function() {
+  // Animation d'entrée légère pour les cartes (sans observer lourd)
+  const cards = document.querySelectorAll('.image-card, .presentation-card');
+
+  // Animation simple avec délai progressif (plus rapide que IntersectionObserver)
+  cards.forEach((card, index) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px)';
+    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+
+    // Animation décalée simple
+    setTimeout(() => {
+      card.style.opacity = '1';
+      card.style.transform = 'translateY(0)';
+    }, 100 * index);
+  });
+});
+
+// Optimisation du redimensionnement
+let resizeTimeout;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(function() {
+    // Recalculer les dimensions si nécessaire
+    const heroImage = document.querySelector('.hero-image');
+    if (heroImage) {
+      heroImage.style.height = window.innerHeight + 'px';
+    }
+  }, 250);
+});
+</script>
+{% endblock %}

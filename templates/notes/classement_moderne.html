@@ -1,0 +1,433 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}🏆 Classement - {{ classe.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ranking-hero {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-radius: 25px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.3);
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+    }
+    
+    .ranking-table {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        overflow: hidden;
+        border: none;
+    }
+    
+    .podium-section {
+        background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+        padding: 2rem;
+        margin-bottom: 2rem;
+        border-radius: 20px;
+    }
+    
+    .podium-item {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .podium-item:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 45px rgba(0,0,0,0.15);
+    }
+    
+    .podium-gold {
+        border-top: 5px solid #ffd700;
+        background: linear-gradient(45deg, #fff9e6, #fffbf0);
+    }
+    
+    .podium-silver {
+        border-top: 5px solid #c0c0c0;
+        background: linear-gradient(45deg, #f8f9fa, #ffffff);
+    }
+    
+    .podium-bronze {
+        border-top: 5px solid #cd7f32;
+        background: linear-gradient(45deg, #fdf6f0, #ffffff);
+    }
+    
+    .rank-badge {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: white;
+        margin: 0 auto 1rem;
+    }
+    
+    .rank-1 { background: linear-gradient(45deg, #ffd700, #ffed4e); }
+    .rank-2 { background: linear-gradient(45deg, #c0c0c0, #e5e5e5); }
+    .rank-3 { background: linear-gradient(45deg, #cd7f32, #d4a574); }
+    .rank-other { background: linear-gradient(45deg, #007bff, #0056b3); }
+    
+    .student-row {
+        transition: all 0.3s ease;
+        border-left: 4px solid transparent;
+    }
+    
+    .student-row:hover {
+        background: linear-gradient(45deg, #e7f3ff, #d6ebff);
+        border-left-color: #007bff;
+        transform: translateX(5px);
+    }
+    
+    .average-badge {
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-weight: 600;
+        color: white;
+    }
+    
+    .avg-excellent { background: linear-gradient(45deg, #28a745, #20c997); }
+    .avg-good { background: linear-gradient(45deg, #007bff, #0056b3); }
+    .avg-average { background: linear-gradient(45deg, #ffc107, #e0a800); }
+    .avg-poor { background: linear-gradient(45deg, #dc3545, #c82333); }
+    
+    .filter-section {
+        background: white;
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+    }
+    
+    .btn-modern {
+        border-radius: 25px;
+        padding: 10px 20px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        border: none;
+    }
+    
+    .btn-export {
+        background: linear-gradient(45deg, #dc3545, #c82333);
+        color: white;
+    }
+    
+    .btn-export:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+        color: white;
+    }
+    
+    @keyframes slideInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-slide {
+        animation: slideInUp 0.6s ease forwards;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Hero Section -->
+    <div class="ranking-hero animate-slide">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="display-5 fw-bold mb-3">
+                    <i class="fas fa-trophy me-3"></i>
+                    Classement de la Classe
+                </h1>
+                <p class="lead mb-2">{{ classe.nom }} - {{ trimestre }}</p>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark me-3">
+                        <i class="fas fa-calendar me-1"></i>
+                        {{ classe.annee_scolaire|default:"2024-2025" }}
+                    </span>
+                    <span class="badge bg-light text-dark">
+                        <i class="fas fa-users me-1"></i>
+                        {{ total_eleves }} élèves
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="text-white-50">
+                    <i class="fas fa-medal fa-4x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtres et Actions -->
+    <div class="filter-section animate-slide">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">
+                    <i class="fas fa-filter me-2 text-primary"></i>
+                    Période d'évaluation
+                </label>
+                <select id="trimestre-select" class="form-select" onchange="changeTrimestre()">
+                    <option value="T1" {% if trimestre == 'T1' %}selected{% endif %}>1er Trimestre</option>
+                    <option value="T2" {% if trimestre == 'T2' %}selected{% endif %}>2ème Trimestre</option>
+                    <option value="T3" {% if trimestre == 'T3' %}selected{% endif %}>3ème Trimestre</option>
+                    <option value="ANNUEL" {% if trimestre == 'ANNUEL' %}selected{% endif %}>Moyenne Annuelle</option>
+                </select>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-group">
+                    <a href="{% url 'notes:classement_classe_pdf' classe.id trimestre %}" class="btn btn-export btn-modern">
+                        <i class="fas fa-file-pdf me-2"></i>PDF
+                    </a>
+                    <a href="{% url 'notes:classement_classe_excel' classe.id trimestre %}" class="btn btn-success btn-modern">
+                        <i class="fas fa-file-excel me-2"></i>Excel
+                    </a>
+                    <a href="{% url 'notes:cartes_scolaires_classe' classe.id %}" class="btn btn-info btn-modern">
+                        <i class="fas fa-id-card me-2"></i>Cartes
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="stats-grid animate-slide">
+        <div class="stat-card">
+            <div class="text-primary mb-2">
+                <i class="fas fa-chart-line fa-2x"></i>
+            </div>
+            <h4 class="fw-bold">{{ moyenne_classe|floatformat:2 }}</h4>
+            <small class="text-muted">Moyenne de Classe</small>
+        </div>
+        <div class="stat-card">
+            <div class="text-success mb-2">
+                <i class="fas fa-user-graduate fa-2x"></i>
+            </div>
+            <h4 class="fw-bold">{{ eleves_admis }}</h4>
+            <small class="text-muted">Élèves Admis</small>
+        </div>
+        <div class="stat-card">
+            <div class="text-warning mb-2">
+                <i class="fas fa-exclamation-triangle fa-2x"></i>
+            </div>
+            <h4 class="fw-bold">{{ eleves_rattrapage }}</h4>
+            <small class="text-muted">En Rattrapage</small>
+        </div>
+        <div class="stat-card">
+            <div class="text-danger mb-2">
+                <i class="fas fa-times-circle fa-2x"></i>
+            </div>
+            <h4 class="fw-bold">{{ eleves_redouble }}</h4>
+            <small class="text-muted">Redoublants</small>
+        </div>
+    </div>
+
+    {% if classement %}
+    <!-- Podium des 3 premiers -->
+    <div class="podium-section animate-slide">
+        <h4 class="text-center fw-bold mb-4">
+            <i class="fas fa-crown text-warning me-2"></i>
+            Podium des Meilleurs
+        </h4>
+        <div class="row">
+            {% for eleve in classement|slice:":3" %}
+            <div class="col-md-4 mb-3">
+                <a href="{% url 'notes:details_notes_eleve' eleve.id %}" class="text-decoration-none">
+                    <div class="podium-item {% if forloop.counter == 1 %}podium-gold{% elif forloop.counter == 2 %}podium-silver{% else %}podium-bronze{% endif %}" style="cursor: pointer; transition: all 0.3s ease;">
+                        <div class="rank-badge rank-{{ forloop.counter }}">
+                            {{ forloop.counter }}
+                        </div>
+                        <h5 class="fw-bold">{{ eleve.nom_complet }}</h5>
+                        <p class="text-muted mb-2">{{ eleve.matricule }}</p>
+                        <div class="average-badge {% if eleve.moyenne >= 16 %}avg-excellent{% elif eleve.moyenne >= 14 %}avg-good{% elif eleve.moyenne >= 10 %}avg-average{% else %}avg-poor{% endif %}">
+                            {{ eleve.moyenne|floatformat:2 }}/20
+                        </div>
+                        {% if forloop.counter == 1 %}
+                        <div class="mt-2">
+                            <i class="fas fa-trophy text-warning"></i>
+                            <small class="text-muted d-block">Premier de classe</small>
+                        </div>
+                        {% endif %}
+                        <div class="mt-2">
+                            <small class="text-primary">
+                                <i class="fas fa-eye me-1"></i>
+                                Voir détails
+                            </small>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Tableau complet -->
+    <div class="ranking-table animate-slide">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead style="background: linear-gradient(45deg, #007bff, #0056b3); color: white;">
+                    <tr>
+                        <th class="text-center">Rang</th>
+                        <th>Élève</th>
+                        <th class="text-center">Matricule</th>
+                        <th class="text-center">Moyenne</th>
+                        <th class="text-center">Mention</th>
+                        <th class="text-center">Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve in classement %}
+                    <tr class="student-row">
+                        <td class="text-center">
+                            <div class="rank-badge rank-{% if forloop.counter <= 3 %}{{ forloop.counter }}{% else %}other{% endif %}" style="width: 40px; height: 40px; font-size: 1rem;">
+                                {{ forloop.counter }}
+                            </div>
+                        </td>
+                        <td>
+                            <a href="{% url 'notes:details_notes_eleve' eleve.id %}" class="text-decoration-none">
+                                <div class="d-flex align-items-center" style="cursor: pointer;">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <strong class="text-dark">{{ eleve.nom_complet }}</strong>
+                                        {% if forloop.counter == 1 %}
+                                        <i class="fas fa-crown text-warning ms-2" title="Premier de classe"></i>
+                                        {% endif %}
+                                        <br>
+                                        <small class="text-primary">
+                                            <i class="fas fa-eye me-1"></i>
+                                            Voir détails des notes
+                                        </small>
+                                    </div>
+                                </div>
+                            </a>
+                        </td>
+                        <td class="text-center">
+                            <code class="bg-light px-2 py-1 rounded">{{ eleve.matricule }}</code>
+                        </td>
+                        <td class="text-center">
+                            <span class="average-badge {% if eleve.moyenne >= 16 %}avg-excellent{% elif eleve.moyenne >= 14 %}avg-good{% elif eleve.moyenne >= 10 %}avg-average{% else %}avg-poor{% endif %}">
+                                {{ eleve.moyenne|floatformat:2 }}/20
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            {% if eleve.moyenne >= 16 %}
+                                <span class="badge bg-success">Très Bien</span>
+                            {% elif eleve.moyenne >= 14 %}
+                                <span class="badge bg-primary">Bien</span>
+                            {% elif eleve.moyenne >= 12 %}
+                                <span class="badge bg-info">Assez Bien</span>
+                            {% elif eleve.moyenne >= 10 %}
+                                <span class="badge bg-warning">Passable</span>
+                            {% else %}
+                                <span class="badge bg-danger">Insuffisant</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if eleve.moyenne >= 10 %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check me-1"></i>Admis
+                                </span>
+                            {% elif eleve.moyenne >= 8 %}
+                                <span class="badge bg-warning">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Rattrapage
+                                </span>
+                            {% else %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-times me-1"></i>Redouble
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-chart-bar fa-4x text-muted mb-4"></i>
+        <h4 class="text-muted">Aucun classement disponible</h4>
+        <p class="text-muted">Les notes n'ont pas encore été saisies pour cette période.</p>
+        <a href="{% url 'notes:saisie_notes' %}" class="btn btn-primary btn-lg">
+            <i class="fas fa-plus me-2"></i>
+            Commencer la Saisie
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function changeTrimestre() {
+    const select = document.getElementById('trimestre-select');
+    const newTrimestre = select.value;
+    const currentUrl = window.location.pathname;
+    const newUrl = currentUrl.replace(/\/[^\/]+\/$/, `/${newTrimestre}/`);
+    window.location.href = newUrl;
+}
+
+// Animation d'entrée progressive
+document.addEventListener('DOMContentLoaded', function() {
+    const rows = document.querySelectorAll('.student-row');
+    rows.forEach((row, index) => {
+        row.style.opacity = '0';
+        row.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            row.style.transition = 'all 0.5s ease';
+            row.style.opacity = '1';
+            row.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+    
+    // Animation du podium
+    const podiumItems = document.querySelectorAll('.podium-item');
+    podiumItems.forEach((item, index) => {
+        item.style.opacity = '0';
+        item.style.transform = 'scale(0.8)';
+        setTimeout(() => {
+            item.style.transition = 'all 0.6s ease';
+            item.style.opacity = '1';
+            item.style.transform = 'scale(1)';
+        }, index * 200);
+    });
+});
+</script>
+{% endblock %}

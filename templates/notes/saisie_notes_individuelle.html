@@ -1,0 +1,384 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Saisie individuelle — {{ evaluation.classe.nom }} / {{ evaluation.matiere.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .note-input {
+        width: 80px;
+        text-align: center;
+    }
+    .eleve-row {
+        transition: background-color 0.2s;
+    }
+    .eleve-row:hover {
+        background-color: #f8f9fa;
+    }
+    .note-saved {
+        background-color: #d4edda !important;
+    }
+    .appreciation {
+        font-size: 0.85em;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="mb-1">
+                        <i class="fas fa-edit me-2 text-primary"></i>Saisie individuelle des notes
+                    </h4>
+                    <p class="text-muted mb-0">
+                        {{ evaluation.titre }} — {{ evaluation.classe.nom }} / {{ evaluation.matiere.nom }}
+                        <span class="badge bg-info ms-2">{{ evaluation.categorie }}</span>
+                        <span class="badge bg-secondary ms-1">Coeff. {{ evaluation.coefficient }}</span>
+                    </p>
+                </div>
+                <div>
+                    <a href="{% url 'notes:saisie_notes' evaluation.id %}" class="btn btn-outline-primary me-2">
+                        <i class="fas fa-list me-1"></i>Saisie en masse
+                    </a>
+                    <a href="{% url 'notes:evaluations_matiere' evaluation.classe.id evaluation.matiere.id %}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Retour
+                    </a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-light">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <strong>
+                                <i class="fas fa-users me-2"></i>Élèves de la classe
+                                <span class="badge bg-primary ms-2">{{ eleves|length }} élève(s)</span>
+                            </strong>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button type="button" class="btn btn-success btn-sm" onclick="sauvegarderToutesLesNotes()">
+                                <i class="fas fa-save me-1"></i>Sauvegarder tout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="5%">#</th>
+                                    <th width="25%">Élève</th>
+                                    <th width="15%">Matricule</th>
+                                    <th width="15%">Note /20</th>
+                                    <th width="25%">Appréciation</th>
+                                    <th width="15%">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for eleve in eleves %}
+                                <tr class="eleve-row" id="row-{{ eleve.id }}">
+                                    <td class="text-muted">{{ forloop.counter }}</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            {% if eleve.photo %}
+                                                <img src="{{ eleve.photo.url }}" class="rounded-circle me-2" width="32" height="32" alt="Photo">
+                                            {% else %}
+                                                <div class="bg-secondary rounded-circle me-2 d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                                    <i class="fas fa-user text-white"></i>
+                                                </div>
+                                            {% endif %}
+                                            <div>
+                                                <strong>{{ eleve.nom }} {{ eleve.prenom }}</strong>
+                                                <br><small class="text-muted">{{ eleve.date_naissance|date:"d/m/Y" }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <code class="text-primary">{{ eleve.matricule }}</code>
+                                    </td>
+                                    <td>
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" 
+                                                   class="form-control note-input" 
+                                                   id="note-{{ eleve.id }}"
+                                                   min="0" 
+                                                   max="20" 
+                                                   step="0.25"
+                                                   placeholder="0.00"
+                                                   value="{% if eleve.note_actuelle %}{{ eleve.note_actuelle }}{% endif %}"
+                                                   onchange="calculerAppreciation({{ eleve.id }})"
+                                                   onkeypress="if(event.key==='Enter') sauvegarderNote({{ eleve.id }})">
+                                            <span class="input-group-text">/20</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span id="appreciation-{{ eleve.id }}" class="appreciation text-muted">
+                                            {% if eleve.note_actuelle %}
+                                                {{ eleve.appreciation_actuelle }}
+                                            {% else %}
+                                                Saisir une note...
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-success me-1" 
+                                                onclick="sauvegarderNote({{ eleve.id }})"
+                                                id="btn-save-{{ eleve.id }}">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                        {% if eleve.note_actuelle %}
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-danger" 
+                                                onclick="supprimerNote({{ eleve.id }})"
+                                                title="Supprimer la note">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="fas fa-users-slash fa-2x mb-2"></i>
+                                        <br>Aucun élève dans cette classe
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Appuyez sur <kbd>Entrée</kbd> après saisie pour sauvegarder rapidement
+                            </small>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <small class="text-muted">
+                                Notes saisies : <span id="compteur-notes">{{ notes_saisies }}</span>/{{ eleves|length }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Configuration CSRF
+const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+// Barème d'appréciation (peut être récupéré via AJAX si nécessaire)
+function getAppreciation(note) {
+    if (note >= 16) return "Très bien";
+    if (note >= 14) return "Bien";
+    if (note >= 12) return "Assez bien";
+    if (note >= 10) return "Passable";
+    return "Insuffisant";
+}
+
+// Calculer l'appréciation en temps réel
+function calculerAppreciation(eleveId) {
+    const noteInput = document.getElementById(`note-${eleveId}`);
+    const appreciationSpan = document.getElementById(`appreciation-${eleveId}`);
+    
+    const note = parseFloat(noteInput.value);
+    if (isNaN(note) || note < 0 || note > 20) {
+        appreciationSpan.textContent = "Note invalide";
+        appreciationSpan.className = "appreciation text-danger";
+        return;
+    }
+    
+    appreciationSpan.textContent = getAppreciation(note);
+    appreciationSpan.className = "appreciation text-success";
+}
+
+// Sauvegarder une note individuelle
+async function sauvegarderNote(eleveId) {
+    const noteInput = document.getElementById(`note-${eleveId}`);
+    const btnSave = document.getElementById(`btn-save-${eleveId}`);
+    const row = document.getElementById(`row-${eleveId}`);
+    
+    const note = parseFloat(noteInput.value);
+    if (isNaN(note) || note < 0 || note > 20) {
+        alert("Veuillez saisir une note valide entre 0 et 20");
+        noteInput.focus();
+        return;
+    }
+    
+    // Animation de sauvegarde
+    btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btnSave.disabled = true;
+    
+    try {
+        const response = await fetch(`/notes/ajax/sauvegarder-note/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                evaluation_id: {{ evaluation.id }},
+                eleve_id: eleveId,
+                note: note
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Animation de succès
+            row.classList.add('note-saved');
+            setTimeout(() => row.classList.remove('note-saved'), 2000);
+            
+            // Mettre à jour le compteur
+            document.getElementById('compteur-notes').textContent = data.total_notes;
+            
+            // Message de succès
+            showToast('Note sauvegardée avec succès', 'success');
+        } else {
+            alert('Erreur : ' + data.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion : ' + error.message);
+    } finally {
+        btnSave.innerHTML = '<i class="fas fa-check"></i>';
+        btnSave.disabled = false;
+    }
+}
+
+// Sauvegarder toutes les notes
+async function sauvegarderToutesLesNotes() {
+    const notes = [];
+    const inputs = document.querySelectorAll('.note-input');
+    
+    inputs.forEach(input => {
+        const note = parseFloat(input.value);
+        if (!isNaN(note) && note >= 0 && note <= 20) {
+            const eleveId = input.id.replace('note-', '');
+            notes.push({
+                eleve_id: parseInt(eleveId),
+                note: note
+            });
+        }
+    });
+    
+    if (notes.length === 0) {
+        alert('Aucune note valide à sauvegarder');
+        return;
+    }
+    
+    if (!confirm(`Sauvegarder ${notes.length} note(s) ?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/notes/ajax/sauvegarder-notes-masse/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                evaluation_id: {{ evaluation.id }},
+                notes: notes
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(`${data.saved_count} note(s) sauvegardée(s)`, 'success');
+            // Recharger la page pour mettre à jour l'affichage
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Erreur : ' + data.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion : ' + error.message);
+    }
+}
+
+// Supprimer une note
+async function supprimerNote(eleveId) {
+    if (!confirm('Supprimer cette note ?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/notes/ajax/supprimer-note/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                evaluation_id: {{ evaluation.id }},
+                eleve_id: eleveId
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Vider le champ et réinitialiser l'appréciation
+            document.getElementById(`note-${eleveId}`).value = '';
+            document.getElementById(`appreciation-${eleveId}`).textContent = 'Saisir une note...';
+            document.getElementById(`appreciation-${eleveId}`).className = 'appreciation text-muted';
+            
+            // Mettre à jour le compteur
+            document.getElementById('compteur-notes').textContent = data.total_notes;
+            
+            showToast('Note supprimée', 'info');
+            
+            // Recharger pour mettre à jour les boutons
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('Erreur : ' + data.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion : ' + error.message);
+    }
+}
+
+// Fonction utilitaire pour afficher des messages toast
+function showToast(message, type = 'info') {
+    // Créer un toast Bootstrap ou une notification simple
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+        ${message}
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-suppression après 3 secondes
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// Raccourcis clavier
+document.addEventListener('keydown', function(e) {
+    // Ctrl+S pour sauvegarder tout
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        sauvegarderToutesLesNotes();
+    }
+});
+</script>
+{% endblock %}

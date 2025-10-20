@@ -1,0 +1,52 @@
+from django.urls import path
+from . import views
+
+app_name = 'eleves'
+
+urlpatterns = [
+    # Liste et recherche des élèves
+    path('', views.liste_eleves, name='liste_eleves'),
+    path('liste/', views.liste_eleves, name='liste_eleves'),
+    
+    # Détails d'un élève
+    path('<int:eleve_id>/', views.detail_eleve, name='detail_eleve'),
+    
+    # Gestion des élèves
+    path('ajouter/', views.ajouter_eleve, name='ajouter_eleve'),
+    path('<int:eleve_id>/modifier/', views.modifier_eleve, name='modifier_eleve'),
+    path('<int:eleve_id>/supprimer/', views.supprimer_eleve, name='supprimer_eleve'),
+    
+    # Gestion des classes
+    path('classes/', views.gestion_classes, name='gestion_classes'),
+
+    # Création d'école (hors admin)
+    path('ecoles/creer/', views.creer_ecole, name='creer_ecole'),
+    path('ecoles/creer/confirmation/', views.creer_ecole_confirmation, name='creer_ecole_confirmation'),
+    path('ecoles/<int:ecole_id>/configurer/', views.configurer_ecole, name='configurer_ecole'),
+    
+    # Statistiques
+    path('statistiques/', views.statistiques_eleves, name='statistiques_eleves'),
+    
+    # PDF
+    path('<int:eleve_id>/fiche-inscription-pdf/', views.fiche_inscription_pdf, name='fiche_inscription_pdf'),
+    path('<int:eleve_id>/ticket-retrait-pdf/', views.generer_ticket_retrait_pdf, name='ticket_retrait_pdf'),
+    path('<int:eleve_id>/ticket-bus-pdf/', views.generer_ticket_bus_pdf, name='ticket_bus_pdf'),
+    
+    # Génération en masse de tickets par classe
+    path('classe/<int:classe_id>/tickets-retrait-pdf/', views.generer_tickets_retrait_classe_pdf, name='tickets_retrait_classe_pdf'),
+    path('classe/<int:classe_id>/tickets-bus-pdf/', views.generer_tickets_bus_classe_pdf, name='tickets_bus_classe_pdf'),
+
+    # Exports par classe
+    path('export/classe/<int:classe_id>/pdf/', views.export_eleves_classe_pdf, name='export_eleves_classe_pdf'),
+    path('export/classe/<int:classe_id>/excel/', views.export_eleves_classe_excel, name='export_eleves_classe_excel'),
+    
+    # Exports de tous les élèves
+    path('export/tous/pdf/', views.export_tous_eleves_pdf, name='export_tous_eleves_pdf'),
+    path('export/tous/excel/', views.export_tous_eleves_excel, name='export_tous_eleves_excel'),
+    
+    # AJAX
+    path('ajax/classes-par-ecole/<int:ecole_id>/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
+    path('ajax/statistiques/', views.ajax_statistiques_eleves, name='ajax_statistiques_eleves'),
+    path('ajax/rechercher-responsable-telephone/', views.ajax_rechercher_responsable_telephone, name='ajax_rechercher_responsable_telephone'),
+]
+

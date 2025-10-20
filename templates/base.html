@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    {% load static %}
+    {% load static_versioned %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}G.S HKD{% endblock %}</title>
+
+    <!-- Resource Hints for faster connections -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="//cdn.jsdelivr.net">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="dns-prefetch" href="//cdnjs.cloudflare.com">
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        body { padding-top: 70px; }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .navbar-brand img {
+            height: 36px;
+            width: auto;
+            margin-right: 8px;
+            object-fit: contain;
+            border-radius: 8px; /* coins arrondis */
+            background-color: #ffffff; /* arrière-plan blanc */
+            padding: 2px; /* petit espace autour du logo */
+        }
+        /* Réduction de la taille des liens de navigation */
+        .navbar-nav .nav-link {
+            font-size: 0.9rem;
+            padding: 0.5rem 0.7rem;
+        }
+        .navbar-nav .dropdown-menu {
+            font-size: 0.9rem;
+        }
+        .sidebar {
+            min-height: calc(100vh - 56px);
+            background-color: #f8f9fa;
+        }
+        .main-content {
+            min-height: calc(100vh - 56px);
+        }
+        .card-stats {
+            border-left: 4px solid #007bff;
+        }
+        .card-stats.success {
+            border-left-color: #28a745;
+        }
+        .card-stats.warning {
+            border-left-color: #ffc107;
+        }
+        .card-stats.danger {
+            border-left-color: #dc3545;
+        }
+
+        /* Tables avec défilement vertical limité à 15 éléments */
+        .table-container-scrollable {
+            max-height: 600px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+
+        .table-container-scrollable table {
+            margin-bottom: 0;
+        }
+
+        .table-container-scrollable thead th {
+            position: sticky;
+            top: 0;
+            background-color: #f8f9fa;
+            z-index: 10;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .table-container-scrollable tbody tr:hover {
+            background-color: rgba(0, 123, 255, 0.05);
+        }
+
+        /* Scrollbar personnalisée */
+        .table-container-scrollable::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .table-container-scrollable::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .table-container-scrollable::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .table-container-scrollable::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        /* Menu utilisateur - Position à gauche */
+        .navbar-nav .dropdown-menu {
+            right: 0;
+            left: auto;
+            transform: translateX(-20px);
+            min-width: 250px;
+        }
+
+        /* Assurer que le menu reste visible */
+        .navbar-nav .dropdown-menu.show {
+            display: block;
+        }
+
+        /* Footer */
+        .site-footer {
+            border-top: 1px solid #e9ecef;
+        }
+    </style>
+
+    {# Filigrane dynamique retiré: on n'applique pas de watermark sur les pages #}
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="{% url 'home' %}">
+                <img src="{% static_versioned 'logos/logo.png' %}" alt="Logo Myschool" width="36" height="36" loading="eager" decoding="async" fetchpriority="high">
+                <span>Myschool</span>
+            </a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% with allowed=user_profil.allowed_menus %}
+                    {% if user.is_authenticated and user_role == 'COMPTABLE' and not user.is_superuser and not user.is_staff and allowed %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">
+                                <i class="fas fa-home me-1"></i>Accueil
+                            </a>
+                        </li>
+                        {% if 'eleves' in allowed %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'eleves:liste_eleves' %}">
+                                <i class="fas fa-users me-1"></i>Élèves
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if 'paiements' in allowed %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'paiements:tableau_bord' %}">
+                                <i class="fas fa-money-bill me-1"></i>Paiements
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if 'depenses' in allowed %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-receipt me-1"></i>Dépenses
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
+                                    <i class="fas fa-receipt me-1"></i>Dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Logistique</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_logistique' %}">
+                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_articles' %}">
+                                    <i class="fas fa-boxes text-primary me-1"></i>Stock & Articles
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_biens' %}">
+                                    <i class="fas fa-building text-info me-1"></i>Biens Établissement
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_mouvements' %}">
+                                    <i class="fas fa-exchange-alt text-warning me-1"></i>Mouvements
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_inventaires' %}">
+                                    <i class="fas fa-clipboard-list text-success me-1"></i>Inventaires
+                                </a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-book-reader me-1"></i>Bibliothèque
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_bibliotheque' %}">
+                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:catalogue_livres' %}">
+                                    <i class="fas fa-book text-primary me-1"></i>Catalogue Livres
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_emprunts' %}">
+                                    <i class="fas fa-hand-holding-heart text-success me-1"></i>Emprunts
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_reservations' %}">
+                                    <i class="fas fa-bookmark text-warning me-1"></i>Réservations
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:statistiques_bibliotheque' %}">
+                                    <i class="fas fa-chart-line me-1"></i>Statistiques
+                                </a></li>
+                            </ul>
+                        </li>
+                        {% endif %}
+                        {% if 'salaires' in allowed %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'salaires:tableau_bord' %}">
+                                <i class="fas fa-money-check-alt me-1"></i>Salaires
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if 'bus' in allowed %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-bus me-1"></i>Transport
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'bus:index' %}">
+                                    <i class="fas fa-bus me-1"></i>Abonnements Bus
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:tableau_bord_cantine' %}">
+                                    <i class="fas fa-utensils text-success me-1"></i>Cantine Scolaire
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:liste_abonnements_cantine' %}">
+                                    <i class="fas fa-list me-1"></i>Liste Abonnements Cantine
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:creer_abonnement_cantine' %}">
+                                    <i class="fas fa-plus me-1"></i>Nouvel Abonnement Cantine
+                                </a></li>
+                            </ul>
+                        </li>
+                        {% endif %}
+                        {% if 'notes' in allowed %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'notes:tableau_bord' %}">
+                                <i class="fas fa-book me-1"></i>Notes
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">
+                                <i class="fas fa-home me-1"></i>Accueil
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'eleves:liste_eleves' %}">
+                                <i class="fas fa-users me-1"></i>Élèves
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'paiements:tableau_bord' %}">
+                                <i class="fas fa-money-bill me-1"></i>Paiements
+                            </a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-receipt me-1"></i>Dépenses
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
+                                    <i class="fas fa-receipt me-1"></i>Dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Logistique</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_logistique' %}">
+                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_articles' %}">
+                                    <i class="fas fa-boxes text-primary me-1"></i>Stock & Articles
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_biens' %}">
+                                    <i class="fas fa-building text-info me-1"></i>Biens Établissement
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_mouvements' %}">
+                                    <i class="fas fa-exchange-alt text-warning me-1"></i>Mouvements
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_inventaires' %}">
+                                    <i class="fas fa-clipboard-list text-success me-1"></i>Inventaires
+                                </a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-book-reader me-1"></i>Bibliothèque
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_bibliotheque' %}">
+                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:catalogue_livres' %}">
+                                    <i class="fas fa-book text-primary me-1"></i>Catalogue Livres
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_emprunts' %}">
+                                    <i class="fas fa-hand-holding-heart text-success me-1"></i>Emprunts
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_reservations' %}">
+                                    <i class="fas fa-bookmark text-warning me-1"></i>Réservations
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:statistiques_bibliotheque' %}">
+                                    <i class="fas fa-chart-line me-1"></i>Statistiques
+                                </a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'salaires:tableau_bord' %}">
+                                <i class="fas fa-money-check-alt me-1"></i>Salaires
+                            </a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-bus me-1"></i>Transport
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'bus:index' %}">
+                                    <i class="fas fa-bus me-1"></i>Abonnements Bus
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:tableau_bord_cantine' %}">
+                                    <i class="fas fa-utensils text-success me-1"></i>Cantine Scolaire
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:liste_abonnements_cantine' %}">
+                                    <i class="fas fa-list me-1"></i>Liste Abonnements Cantine
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'bus:creer_abonnement_cantine' %}">
+                                    <i class="fas fa-plus me-1"></i>Nouvel Abonnement Cantine
+                                </a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'notes:tableau_bord' %}">
+                                <i class="fas fa-book me-1"></i>Notes
+                            </a>
+                        </li>
+                    {% endif %}
+                    {% endwith %}
+                </ul>
+
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user me-1"></i>{{ user.username }}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                {% if user.is_authenticated %}
+                                <!-- Section Rapports -->
+                                {% with allowed=user_profil.allowed_menus %}
+                                {% if user.is_authenticated and user_role == 'COMPTABLE' and not user.is_superuser and not user.is_staff and allowed %}
+                                {% if 'rapports' in allowed %}
+                                <li><a class="dropdown-item" href="{% url 'rapports:rapport_remises' %}">
+                                    <i class="fas fa-percentage me-1"></i>Rapport des remises
+                                </a></li>
+                                {% endif %}
+                                {% if 'paiements' in allowed %}
+                                <li><a class="dropdown-item" href="{% url 'paiements:liste_eleves_soldes' %}">
+                                    <i class="fas fa-check-circle me-1"></i>Élèves soldés
+                                </a></li>
+                                {% endif %}
+                                {% else %}
+                                <li><a class="dropdown-item" href="{% url 'rapports:rapport_remises' %}">
+                                    <i class="fas fa-percentage me-1"></i>Rapport des remises
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'paiements:liste_eleves_soldes' %}">
+                                    <i class="fas fa-check-circle me-1"></i>Élèves soldés
+                                </a></li>
+                                {% endif %}
+                                {% endwith %}
+                                {% endif %}
+
+                                {% if user.is_superuser or user.is_staff %}
+                                <li><hr class="dropdown-divider"></li>
+                                <!-- Section Administration -->
+                                <li><a class="dropdown-item" href="{% url 'rapports:tableau_bord' %}">
+                                    <i class="fas fa-chart-bar me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'administration:dashboard' %}">
+                                    <i class="fas fa-cogs me-1"></i>Administration
+                                </a></li>
+                                {% if user.is_superuser %}
+                                <li><a class="dropdown-item" href="{% url 'administration:system_logs' %}">
+                                    <i class="fas fa-list-alt me-1"></i>Logs Système
+                                </a></li>
+                                {% endif %}
+                                <li><a class="dropdown-item" href="{% url 'utilisateurs:security_dashboard' %}">
+                                    <i class="fas fa-shield-alt me-1"></i>Sécurité
+                                </a></li>
+                                {% endif %}
+
+                                {% if user.is_superuser %}
+                                <li><hr class="dropdown-divider"></li>
+                                <!-- Section Super Admin -->
+                                <li><a class="dropdown-item" href="{% url 'admin:index' %}">
+                                    <i class="fas fa-cog me-1"></i>Admin Django
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'utilisateurs:comptable_create' %}">
+                                    <i class="fas fa-user-plus me-1"></i>Créer un comptable
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'administration:users_management' %}">
+                                    <i class="fas fa-users-cog me-1"></i>Gestion utilisateurs
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'administration:corbeille_list' %}">
+                                    <i class="fas fa-trash-restore me-1"></i>Corbeille
+                                </a></li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form method="post" action="{% url 'utilisateurs:logout' %}" class="px-3 py-1">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item px-0">
+                                            <i class="fas fa-sign-out-alt me-1"></i>Déconnexion
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'utilisateurs:login' %}">
+                                <i class="fas fa-sign-in-alt me-1"></i>Connexion
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Messages -->
+    {% if messages %}
+        <div class="container-fluid mt-3">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {% if message.tags == 'error' %}
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                    {% elif message.tags == 'success' %}
+                        <i class="fas fa-check-circle me-2"></i>
+                    {% elif message.tags == 'warning' %}
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                    {% else %}
+                        <i class="fas fa-info-circle me-2"></i>
+                    {% endif %}
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <!-- Main Content -->
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar (optionnel) -->
+            {% block sidebar %}{% endblock %}
+
+            <!-- Content -->
+            <main class="{% if not sidebar %}col-12{% else %}col-md-9 col-lg-10{% endif %} main-content p-4">
+                {% block breadcrumb %}
+                    <nav aria-label="breadcrumb">
+                        <ol class="breadcrumb">
+                            <li class="breadcrumb-item">
+                                <a href="{% url 'home' %}">
+                                    <i class="fas fa-home"></i> Accueil
+                                </a>
+                            </li>
+                            {% block breadcrumb_items %}{% endblock %}
+                        </ol>
+                    </nav>
+                {% endblock %}
+
+                {% block page_header %}
+                    {% if titre_page %}
+                        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap" style="gap: .5rem 1rem;">
+                            <h1 class="h3 mb-0">{{ titre_page }}</h1>
+                            <div class="page-actions d-flex flex-wrap justify-content-end" style="gap: .5rem;">
+                                {% block page_actions %}{% endblock %}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endblock %}
+
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="site-footer bg-dark text-light mt-4">
+        <div class="container py-3">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <small>
+                        &copy; {% now "Y" %} Myschool. Tous droits réservés.
+                    </small>
+                </div>
+                <div class="col-md-6 text-md-end mt-2 mt-md-0">
+                    <a href="{% url 'home' %}" class="text-light text-decoration-none me-3">
+                        <i class="fas fa-home me-1"></i>Accueil
+                    </a>
+                    <span class="me-3"><i class="fas fa-phone me-1"></i> +224 622613559</span>
+                    <a href="mailto:faraleno16@gmail.com" class="text-light text-decoration-none">
+                        <i class="fas fa-envelope me-1"></i> faraleno16@gmail.com
+                    </a>
+                </div>
+            </div>
+            {% block footer_extra %}{% endblock %}
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Global phone normalization (+224) -->
+    <script>
+    (function(){
+      const PREFIX = '+224';
+      function isPhoneInput(el){
+        if (!el || el.tagName !== 'INPUT') return false;
+        const name = (el.getAttribute('name') || '').toLowerCase();
+        const id = (el.getAttribute('id') || '').toLowerCase();
+        const type = (el.getAttribute('type') || '').toLowerCase();
+        const data = el.hasAttribute('data-gn-phone') || el.getAttribute('data-gn-prefix') === PREFIX;
+        const likely = type === 'tel'
+          || name.includes('phone') || name.includes('tel') || name.includes('téléphone') || name.includes('telephone') || name.includes('whatsapp')
+          || id.includes('phone') || id.includes('tel') || id.includes('téléphone') || id.includes('telephone') || id.includes('whatsapp');
+        return data || likely;
+      }
+      function digitsOnly(s){ return (s||'').replace(/\D+/g,''); }
+      function normalizeToGN(value){
+        if (!value) return '';
+        // Preserve a possible + at start for detection, then strip spaces/dashes
+        let v = String(value).trim();
+        // Already +224...
+        if (v.startsWith(PREFIX)) return v;
+        // Handle 224 without plus
+        if (v.startsWith('224')) return '+' + v;
+        // Remove non-digits to analyze local pattern
+        const d = digitsOnly(v);
+        if (!d) return '';
+        // If starts with 224 after removing symbols
+        if (d.startsWith('224')) return '+' + d;
+        // If starts with 0 local leading zero → drop 0
+        const dNoLeadZero = d.startsWith('0') ? d.replace(/^0+/, '') : d;
+        return PREFIX + dNoLeadZero;
+      }
+      function attach(el){
+        if (!el || el.__gnPhoneBound) return; el.__gnPhoneBound = true;
+        // Placeholder helper
+        if (!el.placeholder) el.placeholder = 'Numéro (sans +224)';
+        // Do not auto-normalize on blur; we only normalize on submit to avoid
+        // conflicting with HTML pattern validations on inputs.
+        el.addEventListener('blur', function(){
+          try {
+            // Light cleanup only: trim spaces
+            if (typeof el.value === 'string') el.value = el.value.trim();
+          } catch(_) {}
+        });
+      }
+      function scan(){
+        document.querySelectorAll('input').forEach(function(el){ if (isPhoneInput(el)) attach(el); });
+      }
+      function bindFormSubmit(){
+        document.querySelectorAll('form').forEach(function(form){
+          if (form.__gnSubmitBound) return; form.__gnSubmitBound = true;
+          form.addEventListener('submit', function(){
+            const inputs = form.querySelectorAll('input');
+            inputs.forEach(function(el){ if (isPhoneInput(el)) { const n = normalizeToGN(el.value); if (n) el.value = n; } });
+          }, true);
+        });
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        try { scan(); bindFormSubmit(); } catch(e) { console && console.warn && console.warn('GN phone init error', e); }
+        // Support dynamic DOM changes (basic)
+        const obs = new MutationObserver(function(){ try { scan(); bindFormSubmit(); } catch(_){} });
+        obs.observe(document.body, { childList: true, subtree: true });
+      });
+    })();
+    </script>
+    <!-- CSRF helpers for AJAX -->
+    <script>
+    // Extract cookie by name
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return null;
+    }
+    // Public helpers
+    window.getCsrfToken = function() {
+        // Prefer meta tag if ever added, else cookie
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.content) return meta.content;
+        return getCookie('csrftoken');
+    }
+    // Wrapper around fetch that injects CSRF header on unsafe methods
+    window.csrfFetch = function(input, init={}) {
+        const url = (typeof input === 'string') ? input : (input && input.url ? input.url : String(input));
+        const method = (init.method || 'GET').toUpperCase();
+        const unsafe = ['POST','PUT','PATCH','DELETE'].includes(method);
+        const sameOrigin = url && (url.startsWith('/') || url.startsWith(window.location.origin));
+        if (unsafe && sameOrigin) {
+            const token = window.getCsrfToken();
+            init.headers = Object.assign({}, init.headers, { 'X-CSRFToken': token || '' });
+        }
+        return fetch(input, init);
+    }
+    </script>
+    {% block extra_js %}{% endblock %}
+    <script>
+    // Fast submit: disable submit buttons, show spinner, prevent double submit
+    (function(){
+      function enhanceForm(form){
+        if (!form || form.__fastSubmitBound) return; form.__fastSubmitBound = true;
+        form.addEventListener('submit', function(e){
+          try {
+            // Ignore if already processing
+            if (form.__submitting) { e.preventDefault(); return false; }
+            form.__submitting = true;
+            // Disable all submit buttons and show spinner
+            const submits = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+            submits.forEach(function(btn){
+              try {
+                btn.disabled = true;
+                if (btn.tagName === 'BUTTON') {
+                  if (!btn.dataset.origHtml) btn.dataset.origHtml = btn.innerHTML;
+                  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Enregistrement…';
+                } else if (btn.tagName === 'INPUT') {
+                  if (!btn.dataset.origValue) btn.dataset.origValue = btn.value;
+                  btn.value = 'Enregistrement…';
+                }
+              } catch(_){}
+            });
+            // Add lightweight overlay to indicate progress (optional, non-blocking)
+            let overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.inset = '0';
+            overlay.style.background = 'rgba(255,255,255,0.4)';
+            overlay.style.cursor = 'progress';
+            overlay.style.zIndex = '1050';
+            overlay.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(overlay);
+            // Safety timeout: if navigation doesn't happen (validation error), re-enable buttons
+            setTimeout(function(){
+              try {
+                if (!document.hidden) { // still on page
+                  overlay.remove();
+                  submits.forEach(function(btn){
+                    btn.disabled = false;
+                    if (btn.tagName === 'BUTTON' && btn.dataset.origHtml) btn.innerHTML = btn.dataset.origHtml;
+                    if (btn.tagName === 'INPUT' && btn.dataset.origValue) btn.value = btn.dataset.origValue;
+                  });
+                  form.__submitting = false;
+                }
+              } catch(_){}
+            }, 6000);
+          } catch(_){}
+        }, true);
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        try {
+          document.querySelectorAll('form').forEach(enhanceForm);
+          const obs = new MutationObserver(function(muts){
+            try { document.querySelectorAll('form').forEach(enhanceForm); } catch(_){}
+          });
+          obs.observe(document.body, { childList: true, subtree: true });
+        } catch(_){}
+      });
+    })();
+    </script>
+</body>
+</html>

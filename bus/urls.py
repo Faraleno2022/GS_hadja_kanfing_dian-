@@ -1,0 +1,28 @@
+from django.urls import path
+from . import views
+from . import views_cantine
+
+app_name = 'bus'
+
+urlpatterns = [
+    # Abonnements Bus
+    path('', views.liste_abonnements, name='index'),
+    path('liste/', views.liste_abonnements, name='liste'),
+    path('export/breakdown/<str:kind>.csv', views.export_abonnements_breakdown_csv, name='export_breakdown_csv'),
+    path('nouveau/', views.abonnement_create, name='nouveau'),
+    path('<int:abo_id>/modifier/', views.abonnement_edit, name='modifier'),
+    path('relances/', views.relances, name='relances'),
+    path('relances/envoyer/', views.envoyer_relances_bus, name='envoyer_relances_bus'),
+    path('relances/export/excel/', views.export_relances_excel, name='export_relances_excel'),
+    path('<int:abo_id>/recu/pdf/', views.generer_recu_abonnement_pdf, name='recu_pdf'),
+    
+    # Abonnements Cantine
+    path('cantine/', views_cantine.tableau_bord_cantine, name='tableau_bord_cantine'),
+    path('cantine/liste/', views_cantine.liste_abonnements_cantine, name='liste_abonnements_cantine'),
+    path('cantine/nouveau/', views_cantine.creer_abonnement_cantine, name='creer_abonnement_cantine'),
+    path('cantine/<int:pk>/modifier/', views_cantine.modifier_abonnement_cantine, name='modifier_abonnement_cantine'),
+    path('cantine/<int:pk>/supprimer/', views_cantine.supprimer_abonnement_cantine, name='supprimer_abonnement_cantine'),
+    path('cantine/export/excel/', views_cantine.export_cantine_excel, name='export_cantine_excel'),
+    path('cantine/api/alertes/', views_cantine.alertes_cantine_json, name='alertes_cantine_json'),
+    path('cantine/api/eleve/<int:eleve_id>/', views_cantine.get_eleve_info_json, name='get_eleve_info_json'),
+]

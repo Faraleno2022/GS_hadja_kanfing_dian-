@@ -1,0 +1,933 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}📚 Gestion des Notes{% endblock %}
+
+{% block extra_css %}
+<style>
+    .hero-section {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-radius: 25px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 15px 35px rgba(102, 126, 234, 0.3);
+    }
+    
+    .stats-card {
+        background: white;
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border: none;
+        height: 100%;
+    }
+    
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+    }
+    
+    .action-card {
+        background: white;
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border: none;
+        height: 100%;
+        cursor: pointer;
+    }
+    
+    .action-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 45px rgba(0,0,0,0.15);
+    }
+    
+    .icon-circle {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        margin: 0 auto 1.5rem;
+        color: white;
+    }
+    
+    .bg-gradient-primary { background: linear-gradient(45deg, #007bff, #0056b3); }
+    .bg-gradient-success { background: linear-gradient(45deg, #28a745, #1e7e34); }
+    .bg-gradient-warning { background: linear-gradient(45deg, #ffc107, #e0a800); }
+    .bg-gradient-info { background: linear-gradient(45deg, #17a2b8, #138496); }
+    .bg-gradient-danger { background: linear-gradient(45deg, #dc3545, #c82333); }
+    
+    .btn-modern {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        border: none;
+        color: white;
+        border-radius: 25px;
+        padding: 12px 25px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .btn-modern:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .level-section {
+        margin-bottom: 2rem;
+    }
+    
+    .level-header {
+        background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+        border-radius: 15px;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1rem;
+        border-left: 5px solid;
+    }
+    
+    .level-primary { border-left-color: #007bff; }
+    .level-success { border-left-color: #28a745; }
+    .level-warning { border-left-color: #ffc107; }
+    
+    .class-item {
+        background: white;
+        border-radius: 15px;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+    }
+    
+    .class-item:hover {
+        transform: translateX(5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-fade-in {
+        animation: fadeInUp 0.6s ease forwards;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Hero Section -->
+    <div class="hero-section animate-fade-in">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="display-5 fw-bold mb-3">
+                    <i class="fas fa-graduation-cap me-3"></i>
+                    Gestion des Notes
+                </h1>
+                <p class="lead mb-0">
+                    Tableau de bord moderne pour la gestion des évaluations, notes et classements
+                </p>
+            </div>
+            <div class="col-md-4 text-end">
+                <button class="btn btn-primary btn-lg me-2" onclick="ouvrirModalElevesNotes()">
+                    <i class="fas fa-list me-2"></i>
+                    Liste Élèves & Notes
+                </button>
+                <a href="#" class="btn btn-light btn-lg" onclick="alert('Sélectionnez d\'abord une classe pour créer une évaluation')">
+                    <i class="fas fa-plus me-2"></i>
+                    Nouvelle Évaluation
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="row mb-4">
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="stats-card animate-fade-in">
+                <div class="d-flex align-items-center">
+                    <div class="icon-circle bg-gradient-primary me-3" style="width: 60px; height: 60px; font-size: 24px;">
+                        <i class="fas fa-clipboard-list"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0">{{ stats.total_evaluations|default:0 }}</h3>
+                        <small class="text-muted">Évaluations</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="stats-card animate-fade-in">
+                <div class="d-flex align-items-center">
+                    <div class="icon-circle bg-gradient-success me-3" style="width: 60px; height: 60px; font-size: 24px;">
+                        <i class="fas fa-star"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0">{{ stats.total_notes|default:0 }}</h3>
+                        <small class="text-muted">Notes Saisies</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="stats-card animate-fade-in">
+                <div class="d-flex align-items-center">
+                    <div class="icon-circle bg-gradient-warning me-3" style="width: 60px; height: 60px; font-size: 24px;">
+                        <i class="fas fa-chalkboard"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0">{{ stats.classes_actives|default:0 }}</h3>
+                        <small class="text-muted">Classes Actives</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-3 col-md-6 mb-3">
+            <div class="stats-card animate-fade-in">
+                <div class="d-flex align-items-center">
+                    <div class="icon-circle bg-gradient-info me-3" style="width: 60px; height: 60px; font-size: 24px;">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div>
+                        <h3 class="mb-0">{{ stats.moyenne_generale|default:"--"|floatformat:2 }}</h3>
+                        <small class="text-muted">Moyenne Générale</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions Principales -->
+    <div class="row mb-4">
+        <div class="col-lg-4 col-md-6 mb-3">
+            <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalSelectClasseNotes">
+                <div class="action-card">
+                    <div class="icon-circle bg-gradient-primary">
+                        <i class="fas fa-edit"></i>
+                    </div>
+                    <h5 class="fw-bold">Saisir des Notes</h5>
+                    <p class="text-muted mb-3">Enregistrer les notes des évaluations et contrôles</p>
+                    <span class="btn-modern">
+                        <i class="fas fa-pencil-alt me-2"></i>Commencer
+                    </span>
+                </div>
+            </a>
+        </div>
+        
+        <div class="col-lg-4 col-md-6 mb-3">
+            <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalSelectClasseClassement">
+                <div class="action-card">
+                    <div class="icon-circle bg-gradient-success">
+                        <i class="fas fa-trophy"></i>
+                    </div>
+                    <h5 class="fw-bold">Classements</h5>
+                    <p class="text-muted mb-3">Consulter les classements et moyennes par classe</p>
+                    <span class="btn-modern">
+                        <i class="fas fa-medal me-2"></i>Voir Classements
+                    </span>
+                </div>
+            </a>
+        </div>
+        
+        <div class="col-lg-4 col-md-6 mb-3">
+            <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#modalSelectClasseConfig">
+                <div class="action-card">
+                    <div class="icon-circle bg-gradient-warning">
+                        <i class="fas fa-cog"></i>
+                    </div>
+                    <h5 class="fw-bold">Configuration</h5>
+                    <p class="text-muted mb-3">Gérer les matières et coefficients par classe</p>
+                    <span class="btn-modern">
+                        <i class="fas fa-tools me-2"></i>Configurer
+                    </span>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Classes par Niveau -->
+    <div class="row">
+        <!-- Primaire -->
+        <div class="col-lg-4 mb-4">
+            <div class="level-section">
+                <div class="level-header level-primary">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-child me-2"></i>
+                            Primaire
+                        </h6>
+                        {% if user.is_superuser or user.is_staff %}
+                        <button class="btn btn-sm btn-primary">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% for c in classes_primaire %}
+                <div class="class-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ c.nom }}</strong>
+                            <br><small class="text-muted">{{ c.get_niveau_display }}</small>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-primary">
+                                <i class="fas fa-book"></i>
+                            </a>
+                            <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success">
+                                <i class="fas fa-trophy"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="class-item text-center text-muted">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe au Primaire
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Collège -->
+        <div class="col-lg-4 mb-4">
+            <div class="level-section">
+                <div class="level-header level-success">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-user-graduate me-2"></i>
+                            Collège
+                        </h6>
+                        {% if user.is_superuser or user.is_staff %}
+                        <button class="btn btn-sm btn-success">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% for c in classes_college %}
+                <div class="class-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ c.nom }}</strong>
+                            <br><small class="text-muted">{{ c.get_niveau_display }}</small>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-primary">
+                                <i class="fas fa-book"></i>
+                            </a>
+                            <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success">
+                                <i class="fas fa-trophy"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="class-item text-center text-muted">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe au Collège
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Lycée -->
+        <div class="col-lg-4 mb-4">
+            <div class="level-section">
+                <div class="level-header level-warning">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">
+                            <i class="fas fa-university me-2"></i>
+                            Lycée
+                        </h6>
+                        {% if user.is_superuser or user.is_staff %}
+                        <button class="btn btn-sm btn-warning">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% for c in classes_lycee %}
+                <div class="class-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ c.nom }}</strong>
+                            <br><small class="text-muted">{{ c.get_niveau_display }}</small>
+                        </div>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-primary">
+                                <i class="fas fa-book"></i>
+                            </a>
+                            <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success">
+                                <i class="fas fa-trophy"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="class-item text-center text-muted">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe au Lycée
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Animation d'entrée progressive
+document.addEventListener('DOMContentLoaded', function() {
+    const elements = document.querySelectorAll('.stats-card, .action-card, .class-item');
+    elements.forEach((el, index) => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            el.style.transition = 'all 0.6s ease';
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+});
+
+// Fonction pour ouvrir la modale des élèves et notes
+function ouvrirModalElevesNotes() {
+    $('#modalElevesNotes').modal('show');
+    chargerClassesPourModal();
+}
+
+// Charger les classes disponibles
+function chargerClassesPourModal() {
+    // Récupérer les classes depuis les données existantes du dashboard
+    const selectClasse = document.getElementById('selectClasseModal');
+    selectClasse.innerHTML = '<option value="">Sélectionnez une classe...</option>';
+    
+    // Ajouter les classes depuis les sections du dashboard
+    {% for classe in classes_primaire %}
+    selectClasse.innerHTML += '<option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.get_niveau_display }})</option>';
+    {% endfor %}
+    {% for classe in classes_college %}
+    selectClasse.innerHTML += '<option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.get_niveau_display }})</option>';
+    {% endfor %}
+    {% for classe in classes_lycee %}
+    selectClasse.innerHTML += '<option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.get_niveau_display }})</option>';
+    {% endfor %}
+}
+
+// Charger les données des élèves
+function chargerDonneesEleves() {
+    const classeId = document.getElementById('selectClasseModal').value;
+    const periodeType = document.getElementById('selectPeriodeType').value;
+    const periodeValue = document.getElementById('selectPeriodeValue').value;
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    // Afficher le loader
+    document.getElementById('loaderEleves').style.display = 'block';
+    document.getElementById('tableauEleves').style.display = 'none';
+    
+    // Requête AJAX
+    fetch(`{% url 'notes:liste_eleves_notes_modal' %}?classe_id=${classeId}&periode_type=${periodeType}&periode_value=${periodeValue}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loaderEleves').style.display = 'none';
+            
+            if (data.success) {
+                afficherDonneesEleves(data);
+            } else {
+                alert('Erreur: ' + (data.error || 'Impossible de charger les données'));
+            }
+        })
+        .catch(error => {
+            document.getElementById('loaderEleves').style.display = 'none';
+            console.error('Erreur:', error);
+            alert('Erreur de connexion');
+        });
+}
+
+// Afficher les données dans le tableau
+function afficherDonneesEleves(data) {
+    // Mettre à jour les informations de la classe et période
+    document.getElementById('infoClasse').textContent = data.classe.nom;
+    document.getElementById('infoPeriode').textContent = data.periode.label;
+    
+    // Mettre à jour les statistiques
+    document.getElementById('statNbEleves').textContent = data.stats.nb_eleves;
+    document.getElementById('statMoyenneClasse').textContent = data.stats.moyenne_classe + '/20';
+    document.getElementById('statAdmis').textContent = data.stats.admis;
+    document.getElementById('statRattrapage').textContent = data.stats.rattrapage;
+    document.getElementById('statRedoublants').textContent = data.stats.redoublants;
+    
+    // Remplir le tableau
+    const tbody = document.getElementById('tbodyEleves');
+    tbody.innerHTML = '';
+    
+    data.eleves.forEach(eleve => {
+        const badgeClass = eleve.moyenne_generale >= 16 ? 'bg-success' : 
+                          eleve.moyenne_generale >= 14 ? 'bg-primary' :
+                          eleve.moyenne_generale >= 10 ? 'bg-warning' : 'bg-danger';
+        
+        const row = `
+            <tr>
+                <td class="text-center">
+                    <span class="badge ${eleve.rang <= 3 ? 'bg-warning' : 'bg-secondary'}">${eleve.rang}</span>
+                </td>
+                <td><strong>${eleve.nom_complet}</strong></td>
+                <td class="text-center"><code>${eleve.matricule}</code></td>
+                <td class="text-center">
+                    <span class="badge ${badgeClass}">${eleve.moyenne_generale}/20</span>
+                </td>
+                <td class="text-center">${eleve.nb_notes}</td>
+                <td class="text-center">
+                    <button class="btn btn-sm btn-outline-primary" onclick="voirDetailsEleve(${eleve.id})">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+    
+    document.getElementById('tableauEleves').style.display = 'block';
+}
+
+// Voir les détails d'un élève
+function voirDetailsEleve(eleveId) {
+    window.open(`{% url 'notes:details_notes_eleve' 0 %}`.replace('0', eleveId), '_blank');
+}
+
+// Mettre à jour les options de période selon le type
+function changerTypePeriode() {
+    const type = document.getElementById('selectPeriodeType').value;
+    const selectValue = document.getElementById('selectPeriodeValue');
+    
+    selectValue.innerHTML = '';
+    
+    if (type === 'trimestre') {
+        selectValue.innerHTML = `
+            <option value="T1">1er Trimestre</option>
+            <option value="T2">2ème Trimestre</option>
+            <option value="T3">3ème Trimestre</option>
+        `;
+    } else if (type === 'semestre') {
+        selectValue.innerHTML = `
+            <option value="S1">1er Semestre</option>
+            <option value="S2">2ème Semestre</option>
+        `;
+    } else if (type === 'mois') {
+        const mois = [
+            '2024-09', '2024-10', '2024-11', '2024-12',
+            '2025-01', '2025-02', '2025-03', '2025-04', 
+            '2025-05', '2025-06', '2025-07', '2025-08'
+        ];
+        const noms = [
+            'Septembre 2024', 'Octobre 2024', 'Novembre 2024', 'Décembre 2024',
+            'Janvier 2025', 'Février 2025', 'Mars 2025', 'Avril 2025',
+            'Mai 2025', 'Juin 2025', 'Juillet 2025', 'Août 2025'
+        ];
+        
+        mois.forEach((value, index) => {
+            selectValue.innerHTML += `<option value="${value}">${noms[index]}</option>`;
+        });
+    }
+}
+</script>
+
+<!-- Fenêtre Modale pour Liste des Élèves -->
+<div class="modal fade" id="modalElevesNotes" tabindex="-1" aria-labelledby="modalElevesNotesLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white;">
+                <h5 class="modal-title" id="modalElevesNotesLabel">
+                    <i class="fas fa-list me-2"></i>
+                    Liste des Élèves avec Notes et Classement
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Filtres -->
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Classe</label>
+                        <select id="selectClasseModal" class="form-select">
+                            <option value="">Sélectionnez une classe...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Type de Période</label>
+                        <select id="selectPeriodeType" class="form-select" onchange="changerTypePeriode()">
+                            <option value="trimestre">Trimestre</option>
+                            <option value="semestre">Semestre</option>
+                            <option value="mois">Mois</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Période</label>
+                        <select id="selectPeriodeValue" class="form-select">
+                            <option value="T1">1er Trimestre</option>
+                            <option value="T2">2ème Trimestre</option>
+                            <option value="T3">3ème Trimestre</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="text-center mb-3">
+                    <button class="btn btn-primary" onclick="chargerDonneesEleves()">
+                        <i class="fas fa-search me-2"></i>
+                        Charger les Données
+                    </button>
+                </div>
+                
+                <!-- Loader -->
+                <div id="loaderEleves" class="text-center" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Chargement...</span>
+                    </div>
+                    <p class="mt-2">Chargement des données...</p>
+                </div>
+                
+                <!-- Informations et Statistiques -->
+                <div id="tableauEleves" style="display: none;">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6 class="fw-bold">
+                                <i class="fas fa-school me-2"></i>
+                                Classe: <span id="infoClasse">-</span>
+                            </h6>
+                            <h6 class="fw-bold">
+                                <i class="fas fa-calendar me-2"></i>
+                                Période: <span id="infoPeriode">-</span>
+                            </h6>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row text-center">
+                                <div class="col">
+                                    <div class="bg-primary text-white rounded p-2">
+                                        <strong id="statNbEleves">0</strong>
+                                        <br><small>Élèves</small>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="bg-info text-white rounded p-2">
+                                        <strong id="statMoyenneClasse">0/20</strong>
+                                        <br><small>Moyenne</small>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="bg-success text-white rounded p-2">
+                                        <strong id="statAdmis">0</strong>
+                                        <br><small>Admis</small>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="bg-warning text-white rounded p-2">
+                                        <strong id="statRattrapage">0</strong>
+                                        <br><small>Rattrapage</small>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                    <div class="bg-danger text-white rounded p-2">
+                                        <strong id="statRedoublants">0</strong>
+                                        <br><small>Redoublants</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Tableau des élèves -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="text-center">Rang</th>
+                                    <th>Nom Complet</th>
+                                    <th class="text-center">Matricule</th>
+                                    <th class="text-center">Moyenne</th>
+                                    <th class="text-center">Nb Notes</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyEleves">
+                                <!-- Les données seront chargées ici -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal : Sélection Classe pour Saisie Notes -->
+<div class="modal fade" id="modalSelectClasseNotes" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit me-2"></i>
+                    Sélectionner une Classe pour Saisir des Notes
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Choisissez une classe ci-dessous pour accéder à ses matières et saisir les notes
+                </p>
+                
+                <!-- Primaire -->
+                {% if classes_primaire %}
+                <h6 class="fw-bold text-primary mb-3">
+                    <i class="fas fa-child me-2"></i>Primaire
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_primaire %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-primary w-100 text-start">
+                            <i class="fas fa-chalkboard me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Collège -->
+                {% if classes_college %}
+                <h6 class="fw-bold text-success mb-3">
+                    <i class="fas fa-user-graduate me-2"></i>Collège
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_college %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-success w-100 text-start">
+                            <i class="fas fa-chalkboard me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Lycée -->
+                {% if classes_lycee %}
+                <h6 class="fw-bold text-warning mb-3">
+                    <i class="fas fa-university me-2"></i>Lycée
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_lycee %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-warning w-100 text-start">
+                            <i class="fas fa-chalkboard me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                {% if not classes_primaire and not classes_college and not classes_lycee %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe disponible. Veuillez d'abord créer des classes.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal : Sélection Classe pour Classement -->
+<div class="modal fade" id="modalSelectClasseClassement" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-trophy me-2"></i>
+                    Sélectionner une Classe pour le Classement
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Choisissez une classe pour consulter son classement et ses moyennes
+                </p>
+                
+                <!-- Primaire -->
+                {% if classes_primaire %}
+                <h6 class="fw-bold text-primary mb-3">
+                    <i class="fas fa-child me-2"></i>Primaire
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_primaire %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success w-100 text-start">
+                            <i class="fas fa-medal me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Collège -->
+                {% if classes_college %}
+                <h6 class="fw-bold text-success mb-3">
+                    <i class="fas fa-user-graduate me-2"></i>Collège
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_college %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success w-100 text-start">
+                            <i class="fas fa-medal me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Lycée -->
+                {% if classes_lycee %}
+                <h6 class="fw-bold text-warning mb-3">
+                    <i class="fas fa-university me-2"></i>Lycée
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_lycee %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:classement_classe' c.id %}" class="btn btn-outline-success w-100 text-start">
+                            <i class="fas fa-medal me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                {% if not classes_primaire and not classes_college and not classes_lycee %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe disponible. Veuillez d'abord créer des classes.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal : Sélection Classe pour Configuration -->
+<div class="modal fade" id="modalSelectClasseConfig" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-cog me-2"></i>
+                    Sélectionner une Classe pour Configuration
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Choisissez une classe pour gérer ses matières et coefficients
+                </p>
+                
+                <!-- Primaire -->
+                {% if classes_primaire %}
+                <h6 class="fw-bold text-primary mb-3">
+                    <i class="fas fa-child me-2"></i>Primaire
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_primaire %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-warning w-100 text-start">
+                            <i class="fas fa-tools me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Collège -->
+                {% if classes_college %}
+                <h6 class="fw-bold text-success mb-3">
+                    <i class="fas fa-user-graduate me-2"></i>Collège
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_college %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-warning w-100 text-start">
+                            <i class="fas fa-tools me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                <!-- Lycée -->
+                {% if classes_lycee %}
+                <h6 class="fw-bold text-warning mb-3">
+                    <i class="fas fa-university me-2"></i>Lycée
+                </h6>
+                <div class="row mb-4">
+                    {% for c in classes_lycee %}
+                    <div class="col-md-6 mb-2">
+                        <a href="{% url 'notes:matieres_classe' c.id %}" class="btn btn-outline-warning w-100 text-start">
+                            <i class="fas fa-tools me-2"></i>
+                            <strong>{{ c.nom }}</strong>
+                            <small class="d-block text-muted">{{ c.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                
+                {% if not classes_primaire and not classes_college and not classes_lycee %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aucune classe disponible. Veuillez d'abord créer des classes.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

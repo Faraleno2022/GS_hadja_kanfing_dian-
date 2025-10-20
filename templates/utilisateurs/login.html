@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Connexion{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 480px;">
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h4 mb-3 text-center"><i class="fas fa-sign-in-alt me-2"></i>Connexion</h1>
+
+      {# Les erreurs/infos sont affichées via messages dans base.html #}
+
+      {% if blocked %}
+        <div class="alert alert-danger d-flex align-items-center" role="alert">
+          <i class="fas fa-ban me-2"></i>
+          <div>
+            {{ error|default:"Trop de tentatives de connexion. Veuillez consulter l'administrateur du système au 622613559." }}
+          </div>
+        </div>
+        <p class="text-muted small mb-0">
+          L'accès au formulaire est temporairement bloqué pour des raisons de sécurité.
+        </p>
+      {% else %}
+        <form method="post" action="{% url 'utilisateurs:login' %}" novalidate>
+          {% csrf_token %}
+          {# Préserve la redirection vers la page d'origine (next) #}
+          {% if request.GET.next %}
+            <input type="hidden" name="next" value="{{ request.GET.next }}">
+          {% elif request.POST.next %}
+            <input type="hidden" name="next" value="{{ request.POST.next }}">
+          {% endif %}
+          <div class="mb-3">
+            <label for="id_username" class="form-label">Nom d'utilisateur</label>
+            <input type="text" name="username" autofocus required class="form-control" id="id_username" />
+          </div>
+          <div class="mb-3">
+            <label for="id_password" class="form-label">Mot de passe</label>
+            <input type="password" name="password" required class="form-control" id="id_password" />
+          </div>
+          <div class="d-flex justify-content-between align-items-center">
+            <a href="{% url 'utilisateurs:password_reset_info' %}" class="small">Mot de passe oublié ?</a>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-unlock me-1"></i> Se connecter
+            </button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

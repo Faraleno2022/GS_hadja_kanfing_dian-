@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Pointer Présence - Salaires{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2><i class="fas fa-user-check"></i> Pointer Présence</h2>
+                <a href="{% url 'salaires:liste_presences' %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Retour
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Pointage du {{ date_pointage|date:"d/m/Y" }}</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <!-- Sélection de la date -->
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Date du pointage *</label>
+                        <input type="date" name="date" class="form-control" value="{{ date_pointage }}" required>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle"></i> Cochez les enseignants présents et ajustez les statuts si nécessaire.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Liste des enseignants -->
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="40">
+                                    <input type="checkbox" id="select-all" class="form-check-input">
+                                </th>
+                                <th>Enseignant</th>
+                                <th>Type</th>
+                                <th width="150">Statut</th>
+                                <th width="120">Arrivée</th>
+                                <th width="120">Départ</th>
+                                <th width="100">Heures</th>
+                                <th width="80">Justifié</th>
+                                <th>Observations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ens in enseignants %}
+                            {% with presence=presences_existantes|get_item:ens.id %}
+                            <tr>
+                                <td>
+                                    <input type="checkbox" name="enseignants" value="{{ ens.id }}" 
+                                           class="form-check-input enseignant-checkbox"
+                                           {% if presence %}checked{% endif %}>
+                                </td>
+                                <td>
+                                    <strong>{{ ens.nom }} {{ ens.prenoms }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ ens.get_type_enseignant_display }}</span>
+                                </td>
+                                <td>
+                                    <select name="statut_{{ ens.id }}" class="form-select form-select-sm">
+                                        {% for code, libelle in statuts %}
+                                        <option value="{{ code }}" 
+                                                {% if presence and presence.statut == code %}selected
+                                                {% elif not presence and code == 'PRESENT' %}selected{% endif %}>
+                                            {{ libelle }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td>
+                                    <input type="time" name="heure_arrivee_{{ ens.id }}" class="form-control form-control-sm"
+                                           value="{% if presence and presence.heure_arrivee %}{{ presence.heure_arrivee|time:'H:i' }}{% endif %}">
+                                </td>
+                                <td>
+                                    <input type="time" name="heure_depart_{{ ens.id }}" class="form-control form-control-sm"
+                                           value="{% if presence and presence.heure_depart %}{{ presence.heure_depart|time:'H:i' }}{% endif %}">
+                                </td>
+                                <td>
+                                    <input type="number" name="heures_travaillees_{{ ens.id }}" class="form-control form-control-sm"
+                                           step="0.25" min="0" placeholder="Auto"
+                                           value="{% if presence and presence.heures_travaillees %}{{ presence.heures_travaillees }}{% endif %}">
+                                </td>
+                                <td class="text-center">
+                                    <input type="checkbox" name="justifie_{{ ens.id }}" class="form-check-input"
+                                           {% if presence and presence.justifie %}checked{% endif %}>
+                                </td>
+                                <td>
+                                    <input type="text" name="observations_{{ ens.id }}" class="form-control form-control-sm"
+                                           placeholder="Observations..."
+                                           value="{% if presence %}{{ presence.observations }}{% endif %}">
+                                </td>
+                            </tr>
+                            {% endwith %}
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center text-muted">
+                                    Aucun enseignant actif trouvé.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Boutons d'action -->
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save"></i> Enregistrer le Pointage
+                        </button>
+                        <a href="{% url 'salaires:liste_presences' %}" class="btn btn-secondary btn-lg">
+                            <i class="fas fa-times"></i> Annuler
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Sélectionner/Désélectionner tous
+document.getElementById('select-all').addEventListener('change', function() {
+    const checkboxes = document.querySelectorAll('.enseignant-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+});
+
+// Décocher "select-all" si un checkbox individuel est décoché
+document.querySelectorAll('.enseignant-checkbox').forEach(cb => {
+    cb.addEventListener('change', function() {
+        const allChecked = Array.from(document.querySelectorAll('.enseignant-checkbox'))
+            .every(checkbox => checkbox.checked);
+        document.getElementById('select-all').checked = allChecked;
+    });
+});
+</script>
+{% endblock %}

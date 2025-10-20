@@ -1,0 +1,380 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}✏️ Saisie des Notes - {{ evaluation.classe.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .notes-hero {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-radius: 25px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 15px 35px rgba(0, 123, 255, 0.3);
+    }
+    
+    .form-modern {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border: none;
+        overflow: hidden;
+    }
+    
+    .textarea-modern {
+        border: 2px solid #e9ecef;
+        border-radius: 15px;
+        padding: 20px;
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        transition: all 0.3s ease;
+        min-height: 200px;
+        resize: vertical;
+    }
+    
+    .textarea-modern:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        outline: none;
+    }
+    
+    .btn-save {
+        background: linear-gradient(45deg, #28a745, #20c997);
+        border: none;
+        border-radius: 25px;
+        padding: 12px 30px;
+        color: white;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-save:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(40, 167, 69, 0.4);
+        color: white;
+    }
+    
+    .sidebar-card {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        border: none;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+    }
+    
+    .card-header-modern {
+        background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+        border-bottom: none;
+        padding: 1.5rem;
+        font-weight: 600;
+    }
+    
+    .student-item {
+        padding: 12px 20px;
+        border-bottom: 1px solid #f1f3f4;
+        transition: all 0.3s ease;
+    }
+    
+    .student-item:hover {
+        background: linear-gradient(45deg, #e7f3ff, #d6ebff);
+        transform: translateX(5px);
+    }
+    
+    .student-item:last-child {
+        border-bottom: none;
+    }
+    
+    .note-item {
+        background: linear-gradient(45deg, #f8fff8, #f0fff0);
+        border-left: 4px solid #28a745;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+    }
+    
+    .note-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40, 167, 69, 0.2);
+    }
+    
+    .note-badge {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        color: white;
+        padding: 8px 12px;
+        border-radius: 15px;
+        font-weight: 600;
+        font-size: 1.1rem;
+    }
+    
+    .appreciation-text {
+        background: rgba(0, 123, 255, 0.1);
+        color: #007bff;
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    .quick-actions {
+        background: linear-gradient(45deg, #fff3cd, #ffeaa7);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border-left: 5px solid #ffc107;
+    }
+    
+    .copy-btn {
+        background: none;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        transition: all 0.3s ease;
+    }
+    
+    .copy-btn:hover {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .animate-fade {
+        animation: fadeInUp 0.6s ease forwards;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Hero Section -->
+    <div class="notes-hero animate-fade">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h1 class="display-6 fw-bold mb-2">
+                    <i class="fas fa-edit me-3"></i>
+                    Saisie des Notes
+                </h1>
+                <p class="lead mb-2">{{ evaluation.titre }}</p>
+                <div class="d-flex align-items-center">
+                    <span class="badge bg-light text-dark me-3">
+                        <i class="fas fa-chalkboard me-1"></i>
+                        {{ evaluation.classe.nom }}
+                    </span>
+                    <span class="badge bg-light text-dark me-3">
+                        <i class="fas fa-book me-1"></i>
+                        {{ evaluation.matiere.nom }}
+                    </span>
+                    <span class="badge bg-light text-dark">
+                        <i class="fas fa-calendar me-1"></i>
+                        {{ evaluation.date|date:"d/m/Y" }}
+                    </span>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="text-white-50">
+                    <i class="fas fa-users fa-3x"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Formulaire principal -->
+        <div class="col-lg-8">
+            <div class="form-modern animate-fade">
+                <div class="p-4">
+                    <h4 class="fw-bold text-primary mb-4">
+                        <i class="fas fa-keyboard me-2"></i>
+                        Saisie Rapide par Matricule
+                    </h4>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-paste me-2 text-success"></i>
+                                Coller les données (MATRICULE;NOTE)
+                            </label>
+                            {{ form.donnees }}
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <strong>Format:</strong> Un élève par ligne, séparés par un point-virgule
+                                </small>
+                                <br>
+                                <small class="text-success">
+                                    <i class="fas fa-lightbulb me-1"></i>
+                                    <strong>Exemples:</strong> PN3-042;14.5 | L11SL-007;9 | CN8-123;16.25
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-3">
+                            <button type="submit" class="btn btn-save btn-lg">
+                                <i class="fas fa-save me-2"></i>
+                                Enregistrer les Notes
+                            </button>
+                            <a href="{% url 'notes:matieres_classe' evaluation.classe.id %}" class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Retour
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="col-lg-4">
+            <!-- Actions rapides -->
+            <div class="quick-actions animate-fade">
+                <h6 class="fw-bold mb-3">
+                    <i class="fas fa-bolt me-2"></i>
+                    Actions Rapides
+                </h6>
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick="selectAllText()">
+                        <i class="fas fa-select-all me-1"></i>
+                        Sélectionner tout le texte
+                    </button>
+                    <button class="btn btn-outline-warning btn-sm" onclick="clearTextarea()">
+                        <i class="fas fa-eraser me-1"></i>
+                        Effacer le contenu
+                    </button>
+                </div>
+            </div>
+
+            <!-- Liste des élèves -->
+            <div class="sidebar-card animate-fade">
+                <div class="card-header-modern">
+                    <i class="fas fa-users me-2 text-primary"></i>
+                    Liste des Élèves
+                    <span class="badge bg-primary ms-2">{{ eleves|length }}</span>
+                </div>
+                <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                    {% for e in eleves %}
+                    <div class="student-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ e.nom }} {{ e.prenom }}</strong>
+                                <br>
+                                <small class="text-muted">{{ e.matricule }}</small>
+                            </div>
+                            <button class="copy-btn" onclick="copyToClipboard('{{ e.matricule }}')" title="Copier le matricule">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="p-3 text-center text-muted">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Aucun élève dans cette classe
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Notes enregistrées -->
+            <div class="sidebar-card animate-fade">
+                <div class="card-header-modern">
+                    <i class="fas fa-check-circle me-2 text-success"></i>
+                    Notes Enregistrées
+                    <span class="badge bg-success ms-2">{{ notes_existantes|length }}</span>
+                </div>
+                <div class="card-body" style="max-height: 350px; overflow-y: auto;">
+                    {% if notes_existantes %}
+                        {% for n in notes_existantes %}
+                        <div class="note-item">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <strong>{{ n.eleve.nom }} {{ n.eleve.prenom }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ n.matricule }}</small>
+                                </div>
+                                <span class="note-badge">{{ n.note }}/20</span>
+                            </div>
+                            <div class="appreciation-text">
+                                {{ n.appreciation_finale }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-clipboard-list fa-3x mb-3 opacity-50"></i>
+                        <p class="mb-0">Aucune note saisie pour le moment</p>
+                        <small>Les notes apparaîtront ici après enregistrement</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Fonctions utilitaires
+function selectAllText() {
+    const textarea = document.querySelector('textarea[name="donnees"]');
+    if (textarea) {
+        textarea.select();
+        textarea.setSelectionRange(0, 99999); // Pour mobile
+    }
+}
+
+function clearTextarea() {
+    const textarea = document.querySelector('textarea[name="donnees"]');
+    if (textarea && confirm('Êtes-vous sûr de vouloir effacer tout le contenu ?')) {
+        textarea.value = '';
+        textarea.focus();
+    }
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        // Animation de confirmation
+        const btn = event.target.closest('.copy-btn');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check text-success"></i>';
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+        }, 1000);
+    }).catch(function(err) {
+        console.error('Erreur lors de la copie: ', err);
+    });
+}
+
+// Animation d'entrée progressive
+document.addEventListener('DOMContentLoaded', function() {
+    const elements = document.querySelectorAll('.student-item, .note-item');
+    elements.forEach((el, index) => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(-20px)';
+        setTimeout(() => {
+            el.style.transition = 'all 0.5s ease';
+            el.style.opacity = '1';
+            el.style.transform = 'translateX(0)';
+        }, index * 50);
+    });
+    
+    // Auto-focus sur le textarea
+    const textarea = document.querySelector('textarea[name="donnees"]');
+    if (textarea) {
+        textarea.focus();
+    }
+});
+</script>
+{% endblock %}
