@@ -2208,7 +2208,7 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
             eleve=eleve,
             evaluation__classe=classe,
             evaluation__trimestre=trimestre
-        ).select_related('evaluation__matiere')
+        ).select_related('evaluation__matiere', 'evaluation')
         
         if not notes.exists():
             continue
@@ -2216,22 +2216,37 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
         somme_moy_coef = Decimal('0')
         somme_coef = Decimal('0')
         
+        # Regrouper les notes par matière avec pondération par coefficient d'évaluation
         matieres_notes = {}
-        for note in notes:
-            matiere = note.evaluation.matiere
+        for note_obj in notes:
+            matiere = note_obj.evaluation.matiere
             if matiere.id not in matieres_notes:
                 matieres_notes[matiere.id] = {
                     'matiere': matiere.nom,
-                    'coef': matiere.coefficient,
-                    'notes': []
+                    'coef_matiere': matiere.coefficient,
+                    'notes_ponderees': []  # (note, coef_eval)
                 }
-            matieres_notes[matiere.id]['notes'].append(note.valeur)
+            # Stocker la note avec son coefficient d'évaluation
+            if note_obj.note is not None:
+                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal(note_obj.note), coef_eval)
+                )
         
+        # Calculer la moyenne pondérée par matière, puis la moyenne générale
         for matiere_data in matieres_notes.values():
-            if matiere_data['notes']:
-                moyenne_matiere = sum(matiere_data['notes']) / len(matiere_data['notes'])
-                somme_moy_coef += Decimal(str(moyenne_matiere)) * Decimal(str(matiere_data['coef']))
-                somme_coef += Decimal(str(matiere_data['coef']))
+            if matiere_data['notes_ponderees']:
+                # Moyenne pondérée par coefficient d'évaluation
+                num = Decimal('0')
+                den = Decimal('0')
+                for note_val, coef_eval in matiere_data['notes_ponderees']:
+                    num += note_val * coef_eval
+                    den += coef_eval
+                if den > 0:
+                    moyenne_matiere = (num / den).quantize(Decimal('0.01'))
+                    # Pondération par coefficient de matière
+                    somme_moy_coef += moyenne_matiere * Decimal(matiere_data['coef_matiere'])
+                    somme_coef += Decimal(matiere_data['coef_matiere'])
         
         if somme_coef > 0:
             moyenne_generale = (somme_moy_coef / somme_coef).quantize(Decimal('0.01'))
@@ -2279,7 +2294,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
             eleve=eleve,
             evaluation__classe=classe,
             evaluation__trimestre=trimestre
-        ).select_related('evaluation__matiere')
+        ).select_related('evaluation__matiere', 'evaluation')
         
         if not notes.exists():
             continue
@@ -2287,22 +2302,37 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         somme_moy_coef = Decimal('0')
         somme_coef = Decimal('0')
         
+        # Regrouper les notes par matière avec pondération par coefficient d'évaluation
         matieres_notes = {}
-        for note in notes:
-            matiere = note.evaluation.matiere
+        for note_obj in notes:
+            matiere = note_obj.evaluation.matiere
             if matiere.id not in matieres_notes:
                 matieres_notes[matiere.id] = {
                     'matiere': matiere.nom,
-                    'coef': matiere.coefficient,
-                    'notes': []
+                    'coef_matiere': matiere.coefficient,
+                    'notes_ponderees': []  # (note, coef_eval)
                 }
-            matieres_notes[matiere.id]['notes'].append(note.valeur)
+            # Stocker la note avec son coefficient d'évaluation
+            if note_obj.note is not None:
+                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal(note_obj.note), coef_eval)
+                )
         
+        # Calculer la moyenne pondérée par matière, puis la moyenne générale
         for matiere_data in matieres_notes.values():
-            if matiere_data['notes']:
-                moyenne_matiere = sum(matiere_data['notes']) / len(matiere_data['notes'])
-                somme_moy_coef += Decimal(str(moyenne_matiere)) * Decimal(str(matiere_data['coef']))
-                somme_coef += Decimal(str(matiere_data['coef']))
+            if matiere_data['notes_ponderees']:
+                # Moyenne pondérée par coefficient d'évaluation
+                num = Decimal('0')
+                den = Decimal('0')
+                for note_val, coef_eval in matiere_data['notes_ponderees']:
+                    num += note_val * coef_eval
+                    den += coef_eval
+                if den > 0:
+                    moyenne_matiere = (num / den).quantize(Decimal('0.01'))
+                    # Pondération par coefficient de matière
+                    somme_moy_coef += moyenne_matiere * Decimal(matiere_data['coef_matiere'])
+                    somme_coef += Decimal(matiere_data['coef_matiere'])
         
         if somme_coef > 0:
             moyenne_generale = (somme_moy_coef / somme_coef).quantize(Decimal('0.01'))
@@ -2414,7 +2444,7 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
             eleve=eleve,
             evaluation__classe=classe,
             evaluation__trimestre=trimestre
-        ).select_related('evaluation__matiere')
+        ).select_related('evaluation__matiere', 'evaluation')
         
         if not notes.exists():
             continue
@@ -2422,22 +2452,37 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
         somme_moy_coef = Decimal('0')
         somme_coef = Decimal('0')
         
+        # Regrouper les notes par matière avec pondération par coefficient d'évaluation
         matieres_notes = {}
-        for note in notes:
-            matiere = note.evaluation.matiere
+        for note_obj in notes:
+            matiere = note_obj.evaluation.matiere
             if matiere.id not in matieres_notes:
                 matieres_notes[matiere.id] = {
                     'matiere': matiere.nom,
-                    'coef': matiere.coefficient,
-                    'notes': []
+                    'coef_matiere': matiere.coefficient,
+                    'notes_ponderees': []  # (note, coef_eval)
                 }
-            matieres_notes[matiere.id]['notes'].append(note.valeur)
+            # Stocker la note avec son coefficient d'évaluation
+            if note_obj.note is not None:
+                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal(note_obj.note), coef_eval)
+                )
         
+        # Calculer la moyenne pondérée par matière, puis la moyenne générale
         for matiere_data in matieres_notes.values():
-            if matiere_data['notes']:
-                moyenne_matiere = sum(matiere_data['notes']) / len(matiere_data['notes'])
-                somme_moy_coef += Decimal(str(moyenne_matiere)) * Decimal(str(matiere_data['coef']))
-                somme_coef += Decimal(str(matiere_data['coef']))
+            if matiere_data['notes_ponderees']:
+                # Moyenne pondérée par coefficient d'évaluation
+                num = Decimal('0')
+                den = Decimal('0')
+                for note_val, coef_eval in matiere_data['notes_ponderees']:
+                    num += note_val * coef_eval
+                    den += coef_eval
+                if den > 0:
+                    moyenne_matiere = (num / den).quantize(Decimal('0.01'))
+                    # Pondération par coefficient de matière
+                    somme_moy_coef += moyenne_matiere * Decimal(matiere_data['coef_matiere'])
+                    somme_coef += Decimal(matiere_data['coef_matiere'])
         
         if somme_coef > 0:
             moyenne_generale = (somme_moy_coef / somme_coef).quantize(Decimal('0.01'))

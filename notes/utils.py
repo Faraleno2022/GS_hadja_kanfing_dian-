@@ -114,8 +114,8 @@ def monthly_avg(eleve: Eleve, matiere: MatiereClasse, annee_scolaire: str, month
     if compo is None:
         return cours
     if mode == 'weighted':
-        return ((compo * Decimal('2')) + cours) / Decimal('3')
-    return (compo + cours) / Decimal('2')
+        return (((compo * Decimal('2')) + cours) / Decimal('3')).quantize(Decimal('0.01'))
+    return ((compo + cours) / Decimal('2')).quantize(Decimal('0.01'))
 
 
 def semester_course_avg(eleve: Eleve, matiere: MatiereClasse, annee_scolaire: str, semestre: int) -> Optional[Decimal]:
