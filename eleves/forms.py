@@ -71,6 +71,26 @@ class ResponsableForm(forms.ModelForm):
             })
         }
 
+    def clean_nom(self):
+        """Convertir le nom en majuscules"""
+        nom = self.cleaned_data.get('nom', '')
+        return nom.upper() if nom else ''
+    
+    def clean_prenom(self):
+        """Convertir le prénom en majuscules"""
+        prenom = self.cleaned_data.get('prenom', '')
+        return prenom.upper() if prenom else ''
+    
+    def clean_adresse(self):
+        """Convertir l'adresse en majuscules"""
+        adresse = self.cleaned_data.get('adresse', '')
+        return adresse.upper() if adresse else ''
+    
+    def clean_profession(self):
+        """Convertir la profession en majuscules"""
+        profession = self.cleaned_data.get('profession', '')
+        return profession.upper() if profession else ''
+    
     def clean_telephone(self):
         """Accepte une saisie locale (8-9 chiffres) et normalise en +224XXXXXXXXX.
         Si l'utilisateur fournit déjà un numéro avec indicatif, on l'accepte et on le
@@ -236,6 +256,21 @@ class EleveForm(forms.ModelForm):
             self.fields['responsable_secondaire'].queryset = Responsable.objects.all().order_by('nom', 'prenom')
         self.fields['responsable_secondaire'].required = False
     
+    def clean_nom(self):
+        """Convertir le nom en majuscules"""
+        nom = self.cleaned_data.get('nom', '')
+        return nom.upper() if nom else ''
+    
+    def clean_prenom(self):
+        """Convertir le prénom en majuscules"""
+        prenom = self.cleaned_data.get('prenom', '')
+        return prenom.upper() if prenom else ''
+    
+    def clean_lieu_naissance(self):
+        """Convertir le lieu de naissance en majuscules"""
+        lieu = self.cleaned_data.get('lieu_naissance', '')
+        return lieu.upper() if lieu else ''
+    
     def clean_matricule(self):
         matricule = self.cleaned_data.get('matricule')
         if matricule:
@@ -359,6 +394,11 @@ class ClasseForm(forms.ModelForm):
             else:
                 self.fields['annee_scolaire'].initial = f"{current_year - 1}-{current_year}"
     
+    def clean_nom(self):
+        """Convertir le nom de la classe en majuscules"""
+        nom = self.cleaned_data.get('nom', '')
+        return nom.upper() if nom else ''
+    
     def clean_annee_scolaire(self):
         annee_scolaire = self.cleaned_data.get('annee_scolaire')
         if annee_scolaire:
@@ -398,3 +438,33 @@ class EcoleForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Rendre l'email optionnel côté formulaire (le modèle l'autorise déjà)
         self.fields['email'].required = False
+    
+    def clean_nom(self):
+        """Convertir le nom de l'école en majuscules"""
+        nom = self.cleaned_data.get('nom', '')
+        return nom.upper() if nom else ''
+    
+    def clean_adresse(self):
+        """Convertir l'adresse en majuscules"""
+        adresse = self.cleaned_data.get('adresse', '')
+        return adresse.upper() if adresse else ''
+    
+    def clean_directeur(self):
+        """Convertir le nom du directeur en majuscules"""
+        directeur = self.cleaned_data.get('directeur', '')
+        return directeur.upper() if directeur else ''
+    
+    def clean_ire(self):
+        """Convertir l'IRE en majuscules"""
+        ire = self.cleaned_data.get('ire', '')
+        return ire.upper() if ire else ''
+    
+    def clean_dpe(self):
+        """Convertir le DPE en majuscules"""
+        dpe = self.cleaned_data.get('dpe', '')
+        return dpe.upper() if dpe else ''
+    
+    def clean_desee(self):
+        """Convertir le DESEE en majuscules"""
+        desee = self.cleaned_data.get('desee', '')
+        return desee.upper() if desee else ''
