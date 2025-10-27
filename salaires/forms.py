@@ -70,7 +70,7 @@ class EnseignantForm(forms.ModelForm):
             'nom': 'Nom de famille *',
             'prenoms': 'Prénoms *',
             'telephone': 'Téléphone',
-            'email': 'Email',
+            'email': 'Email (facultatif)',
             'adresse': 'Adresse',
             'ecole': 'École *',
             'type_enseignant': 'Type d\'enseignant *',
@@ -96,6 +96,9 @@ class EnseignantForm(forms.ModelForm):
         self.fields['ecole'].required = True
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
+        
+        # Rendre le champ email facultatif
+        self.fields['email'].required = False
         
         # Définir le statut par défaut
         if not self.instance.pk:

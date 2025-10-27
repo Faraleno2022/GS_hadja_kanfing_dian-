@@ -722,7 +722,12 @@ def modifier_eleve(request, eleve_id):
     qs = Eleve.objects.all()
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    eleve = get_object_or_404(qs, id=eleve_id)
+    
+    try:
+        eleve = qs.get(id=eleve_id)
+    except Eleve.DoesNotExist:
+        messages.error(request, f"L'élève avec l'ID {eleve_id} n'existe pas.")
+        return redirect('eleves:liste_eleves')
     
     if request.method == 'POST':
         print(f"POST data received: {request.POST}")  # Debug
@@ -1252,7 +1257,12 @@ def supprimer_eleve(request, eleve_id):
     qs = Eleve.objects.all()
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    eleve = get_object_or_404(qs, id=eleve_id)
+    
+    try:
+        eleve = qs.get(id=eleve_id)
+    except Eleve.DoesNotExist:
+        messages.error(request, f"L'élève avec l'ID {eleve_id} n'existe pas ou a déjà été supprimé.")
+        return redirect('eleves:liste_eleves')
 
     nom_complet = f"{eleve.prenom} {eleve.nom}"
     matricule = eleve.matricule
