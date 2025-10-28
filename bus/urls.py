@@ -11,6 +11,7 @@ urlpatterns = [
     path('export/breakdown/<str:kind>.csv', views.export_abonnements_breakdown_csv, name='export_breakdown_csv'),
     path('nouveau/', views.abonnement_create, name='nouveau'),
     path('<int:abo_id>/modifier/', views.abonnement_edit, name='modifier'),
+    path('<int:abo_id>/supprimer/', views.supprimer_abonnement_bus, name='supprimer_abonnement_bus'),
     path('relances/', views.relances, name='relances'),
     path('relances/envoyer/', views.envoyer_relances_bus, name='envoyer_relances_bus'),
     path('relances/export/excel/', views.export_relances_excel, name='export_relances_excel'),

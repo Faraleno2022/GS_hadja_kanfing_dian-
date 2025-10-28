@@ -18,6 +18,7 @@ from eleves.models import Eleve
 from .models import AbonnementBus
 from .forms import AbonnementBusForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school
+from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
 from ecole_moderne.pdf_utils import draw_logo_watermark
 from paiements.twilio_utils import send_message_async
@@ -180,6 +181,26 @@ def abonnement_edit(request, abo_id):
     else:
         form = AbonnementBusForm(instance=abo)
     return render(request, 'bus/form.html', {'form': form, 'titre_page': 'Modifier abonnement Bus'})
+
+
+@login_required
+@can_delete_subscriptions
+@require_school_object(model=AbonnementBus, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
+def supprimer_abonnement_bus(request, abo_id):
+    """Supprimer définitivement un abonnement bus"""
+    abonnement = get_object_or_404(AbonnementBus, id=abo_id)
+    
+    if request.method == 'POST':
+        eleve_nom = str(abonnement.eleve)
+        abonnement.delete()
+        messages.success(request, f"Abonnement bus supprimé définitivement pour {eleve_nom}")
+        return redirect('bus:liste')
+    
+    context = {
+        'titre_page': 'Supprimer Abonnement Bus',
+        'abonnement': abonnement,
+    }
+    return render(request, 'bus/confirmer_suppression.html', context)
 
 
 @login_required

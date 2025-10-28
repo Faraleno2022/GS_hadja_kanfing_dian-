@@ -380,3 +380,27 @@ def supprimer_categorie(request, categorie_id):
     }
     
     return render(request, 'depenses/confirm_delete_categorie.html', context)
+
+@login_required
+@can_delete_expenses
+@require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
+def supprimer_depense(request, depense_id):
+    """Supprimer définitivement une dépense"""
+    qs = Depense.objects.all()
+    if not user_is_admin(request.user):
+        qs = qs.filter(cree_par__profil__ecole=user_school(request.user))
+    depense = get_object_or_404(qs, id=depense_id)
+    
+    if request.method == 'POST':
+        numero_facture = depense.numero_facture
+        libelle = depense.libelle
+        depense.delete()
+        messages.success(request, f'Dépense "{numero_facture} - {libelle}" supprimée définitivement.')
+        return redirect('depenses:liste_depenses')
+    
+    context = {
+        'depense': depense,
+        'title': 'Supprimer la dépense',
+    }
+    
+    return render(request, 'depenses/confirm_delete_depense.html', context)

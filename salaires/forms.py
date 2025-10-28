@@ -10,7 +10,7 @@ class EnseignantForm(forms.ModelForm):
     class Meta:
         model = Enseignant
         fields = [
-            'nom', 'prenoms', 'telephone', 'email', 'adresse',
+            'nom', 'prenoms', 'telephone', 'adresse',
             'ecole', 'type_enseignant', 'statut', 
             'taux_horaire', 'salaire_fixe', 'heures_mensuelles', 'date_embauche'
         ]
@@ -26,10 +26,6 @@ class EnseignantForm(forms.ModelForm):
             'telephone': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': '+224 XXX XX XX XX'
-            }),
-            'email': forms.EmailInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'email@exemple.com'
             }),
             'adresse': forms.Textarea(attrs={
                 'class': 'form-control',
@@ -70,7 +66,6 @@ class EnseignantForm(forms.ModelForm):
             'nom': 'Nom de famille *',
             'prenoms': 'Prénoms *',
             'telephone': 'Téléphone',
-            'email': 'Email (facultatif)',
             'adresse': 'Adresse',
             'ecole': 'École *',
             'type_enseignant': 'Type d\'enseignant *',
@@ -96,9 +91,6 @@ class EnseignantForm(forms.ModelForm):
         self.fields['ecole'].required = True
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
-        
-        # Rendre le champ email facultatif
-        self.fields['email'].required = False
         
         # Définir le statut par défaut
         if not self.instance.pk:
@@ -143,17 +135,6 @@ class EnseignantForm(forms.ModelForm):
             })
 
         return cleaned_data
-
-    def clean_email(self):
-        email = self.cleaned_data.get('email')
-        if email:
-            # Vérifier l'unicité de l'email (sauf pour l'instance actuelle)
-            existing = Enseignant.objects.filter(email=email)
-            if self.instance.pk:
-                existing = existing.exclude(pk=self.instance.pk)
-            if existing.exists():
-                raise ValidationError('Un enseignant avec cet email existe déjà.')
-        return email
 
     def clean_telephone(self):
         telephone = self.cleaned_data.get('telephone')

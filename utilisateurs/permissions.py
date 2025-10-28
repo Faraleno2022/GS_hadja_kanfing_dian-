@@ -169,6 +169,13 @@ def can_delete_expenses(view_func):
         "Vous n'êtes pas autorisé à supprimer des dépenses."
     )(view_func)
 
+def can_delete_subscriptions(view_func):
+    """Décorateur pour vérifier la permission de supprimer des abonnements"""
+    return permission_required(
+        'peut_supprimer_abonnements',
+        "Vous n'êtes pas autorisé à supprimer des abonnements."
+    )(view_func)
+
 def can_validate_payments(view_func):
     """Décorateur pour vérifier la permission de valider des paiements"""
     return permission_required(
@@ -228,6 +235,7 @@ def get_user_permissions(user):
             'can_modify_expenses': True,
             'can_delete_payments': True,
             'can_delete_expenses': True,
+            'can_delete_subscriptions': True,
             'can_validate_payments': True,
             'can_validate_expenses': True,
             'can_generate_reports': True,
@@ -249,6 +257,7 @@ def get_user_permissions(user):
             'can_modify_expenses': True,
             'can_delete_payments': True,
             'can_delete_expenses': True,
+            'can_delete_subscriptions': True,
             'can_validate_payments': True,
             'can_validate_expenses': True,
             'can_generate_reports': True,
@@ -267,6 +276,7 @@ def get_user_permissions(user):
         'can_modify_expenses': profil.peut_modifier_depenses,
         'can_delete_payments': profil.peut_supprimer_paiements,
         'can_delete_expenses': profil.peut_supprimer_depenses,
+        'can_delete_subscriptions': profil.peut_supprimer_abonnements,
         'can_validate_payments': can_validate_paiements,
         'can_validate_expenses': profil.peut_valider_depenses,
         'can_generate_reports': profil.peut_generer_rapports,
@@ -303,6 +313,7 @@ def check_comptable_restrictions(user):
             'cannot_modify_expenses': not profil.peut_modifier_depenses,
             'cannot_delete_payments': not profil.peut_supprimer_paiements,
             'cannot_delete_expenses': not profil.peut_supprimer_depenses,
+            'cannot_delete_subscriptions': not profil.peut_supprimer_abonnements,
         }
     
     return {'all_restricted': True}

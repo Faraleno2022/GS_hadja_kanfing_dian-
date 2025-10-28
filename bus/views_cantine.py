@@ -17,6 +17,7 @@ from eleves.models import Eleve
 from .models import AbonnementCantine
 from .forms import AbonnementCantineForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school
+from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
 
 
@@ -203,15 +204,16 @@ def modifier_abonnement_cantine(request, pk):
 
 
 @login_required
+@can_delete_subscriptions
 @require_school_object(model=AbonnementCantine, pk_kwarg='pk', field_path='eleve__classe__ecole')
 def supprimer_abonnement_cantine(request, pk):
-    """Supprimer un abonnement cantine"""
+    """Supprimer définitivement un abonnement cantine"""
     abonnement = get_object_or_404(AbonnementCantine, pk=pk)
     
     if request.method == 'POST':
         eleve_nom = str(abonnement.eleve)
         abonnement.delete()
-        messages.success(request, f"Abonnement cantine supprimé pour {eleve_nom}")
+        messages.success(request, f"Abonnement cantine supprimé définitivement pour {eleve_nom}")
         return redirect('bus:liste_abonnements_cantine')
     
     context = {

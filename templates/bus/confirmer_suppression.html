@@ -18,7 +18,7 @@
                         <strong>Attention !</strong> Cette action est irréversible.
                     </div>
 
-                    <h5 class="mb-3">Êtes-vous sûr de vouloir supprimer définitivement cet abonnement cantine ?</h5>
+                    <h5 class="mb-3">Êtes-vous sûr de vouloir supprimer définitivement cet abonnement bus ?</h5>
 
                     <div class="card mb-3">
                         <div class="card-body">
@@ -29,16 +29,11 @@
                                 <dt class="col-sm-4">Classe :</dt>
                                 <dd class="col-sm-8">{{ abonnement.eleve.classe.nom|default:"-" }}</dd>
 
-                                <dt class="col-sm-4">Type de Repas :</dt>
-                                <dd class="col-sm-8">
-                                    <span class="badge bg-info">{{ abonnement.get_type_repas_display }}</span>
-                                </dd>
-
                                 <dt class="col-sm-4">Périodicité :</dt>
                                 <dd class="col-sm-8">{{ abonnement.get_periodicite_display }}</dd>
 
                                 <dt class="col-sm-4">Montant :</dt>
-                                <dd class="col-sm-8">{{ abonnement.montant }} GNF</dd>
+                                <dd class="col-sm-8">{{ abonnement.montant|floatformat:0 }} GNF</dd>
 
                                 <dt class="col-sm-4">Date d'Expiration :</dt>
                                 <dd class="col-sm-8">{{ abonnement.date_expiration|date:"d/m/Y" }}</dd>
@@ -53,14 +48,14 @@
                                     </span>
                                 </dd>
 
-                                {% if abonnement.regime_alimentaire %}
-                                <dt class="col-sm-4">Régime :</dt>
-                                <dd class="col-sm-8">{{ abonnement.regime_alimentaire }}</dd>
+                                {% if abonnement.zone %}
+                                <dt class="col-sm-4">Zone :</dt>
+                                <dd class="col-sm-8">{{ abonnement.zone }}</dd>
                                 {% endif %}
 
-                                {% if abonnement.allergies %}
-                                <dt class="col-sm-4">Allergies :</dt>
-                                <dd class="col-sm-8 mb-0">{{ abonnement.allergies }}</dd>
+                                {% if abonnement.point_arret %}
+                                <dt class="col-sm-4">Point d'arrêt :</dt>
+                                <dd class="col-sm-8 mb-0">{{ abonnement.point_arret }}</dd>
                                 {% endif %}
                             </dl>
                         </div>
@@ -69,7 +64,7 @@
                     <form method="post">
                         {% csrf_token %}
                         <div class="d-flex justify-content-between">
-                            <a href="{% url 'bus:liste_abonnements_cantine' %}" class="btn btn-secondary">
+                            <a href="{% url 'bus:liste' %}" class="btn btn-secondary">
                                 <i class="fas fa-arrow-left"></i> Annuler
                             </a>
                             <button type="submit" class="btn btn-danger">
