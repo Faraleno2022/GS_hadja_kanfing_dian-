@@ -2538,13 +2538,34 @@ def generer_recu_pdf(request, paiement_id:int):
         obs = str(paiement.observations).strip()
         if obs:
             draw_line(f"Observations : {obs}")
-    draw_line(f"Montant : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
+    # Calculer le montant global annuel à payer
+    try:
+        echeancier = getattr(paiement.eleve, 'echeancier', None)
+        if echeancier:
+            montant_global_annuel = int(
+                (echeancier.frais_inscription_du or 0) +
+                (echeancier.tranche_1_due or 0) +
+                (echeancier.tranche_2_due or 0) +
+                (echeancier.tranche_3_due or 0)
+            )
+        else:
+            montant_global_annuel = 0
+    except Exception:
+        montant_global_annuel = 0
+    
+    # Afficher le montant global annuel
+    if montant_global_annuel > 0:
+        draw_line(f"Montant global annuel : {str(f'{montant_global_annuel:,}').replace(',', ' ')} GNF", bold=True)
+        top -= 5  # Petit espace
+    
+    # Afficher le montant payé
+    draw_line(f"Montant payé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
 
     if remises_total and int(remises_total) > 0:
         draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
     # Montant net (jamais négatif)
     montant_net = max(0, int(paiement.montant - (remises_total or 0)))
-    draw_line(f"Montant net à payer : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
+    draw_line(f"Montant net payé : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
 
     # Affectation du paiement courant sur les tranches (simulation déterministe)
     # Objectif: montrer, pour CE reçu, quelle partie couvre Inscription/T1/T2/T3

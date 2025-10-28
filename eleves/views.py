@@ -1250,7 +1250,7 @@ def export_tous_eleves_excel(request):
 
 @login_required
 def supprimer_eleve(request, eleve_id):
-    """Vue pour supprimer un élève avec ses paiements (avec code de vérification)"""
+    """Vue pour supprimer un élève avec ses paiements et abonnements (avec code de vérification)"""
     # Permettre l'accès aux utilisateurs connectés (la sécurité est assurée par le code de vérification)
     # Les permissions spécifiques (soft delete vs suppression définitive) sont gérées dans le traitement
     
@@ -1267,8 +1267,16 @@ def supprimer_eleve(request, eleve_id):
     nom_complet = f"{eleve.prenom} {eleve.nom}"
     matricule = eleve.matricule
     
-    # Compter les paiements associés
+    # Vérifier la permission de suppression définitive
+    peut_supprimer_definitivement = user_is_admin(request.user) or (
+        hasattr(request.user, 'profil') and 
+        request.user.profil.peut_supprimer_eleves_definitivement
+    )
+    
+    # Compter les éléments associés
     paiements_count = eleve.paiements.count()
+    abonnements_bus_count = eleve.abonnements_bus.count()
+    abonnements_cantine_count = eleve.abonnements_cantine.count()
     
     if request.method == 'POST':
         # Vérifier le code de sécurité
@@ -1283,23 +1291,35 @@ def supprimer_eleve(request, eleve_id):
                 'titre_page': f'Supprimer {nom_complet}'
             })
         
+        # Vérifier la permission pour suppression définitive
+        if suppression_definitive and not peut_supprimer_definitivement:
+            messages.error(request, "Vous n'avez pas la permission de supprimer définitivement un élève.")
+            return redirect('eleves:detail_eleve', eleve_id=eleve.id)
+        
         # Procéder à la suppression avec le code correct
         from django.db import transaction
         try:
             with transaction.atomic():
-                if suppression_definitive and user_is_admin(request.user):
-                    # Suppression définitive pour les administrateurs
-                    # Supprimer d'abord les paiements associés
+                if suppression_definitive and peut_supprimer_definitivement:
+                    # Suppression définitive pour les utilisateurs autorisés
+                    # Collecter les informations avant suppression
                     paiements_supprimes = []
                     for paiement in eleve.paiements.all():
                         paiements_supprimes.append(f"{paiement.numero_recu} - {paiement.montant} GNF")
-                        paiement.delete()
+                    
+                    abonnements_bus_supprimes = []
+                    for abo in eleve.abonnements_bus.all():
+                        abonnements_bus_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
+                    
+                    abonnements_cantine_supprimes = []
+                    for abo in eleve.abonnements_cantine.all():
+                        abonnements_cantine_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
                     
                     # Créer l'entrée dans la corbeille avant suppression
                     from administration.models import SystemLog
                     SystemLog.objects.create(
                         action='SUPPRESSION_DEFINITIVE',
-                        description=f"Suppression définitive de l'élève {nom_complet} (matricule: {matricule}) avec {paiements_count} paiement(s)",
+                        description=f"Suppression définitive de l'élève {nom_complet} (matricule: {matricule}) avec {paiements_count} paiement(s), {abonnements_bus_count} abonnement(s) bus et {abonnements_cantine_count} abonnement(s) cantine",
                         user=request.user,
                         ip_address=request.META.get('REMOTE_ADDR', ''),
                         details={
@@ -1308,16 +1328,27 @@ def supprimer_eleve(request, eleve_id):
                             'nom_complet': nom_complet,
                             'classe': str(eleve.classe),
                             'paiements_supprimes': paiements_supprimes,
-                            # Ne pas stocker le code de vérification en clair dans les logs
+                            'abonnements_bus_supprimes': abonnements_bus_supprimes,
+                            'abonnements_cantine_supprimes': abonnements_cantine_supprimes,
                             'verification_code_used': True,
                             'user_agent': request.META.get('HTTP_USER_AGENT', '')
                         }
                     )
                     
+                    # Supprimer les paiements
+                    eleve.paiements.all().delete()
+                    
+                    # Supprimer les abonnements bus
+                    eleve.abonnements_bus.all().delete()
+                    
+                    # Supprimer les abonnements cantine
+                    eleve.abonnements_cantine.all().delete()
+                    
                     # Supprimer l'élève définitivement
                     eleve.delete()
                     
-                    messages.success(request, f"L'élève {nom_complet} et ses {paiements_count} paiement(s) ont été supprimés définitivement et sauvegardés dans la corbeille.")
+                    total_elements = paiements_count + abonnements_bus_count + abonnements_cantine_count
+                    messages.success(request, f"L'élève {nom_complet} et tous ses éléments associés ({total_elements} au total) ont été supprimés définitivement et sauvegardés dans la corbeille.")
                 else:
                     # Soft delete - changer le statut au lieu de supprimer
                     eleve.statut = 'EXCLU'
@@ -1354,6 +1385,9 @@ def supprimer_eleve(request, eleve_id):
     return render(request, 'eleves/confirmer_suppression.html', {
         'eleve': eleve,
         'paiements_count': paiements_count,
+        'abonnements_bus_count': abonnements_bus_count,
+        'abonnements_cantine_count': abonnements_cantine_count,
+        'peut_supprimer_definitivement': peut_supprimer_definitivement,
         'titre_page': f'Supprimer {nom_complet}'
     })
 

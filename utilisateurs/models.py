@@ -39,6 +39,7 @@ class Profil(models.Model):
     peut_modifier_depenses = models.BooleanField(default=True, verbose_name="Peut modifier les dépenses")
     peut_supprimer_paiements = models.BooleanField(default=False, verbose_name="Peut supprimer les paiements")
     peut_supprimer_depenses = models.BooleanField(default=False, verbose_name="Peut supprimer les dépenses")
+    peut_supprimer_eleves_definitivement = models.BooleanField(default=False, verbose_name="Peut supprimer les élèves définitivement")
     peut_consulter_rapports = models.BooleanField(default=True, verbose_name="Peut consulter les rapports")
     peut_gerer_notes = models.BooleanField(default=True, verbose_name="Peut gérer les notes et matières")
     

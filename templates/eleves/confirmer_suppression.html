@@ -111,20 +111,40 @@
                     </div>
                 </div>
 
-                <!-- Informations sur les paiements -->
-                {% if paiements_count > 0 %}
+                <!-- Informations sur les éléments associés -->
                 <div class="paiements-info">
-                    <h5><i class="fas fa-money-bill-wave text-primary"></i> Paiements associés :</h5>
-                    <p class="mb-0">
-                        <strong>{{ paiements_count }}</strong> paiement{{ paiements_count|pluralize }} 
-                        {{ paiements_count|pluralize:"sera,seront" }} également supprimé{{ paiements_count|pluralize }} avec l'élève.
+                    <h5><i class="fas fa-database text-primary"></i> Éléments associés :</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p class="mb-2">
+                                <i class="fas fa-money-bill-wave text-success"></i>
+                                <strong>{{ paiements_count }}</strong> paiement{{ paiements_count|pluralize }}
+                            </p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-2">
+                                <i class="fas fa-bus text-warning"></i>
+                                <strong>{{ abonnements_bus_count }}</strong> abonnement{{ abonnements_bus_count|pluralize }} bus
+                            </p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-2">
+                                <i class="fas fa-utensils text-info"></i>
+                                <strong>{{ abonnements_cantine_count }}</strong> abonnement{{ abonnements_cantine_count|pluralize }} cantine
+                            </p>
+                        </div>
+                    </div>
+                    {% if paiements_count > 0 or abonnements_bus_count > 0 or abonnements_cantine_count > 0 %}
+                    <hr>
+                    <p class="mb-0 text-danger">
+                        <strong>Tous ces éléments seront également supprimés avec l'élève.</strong>
                     </p>
+                    {% else %}
+                    <p class="mb-0 text-muted">
+                        <i class="fas fa-info-circle"></i> Aucun élément associé à cet élève.
+                    </p>
+                    {% endif %}
                 </div>
-                {% else %}
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> Aucun paiement associé à cet élève.
-                </div>
-                {% endif %}
 
                 <!-- Avertissements -->
                 <div class="warning-card">
@@ -133,6 +153,12 @@
                         <li>L'élève sera <strong>définitivement supprimé</strong> de la base de données</li>
                         {% if paiements_count > 0 %}
                         <li>Tous ses <strong>{{ paiements_count }} paiement{{ paiements_count|pluralize }}</strong> seront supprimés</li>
+                        {% endif %}
+                        {% if abonnements_bus_count > 0 %}
+                        <li>Tous ses <strong>{{ abonnements_bus_count }} abonnement{{ abonnements_bus_count|pluralize }} bus</strong> seront supprimés</li>
+                        {% endif %}
+                        {% if abonnements_cantine_count > 0 %}
+                        <li>Tous ses <strong>{{ abonnements_cantine_count }} abonnement{{ abonnements_cantine_count|pluralize }} cantine</strong> seront supprimés</li>
                         {% endif %}
                         <li>Cette action sera <strong>enregistrée dans la corbeille</strong> pour audit</li>
                         <li>Cette action est <strong>IRRÉVERSIBLE</strong></li>
@@ -166,7 +192,7 @@
                     </div>
 
                     <!-- Option suppression définitive -->
-                    {% if user.is_superuser or user.is_staff %}
+                    {% if peut_supprimer_definitivement %}
                     <div class="mb-4">
                         <div class="form-check">
                             <input class="form-check-input" 
@@ -175,18 +201,20 @@
                                    name="suppression_definitive"
                                    checked>
                             <label class="form-check-label text-danger" for="suppression_definitive">
-                                <strong>Suppression définitive</strong> (recommandé pour les administrateurs)
+                                <strong>Suppression définitive</strong> (supprime l'élève et tous ses éléments associés)
                             </label>
                         </div>
                         <small class="text-muted">
-                            Si décoché, l'élève sera marqué comme "EXCLU" (soft delete)
+                            <i class="fas fa-info-circle"></i>
+                            Si décoché, l'élève sera marqué comme "EXCLU" (soft delete) et ses données seront conservées.
                         </small>
                     </div>
                     {% else %}
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i>
-                        En tant que comptable, l'élève sera marqué comme "EXCLU" (soft delete).
-                        Seuls les administrateurs peuvent effectuer une suppression définitive.
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Suppression douce (Soft Delete)</strong><br>
+                        L'élève sera marqué comme "EXCLU" et ses données seront conservées.<br>
+                        <small>Vous n'avez pas la permission de supprimer définitivement un élève. Contactez un administrateur si nécessaire.</small>
                     </div>
                     {% endif %}
 
