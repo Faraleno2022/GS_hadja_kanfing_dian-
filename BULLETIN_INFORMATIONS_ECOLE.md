@@ -45,7 +45,7 @@ Ces champs sont récupérés depuis le modèle `Ecole` :
 5. Remplissez tous les champs :
 
 #### **Champs Obligatoires**
-- **Nom** : Ex. "GS HADJA KANFING DIANÉ"
+- **Nom** : Ex. "GS myschool"
 - **Adresse** : Ex. "Quartier Hamdallaye, Commune de Ratoma, Conakry"
 - **Téléphone** : Ex. "+224622123456" (format strict)
 - **Directeur** : Ex. "M. Mamadou DIALLO"
@@ -90,8 +90,8 @@ Ces champs sont récupérés depuis le modèle `Ecole` :
 ## 📋 Exemple de Données Complètes
 
 ```python
-# Exemple pour GS HADJA KANFING DIANÉ
-nom = "GS HADJA KANFING DIANÉ"
+# Exemple pour GS myschool
+nom = "GS myschool"
 adresse = "Quartier Hamdallaye, Commune de Ratoma, BP 1234, Conakry, Guinée"
 telephone = "+224622123456"
 email = "contact@gshadjakanfing.edu.gn"
@@ -189,7 +189,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
 │                    DESEE: DESEE de Ratoma                    │
 │                                                              │
 │  ┌────────────────────────────────────────────────────┐    │
-│  │ [LOGO]    GS HADJA KANFING DIANÉ                   │    │
+│  │ [LOGO]    GS myschool                   │    │
 │  │                                                     │    │
 │  │  Adresse: Quartier Hamdallaye, Commune de Ratoma  │    │
 │  │  Tél: +224622123456  |  Email: contact@gshkd.gn   │    │
@@ -268,7 +268,7 @@ python manage.py shell
 
 from eleves.models import Ecole
 ecole = Ecole.objects.first()
-ecole.nom = "GS HADJA KANFING DIANÉ"
+ecole.nom = "GS myschool"
 ecole.adresse = "Quartier Hamdallaye, Ratoma"
 ecole.telephone = "+224622123456"
 ecole.directeur = "M. Mamadou DIALLO"

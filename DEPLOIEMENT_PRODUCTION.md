@@ -29,7 +29,7 @@ ssh utilisateur@votre-serveur.com
 
 ```bash
 cd /chemin/vers/votre/projet
-# Exemple PythonAnywhere: cd ~/GS_hadja_kanfing_dian--main
+# Exemple PythonAnywhere: cd ~/myschool--main
 ```
 
 ### **3. Activer l'environnement virtuel**
@@ -263,7 +263,7 @@ chmod 664 db.sqlite3
 
 3. **Naviguer vers le projet**
    ```bash
-   cd ~/GS_hadja_kanfing_dian--main
+   cd ~/myschool--main
    ```
 
 4. **Activer l'environnement virtuel**

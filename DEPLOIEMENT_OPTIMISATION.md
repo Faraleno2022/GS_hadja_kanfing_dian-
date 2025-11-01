@@ -42,7 +42,7 @@
 
 ### 1. Vérifier les Modifications
 ```bash
-cd "c:\Users\faral\Desktop\GS_hadja_kanfing_dian--main"
+cd "c:\Users\faral\Desktop\myschool--main"
 git status
 ```
 
@@ -102,7 +102,7 @@ ssh votre_username@ssh.pythonanywhere.com
 
 ### 2. Naviguer vers le Projet
 ```bash
-cd ~/GS_hadja_kanfing_dian--main
+cd ~/myschool--main
 ```
 
 ### 3. Récupérer les Modifications

@@ -1,6 +1,6 @@
 /**
  * Système de rechargement automatique des images
- * École Moderne HADJA KANFING DIANÉ
+ * myschool
  */
 
 (function() {

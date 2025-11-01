@@ -10,7 +10,7 @@
 
 ### 2. **Navigation vers le Projet**
 ```bash
-cd /home/votre_username/GS_hadja_kanfing_dian--main
+cd /home/votre_username/myschool--main
 # ou le chemin où se trouve votre projet
 ```
 
@@ -105,8 +105,8 @@ python manage.py collectstatic --noinput
 ### **Restaurer la Sauvegarde**
 ```bash
 # Si problème majeur, restaurer la sauvegarde
-rm -rf /home/votre_username/GS_hadja_kanfing_dian--main
-cp -r ../backup_YYYYMMDD_HHMMSS /home/votre_username/GS_hadja_kanfing_dian--main
+rm -rf /home/votre_username/myschool--main
+cp -r ../backup_YYYYMMDD_HHMMSS /home/votre_username/myschool--main
 ```
 
 ## 📊 Nouvelles Fonctionnalités Déployées

@@ -122,7 +122,7 @@ def list_images():
 def show_help():
     """Afficher l'aide."""
     print("""
-🖼️  Gestionnaire d'Images - École Moderne HADJA KANFING DIANÉ
+🖼️  Gestionnaire d'Images - myschool
 
 Usage:
     python manage_images.py [commande] [arguments]

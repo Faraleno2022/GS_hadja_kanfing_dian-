@@ -243,10 +243,28 @@
                         </li>
                         {% endif %}
                         {% if 'notes' in allowed %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'notes:tableau_bord' %}">
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-book me-1"></i>Notes
                             </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="{% url 'notes:tableau_bord' %}">
+                                    <i class="fas fa-tachometer-alt me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Système Standard</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'notes:generer_bulletins' %}">
+                                    <i class="fas fa-file-alt me-1"></i>Bulletins Standard
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Système Guinéen</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'notes:saisie_notes_guineen' %}">
+                                    <i class="fas fa-edit text-primary me-1"></i>Saisie Notes Guinéennes
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'notes:bulletin_guineen' %}">
+                                    <i class="fas fa-graduation-cap text-success me-1"></i>Bulletin Guinéen
+                                </a></li>
+                            </ul>
                         </li>
                         {% endif %}
                     {% else %}

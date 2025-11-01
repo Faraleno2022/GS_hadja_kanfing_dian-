@@ -7,8 +7,8 @@ from eleves.models import Classe
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
-from .forms import ClasseNotesForm, MatiereClasseForm, EvaluationForm, NotesBulkForm
-from .models import MatiereClasse, Evaluation, Note
+from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve
 from eleves.models import Eleve
 from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
@@ -22,14 +22,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from .utils import (
-    semester_course_avg,
-    semester_compo_avg,
-    semester_avg,
-    course_month_avg,
-    compo_month_avg,
-    monthly_avg,
-)
+# from .utils import (
+#     semester_course_avg,
+#     semester_compo_avg,
+#     semester_avg,
+#     course_month_avg,
+#     compo_month_avg,
+#     monthly_avg,
+# )
 
 
 # Groupes de niveaux pour l'affichage
@@ -211,7 +211,7 @@ def tableau_bord(request):
         'classes_college': college,
         'classes_lycee': lycee,
     }
-    return render(request, 'notes/dashboard.html', context)
+    return render(request, 'notes/tableau_bord.html', context)
 
 
 @admin_required
@@ -3196,3 +3196,1234 @@ def carte_eleve_pdf(request, matricule):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
+
+
+@login_required
+def statistiques(request):
+    """Statistiques globales de l'école"""
+    from eleves.models import Eleve, Classe as ClasseEleve, Ecole
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else Ecole.objects.first()
+    
+    # Récupérer les classes disponibles
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('nom')
+    
+    # Classe sélectionnée
+    classe_id = request.GET.get('classe_id')
+    classe_selectionnee = None
+    if classe_id:
+        try:
+            classe_selectionnee = classes.get(id=classe_id)
+        except ClasseNote.DoesNotExist:
+            pass
+    
+    # Statistiques globales de l'école
+    total_eleves = Eleve.objects.filter(statut='ACTIF').count()
+    total_classes = ClasseEleve.objects.all().count()
+    
+    # Période sélectionnée
+    periode = request.GET.get('periode', 'TRIMESTRE_1')
+    
+    # Pour l'instant, affichage simple
+    context = {
+        'titre_page': 'Statistiques de l\'École',
+        'ecole': ecole,
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'periode': periode,
+        'total_eleves': total_eleves,
+        'total_classes': total_classes,
+        'nb_evalues': 0,
+        'nb_non_evalues': total_eleves,
+        'nb_non_admis': 0,
+        'nb_a_suivre': 0,
+        'nb_excellents': 0,
+        'nb_precaution': 0,
+        'total_echecs': 0,
+        'taux_reussite': 0,
+        'taux_echec': 0,
+        'eleves_non_admis': [],
+        'eleves_a_suivre': [],
+        'eleves_excellents': [],
+        'strategies': [],
+        'recommandations': [{
+            'type': 'INFO',
+            'message': 'Page de statistiques - Données en cours de chargement',
+            'couleur': 'info'
+        }],
+        'periodes': [
+            ('TRIMESTRE_1', 'Trimestre 1'),
+            ('TRIMESTRE_2', 'Trimestre 2'),
+            ('TRIMESTRE_3', 'Trimestre 3'),
+            ('SEMESTRE_1', 'Semestre 1'),
+            ('SEMESTRE_2', 'Semestre 2'),
+        ]
+    }
+    
+    return render(request, 'notes/statistiques.html', context)
+
+
+@login_required
+def gerer_classes(request):
+    """Gérer les classes - Liste et ajout"""
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole).order_by('-date_creation')
+    else:
+        classes = ClasseNote.objects.all().order_by('-date_creation')
+    
+    # Statistiques
+    total_classes = classes.count()
+    classes_actives = classes.filter(actif=True).count()
+    
+    # Traitement du formulaire
+    form = ClasseNoteForm()
+    if request.method == 'POST':
+        form = ClasseNoteForm(request.POST)
+        if form.is_valid():
+            classe = form.save(commit=False)
+            if ecole:
+                classe.ecole = ecole
+            classe.cree_par = request.user
+            classe.save()
+            messages.success(request, f'✅ Classe "{classe.nom}" créée avec succès!')
+            return redirect('notes:gerer_classes')
+        else:
+            messages.error(request, '❌ Veuillez corriger les erreurs dans le formulaire.')
+    
+    context = {
+        'titre_page': 'Gestion des Classes',
+        'classes': classes,
+        'total_classes': total_classes,
+        'classes_actives': classes_actives,
+        'form': form,
+    }
+    
+    return render(request, 'notes/gerer_classes.html', context)
+
+
+@login_required
+def modifier_classe(request, classe_id):
+    """Modifier une classe"""
+    classe = get_object_or_404(ClasseNote, pk=classe_id)
+    
+    if request.method == 'POST':
+        form = ClasseNoteForm(request.POST, instance=classe)
+        if form.is_valid():
+            # Sauvegarder sans commit pour garder l'école
+            instance = form.save(commit=False)
+            # S'assurer que l'école reste la même
+            instance.ecole = classe.ecole
+            instance.save()
+            messages.success(request, f'✅ Classe "{classe.nom}" modifiée avec succès!')
+            return redirect('notes:gerer_classes')
+        else:
+            # Afficher les erreurs détaillées
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'❌ {field}: {error}')
+    else:
+        form = ClasseNoteForm(instance=classe)
+    
+    context = {
+        'titre_page': 'Modifier une Classe',
+        'form': form,
+        'classe': classe,
+    }
+    
+    return render(request, 'notes/modifier_classe.html', context)
+
+
+@login_required
+def supprimer_classe(request, classe_id):
+    """Supprimer une classe avec vérification des données liées"""
+    from django.http import JsonResponse
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
+    
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        
+        # Vérifier s'il y a des matières ou notes liées
+        has_matieres = MatiereNote.objects.filter(classe=classe).exists()
+        has_evaluations = Evaluation.objects.filter(matiere__classe=classe).exists()
+        
+        if has_matieres or has_evaluations:
+            # Désactiver au lieu de supprimer
+            classe.actif = False
+            classe.save()
+            return JsonResponse({
+                'success': True,
+                'message': f'Classe "{classe.nom}" désactivée (contient des données)'
+            })
+        else:
+            # Supprimer si pas de données
+            nom_classe = classe.nom
+            classe.delete()
+            return JsonResponse({
+                'success': True,
+                'message': f'Classe "{nom_classe}" supprimée avec succès'
+            })
+    
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def gerer_matieres(request):
+    """Gérer les matières par classe"""
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Filtres
+    classe_id = request.GET.get('classe_id')
+    classe_selectionnee = None
+    matieres = []
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee).order_by('nom')
+    
+    # Traitement du formulaire d'ajout
+    form = MatiereNoteForm()
+    if request.method == 'POST' and classe_selectionnee:
+        form = MatiereNoteForm(request.POST)
+        if form.is_valid():
+            matiere = form.save(commit=False)
+            matiere.classe = classe_selectionnee
+            matiere.cree_par = request.user
+            
+            # Pour Maternelle et Primaire, coefficient = 1.0 par défaut si non spécifié
+            if classe_selectionnee.niveau_enseignement in ['MATERNELLE', 'PRIMAIRE']:
+                if not matiere.coefficient or matiere.coefficient == 0:
+                    matiere.coefficient = 1.0
+            
+            matiere.save()
+            messages.success(request, f'✅ Matière "{matiere.nom}" ajoutée avec succès!')
+            return redirect(f'/notes/matieres/?classe_id={classe_id}')
+        else:
+            messages.error(request, '❌ Veuillez corriger les erreurs dans le formulaire.')
+    
+    context = {
+        'titre_page': 'Gestion des Matières',
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'matieres': matieres,
+        'form': form,
+    }
+    
+    return render(request, 'notes/gerer_matieres.html', context)
+
+
+@login_required
+def modifier_matiere(request, matiere_id):
+    """Modifier une matière"""
+    matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+    classe_id = matiere.classe.id
+    
+    if request.method == 'POST':
+        form = MatiereNoteForm(request.POST, instance=matiere)
+        if form.is_valid():
+            instance = form.save(commit=False)
+            
+            # Pour Maternelle et Primaire, coefficient = 1.0 par défaut si non spécifié
+            if matiere.classe.niveau_enseignement in ['MATERNELLE', 'PRIMAIRE'] or 'PRIMAIRE' in matiere.classe.niveau:
+                if not instance.coefficient or instance.coefficient == 0:
+                    instance.coefficient = 1.0
+            
+            instance.save()
+            messages.success(request, f'✅ Matière "{matiere.nom}" modifiée avec succès!')
+            return redirect(f'/notes/matieres/?classe_id={classe_id}')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'❌ {field}: {error}')
+    else:
+        form = MatiereNoteForm(instance=matiere)
+    
+    context = {
+        'titre_page': 'Modifier une Matière',
+        'form': form,
+        'matiere': matiere,
+        'classe_id': classe_id,
+    }
+    
+    return render(request, 'notes/modifier_matiere.html', context)
+
+
+@login_required
+def supprimer_matiere(request, matiere_id):
+    """Supprimer une matière avec vérification des données liées"""
+    from django.http import JsonResponse
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
+    
+    try:
+        matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        classe_id = matiere.classe.id
+        
+        # Vérifier s'il y a des évaluations ou notes liées
+        has_evaluations = Evaluation.objects.filter(matiere=matiere).exists()
+        has_notes = NoteEleve.objects.filter(evaluation__matiere=matiere).exists()
+        
+        if has_evaluations or has_notes:
+            # Désactiver au lieu de supprimer
+            matiere.actif = False
+            matiere.save()
+            return JsonResponse({
+                'success': True,
+                'message': f'Matière "{matiere.nom}" désactivée (contient des données)',
+                'classe_id': classe_id
+            })
+        else:
+            # Supprimer si pas de données
+            nom_matiere = matiere.nom
+            matiere.delete()
+            return JsonResponse({
+                'success': True,
+                'message': f'Matière "{nom_matiere}" supprimée avec succès',
+                'classe_id': classe_id
+            })
+    
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def charger_matieres_defaut(request, classe_id):
+    """Charger les matières par défaut"""
+    messages.info(request, 'Fonction en cours de développement')
+    return redirect('notes:gerer_matieres')
+
+
+@login_required
+def gerer_evaluations(request):
+    """Gérer les évaluations"""
+    return render(request, 'notes/gerer_evaluations.html', {'titre_page': 'Gestion des Évaluations'})
+
+
+@login_required
+def creer_evaluation(request):
+    """Créer une évaluation"""
+    messages.info(request, 'Fonction en cours de développement')
+    return redirect('notes:gerer_evaluations')
+
+
+@login_required
+def gerer_eleves(request):
+    """Gérer les élèves - Consultation par classe"""
+    from eleves.models import Eleve, Classe as ClasseEleve
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes de notes
+    if ecole:
+        classes_notes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes_notes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Filtres
+    classe_id = request.GET.get('classe_id')
+    classe_selectionnee = None
+    eleves = []
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        
+        # Trouver la classe d'élèves correspondante
+        try:
+            classe_eleve = ClasseEleve.objects.get(
+                nom=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        except ClasseEleve.DoesNotExist:
+            # Essayer une recherche approximative
+            nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
+            classes_similaires = ClasseEleve.objects.filter(nom__icontains=nom_recherche)
+            if classes_similaires.count() == 1:
+                classe_eleve = classes_similaires.first()
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    
+    context = {
+        'titre_page': 'Gestion des Élèves',
+        'classes': classes_notes,
+        'classe_selectionnee': classe_selectionnee,
+        'eleves': eleves,
+    }
+    
+    return render(request, 'notes/gerer_eleves.html', context)
+
+
+@login_required
+def saisir_notes(request):
+    """Saisir les notes"""
+    from eleves.models import Eleve, Classe as ClasseEleve
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Paramètres de sélection
+    classe_id = request.GET.get('classe_id')
+    matiere_id = request.GET.get('matiere_id')
+    type_note = request.GET.get('type_note', '')
+    periode = request.GET.get('periode', '')
+    system_type = request.GET.get('system_type', 'semestre')
+    
+    classe_selectionnee = None
+    matiere_selectionnee = None
+    matieres = []
+    eleves = []
+    evaluations = []
+    niveau_enseignement = 'SECONDAIRE'
+    
+    # Types de notes disponibles (selon le niveau)
+    types_notes_disponibles = [
+        ('mensuelle', 'Note Mensuelle'),
+        ('trimestrielle', 'Note Trimestrielle'),
+        ('semestrielle', 'Note Semestrielle'),
+        ('composition', 'Composition'),
+        ('appreciation', 'Appréciation'),
+    ]
+    
+    # Périodes disponibles par défaut
+    periodes_disponibles = []
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        niveau_enseignement = classe_selectionnee.niveau_enseignement
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+        
+        # Déterminer les périodes disponibles selon le type de note
+        if type_note == 'appreciation':
+            # Pour les appréciations : trimestres
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+            ]
+        elif type_note == 'mensuelle':
+            # Pour les notes mensuelles : 9 mois de l'année scolaire
+            periodes_disponibles = [
+                ('OCTOBRE', 'Octobre'),
+                ('NOVEMBRE', 'Novembre'),
+                ('DECEMBRE', 'Décembre'),
+                ('JANVIER', 'Janvier'),
+                ('FEVRIER', 'Février'),
+                ('MARS', 'Mars'),
+                ('AVRIL', 'Avril'),
+                ('MAI', 'Mai'),
+                ('JUIN', 'Juin'),
+            ]
+        elif type_note == 'trimestrielle':
+            # Pour les notes trimestrielles
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+            ]
+        elif type_note == 'semestrielle':
+            # Pour les notes semestrielles
+            periodes_disponibles = [
+                ('SEMESTRE_1', '1er Semestre'),
+                ('SEMESTRE_2', '2ème Semestre'),
+            ]
+        elif type_note == 'composition':
+            # Pour les compositions : selon le système choisi
+            if system_type == 'semestre':
+                periodes_disponibles = [
+                    ('SEMESTRE_1', '1er Semestre'),
+                    ('SEMESTRE_2', '2ème Semestre'),
+                ]
+            else:  # trimestre
+                periodes_disponibles = [
+                    ('TRIMESTRE_1', '1er Trimestre'),
+                    ('TRIMESTRE_2', '2ème Trimestre'),
+                    ('TRIMESTRE_3', '3ème Trimestre'),
+                ]
+        else:
+            # Par défaut : trimestres
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+            ]
+        
+        if matiere_id:
+            matiere_selectionnee = get_object_or_404(MatiereNote, pk=matiere_id)
+            if periode:
+                evaluations = Evaluation.objects.filter(matiere=matiere_selectionnee, periode=periode).order_by('date_evaluation')
+            else:
+                evaluations = Evaluation.objects.none()
+            
+            # Vérifier si des notes existent déjà pour cette période
+            notes_existantes_count = 0
+            if evaluations.exists():
+                notes_existantes_count = NoteEleve.objects.filter(
+                    evaluation__in=evaluations
+                ).count()
+            
+            # Récupérer les élèves
+            try:
+                classe_eleve = ClasseEleve.objects.get(
+                    nom=classe_selectionnee.nom,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                )
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            except ClasseEleve.DoesNotExist:
+                # Recherche approximative
+                nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
+                classes_similaires = ClasseEleve.objects.filter(nom__icontains=nom_recherche)
+                if classes_similaires.count() == 1:
+                    classe_eleve = classes_similaires.first()
+                    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    
+    # Préparer les informations sur les notes existantes
+    notes_deja_saisies = False
+    nombre_notes_existantes = 0
+    if matiere_selectionnee and periode and evaluations.exists():
+        nombre_notes_existantes = NoteEleve.objects.filter(
+            evaluation__in=evaluations
+        ).count()
+        notes_deja_saisies = nombre_notes_existantes > 0
+    
+    # Déterminer la note maximale selon le niveau
+    note_sur = 20  # Par défaut
+    if classe_selectionnee:
+        if niveau_enseignement == 'PRIMAIRE' or 'PRIMAIRE' in classe_selectionnee.niveau:
+            note_sur = 10
+        else:
+            note_sur = 20
+    
+    context = {
+        'titre_page': 'Saisie des Notes',
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'matieres': matieres,
+        'matiere_selectionnee': matiere_selectionnee,
+        'eleves': eleves,
+        'evaluations': evaluations,
+        'type_note': type_note,
+        'periode': periode,
+        'periodes_disponibles': periodes_disponibles,
+        'types_notes_disponibles': types_notes_disponibles,
+        'system_type': system_type,
+        'niveau_enseignement': niveau_enseignement,
+        'notes_existantes': '{}',  # À implémenter
+        'notes_deja_saisies': notes_deja_saisies,
+        'nombre_notes_existantes': nombre_notes_existantes,
+        'note_sur': note_sur,
+    }
+    
+    return render(request, 'notes/saisir_notes.html', context)
+
+
+@login_required
+def liste_saisie_pdf(request):
+    """Générer un PDF de la liste de saisie des notes"""
+    from django.http import HttpResponse
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    from eleves.models import Eleve, Classe as ClasseEleve
+    import io
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    matiere_id = request.GET.get('matiere_id')
+    periode = request.GET.get('periode')
+    type_note = request.GET.get('type_note', '')
+    
+    if not all([classe_id, matiere_id, periode]):
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    classe = get_object_or_404(ClasseNote, pk=classe_id)
+    matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+    
+    # Déterminer le type de notation selon le niveau
+    niveau_enseignement = classe.niveau_enseignement
+    is_maternelle = niveau_enseignement == 'MATERNELLE'
+    is_primaire = niveau_enseignement == 'PRIMAIRE' or 'PRIMAIRE' in classe.niveau
+    is_appreciation = type_note == 'appreciation'
+    
+    # Déterminer la note maximale
+    if is_primaire:
+        note_sur = 10
+    else:
+        note_sur = 20
+    
+    # Récupérer les élèves
+    try:
+        classe_eleve = ClasseEleve.objects.get(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire
+        )
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    except ClasseEleve.DoesNotExist:
+        eleves = []
+    
+    # Créer le PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=1*cm, bottomMargin=1*cm)
+    elements = []
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=colors.HexColor('#007bff'),
+        spaceAfter=12,
+        alignment=TA_CENTER
+    )
+    
+    # Titre
+    elements.append(Paragraph(f"Liste de Saisie - {classe.nom}", title_style))
+    elements.append(Paragraph(f"Matière: {matiere.nom} | Période: {periode}", styles['Normal']))
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # En-tête du tableau selon le type
+    if is_appreciation:
+        # Pour les appréciations (Maternelle)
+        data = [['N°', 'Matricule', 'Nom', 'Prénom', 'Appréciation', 'Commentaire', 'Absent']]
+        col_widths = [1*cm, 3*cm, 4*cm, 4*cm, 4*cm, 5*cm, 2*cm]
+    else:
+        # Pour les notes (Primaire /10 ou Secondaire /20)
+        data = [[' N°', 'Matricule', 'Nom', 'Prénom', f'Note /{note_sur}', 'Absent', 'Observations']]
+        col_widths = [1*cm, 3*cm, 4*cm, 4*cm, 2*cm, 2*cm, 6*cm]
+    
+    for idx, eleve in enumerate(eleves, 1):
+        if is_appreciation:
+            data.append([
+                str(idx),
+                eleve.matricule,
+                eleve.nom,
+                eleve.prenom,
+                '',  # Appréciation à remplir
+                '',  # Commentaire
+                ''   # Absent à cocher
+            ])
+        else:
+            data.append([
+                str(idx),
+                eleve.matricule,
+                eleve.nom,
+                eleve.prenom,
+                '',  # Note à remplir
+                '',  # Absent à cocher
+                ''   # Observations
+            ])
+    
+    # Style du tableau
+    table = Table(data, colWidths=col_widths)
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+    ]))
+    
+    elements.append(table)
+    
+    # Construire le PDF
+    doc.build(elements)
+    
+    # Retourner la réponse
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="liste_saisie_{classe.nom}_{matiere.code}.pdf"'
+    
+    return response
+
+
+@login_required
+def sauvegarder_notes(request):
+    """Sauvegarder les notes saisies"""
+    from django.http import JsonResponse
+    from eleves.models import Eleve
+    import json
+    from decimal import Decimal, InvalidOperation
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        notes_data = data.get('notes', [])
+        evaluation_id = data.get('evaluation_id')
+        
+        if not evaluation_id:
+            return JsonResponse({'success': False, 'error': 'ID d\'évaluation manquant'}, status=400)
+        
+        evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
+        
+        notes_sauvegardees = 0
+        erreurs = []
+        
+        for note_data in notes_data:
+            try:
+                eleve_id = note_data.get('eleve_id')
+                note_value = note_data.get('note', '').strip()
+                absent = note_data.get('absent', False)
+                
+                if not eleve_id:
+                    continue
+                
+                eleve = Eleve.objects.get(pk=eleve_id)
+                
+                # Valider la note
+                note_decimal = None
+                if note_value and not absent:
+                    try:
+                        note_decimal = Decimal(note_value.replace(',', '.'))
+                        if note_decimal < 0 or note_decimal > evaluation.note_sur:
+                            erreurs.append(f"{eleve.nom}: Note invalide (0-{evaluation.note_sur})")
+                            continue
+                    except (InvalidOperation, ValueError):
+                        erreurs.append(f"{eleve.nom}: Format de note invalide")
+                        continue
+                
+                # Créer ou mettre à jour la note
+                note_obj, created = NoteEleve.objects.update_or_create(
+                    eleve=eleve,
+                    evaluation=evaluation,
+                    defaults={
+                        'note': note_decimal if not absent else None,
+                        'absent': absent,
+                        'saisi_par': request.user,
+                    }
+                )
+                
+                notes_sauvegardees += 1
+                
+            except Eleve.DoesNotExist:
+                erreurs.append(f"Élève ID {eleve_id} introuvable")
+            except Exception as e:
+                erreurs.append(f"Erreur: {str(e)}")
+        
+        response_data = {
+            'success': True,
+            'notes_sauvegardees': notes_sauvegardees,
+            'message': f'{notes_sauvegardees} note(s) sauvegardée(s) avec succès'
+        }
+        
+        if erreurs:
+            response_data['erreurs'] = erreurs
+            response_data['message'] += f' ({len(erreurs)} erreur(s))'
+        
+        return JsonResponse(response_data)
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def consulter_notes(request):
+    """Consulter les notes - Vue complète par classe"""
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from decimal import Decimal
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Paramètres de sélection
+    classe_id = request.GET.get('classe_id')
+    
+    classe_selectionnee = None
+    matieres = []
+    eleves_toutes_notes = []
+    niveau_enseignement = 'SECONDAIRE'
+    periodes_disponibles = []
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        niveau_enseignement = classe_selectionnee.niveau_enseignement
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+        
+        # Déterminer les périodes disponibles (toutes les périodes possibles)
+        periodes_disponibles = [
+            # Mois
+            ('OCTOBRE', 'Octobre'),
+            ('NOVEMBRE', 'Novembre'),
+            ('DECEMBRE', 'Décembre'),
+            ('JANVIER', 'Janvier'),
+            ('FEVRIER', 'Février'),
+            ('MARS', 'Mars'),
+            ('AVRIL', 'Avril'),
+            ('MAI', 'Mai'),
+            ('JUIN', 'Juin'),
+            # Trimestres
+            ('TRIMESTRE_1', '1er Trimestre'),
+            ('TRIMESTRE_2', '2ème Trimestre'),
+            ('TRIMESTRE_3', '3ème Trimestre'),
+            # Semestres
+            ('SEMESTRE_1', '1er Semestre'),
+            ('SEMESTRE_2', '2ème Semestre'),
+        ]
+        
+        # Récupérer les élèves
+        try:
+            classe_eleve = ClasseEleve.objects.get(
+                nom=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            
+            # Pour chaque élève, récupérer toutes ses notes pour toutes les matières
+            for eleve in eleves:
+                notes_par_matiere = {}
+                
+                for matiere in matieres:
+                    # Récupérer toutes les évaluations de cette matière
+                    evaluations = Evaluation.objects.filter(matiere=matiere).order_by('periode', 'date_evaluation')
+                    
+                    notes_matiere = {
+                        'evaluations': [],
+                        'notes': [],
+                        'moyenne': None
+                    }
+                    
+                    total = Decimal('0')
+                    count = 0
+                    
+                    for evaluation in evaluations:
+                        try:
+                            note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                            notes_matiere['evaluations'].append(evaluation)
+                            notes_matiere['notes'].append({
+                                'evaluation': evaluation,
+                                'note': note_obj.note,
+                                'absent': note_obj.absent,
+                            })
+                            if note_obj.note is not None:
+                                total += Decimal(str(note_obj.note))
+                                count += 1
+                        except NoteEleve.DoesNotExist:
+                            notes_matiere['evaluations'].append(evaluation)
+                            notes_matiere['notes'].append({
+                                'evaluation': evaluation,
+                                'note': None,
+                                'absent': False,
+                            })
+                    
+                    # Calculer la moyenne de la matière
+                    if count > 0:
+                        notes_matiere['moyenne'] = round(float(total / count), 2)
+                    
+                    notes_par_matiere[matiere.id] = notes_matiere
+                
+                eleves_toutes_notes.append({
+                    'eleve': eleve,
+                    'notes_par_matiere': notes_par_matiere,
+                })
+                
+        except ClasseEleve.DoesNotExist:
+            pass
+    
+    # Récupérer toutes les évaluations pour les en-têtes
+    evaluations_par_matiere = {}
+    for matiere in matieres:
+        evaluations_par_matiere[matiere.id] = Evaluation.objects.filter(
+            matiere=matiere
+        ).order_by('periode', 'date_evaluation')
+    
+    context = {
+        'titre_page': 'Consultation des Notes',
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'matieres': matieres,
+        'periodes_disponibles': periodes_disponibles,
+        'eleves_toutes_notes': eleves_toutes_notes,
+        'evaluations_par_matiere': evaluations_par_matiere,
+        'niveau_enseignement': niveau_enseignement,
+    }
+    
+    return render(request, 'notes/consulter_notes.html', context)
+
+
+@login_required
+def bulletin_guineen(request):
+    """Bulletin guinéen"""
+    return render(request, 'notes/bulletin_guineen.html', {'titre_page': 'Bulletin Guinéen'})
+
+
+@login_required
+def bulletin_dynamique(request):
+    """Bulletin dynamique - Génération de bulletins personnalisés"""
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from decimal import Decimal
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Paramètres de sélection
+    classe_id = request.GET.get('classe_id')
+    eleve_id = request.GET.get('eleve_id')
+    periode = request.GET.get('periode', '')
+    system_type = request.GET.get('system_type', 'trimestre')  # mensuel, trimestre, semestre, annuel
+    
+    classe_selectionnee = None
+    eleves = []
+    eleve_selectionne = None
+    matieres = []
+    niveau_enseignement = 'SECONDAIRE'
+    periodes_disponibles = []
+    bulletin_data = None
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        niveau_enseignement = classe_selectionnee.niveau_enseignement
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+        
+        # Déterminer les périodes disponibles selon le système
+        if system_type == 'mensuel':
+            periodes_disponibles = [
+                ('OCTOBRE', 'Octobre'),
+                ('NOVEMBRE', 'Novembre'),
+                ('DECEMBRE', 'Décembre'),
+                ('JANVIER', 'Janvier'),
+                ('FEVRIER', 'Février'),
+                ('MARS', 'Mars'),
+                ('AVRIL', 'Avril'),
+                ('MAI', 'Mai'),
+                ('JUIN', 'Juin'),
+            ]
+        elif system_type == 'trimestre':
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+            ]
+        elif system_type == 'semestre':
+            periodes_disponibles = [
+                ('SEMESTRE_1', '1er Semestre'),
+                ('SEMESTRE_2', '2ème Semestre'),
+            ]
+        elif system_type == 'annuel':
+            periodes_disponibles = [
+                ('ANNUEL', 'Bulletin Annuel'),
+            ]
+        
+        # Récupérer les élèves de la classe
+        try:
+            # Essayer d'abord une correspondance exacte
+            classe_eleve = ClasseEleve.objects.get(
+                nom=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        except ClasseEleve.DoesNotExist:
+            # Si pas de correspondance exacte, essayer avec insensibilité à la casse
+            try:
+                classe_eleve = ClasseEleve.objects.get(
+                    nom__iexact=classe_selectionnee.nom,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                )
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            except (ClasseEleve.DoesNotExist, ClasseEleve.MultipleObjectsReturned):
+                eleves = []
+        
+        # Préparer un bulletin vide avec toutes les matières (dès la sélection de la classe)
+        if matieres:
+            # Déterminer le titre de la période
+            titre_periode = ''
+            for code, libelle in periodes_disponibles:
+                if code == periode:
+                    titre_periode = libelle
+                    break
+            
+            # Déterminer le type de bulletin
+            type_bulletin = system_type
+            
+            bulletin_data = {
+                'eleve': None,
+                'classe': classe_selectionnee,
+                'periode': periode,
+                'system_type': system_type,
+                'type_bulletin': type_bulletin,
+                'titre_periode': titre_periode,
+                'titre_moyenne': 'Moyenne Continue',
+                'titre_composition': 'Composition',
+                'matieres_notes': [],
+                'moyenne_generale': None,
+                'rang': None,
+                'mention': None,
+                'appreciation': '',
+                'appreciation_generale': '',
+                'effectif': len(eleves),
+                'mois_libelle': titre_periode,
+            }
+            
+            # Initialiser eleve_selectionne
+            eleve_selectionne = None
+            
+            # Si un élève est sélectionné
+            if eleve_id:
+                eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
+                bulletin_data['eleve'] = eleve_selectionne
+            
+            # Pour chaque matière, préparer la structure
+            total_points = Decimal('0')
+            total_coefficients = Decimal('0')
+            
+            for matiere in matieres:
+                # Séparation des évaluations par type (système guinéen)
+                moyenne_continue = None
+                note_composition = None
+                
+                # Si une période est sélectionnée, récupérer les évaluations
+                if periode and eleve_selectionne:
+                    evaluations = Evaluation.objects.filter(
+                        matiere=matiere,
+                        matiere__classe=classe_selectionnee,
+                        periode=periode
+                    ).order_by('date_evaluation')
+                    
+                    # Séparer devoirs/contrôles (moyenne continue) et compositions
+                    total_devoirs = Decimal('0')
+                    count_devoirs = 0
+                    total_compo = Decimal('0')
+                    count_compo = 0
+                    
+                    for evaluation in evaluations:
+                        try:
+                            note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
+                            if note_obj.note is not None and not note_obj.absent:
+                                # Déterminer le type d'évaluation
+                                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                    total_compo += Decimal(str(note_obj.note))
+                                    count_compo += 1
+                                else:
+                                    # DEVOIR, CONTROLE, INTERROGATION
+                                    total_devoirs += Decimal(str(note_obj.note))
+                                    count_devoirs += 1
+                        except NoteEleve.DoesNotExist:
+                            pass
+                    
+                    # Calculer les moyennes
+                    if count_devoirs > 0:
+                        moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
+                    
+                    if count_compo > 0:
+                        note_composition = round(float(total_compo / count_compo), 2)
+                
+                # Calculer la moyenne de la matière selon le système guinéen
+                # Si trimestre/semestre: moyenne = (moyenne_continue + composition*2) / 3
+                # Si mensuel: moyenne = moyenne_continue uniquement (pas de composition)
+                moyenne_matiere = None
+                
+                if system_type == 'mensuel':
+                    moyenne_matiere = moyenne_continue
+                elif moyenne_continue is not None and note_composition is not None:
+                    # Pondération 1:2 (continue:composition)
+                    moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+                elif note_composition is not None:
+                    # Seulement la composition
+                    moyenne_matiere = note_composition
+                elif moyenne_continue is not None:
+                    # Seulement la moyenne continue
+                    moyenne_matiere = moyenne_continue
+                
+                # Calculer les points
+                points = None
+                if moyenne_matiere is not None:
+                    points = round(moyenne_matiere * float(matiere.coefficient), 2)
+                    total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
+                    total_coefficients += matiere.coefficient
+                
+                # Préparer les notes pour l'affichage
+                notes_matiere = []
+                if system_type in ['trimestre', 'semestre']:
+                    notes_matiere = [
+                        {'note': moyenne_continue, 'absent': False},
+                        {'note': note_composition, 'absent': False}
+                    ]
+                elif system_type == 'mensuel':
+                    notes_matiere = [
+                        {'note': moyenne_continue, 'absent': False}
+                    ]
+                
+                bulletin_data['matieres_notes'].append({
+                    'matiere': matiere,
+                    'notes': notes_matiere,
+                    'moyenne': moyenne_matiere,
+                    'coefficient': matiere.coefficient,
+                    'points': points,
+                })
+            
+            # Ajouter les totaux au bulletin
+            bulletin_data['total_points'] = round(float(total_points), 2) if total_points > 0 else None
+            bulletin_data['total_coefficients'] = float(total_coefficients) if total_coefficients > 0 else None
+            
+            # Calculer la moyenne générale (seulement si élève sélectionné)
+            if eleve_selectionne and total_coefficients > 0:
+                moyenne_generale = round(float(total_points / total_coefficients), 2)
+                bulletin_data['moyenne_generale'] = moyenne_generale
+                
+                # Déterminer la mention
+                if moyenne_generale >= 18:
+                    bulletin_data['mention'] = "Excellent"
+                elif moyenne_generale >= 16:
+                    bulletin_data['mention'] = "Très Bien"
+                elif moyenne_generale >= 14:
+                    bulletin_data['mention'] = "Bien"
+                elif moyenne_generale >= 12:
+                    bulletin_data['mention'] = "Assez Bien"
+                elif moyenne_generale >= 10:
+                    bulletin_data['mention'] = "Passable"
+                else:
+                    bulletin_data['mention'] = "Insuffisant"
+                
+                # Calculer le rang
+                # Récupérer toutes les moyennes de la classe pour cette période
+                if periode:
+                    moyennes_classe = []
+                    for eleve_classe in eleves:
+                        total_eleve = Decimal('0')
+                        total_coef_eleve = Decimal('0')
+                        
+                        for matiere in matieres:
+                            # Récupérer les évaluations de cette matière pour la période
+                            evals = Evaluation.objects.filter(
+                                matiere=matiere,
+                                matiere__classe=classe_selectionnee,
+                                periode=periode
+                            )
+                            
+                            # Séparer devoirs et compositions
+                            total_dev = Decimal('0')
+                            count_dev = 0
+                            total_comp = Decimal('0')
+                            count_comp = 0
+                            
+                            for ev in evals:
+                                try:
+                                    n = NoteEleve.objects.get(eleve=eleve_classe, evaluation=ev)
+                                    if n.note is not None and not n.absent:
+                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                            total_comp += Decimal(str(n.note))
+                                            count_comp += 1
+                                        else:
+                                            total_dev += Decimal(str(n.note))
+                                            count_dev += 1
+                                except NoteEleve.DoesNotExist:
+                                    pass
+                            
+                            # Calculer la moyenne de la matière
+                            moy_cont = total_dev / count_dev if count_dev > 0 else None
+                            moy_comp = total_comp / count_comp if count_comp > 0 else None
+                            moy_mat = None
+                            
+                            if system_type == 'mensuel':
+                                moy_mat = moy_cont
+                            elif moy_cont is not None and moy_comp is not None:
+                                moy_mat = (moy_cont + moy_comp * 2) / 3
+                            elif moy_comp is not None:
+                                moy_mat = moy_comp
+                            elif moy_cont is not None:
+                                moy_mat = moy_cont
+                            
+                            # Si l'élève a une moyenne dans cette matière
+                            if moy_mat is not None:
+                                total_eleve += moy_mat * matiere.coefficient
+                                total_coef_eleve += matiere.coefficient
+                        
+                        if total_coef_eleve > 0:
+                            moy_eleve = float(total_eleve / total_coef_eleve)
+                            moyennes_classe.append(moy_eleve)
+                    
+                    # Trier et trouver le rang
+                    moyennes_classe.sort(reverse=True)
+                    try:
+                        rang = moyennes_classe.index(moyenne_generale) + 1
+                        bulletin_data['rang'] = f"{rang}"
+                    except ValueError:
+                        bulletin_data['rang'] = "N/A"
+                else:
+                    bulletin_data['rang'] = "N/A"
+    
+    context = {
+        'titre_page': 'Bulletin Dynamique',
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'eleves': eleves,
+        'eleve_selectionne': eleve_selectionne,
+        'matieres': matieres,
+        'periodes_disponibles': periodes_disponibles,
+        'periode': periode,
+        'periode_selectionnee': periode,  # Alias pour le template
+        'system_type': system_type,
+        'niveau_enseignement': niveau_enseignement,
+        'bulletin_data': bulletin_data,
+        'ecole': ecole,
+        'annee_scolaire': classe_selectionnee.annee_scolaire if classe_selectionnee else '',
+    }
+    
+    return render(request, 'notes/bulletin_dynamique.html', context)
+
+
+@login_required
+def saisie_notes_simple(request):
+    """Saisie notes simple"""
+    return render(request, 'notes/saisie_notes_simple.html', {'titre_page': 'Saisie Notes Simple'})
+
+
+@login_required
+def sauvegarder_notes_guineen(request):
+    """Sauvegarder notes guinéen"""
+    from django.http import JsonResponse
+    return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
+
+
+@login_required
+def sauvegarder_appreciations_maternelle(request):
+    """Sauvegarder appréciations maternelle"""
+    from django.http import JsonResponse
+    return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})

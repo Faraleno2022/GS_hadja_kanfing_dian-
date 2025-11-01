@@ -1478,7 +1478,7 @@ def export_rapport_paiements_pdf(request):
         except Exception:
             pass
         canvas.setFont('Helvetica-Bold', 8)
-        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
+        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'myschool')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, titre)
 

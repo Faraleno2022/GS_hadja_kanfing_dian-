@@ -154,4 +154,4 @@ En cas de problème, vérifiez :
 3. La configuration des permissions utilisateur
 
 ---
-*Guide généré automatiquement - École Moderne HADJA KANFING DIANÉ*
+*Guide généré automatiquement - myschool*

@@ -1,0 +1,359 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Statistiques{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+        transition: transform 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+    }
+    
+    .chart-container {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    
+    .selection-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3"><i class="fas fa-chart-bar me-2"></i>Statistiques</h1>
+        <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Retour
+        </a>
+    </div>
+
+    <!-- Sélection de classe -->
+    <div class="selection-card">
+        <h4 class="mb-3"><i class="fas fa-school me-2"></i>1. Sélectionner une classe</h4>
+        {% if classes %}
+            <div class="row">
+                {% for classe in classes %}
+                    <div class="col-md-3 col-sm-6 mb-2">
+                        <a href="?classe_id={{ classe.id }}{% if periode %}&periode={{ periode }}{% endif %}" 
+                           class="btn {% if classe_selectionnee and classe.id == classe_selectionnee.id %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                            <i class="fas fa-school me-2"></i>{{ classe.nom }}
+                            <br><small>{{ classe.get_niveau_display }}</small>
+                        </a>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Aucune classe disponible.
+            </div>
+        {% endif %}
+    </div>
+
+    {% if classe_selectionnee %}
+    <!-- Sélection de période -->
+    <div class="selection-card">
+        <h4 class="mb-3"><i class="fas fa-calendar me-2"></i>2. Sélectionner une période</h4>
+        <div class="row">
+            {% for code, libelle in periodes %}
+                <div class="col-md-2 col-sm-4 mb-2">
+                    <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}" 
+                       class="btn {% if periode == code %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                        {{ libelle }}
+                    </a>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if stats_generales %}
+    <!-- Statistiques générales -->
+    <div class="row">
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="stat-card text-center">
+                <i class="fas fa-users fa-2x text-primary mb-3"></i>
+                <p class="stat-value text-primary">{{ stats_generales.total_eleves }}</p>
+                <p class="stat-label">Total élèves</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="stat-card text-center">
+                <i class="fas fa-chart-line fa-2x text-success mb-3"></i>
+                <p class="stat-value text-success">{{ stats_generales.moyenne_classe }}</p>
+                <p class="stat-label">Moyenne classe</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="stat-card text-center">
+                <i class="fas fa-trophy fa-2x text-warning mb-3"></i>
+                <p class="stat-value text-warning">{{ stats_generales.moyenne_max }}</p>
+                <p class="stat-label">Meilleure moyenne</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="stat-card text-center">
+                <i class="fas fa-percentage fa-2x text-info mb-3"></i>
+                <p class="stat-value text-info">{{ stats_generales.taux_reussite }}%</p>
+                <p class="stat-label">Taux de réussite</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Graphiques -->
+    <div class="row">
+        <!-- Répartition des notes -->
+        <div class="col-md-6 mb-4">
+            <div class="chart-container">
+                <h5 class="mb-4"><i class="fas fa-chart-pie me-2"></i>Répartition des moyennes</h5>
+                <canvas id="repartitionChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Moyennes par matière -->
+        <div class="col-md-6 mb-4">
+            <div class="chart-container">
+                <h5 class="mb-4"><i class="fas fa-chart-bar me-2"></i>Moyennes par matière</h5>
+                <canvas id="matieresChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Évolution des moyennes -->
+    {% if evolution_json != '[]' %}
+    <div class="row">
+        <div class="col-12 mb-4">
+            <div class="chart-container">
+                <h5 class="mb-4"><i class="fas fa-chart-line me-2"></i>Évolution de la moyenne de classe</h5>
+                <canvas id="evolutionChart"></canvas>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Statistiques par matière -->
+    {% if stats_par_matiere %}
+    <div class="chart-container">
+        <h5 class="mb-4"><i class="fas fa-book me-2"></i>Détails par matière</h5>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Matière</th>
+                        <th class="text-center">Moyenne</th>
+                        <th class="text-center">Maximum</th>
+                        <th class="text-center">Minimum</th>
+                        <th class="text-center">Nb élèves</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stat in stats_par_matiere %}
+                    <tr>
+                        <td><strong>{{ stat.matiere }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge {% if stat.moyenne >= 14 %}bg-success{% elif stat.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ stat.moyenne }}/20
+                            </span>
+                        </td>
+                        <td class="text-center">{{ stat.max }}/20</td>
+                        <td class="text-center">{{ stat.min }}/20</td>
+                        <td class="text-center">{{ stat.nb_eleves }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top 10 élèves -->
+    {% if stats_par_eleve %}
+    <div class="chart-container">
+        <h5 class="mb-4"><i class="fas fa-medal me-2"></i>Top 10 élèves</h5>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Rang</th>
+                        <th>Matricule</th>
+                        <th>Nom & Prénom</th>
+                        <th class="text-center">Moyenne</th>
+                        <th class="text-center">Appréciation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve_data in stats_par_eleve %}
+                    <tr>
+                        <td>
+                            {% if forloop.counter == 1 %}
+                                <i class="fas fa-trophy text-warning"></i>
+                            {% elif forloop.counter == 2 %}
+                                <i class="fas fa-medal text-secondary"></i>
+                            {% elif forloop.counter == 3 %}
+                                <i class="fas fa-medal text-danger"></i>
+                            {% else %}
+                                {{ forloop.counter }}
+                            {% endif %}
+                        </td>
+                        <td>{{ eleve_data.eleve.matricule }}</td>
+                        <td><strong>{{ eleve_data.eleve.nom }} {{ eleve_data.eleve.prenom }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge {% if eleve_data.moyenne >= 16 %}bg-success{% elif eleve_data.moyenne >= 14 %}bg-info{% elif eleve_data.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %} fs-6">
+                                {{ eleve_data.moyenne }}/20
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            {% if eleve_data.moyenne >= 16 %}Excellent
+                            {% elif eleve_data.moyenne >= 14 %}Très bien
+                            {% elif eleve_data.moyenne >= 12 %}Bien
+                            {% elif eleve_data.moyenne >= 10 %}Assez bien
+                            {% else %}Insuffisant
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+    {% elif classe_selectionnee and periode %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Aucune donnée disponible pour cette classe et cette période.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+{% if stats_generales %}
+// Répartition des notes
+const repartitionData = {{ repartition_json|safe }};
+const repartitionCtx = document.getElementById('repartitionChart').getContext('2d');
+new Chart(repartitionCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Excellent (≥16)', 'Très bien (≥14)', 'Bien (≥12)', 'Assez bien (≥10)', 'Insuffisant (<10)'],
+        datasets: [{
+            data: [
+                repartitionData.excellent,
+                repartitionData.tres_bien,
+                repartitionData.bien,
+                repartitionData.assez_bien,
+                repartitionData.insuffisant
+            ],
+            backgroundColor: [
+                '#28a745',
+                '#17a2b8',
+                '#ffc107',
+                '#fd7e14',
+                '#dc3545'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Moyennes par matière
+const matieresData = {{ stats_matieres_json|safe }};
+if (matieresData.length > 0) {
+    const matieresCtx = document.getElementById('matieresChart').getContext('2d');
+    new Chart(matieresCtx, {
+        type: 'bar',
+        data: {
+            labels: matieresData.map(m => m.matiere),
+            datasets: [{
+                label: 'Moyenne',
+                data: matieresData.map(m => m.moyenne),
+                backgroundColor: '#007bff',
+                borderColor: '#0056b3',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 20
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+}
+
+// Évolution des moyennes
+const evolutionData = {{ evolution_json|safe }};
+if (evolutionData.length > 0) {
+    const evolutionCtx = document.getElementById('evolutionChart').getContext('2d');
+    new Chart(evolutionCtx, {
+        type: 'line',
+        data: {
+            labels: evolutionData.map(e => e.periode),
+            datasets: [{
+                label: 'Moyenne de classe',
+                data: evolutionData.map(e => e.moyenne),
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 20
+                }
+            }
+        }
+    });
+}
+{% endif %}
+</script>
+{% endblock %}

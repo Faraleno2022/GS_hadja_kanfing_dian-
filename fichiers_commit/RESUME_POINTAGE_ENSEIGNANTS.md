@@ -4,7 +4,7 @@
 
 **Date de déploiement** : 10 Octobre 2025  
 **Statut** : ✅ **OPÉRATIONNEL ET DÉPLOYÉ SUR GITHUB**  
-**Repository** : https://github.com/Faraleno2022/GS_hadja_kanfing_dian-.git
+**Repository** : https://github.com/Faraleno2022/myschool-.git
 
 ---
 
@@ -391,6 +391,6 @@ Pour toute question ou problème :
 
 ---
 
-*Développé avec ❤️ pour GS HADJA KANFING DIANÉ*  
+*Développé avec ❤️ pour GS myschool*  
 *Date : 10 Octobre 2025*  
 *Version : 1.0.0*

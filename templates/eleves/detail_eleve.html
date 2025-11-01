@@ -2,7 +2,7 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}{{ eleve.nom_complet }} - École Moderne HADJA KANFING DIANÉ{% endblock %}
+{% block title %}{{ eleve.nom_complet }} - myschool{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -288,42 +288,7 @@
                     <a href="{% url 'eleves:fiche_inscription_pdf' eleve.pk %}" class="btn btn-info" target="_blank">
                         <i class="fas fa-file-pdf"></i> Fiche d'inscription PDF
                     </a>
-                    <div class="btn-group" role="group" aria-label="Bulletin PDF">
-                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T1' %}" class="btn btn-outline-secondary" target="_blank">
-                            <i class="fas fa-file-pdf me-1"></i> Bulletin T1
-                        </a>
-                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T2' %}" class="btn btn-outline-secondary" target="_blank">T2</a>
-                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T3' %}" class="btn btn-outline-secondary" target="_blank">T3</a>
-                    </div>
-                    {% if 'PRIMAIRE' not in eleve.classe.niveau %}
-                    <div class="btn-group" role="group" aria-label="Bulletins Collège/Lycée">
-                        <div class="btn-group" role="group">
-                          <button id="btnGroupDropMensuel" type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-calendar-alt me-1"></i> Bulletin mensuel
-                          </button>
-                          <ul class="dropdown-menu" aria-labelledby="btnGroupDropMensuel">
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 10 %}">Octobre</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 11 %}">Novembre</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 12 %}">Décembre</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 1 %}">Janvier</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 2 %}">Février</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 3 %}">Mars</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 4 %}">Avril</a></li>
-                            <li><a class="dropdown-item" target="_blank" href="{% url 'notes:bulletin_mensuel_pdf' eleve.classe.id eleve.id 5 %}">Mai</a></li>
-                          </ul>
-                        </div>
-                        <a href="{% url 'notes:bulletin_semestre_pdf' eleve.classe.id eleve.id 1 %}" class="btn btn-outline-primary" target="_blank">
-                            <i class="fas fa-file-pdf me-1"></i> Bulletin S1
-                        </a>
-                        <a href="{% url 'notes:bulletin_semestre_pdf' eleve.classe.id eleve.id 2 %}" class="btn btn-outline-primary" target="_blank">S2</a>
-                    </div>
-                    {% endif %}
-                    <a href="{% url 'notes:bulletin_annuel_pdf' eleve.classe.id eleve.id %}" class="btn btn-outline-primary" target="_blank">
-                        <i class="fas fa-file-pdf me-1"></i> Bulletin annuel
-                    </a>
-                    <a href="{% url 'notes:carte_eleve_pdf' eleve.matricule %}" class="btn btn-outline-success" target="_blank">
-                        <i class="fas fa-id-card me-1"></i> Carte scolaire
-                    </a>
+                    <!-- Bulletins et cartes scolaires : fonctionnalités à venir dans le module Notes -->
                     {% with paiements_eleve=eleve.paiement_set.all %}
                     {% if paiements_eleve %}
                     <div class="card p-2">

@@ -88,8 +88,8 @@ def creer_eleves_test():
     print("🎓 Création des élèves de test...")
     
     # Récupérer les écoles
-    ecole_sonfonia = Ecole.objects.get(nom="École Moderne HADJA KANFING DIANÉ - Sonfonia")
-    ecole_somayah = Ecole.objects.get(nom="École Moderne HADJA KANFING DIANÉ - Somayah")
+    ecole_sonfonia = Ecole.objects.get(nom="myschool - Sonfonia")
+    ecole_somayah = Ecole.objects.get(nom="myschool - Somayah")
     
     # Récupérer les responsables
     responsables = list(Responsable.objects.all())

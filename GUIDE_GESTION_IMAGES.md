@@ -117,7 +117,7 @@ Le système surveille automatiquement :
 ### Script manage_images.py ne fonctionne pas
 ```bash
 # Vérifiez que vous êtes dans le bon dossier
-cd /chemin/vers/GS_hadja_kanfing_dian--main
+cd /chemin/vers/myschool--main
 
 # Exécutez avec Python
 python manage_images.py help
@@ -158,5 +158,5 @@ En cas de problème :
 
 ---
 
-*Système développé pour l'École Moderne HADJA KANFING DIANÉ*
+*Système développé pour l'myschool*
 *Version 1.0 - Rechargement automatique des images*

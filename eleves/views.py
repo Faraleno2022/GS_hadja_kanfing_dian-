@@ -3455,3 +3455,310 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     c.drawCentredString(x+width/2, y+6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
     
     c.restoreState()
+
+
+@login_required
+def generer_carte_scolaire_pdf(request, eleve_id):
+    """Génère une carte scolaire pour un élève (format agrand 105x74mm avec plus d'infos)"""
+    eleve = get_object_or_404(
+        Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
+        id=eleve_id
+    )
+    
+    # Vérifier permissions
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or eleve.classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cet élève.")
+            return redirect('eleves:liste_eleves')
+    
+    # Créer le PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
+    
+    from reportlab.lib.units import mm
+    # Taille augmentée : 105mm x 74mm (environ 1.4x plus grand)
+    width, height = 105*mm, 74*mm
+    c = canvas.Canvas(response, pagesize=(width, height))
+    
+    # Polices
+    try:
+        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
+        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
+        main_font = 'Arial'
+        main_font_bold = 'Arial-Bold'
+    except:
+        main_font = 'Helvetica'
+        main_font_bold = 'Helvetica-Bold'
+    
+    primary_color = '#2563eb'
+    light_color = '#dbeafe'
+    
+    # Fond et bordure
+    c.setFillColor(colors.white)
+    c.rect(0, 0, width, height, stroke=0, fill=1)
+    c.setStrokeColor(colors.HexColor(primary_color))
+    c.setLineWidth(2.5)
+    c.roundRect(2, 2, width-4, height-4, 10, stroke=1, fill=0)
+    
+    # Bande supérieure (plus grande)
+    c.setFillColor(colors.HexColor(primary_color))
+    c.roundRect(5, height-42, width-10, 37, 8, stroke=0, fill=1)
+    
+    # Logo école (plus grand)
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                logo_size = 30
+                c.setFillColor(colors.white)
+                c.circle(10 + logo_size/2, height - 35 + logo_size/2, logo_size/2 + 1, stroke=0, fill=1)
+                c.drawImage(eleve.classe.ecole.logo.path, 10, height - 35, 
+                          width=logo_size, height=logo_size, preserveAspectRatio=True, mask='auto')
+    except:
+        pass
+    
+    # Nom école (texte plus grand)
+    c.setFillColor(colors.white)
+    c.setFont(main_font_bold, 11)
+    c.drawString(45, height-15, eleve.classe.ecole.nom[:40])
+    c.setFont(main_font, 9)
+    c.drawString(45, height-30, f"Année Scolaire: {eleve.classe.annee_scolaire}")
+    
+    # Photo élève (plus grande)
+    photo_x = width - 48
+    photo_y = height/2 + 3
+    photo_size = 42
+    
+    c.setFillColor(colors.white)
+    c.roundRect(photo_x, photo_y, photo_size, photo_size, 6, stroke=0, fill=1)
+    c.setStrokeColor(colors.HexColor(primary_color))
+    c.setLineWidth(2.5)
+    c.roundRect(photo_x, photo_y, photo_size, photo_size, 6, stroke=1, fill=0)
+    
+    if eleve.photo:
+        try:
+            from PIL import Image
+            if hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+                img = Image.open(eleve.photo.path)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.thumbnail((photo_size - 5, photo_size - 5), Image.Resampling.LANCZOS)
+                temp_buffer = io.BytesIO()
+                img.save(temp_buffer, format='JPEG')
+                temp_buffer.seek(0)
+                c.drawImage(temp_buffer, photo_x + 2.5, photo_y + 2.5, 
+                          width=photo_size - 5, height=photo_size - 5, preserveAspectRatio=True)
+        except:
+            c.setFillColor(colors.HexColor(primary_color))
+            c.setFont(main_font_bold, 18)
+            c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5, 
+                              f"{eleve.prenom[0]}{eleve.nom[0]}")
+    else:
+        c.setFillColor(colors.HexColor(primary_color))
+        c.setFont(main_font_bold, 18)
+        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5, 
+                          f"{eleve.prenom[0]}{eleve.nom[0]}")
+    
+    # Section informations élève (plus d'espace, plus d'infos)
+    y_pos = height - 58
+    x_margin = 10
+    
+    # Nom et prénom (plus grand)
+    c.setFillColor(colors.HexColor('#1f2937'))
+    c.setFont(main_font_bold, 13)
+    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
+    if len(nom_complet) > 25:
+        nom_complet = nom_complet[:25] + "."
+    c.drawString(x_margin, y_pos, nom_complet)
+    
+    # Ligne de séparation
+    y_pos -= 8
+    c.setStrokeColor(colors.HexColor(light_color))
+    c.setLineWidth(1)
+    c.line(x_margin, y_pos, width - photo_size - 15, y_pos)
+    
+    # Informations principales (2 colonnes)
+    y_pos -= 10
+    c.setFont(main_font_bold, 9)
+    c.setFillColor(colors.HexColor('#374151'))
+    
+    # Colonne 1
+    c.drawString(x_margin, y_pos, "Matricule:")
+    c.setFont(main_font, 9)
+    c.setFillColor(colors.HexColor('#6b7280'))
+    c.drawString(x_margin + 32, y_pos, eleve.matricule)
+    
+    # Colonne 2
+    c.setFont(main_font_bold, 9)
+    c.setFillColor(colors.HexColor('#374151'))
+    sexe_display = "Masculin" if eleve.sexe == 'M' else "Féminin"
+    c.drawString(x_margin, y_pos - 9, "Sexe:")
+    c.setFont(main_font, 9)
+    c.setFillColor(colors.HexColor('#6b7280'))
+    c.drawString(x_margin + 32, y_pos - 9, sexe_display)
+    
+    # Ligne 2
+    c.setFont(main_font_bold, 9)
+    c.setFillColor(colors.HexColor('#374151'))
+    c.drawString(x_margin, y_pos - 18, "Classe:")
+    c.setFont(main_font, 9)
+    c.setFillColor(colors.HexColor('#6b7280'))
+    c.drawString(x_margin + 32, y_pos - 18, eleve.classe.nom)
+    
+    c.setFont(main_font_bold, 9)
+    c.setFillColor(colors.HexColor('#374151'))
+    c.drawString(x_margin, y_pos - 27, "Né(e) le:")
+    c.setFont(main_font, 9)
+    c.setFillColor(colors.HexColor('#6b7280'))
+    c.drawString(x_margin + 32, y_pos - 27, eleve.date_naissance.strftime('%d/%m/%Y'))
+    
+    # Contact d'urgence
+    if eleve.responsable_principal:
+        c.setFont(main_font_bold, 8)
+        c.setFillColor(colors.HexColor('#374151'))
+        c.drawString(x_margin, y_pos - 37, "Contact urgence:")
+        c.setFont(main_font, 8)
+        c.setFillColor(colors.HexColor('#6b7280'))
+        tel = eleve.responsable_principal.telephone or "Non renseigné"
+        c.drawString(x_margin + 50, y_pos - 37, tel[:20])
+    
+    # Pied de page avec adresse école
+    c.setFont(main_font, 7)
+    c.setFillColor(colors.HexColor('#9ca3af'))
+    if eleve.classe.ecole.adresse:
+        adresse_courte = eleve.classe.ecole.adresse[:45]
+        c.drawString(x_margin, 10, adresse_courte)
+    
+    if eleve.classe.ecole.telephone:
+        c.drawString(x_margin, 4, f"Tél: {eleve.classe.ecole.telephone}")
+    
+    c.setFont(main_font, 6)
+    c.drawRightString(width - 5, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y')}")
+    
+    c.showPage()
+    c.save()
+    return response
+
+
+@login_required
+def generer_cartes_classe_pdf(request, classe_id):
+    """Génère toutes les cartes d'une classe (2 cartes par page A4)"""
+    classe = get_object_or_404(Classe, id=classe_id)
+    
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cette classe.")
+            return redirect('eleves:liste_eleves')
+    
+    eleves = Eleve.objects.filter(classe=classe, statut='ACTIF').select_related(
+        'classe', 'classe__ecole').order_by('nom', 'prenom')
+    
+    if not eleves.exists():
+        messages.warning(request, "Aucun élève actif dans cette classe.")
+        return redirect('eleves:liste_eleves')
+    
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="cartes_scolaires_{classe.nom}.pdf"'
+    
+    from reportlab.lib.units import mm
+    from reportlab.lib.pagesizes import A4
+    
+    # Nouvelle taille : 105mm x 74mm
+    card_width, card_height = 105*mm, 74*mm
+    margin = 10*mm
+    spacing = 8*mm
+    
+    c = canvas.Canvas(response, pagesize=A4)
+    page_width, page_height = A4
+    
+    try:
+        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
+        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
+        main_font = 'Arial'
+        main_font_bold = 'Arial-Bold'
+    except:
+        main_font = 'Helvetica'
+        main_font_bold = 'Helvetica-Bold'
+    
+    primary_color = '#2563eb'
+    positions = [
+        (margin, page_height - margin - card_height),
+        (margin, page_height - margin - (2 * card_height) - spacing),
+    ]
+    
+    card_count = 0
+    
+    for eleve in eleves:
+        pos_index = card_count % 2
+        x, y = positions[pos_index]
+        
+        # Bordure
+        c.setStrokeColor(colors.HexColor(primary_color))
+        c.setLineWidth(1.5)
+        c.roundRect(x, y, card_width, card_height, 8, stroke=1, fill=0)
+        
+        # Bande supérieure
+        c.setFillColor(colors.HexColor(primary_color))
+        c.roundRect(x+2, y+card_height-30, card_width-4, 28, 6, stroke=0, fill=1)
+        
+        # Nom école
+        c.setFillColor(colors.white)
+        c.setFont(main_font_bold, 8)
+        c.drawString(x+5, y+card_height-12, classe.ecole.nom[:40])
+        c.setFont(main_font, 6)
+        c.drawString(x+5, y+card_height-22, f"Année: {classe.annee_scolaire}")
+        
+        # Nom élève
+        c.setFillColor(colors.HexColor('#1f2937'))
+        c.setFont(main_font_bold, 10)
+        c.drawString(x+5, y+card_height-42, f"{eleve.prenom} {eleve.nom}".upper()[:25])
+        
+        # Infos
+        c.setFont(main_font, 7)
+        c.setFillColor(colors.HexColor('#4b5563'))
+        c.drawString(x+5, y+card_height-52, f"Mat: {eleve.matricule}")
+        c.drawString(x+5, y+card_height-60, f"Classe: {classe.nom}")
+        
+        # Photo
+        photo_size = 28
+        photo_x = x + card_width - photo_size - 5
+        photo_y = y + card_height/2 - photo_size/2
+        
+        c.setFillColor(colors.white)
+        c.roundRect(photo_x, photo_y, photo_size, photo_size, 4, stroke=0, fill=1)
+        c.setStrokeColor(colors.HexColor(primary_color))
+        c.setLineWidth(1)
+        c.roundRect(photo_x, photo_y, photo_size, photo_size, 4, stroke=1, fill=0)
+        
+        if eleve.photo:
+            try:
+                from PIL import Image
+                if hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+                    img = Image.open(eleve.photo.path)
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    img.thumbnail((photo_size-2, photo_size-2), Image.Resampling.LANCZOS)
+                    temp_buffer = io.BytesIO()
+                    img.save(temp_buffer, format='JPEG')
+                    temp_buffer.seek(0)
+                    c.drawImage(temp_buffer, photo_x+1, photo_y+1, 
+                              width=photo_size-2, height=photo_size-2, preserveAspectRatio=True)
+            except:
+                c.setFillColor(colors.HexColor(primary_color))
+                c.setFont(main_font_bold, 12)
+                c.drawCentredString(photo_x+photo_size/2, photo_y+photo_size/2-3, 
+                                  f"{eleve.prenom[0]}{eleve.nom[0]}")
+        else:
+            c.setFillColor(colors.HexColor(primary_color))
+            c.setFont(main_font_bold, 12)
+            c.drawCentredString(photo_x+photo_size/2, photo_y+photo_size/2-3, 
+                              f"{eleve.prenom[0]}{eleve.nom[0]}")
+        
+        card_count += 1
+        if card_count % 2 == 0 and card_count < eleves.count():
+            c.showPage()
+    
+    c.showPage()
+    c.save()
+    return response

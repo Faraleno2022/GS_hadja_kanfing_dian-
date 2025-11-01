@@ -19,7 +19,7 @@
 ```bash
 # Se connecter au serveur PythonAnywhere
 # Aller dans le répertoire du projet
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # Activer l'environnement virtuel
 source ~/venv/bin/activate

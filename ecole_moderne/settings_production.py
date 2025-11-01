@@ -56,7 +56,7 @@ DATABASES = {
 }
 
 # ===== Fichiers statiques et médias =====
-BASE_DIR_SERVER = os.getenv('PROJECT_BASE_DIR', '/home/myschoolgn/GS_hadja_kanfing_dian-')
+BASE_DIR_SERVER = os.getenv('PROJECT_BASE_DIR', '/home/myschoolgn/myschool-')
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR_SERVER, 'staticfiles')

@@ -274,7 +274,7 @@ percentile = (1 - (rang - 1) / total_eleves) × 100
 │                   DESEE: DESEE de Ratoma                         │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────┐      │
-│  │ [LOGO]    GS HADJA KANFING DIANÉ                     │      │
+│  │ [LOGO]    GS myschool                     │      │
 │  │  Adresse: Quartier Hamdallaye, Ratoma               │      │
 │  │  Tél: +224622123456  |  Email: contact@gshkd.gn     │      │
 │  │  Directeur: M. Mamadou DIALLO                        │      │

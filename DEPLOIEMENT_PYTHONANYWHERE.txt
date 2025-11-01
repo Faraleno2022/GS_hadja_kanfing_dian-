@@ -4,7 +4,7 @@
 
 ✅ COMMIT GITHUB RÉUSSI
 Commit: 8de7abe
-Repository: https://github.com/Faraleno2022/GS_hadja_kanfing_dian-.git
+Repository: https://github.com/Faraleno2022/myschool-.git
 
 ========================================
 📋 ÉTAPES DE DÉPLOIEMENT
@@ -20,7 +20,7 @@ Repository: https://github.com/Faraleno2022/GS_hadja_kanfing_dian-.git
 
 3️⃣ NAVIGUER VERS LE PROJET
    Commande:
-   cd ~/GS_hadja_kanfing_dian--main
+   cd ~/myschool--main
 
 4️⃣ RÉCUPÉRER LES MODIFICATIONS
    Commande:
@@ -119,10 +119,10 @@ SOLUTION:
 ========================================
 
 # Vérifier les fichiers statiques
-ls -lh ~/GS_hadja_kanfing_dian--main/static/images/optimized/
+ls -lh ~/myschool--main/static/images/optimized/
 
 # Vérifier le statut Git
-cd ~/GS_hadja_kanfing_dian--main
+cd ~/myschool--main
 git status
 
 # Voir les derniers commits

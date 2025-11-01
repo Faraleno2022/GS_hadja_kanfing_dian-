@@ -1,75 +1,218 @@
 from django import forms
-from eleves.models import Classe
-from .models import MatiereClasse, Evaluation
-from datetime import date
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, ThemeBulletin
 
-
-class ClasseNotesForm(forms.ModelForm):
-    """Formulaire pour créer une classe depuis le module Notes.
-    - L'école est déduite de l'utilisateur (non exposée dans le formulaire).
-    - Le niveau est pré-sélectionné via l'URL (valeur initiale/readonly côté template).
-    """
+class ClasseNoteForm(forms.ModelForm):
+    """Formulaire pour créer/modifier une classe"""
+    
     class Meta:
-        model = Classe
-        fields = ['nom', 'niveau', 'annee_scolaire', 'capacite_max']
+        model = ClasseNote
+        fields = ['nom', 'niveau', 'annee_scolaire', 'effectif', 'description', 'actif']
         widgets = {
-            'nom': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "Nom de la classe (ex: 7ème A)"}),
-            'niveau': forms.Select(attrs={'class': 'form-select'}),
-            'annee_scolaire': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '2024-2025', 'pattern': r'^\d{4}-\d{4}$'}),
-            'capacite_max': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '60'}),
+            'nom': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex: 7ème A, CM2 B, etc.'
+            }),
+            'niveau': forms.Select(attrs={
+                'class': 'form-select'
+            }),
+            'annee_scolaire': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': '2024-2025'
+            }),
+            'effectif': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '0',
+                'placeholder': 'Nombre d\'élèves'
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': 'Description optionnelle de la classe...'
+            }),
+            'actif': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
         }
 
-    def __init__(self, *args, **kwargs):
-        niveau_initial = kwargs.pop('niveau_initial', None)
-        super().__init__(*args, **kwargs)
-        # Définir l'année scolaire par défaut si création
-        if not self.instance.pk:
-            current_year = date.today().year
-            if date.today().month >= 9:
-                self.fields['annee_scolaire'].initial = f"{current_year}-{current_year + 1}"
-            else:
-                self.fields['annee_scolaire'].initial = f"{current_year - 1}-{current_year}"
-        # Si niveau préfixé par l'URL
-        if niveau_initial:
-            self.fields['niveau'].initial = niveau_initial
-
-
-class MatiereClasseForm(forms.ModelForm):
+class MatiereNoteForm(forms.ModelForm):
+    """Formulaire pour créer/modifier une matière"""
+    
+    # Rendre le coefficient optionnel
+    coefficient = forms.DecimalField(
+        required=False,
+        max_digits=4,
+        decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'placeholder': '1.0 (optionnel pour Maternelle/Primaire)',
+            'min': '0.5',
+            'step': '0.5'
+        })
+    )
+    
     class Meta:
-        model = MatiereClasse
-        fields = ['nom', 'coefficient', 'actif']
+        model = MatiereNote
+        fields = ['nom', 'code', 'coefficient', 'description', 'actif']
         widgets = {
-            'nom': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom de la matière'}),
-            'coefficient': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '20'}),
-            'actif': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'nom': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex: Mathématiques, Français, etc.'
+            }),
+            'code': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex: MATH, FR, ANG'
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'Description optionnelle...'
+            }),
+            'actif': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
         }
-
-    def clean_nom(self):
-        nom = (self.cleaned_data.get('nom') or '').strip()
-        if not nom:
-            raise forms.ValidationError("Le nom de la matière est requis.")
-        return nom
-
 
 class EvaluationForm(forms.ModelForm):
+    """Formulaire pour créer/modifier une évaluation"""
+    
     class Meta:
         model = Evaluation
-        fields = ['titre', 'date', 'trimestre', 'categorie', 'coefficient']
+        fields = ['titre', 'type_evaluation', 'periode', 'date_evaluation', 'note_sur', 'coefficient', 'description']
         widgets = {
-            'titre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Devoir n°1'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'trimestre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'T1 / T2 / T3'}),
-            'categorie': forms.Select(attrs={'class': 'form-select'}),
-            'coefficient': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '20'}),
+            'titre': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex: Devoir 1, Composition Trimestre 1'
+            }),
+            'type_evaluation': forms.Select(attrs={
+                'class': 'form-select'
+            }),
+            'periode': forms.Select(attrs={
+                'class': 'form-select'
+            }),
+            'date_evaluation': forms.DateInput(attrs={
+                'class': 'form-control',
+                'type': 'date'
+            }),
+            'note_sur': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'step': '0.5',
+                'placeholder': '20'
+            }),
+            'coefficient': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '0.5',
+                'step': '0.5',
+                'placeholder': '1.0'
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'Description optionnelle...'
+            }),
+        }
+
+class NoteEleveForm(forms.ModelForm):
+    """Formulaire pour saisir une note"""
+    
+    class Meta:
+        model = NoteEleve
+        fields = ['note', 'absent', 'commentaire']
+        widgets = {
+            'note': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '0',
+                'step': '0.25'
+            }),
+            'absent': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
+            'commentaire': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 2,
+                'placeholder': 'Commentaire optionnel...'
+            }),
         }
 
 
-class NotesBulkForm(forms.Form):
-    """Saisie rapide des notes par matricule.
-    Format par ligne: MATRICULE;NOTE[;OBSERVATION]
-    Exemple: PN3-042;14.5;Bon travail
-    """
-    donnees = forms.CharField(
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 10, 'placeholder': 'MATRICULE;NOTE;OBS (optionnel)\n...'}),
-        label="Coller les lignes matricule;note;obs (optionnel)",
-    )
+class ThemeBulletinForm(forms.ModelForm):
+    """Formulaire pour personnaliser les couleurs du bulletin"""
+    
+    class Meta:
+        model = ThemeBulletin
+        fields = [
+            'nom', 'couleur_primaire', 'couleur_secondaire', 'couleur_accent',
+            'couleur_texte_principal', 'couleur_texte_secondaire',
+            'couleur_fond_header', 'couleur_fond_tableau', 'couleur_fond_carte',
+            'couleur_bordure', 'couleur_mention_tb', 'couleur_mention_bien',
+            'couleur_mention_ab', 'couleur_mention_passable', 'couleur_mention_insuffisant',
+            'actif', 'par_defaut'
+        ]
+        widgets = {
+            'nom': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex: Thème Bleu, Thème Vert, etc.'
+            }),
+            'couleur_primaire': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_secondaire': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_accent': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_texte_principal': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_texte_secondaire': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_fond_header': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_fond_tableau': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_fond_carte': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_bordure': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_mention_tb': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_mention_bien': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_mention_ab': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_mention_passable': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'couleur_mention_insuffisant': forms.TextInput(attrs={
+                'class': 'form-control',
+                'type': 'color'
+            }),
+            'actif': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
+            'par_defaut': forms.CheckboxInput(attrs={
+                'class': 'form-check-input'
+            }),
+        }

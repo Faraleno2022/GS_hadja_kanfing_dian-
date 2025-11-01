@@ -7,7 +7,7 @@
     "user": 1,
     "content_type": 7,
     "object_id": "1",
-    "object_repr": "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA",
+    "object_repr": "GROUPE SCOLAIRE myschool-SONFONIA",
     "action_flag": 1,
     "change_message": "[{\"added\": {}}]"
   }
@@ -33,7 +33,7 @@
     "user": 1,
     "content_type": 12,
     "object_id": "1",
-    "object_repr": "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA - Maternelle (2025-2026)",
+    "object_repr": "GROUPE SCOLAIRE myschool-SONFONIA - Maternelle (2025-2026)",
     "action_flag": 1,
     "change_message": "[{\"added\": {}}]"
   }
@@ -133,7 +133,7 @@
   "model": "eleves.ecole",
   "pk": 1,
   "fields": {
-    "nom": "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA",
+    "nom": "GROUPE SCOLAIRE myschool-SONFONIA",
     "adresse": "Sonfonia cité orange\r\nCommune de Sonfonia",
     "telephone": "+224620643009",
     "email": null,

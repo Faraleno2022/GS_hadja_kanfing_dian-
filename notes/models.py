@@ -1,252 +1,324 @@
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
-from eleves.models import Classe, Ecole
-from eleves.models import Eleve
+from django.contrib.auth.models import User
+from eleves.models import Ecole
+from decimal import Decimal
 
-
-class MatiereClasse(models.Model):
-    """Matière définie pour une classe donnée avec un coefficient.
-    - Les matières peuvent varier d'une classe à l'autre, même au sein d'un même niveau.
-    - Les coefficients sont bornés (1 à 20 par défaut) mais ajustables plus tard si besoin.
-    """
-    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='matieres_classes')
-    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='matieres')
-    nom = models.CharField(max_length=100, verbose_name="Nom de la matière")
-    coefficient = models.PositiveIntegerField(
-        default=1,
-        validators=[MinValueValidator(1), MaxValueValidator(20)],
-        verbose_name="Coefficient"
-    )
+class ClasseNote(models.Model):
+    """Classe pour la gestion des notes"""
+    NIVEAUX_CHOICES = [
+        ('GARDERIE', 'Garderie'),
+        ('MATERNELLE', 'Maternelle'),
+        ('PRIMAIRE_1', 'Primaire 1ère'),
+        ('PRIMAIRE_2', 'Primaire 2ème'),
+        ('PRIMAIRE_3', 'Primaire 3ème'),
+        ('PRIMAIRE_4', 'Primaire 4ème'),
+        ('PRIMAIRE_5', 'Primaire 5ème'),
+        ('PRIMAIRE_6', 'Primaire 6ème'),
+        ('COLLEGE_7', 'Collège 7ème'),
+        ('COLLEGE_8', 'Collège 8ème'),
+        ('COLLEGE_9', 'Collège 9ème'),
+        ('COLLEGE_10', 'Collège 10ème'),
+        ('LYCEE_11', 'Lycée 11ème'),
+        ('LYCEE_12', 'Lycée 12ème'),
+        ('TERMINALE', 'Terminale'),
+    ]
+    
+    NIVEAU_ENSEIGNEMENT_CHOICES = [
+        ('MATERNELLE', 'Maternelle'),
+        ('PRIMAIRE', 'Primaire'),
+        ('SECONDAIRE', 'Secondaire'),
+    ]
+    
+    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='classes_notes')
+    nom = models.CharField(max_length=100, verbose_name="Nom de la classe")
+    niveau = models.CharField(max_length=20, choices=NIVEAUX_CHOICES, verbose_name="Niveau")
+    niveau_enseignement = models.CharField(max_length=20, choices=NIVEAU_ENSEIGNEMENT_CHOICES, default='SECONDAIRE', verbose_name="Niveau d'enseignement")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire", help_text="Format: 2024-2025")
+    effectif = models.PositiveIntegerField(default=0, verbose_name="Effectif")
+    description = models.TextField(blank=True, null=True, verbose_name="Description")
     actif = models.BooleanField(default=True, verbose_name="Active")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='classes_notes_creees')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
-
+    
     class Meta:
-        verbose_name = "Matière de classe"
-        verbose_name_plural = "Matières de classe"
-        unique_together = ("classe", "nom")
-        indexes = [
-            models.Index(fields=["ecole", "classe"]),
-            models.Index(fields=["classe", "nom"]),
-        ]
-
+        verbose_name = "Classe (Notes)"
+        verbose_name_plural = "Classes (Notes)"
+        ordering = ['niveau', 'nom']
+        unique_together = ['ecole', 'nom', 'annee_scolaire']
+    
     def __str__(self):
-        return f"{self.nom} ({self.classe})"
+        return f"{self.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
 
-
-class BaremeMatiere(models.Model):
-    """Barème configurable des matières par série/niveau.
-    Permet de définir des coefficients spécifiques par école et/ou année scolaire.
-
-    Clés principales:
-    - ecole: optionnel (None = barème global)
-    - annee_scolaire: optionnel (None = valable pour toutes les années)
-    - code_serie: ex: 'COLLEGE', 'L11SL', 'L11SS', 'L11SSII', 'L12SS', 'L12SM', 'L12SE', 'TERMINALE'
-      (On peut aussi utiliser 'CN7', 'CN8', etc., mais on recommande les grandes familles)
-    - nom_matiere: ex: 'Mathématiques'
-    """
-
-    ecole = models.ForeignKey(
-        Ecole, on_delete=models.CASCADE, related_name="baremes", blank=True, null=True
-    )
-    annee_scolaire = models.CharField(
-        max_length=9, blank=True, null=True, help_text="Format: 2025-2026 (laisser vide pour toutes années)"
-    )
-    code_serie = models.CharField(
-        max_length=20,
-        help_text="Ex: COLLEGE, L11SL, L11SS, L11SSII, L12SS, L12SM, L12SE, TERMINALE",
-        db_index=True,
-    )
-    nom_matiere = models.CharField(max_length=100, db_index=True)
-    coefficient = models.PositiveIntegerField(
-        default=1, validators=[MinValueValidator(0), MaxValueValidator(40)]
-    )
-    actif = models.BooleanField(default=True)
+class MatiereNote(models.Model):
+    """Matière avec coefficient pour une classe"""
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='matieres')
+    nom = models.CharField(max_length=100, verbose_name="Nom de la matière")
+    code = models.CharField(max_length=20, verbose_name="Code", help_text="Ex: MATH, FR, ANG")
+    coefficient = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, verbose_name="Coefficient")
+    description = models.TextField(blank=True, null=True, verbose_name="Description")
+    actif = models.BooleanField(default=True, verbose_name="Active")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='matieres_notes_creees')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
-
+    
     class Meta:
-        verbose_name = "Barème matière"
-        verbose_name_plural = "Barèmes matières"
-        unique_together = (
-            ("ecole", "annee_scolaire", "code_serie", "nom_matiere"),
-        )
-        indexes = [
-            models.Index(fields=["code_serie", "nom_matiere"]),
-            models.Index(fields=["ecole", "annee_scolaire"]),
-        ]
-
+        verbose_name = "Matière (Notes)"
+        verbose_name_plural = "Matières (Notes)"
+        ordering = ['nom']
+        unique_together = ['classe', 'code']
+    
     def __str__(self):
-        scope = self.ecole.nom if self.ecole else "Global"
-        year = self.annee_scolaire or "Toutes années"
-        return f"{scope} / {year} / {self.code_serie} — {self.nom_matiere}: {self.coefficient}"
-
+        return f"{self.nom} ({self.code}) - Coef: {self.coefficient}"
 
 class Evaluation(models.Model):
-    """Évaluation (contrôle, devoir, examen) pour une classe et une matière.
-    Permet de regrouper un ensemble de notes.
-    """
-    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='evaluations')
-    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='evaluations')
-    matiere = models.ForeignKey(MatiereClasse, on_delete=models.CASCADE, related_name='evaluations')
-    titre = models.CharField(max_length=120, verbose_name='Titre')
-    date = models.DateField(blank=True, null=True)
-    trimestre = models.CharField(max_length=16, blank=True, null=True, help_text="Ex: T1, T2, T3")
-    # Nouvelle catégorisation explicite: COURS (contrôles continus) vs COMPOSITION (examens)
-    CATEGORIE_CHOICES = (
-        ("COURS", "Cours"),
-        ("COMPOSITION", "Composition"),
-    )
-    categorie = models.CharField(
-        max_length=16,
-        choices=CATEGORIE_CHOICES,
-        default="COURS",
-        db_index=True,
-        help_text="Type d'évaluation: Cours (contrôle continu) ou Composition (examen)"
-    )
-    coefficient = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1), MaxValueValidator(20)])
-    annee_scolaire = models.CharField(max_length=9, blank=True, null=True, help_text="2025-2026")
-    cree_par = models.ForeignKey('auth.User', on_delete=models.SET_NULL, blank=True, null=True, related_name='evaluations_creees')
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Évaluation'
-        verbose_name_plural = 'Évaluations'
-        indexes = [
-            models.Index(fields=['ecole', 'classe', 'matiere']),
-            models.Index(fields=['annee_scolaire']),
-            models.Index(fields=['categorie']),
-        ]
-
-    def __str__(self):
-        return f"{self.titre} — {self.classe} / {self.matiere.nom}"
-
-
-class Note(models.Model):
-    """Note d'un élève pour une évaluation.
-    Saisie prioritairement par matricule.
-    """
-    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='notes')
-    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='notes')
-    matiere = models.ForeignKey(MatiereClasse, on_delete=models.CASCADE, related_name='notes')
-    evaluation = models.ForeignKey(Evaluation, on_delete=models.CASCADE, related_name='notes')
-    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='notes')
-    matricule = models.CharField(max_length=20, db_index=True)
-    note = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(0), MaxValueValidator(20)])
-    observation = models.CharField(max_length=255, blank=True, null=True)
-    date_saisie = models.DateTimeField(auto_now_add=True)
-    saisie_par = models.ForeignKey('auth.User', on_delete=models.SET_NULL, blank=True, null=True, related_name='notes_saisies')
-
-    class Meta:
-        verbose_name = 'Note'
-        verbose_name_plural = 'Notes'
-        unique_together = (('evaluation', 'eleve'),)
-        indexes = [
-            models.Index(fields=['ecole', 'classe', 'matiere']),
-            models.Index(fields=['evaluation']),
-            models.Index(fields=['matricule']),
-        ]
-
-    def get_appreciation_automatique(self):
-        """Retourne l'appréciation automatique selon le barème de l'école."""
-        # Chercher d'abord un barème spécifique à l'école
-        bareme = BaremeAppreciation.objects.filter(
-            ecole=self.ecole, actif=True
-        ).first()
-        
-        # Si pas de barème spécifique, utiliser le barème global
-        if not bareme:
-            bareme = BaremeAppreciation.objects.filter(
-                ecole__isnull=True, actif=True
-            ).first()
-        
-        if bareme:
-            return bareme.get_appreciation(self.note)
-        
-        # Barème par défaut si aucun barème configuré
-        if self.note >= 16:
-            return "Très bien"
-        elif self.note >= 14:
-            return "Bien"
-        elif self.note >= 12:
-            return "Assez bien"
-        elif self.note >= 10:
-            return "Passable"
-        else:
-            return "Insuffisant"
-
-    @property
-    def appreciation_finale(self):
-        """Retourne l'appréciation finale : observation personnalisée ou automatique."""
-        return self.observation or self.get_appreciation_automatique()
-
-    def __str__(self):
-        return f"{self.eleve.nom_complet} — {self.note}/20 ({self.evaluation.titre})"
-
-
-class BaremeAppreciation(models.Model):
-    """Barème d'appréciation automatique selon les notes.
-    Permet de définir des seuils pour générer automatiquement des appréciations.
-    """
-    ecole = models.ForeignKey(
-        Ecole, on_delete=models.CASCADE, related_name="baremes_appreciation", 
-        blank=True, null=True, help_text="Laisser vide pour un barème global"
-    )
-    nom = models.CharField(max_length=100, verbose_name="Nom du barème")
+    """Évaluation pour une matière"""
+    TYPE_CHOICES = [
+        ('DEVOIR', 'Devoir'),
+        ('COMPOSITION', 'Composition'),
+        ('EXAMEN', 'Examen'),
+        ('CONTROLE', 'Contrôle'),
+        ('INTERROGATION', 'Interrogation'),
+    ]
+    
+    PERIODE_CHOICES = [
+        # Périodes mensuelles (système guinéen)
+        ('OCTOBRE', 'Octobre'),
+        ('NOVEMBRE', 'Novembre'),
+        ('DECEMBRE', 'Décembre'),
+        ('JANVIER', 'Janvier'),
+        ('FEVRIER', 'Février'),
+        ('MARS', 'Mars'),
+        ('AVRIL', 'Avril'),
+        ('MAI', 'Mai'),
+        ('JUIN', 'Juin'),
+        # Périodes trimestrielles
+        ('TRIMESTRE_1', 'Trimestre 1'),
+        ('TRIMESTRE_2', 'Trimestre 2'),
+        ('TRIMESTRE_3', 'Trimestre 3'),
+        # Périodes semestrielles
+        ('SEMESTRE_1', 'Semestre 1'),
+        ('SEMESTRE_2', 'Semestre 2'),
+    ]
+    
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='evaluations')
+    titre = models.CharField(max_length=200, verbose_name="Titre de l'évaluation")
+    type_evaluation = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type")
+    periode = models.CharField(max_length=20, choices=PERIODE_CHOICES, verbose_name="Période")
+    date_evaluation = models.DateField(verbose_name="Date de l'évaluation")
+    note_sur = models.DecimalField(max_digits=5, decimal_places=2, default=20.0, verbose_name="Note sur")
+    coefficient = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, verbose_name="Coefficient")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
-    actif = models.BooleanField(default=True, verbose_name="Actif")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='evaluations_creees')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
-
+    
     class Meta:
-        verbose_name = "Barème d'appréciation"
-        verbose_name_plural = "Barèmes d'appréciation"
-        indexes = [
-            models.Index(fields=["ecole", "actif"]),
-        ]
-
+        verbose_name = "Évaluation"
+        verbose_name_plural = "Évaluations"
+        ordering = ['-date_evaluation']
+    
     def __str__(self):
-        scope = self.ecole.nom if self.ecole else "Global"
-        return f"{scope} — {self.nom}"
+        return f"{self.titre} - {self.matiere.nom} ({self.get_periode_display()})"
 
-    def get_appreciation(self, note):
-        """Retourne l'appréciation correspondant à une note selon ce barème."""
-        seuils = self.seuils.filter(actif=True).order_by('-note_min')
-        for seuil in seuils:
-            if note >= seuil.note_min:
-                return seuil.appreciation
-        return "Non évalué"
-
-
-class SeuilAppreciation(models.Model):
-    """Seuil d'appréciation pour un barème donné.
-    Ex: note >= 16 → "Très bien", note >= 14 → "Bien", etc.
-    """
-    bareme = models.ForeignKey(
-        BaremeAppreciation, on_delete=models.CASCADE, related_name="seuils"
-    )
-    note_min = models.DecimalField(
-        max_digits=5, decimal_places=2, 
-        validators=[MinValueValidator(0), MaxValueValidator(20)],
-        verbose_name="Note minimum"
-    )
-    appreciation = models.CharField(max_length=100, verbose_name="Appréciation")
-    couleur = models.CharField(
-        max_length=7, blank=True, null=True, 
-        help_text="Code couleur hex (ex: #28a745)", verbose_name="Couleur"
-    )
-    actif = models.BooleanField(default=True, verbose_name="Actif")
-    ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre d'affichage")
-
+class NoteEleve(models.Model):
+    """Note d'un élève pour une évaluation"""
+    from eleves.models import Eleve
+    
+    evaluation = models.ForeignKey(Evaluation, on_delete=models.CASCADE, related_name='notes')
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='notes_evaluations')
+    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note obtenue")
+    absent = models.BooleanField(default=False, verbose_name="Absent")
+    commentaire = models.TextField(blank=True, null=True, verbose_name="Commentaire")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='notes_saisies')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
     class Meta:
-        verbose_name = "Seuil d'appréciation"
-        verbose_name_plural = "Seuils d'appréciation"
-        unique_together = (('bareme', 'note_min'),)
-        ordering = ['-note_min']
-        indexes = [
-            models.Index(fields=["bareme", "actif", "-note_min"]),
-        ]
-
+        verbose_name = "Note élève"
+        verbose_name_plural = "Notes élèves"
+        ordering = ['eleve__nom', 'eleve__prenom']
+        unique_together = ['evaluation', 'eleve']
+    
     def __str__(self):
-        return f"{self.bareme.nom} — {self.note_min}+ : {self.appreciation}"
+        if self.absent:
+            return f"{self.eleve} - Absent"
+        return f"{self.eleve} - {self.note}/{self.evaluation.note_sur}"
+    
+    @property
+    def note_sur_20(self):
+        """Convertir la note sur 20"""
+        if self.absent:
+            return 0
+        return (self.note / self.evaluation.note_sur) * 20
+
+
+class NoteMensuelle(models.Model):
+    """Notes mensuelles pour le système guinéen (Octobre à Mai)"""
+    from eleves.models import Eleve
+    
+    MOIS_CHOICES = [
+        ('OCTOBRE', 'Octobre'),
+        ('NOVEMBRE', 'Novembre'),
+        ('DECEMBRE', 'Décembre'),
+        ('JANVIER', 'Janvier'),
+        ('FEVRIER', 'Février'),
+        ('MARS', 'Mars'),
+        ('AVRIL', 'Avril'),
+        ('MAI', 'Mai'),
+    ]
+    
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='notes_mensuelles')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='notes_mensuelles')
+    mois = models.CharField(max_length=20, choices=MOIS_CHOICES, verbose_name="Mois")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
+    absent = models.BooleanField(default=False, verbose_name="Absent")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Note mensuelle"
+        verbose_name_plural = "Notes mensuelles"
+        ordering = ['eleve', 'matiere', 'mois']
+        unique_together = ['eleve', 'matiere', 'mois', 'annee_scolaire']
+    
+    def __str__(self):
+        if self.absent:
+            return f"{self.eleve} - {self.matiere.nom} - {self.get_mois_display()} - Absent"
+        return f"{self.eleve} - {self.matiere.nom} - {self.get_mois_display()} - {self.note}/20"
+
+
+class CompositionNote(models.Model):
+    """Notes de composition pour le système guinéen"""
+    from eleves.models import Eleve
+    
+    PERIODE_CHOICES = [
+        ('SEMESTRE_1', 'Semestre 1'),
+        ('SEMESTRE_2', 'Semestre 2'),
+        ('TRIMESTRE_1', 'Trimestre 1'),
+        ('TRIMESTRE_2', 'Trimestre 2'),
+        ('TRIMESTRE_3', 'Trimestre 3'),
+    ]
+    
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='compositions')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='compositions')
+    periode = models.CharField(max_length=20, choices=PERIODE_CHOICES, verbose_name="Période")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
+    absent = models.BooleanField(default=False, verbose_name="Absent")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Note de composition"
+        verbose_name_plural = "Notes de composition"
+        ordering = ['eleve', 'matiere', 'periode']
+        unique_together = ['eleve', 'matiere', 'periode', 'annee_scolaire']
+    
+    def __str__(self):
+        if self.absent:
+            return f"{self.eleve} - {self.matiere.nom} - {self.get_periode_display()} - Absent"
+        return f"{self.eleve} - {self.matiere.nom} - {self.get_periode_display()} - {self.note}/20"
+
+
+class AppreciationMaternelle(models.Model):
+    """Appréciations qualitatives pour la maternelle"""
+    from eleves.models import Eleve
+    
+    APPRECIATION_CHOICES = [
+        ('TRES_BIEN_ACQUIS', 'Très Bien Acquis'),
+        ('BIEN_ACQUIS', 'Bien Acquis'),
+        ('EN_COURS', 'En Cours d\'Acquisition'),
+        ('NON_ACQUIS', 'Non Acquis'),
+    ]
+    
+    TRIMESTRE_CHOICES = [
+        ('TRIMESTRE_1', 'Trimestre 1'),
+        ('TRIMESTRE_2', 'Trimestre 2'),
+        ('TRIMESTRE_3', 'Trimestre 3'),
+    ]
+    
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='appreciations_maternelle')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='appreciations_maternelle')
+    trimestre = models.CharField(max_length=20, choices=TRIMESTRE_CHOICES, verbose_name="Trimestre")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    appreciation = models.CharField(max_length=20, choices=APPRECIATION_CHOICES, verbose_name="Appréciation")
+    commentaire = models.TextField(blank=True, null=True, verbose_name="Commentaire")
+    absent = models.BooleanField(default=False, verbose_name="Absent")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Appréciation maternelle"
+        verbose_name_plural = "Appréciations maternelle"
+        ordering = ['eleve', 'matiere', 'trimestre']
+        unique_together = ['eleve', 'matiere', 'trimestre', 'annee_scolaire']
+    
+    def __str__(self):
+        if self.absent:
+            return f"{self.eleve} - {self.matiere.nom} - {self.get_trimestre_display()} - Absent"
+        return f"{self.eleve} - {self.matiere.nom} - {self.get_trimestre_display()} - {self.get_appreciation_display()}"
+
+
+class ThemeBulletin(models.Model):
+    """Personnalisation des couleurs du bulletin"""
+    
+    nom = models.CharField(max_length=100, verbose_name="Nom du thème")
+    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='themes_bulletin', null=True, blank=True)
+    
+    # Couleurs principales
+    couleur_primaire = models.CharField(max_length=7, default='#2c3e50', verbose_name="Couleur primaire", help_text="Ex: #2c3e50")
+    couleur_secondaire = models.CharField(max_length=7, default='#3498db', verbose_name="Couleur secondaire", help_text="Ex: #3498db")
+    couleur_accent = models.CharField(max_length=7, default='#e74c3c', verbose_name="Couleur accent", help_text="Ex: #e74c3c")
+    
+    # Couleurs de texte
+    couleur_texte_principal = models.CharField(max_length=7, default='#2c3e50', verbose_name="Texte principal")
+    couleur_texte_secondaire = models.CharField(max_length=7, default='#7f8c8d', verbose_name="Texte secondaire")
+    
+    # Couleurs de fond
+    couleur_fond_header = models.CharField(max_length=7, default='#2c3e50', verbose_name="Fond en-tête")
+    couleur_fond_tableau = models.CharField(max_length=7, default='#ecf0f1', verbose_name="Fond tableau")
+    couleur_fond_carte = models.CharField(max_length=7, default='#ffffff', verbose_name="Fond cartes")
+    
+    # Couleurs des bordures
+    couleur_bordure = models.CharField(max_length=7, default='#bdc3c7', verbose_name="Bordures")
+    
+    # Couleurs des mentions
+    couleur_mention_tb = models.CharField(max_length=7, default='#27ae60', verbose_name="Mention Très Bien")
+    couleur_mention_bien = models.CharField(max_length=7, default='#3498db', verbose_name="Mention Bien")
+    couleur_mention_ab = models.CharField(max_length=7, default='#f39c12', verbose_name="Mention Assez Bien")
+    couleur_mention_passable = models.CharField(max_length=7, default='#e67e22', verbose_name="Mention Passable")
+    couleur_mention_insuffisant = models.CharField(max_length=7, default='#e74c3c', verbose_name="Mention Insuffisant")
+    
+    # Paramètres
+    actif = models.BooleanField(default=False, verbose_name="Thème actif")
+    par_defaut = models.BooleanField(default=False, verbose_name="Thème par défaut")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Thème de bulletin"
+        verbose_name_plural = "Thèmes de bulletin"
+        ordering = ['-par_defaut', '-actif', 'nom']
+    
+    def __str__(self):
+        return f"{self.nom}" + (" (Actif)" if self.actif else "") + (" (Par défaut)" if self.par_defaut else "")
+    
+    def save(self, *args, **kwargs):
+        # Si ce thème est marqué comme par défaut, désactiver les autres
+        if self.par_defaut:
+            ThemeBulletin.objects.filter(ecole=self.ecole, par_defaut=True).exclude(id=self.id).update(par_defaut=False)
+        super().save(*args, **kwargs)

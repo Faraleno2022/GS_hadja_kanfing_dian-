@@ -147,7 +147,7 @@ def optimize_all_images():
     """Optimiser toutes les images configurées."""
     ensure_directories()
     
-    print("🖼️ Optimisation des images - École Moderne HADJA KANFING DIANÉ")
+    print("🖼️ Optimisation des images - myschool")
     print("=" * 60)
     
     total_original_size = 0
@@ -253,7 +253,7 @@ def create_responsive_versions():
 def show_help():
     """Afficher l'aide."""
     print("""
-🖼️ Optimiseur d'Images - École Moderne HADJA KANFING DIANÉ
+🖼️ Optimiseur d'Images - myschool
 
 Usage:
     python optimize_images.py [commande]

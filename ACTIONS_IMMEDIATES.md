@@ -43,7 +43,7 @@
 ssh myschoolgn@ssh.pythonanywhere.com
 
 # 2. Aller dans le projet
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # 3. Sauvegarder page d'accueil
 cp templates/home.html templates/home.html.backup
@@ -141,13 +141,13 @@ crontab -e
 **Ajouter ces lignes:**
 ```cron
 # Backup quotidien à 3h du matin
-0 3 * * * cd ~/GS_hadja_kanfing_dian- && python manage.py dumpdata > ~/backups/backup_$(date +\%Y\%m\%d).json
+0 3 * * * cd ~/myschool- && python manage.py dumpdata > ~/backups/backup_$(date +\%Y\%m\%d).json
 
 # Nettoyage anciens backups (garder 30 jours)
 0 4 * * * find ~/backups -name "backup_*.json" -mtime +30 -delete
 
 # Nettoyage sessions expirées
-0 2 * * * cd ~/GS_hadja_kanfing_dian- && python manage.py clearsessions
+0 2 * * * cd ~/myschool- && python manage.py clearsessions
 ```
 
 ```bash
@@ -155,7 +155,7 @@ crontab -e
 mkdir -p ~/backups
 
 # Tester backup manuel
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python manage.py dumpdata > ~/backups/backup_test.json
 ls -lh ~/backups/
 ```

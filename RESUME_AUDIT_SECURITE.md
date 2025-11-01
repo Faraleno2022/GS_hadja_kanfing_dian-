@@ -1,7 +1,7 @@
 # 🔒 RÉSUMÉ EXÉCUTIF - AUDIT DE SÉCURITÉ MYSCHOOL GN
 **Date:** 07 Octobre 2025  
 **Auditeur:** Assistant Sécurité IA  
-**Projet:** Système de Gestion Scolaire GS Hadja Kanfing Diané
+**Projet:** Système de Gestion Scolaire GS myschool
 
 ---
 
@@ -147,7 +147,7 @@
 ssh myschoolgn@ssh.pythonanywhere.com
 
 # 2. Mise à jour code
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 git pull origin main
 
 # 3. Créer .env (IMPORTANT!)
@@ -222,7 +222,7 @@ touch /var/www/myschoolgn_pythonanywhere_com_wsgi.py
 
 2. **Analyser Logs**
    ```bash
-   tail -100 ~/GS_hadja_kanfing_dian-/logs/security.log
+   tail -100 ~/myschool-/logs/security.log
    ```
 
 3. **Bloquer IP Suspecte**

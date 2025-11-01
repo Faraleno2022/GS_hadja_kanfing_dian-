@@ -11,7 +11,7 @@ django.db.utils.OperationalError: no such table: administration_systemlog
 
 ### 1. **Vérifier l'État des Migrations**
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python manage.py showmigrations administration
 ```
 
@@ -74,7 +74,7 @@ python manage.py shell -c "from administration.models import SystemLog; print(Sy
 
 ### **Option 1 : Migration Fake puis Réelle**
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # Marquer la migration initiale comme appliquée (fake)
 python manage.py migrate administration 0001 --fake-initial
@@ -85,7 +85,7 @@ python manage.py migrate administration
 
 ### **Option 2 : Recréer les Migrations**
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # Supprimer les migrations problématiques
 rm administration/migrations/0002_alter_systemlog_action.py
@@ -99,7 +99,7 @@ python manage.py migrate
 
 ### **Option 3 : Force la Création**
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # Forcer la création de toutes les tables
 python manage.py migrate --run-syncdb
@@ -114,7 +114,7 @@ python manage.py migrate --fake
 
 ```bash
 # 1. Aller dans le répertoire
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # 2. Vérifier l'état
 python manage.py showmigrations

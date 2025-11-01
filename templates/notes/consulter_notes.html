@@ -1,0 +1,497 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load notes_extras %}
+
+{% block title %}Consulter les Notes{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+    }
+    
+    .stats-card h3 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    
+    .stats-card p {
+        margin: 0;
+        opacity: 0.9;
+    }
+    
+    .filter-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    
+    .table-card {
+        background: white;
+        border-radius: 15px;
+        padding: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .table thead {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+    }
+    
+    .table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .badge-present {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+    }
+    
+    .badge-absent {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+    }
+    
+    .badge-non-saisi {
+        background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+    }
+    
+    /* Styles pour le podium */
+    .table tbody tr:has(td:first-child:contains("🥇")) {
+        background-color: #fff3cd !important;
+    }
+    
+    .rang-1 {
+        background-color: #fff3cd !important;
+        font-weight: bold;
+    }
+    
+    .rang-2 {
+        background-color: #e7f3ff !important;
+    }
+    
+    .rang-3 {
+        background-color: #ffe7d9 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3"><i class="fas fa-eye me-2"></i>Consulter les Notes</h1>
+        <div>
+            <a href="{% url 'notes:saisir_notes' %}" class="btn btn-primary">
+                <i class="fas fa-edit me-2"></i>Saisir des Notes
+            </a>
+            <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Retour
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="filter-card">
+        <h4 class="mb-4"><i class="fas fa-filter me-2"></i>Filtres de Recherche</h4>
+        <form method="get" id="filterForm">
+            <div class="row">
+                <!-- Classe -->
+                <div class="col-md-12 mb-3">
+                    <label for="classe_id" class="form-label">
+                        <i class="fas fa-school me-1"></i>Classe *
+                    </label>
+                    <select name="classe_id" id="classe_id" class="form-select" required onchange="this.form.submit()">
+                        <option value="">Sélectionner une classe</option>
+                        {% for classe in classes %}
+                            <option value="{{ classe.id }}" {% if classe_selectionnee and classe.id == classe_selectionnee.id %}selected{% endif %}>
+                                {{ classe.nom }} - {{ classe.annee_scolaire }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {% if statistiques %}
+    <!-- Statistiques -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <h3>{{ statistiques.moyenne }}</h3>
+                <p><i class="fas fa-chart-line me-2"></i>Moyenne de Classe</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);">
+                <h3>{{ statistiques.note_max }}</h3>
+                <p><i class="fas fa-arrow-up me-2"></i>Note Maximale</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
+                <h3>{{ statistiques.note_min }}</h3>
+                <p><i class="fas fa-arrow-down me-2"></i>Note Minimale</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%);">
+                <h3>{{ statistiques.total_notes }}/{{ statistiques.total_eleves }}</h3>
+                <p><i class="fas fa-users me-2"></i>Notes Saisies</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Résumé -->
+    <div class="alert alert-info mb-4">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Résumé:</strong> 
+        {{ statistiques.total_notes }} note(s) saisie(s), 
+        {{ statistiques.absents }} absent(s), 
+        {{ statistiques.non_saisis }} non saisi(s)
+    </div>
+    {% endif %}
+
+    {% if eleves_toutes_notes %}
+    <!-- Vue Complète: Toutes les matières -->
+    <div class="table-card">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - Trimestre 1</h4>
+            <div>
+                <button class="btn btn-success btn-sm" onclick="window.print()">
+                    <i class="fas fa-print me-1"></i>Imprimer
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="exportToExcel()">
+                    <i class="fas fa-file-excel me-1"></i>Exporter Excel
+                </button>
+            </div>
+        </div>
+        
+        <!-- Filtres Dynamiques -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label"><i class="fas fa-filter me-1"></i>Filtrer par Matière</label>
+                <select id="filtreMatiere" class="form-select form-select-sm">
+                    <option value="">Toutes les matières</option>
+                    {% for matiere in matieres %}
+                    <option value="{{ matiere.id }}">{{ matiere.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label"><i class="fas fa-calendar me-1"></i>Filtrer par Période</label>
+                <select id="filtrePeriode" class="form-select form-select-sm">
+                    <option value="">Toutes les périodes</option>
+                    <optgroup label="Mois">
+                        <option value="OCTOBRE">Octobre</option>
+                        <option value="NOVEMBRE">Novembre</option>
+                        <option value="DECEMBRE">Décembre</option>
+                        <option value="JANVIER">Janvier</option>
+                        <option value="FEVRIER">Février</option>
+                        <option value="MARS">Mars</option>
+                        <option value="AVRIL">Avril</option>
+                        <option value="MAI">Mai</option>
+                        <option value="JUIN">Juin</option>
+                    </optgroup>
+                    <optgroup label="Trimestres">
+                        <option value="TRIMESTRE_1">1er Trimestre</option>
+                        <option value="TRIMESTRE_2">2ème Trimestre</option>
+                        <option value="TRIMESTRE_3">3ème Trimestre</option>
+                    </optgroup>
+                    <optgroup label="Semestres">
+                        <option value="SEMESTRE_1">1er Semestre</option>
+                        <option value="SEMESTRE_2">2ème Semestre</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label"><i class="fas fa-list me-1"></i>Filtrer par Type</label>
+                <select id="filtreType" class="form-select form-select-sm">
+                    <option value="">Tous les types</option>
+                    <option value="mensuelle">Mensuelle</option>
+                    <option value="trimestrielle">Trimestrielle</option>
+                    <option value="semestrielle">Semestrielle</option>
+                    <option value="composition">Composition</option>
+                    <option value="appreciation">Appréciation</option>
+                    <option value="moyenne">Moyennes uniquement</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label"><i class="fas fa-search me-1"></i>Rechercher Élève</label>
+                <input type="text" id="rechercheEleve" class="form-control form-control-sm" placeholder="Nom, prénom ou matricule...">
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm" id="notesTableComplete" style="font-size: 0.85rem;">
+                <thead class="table-primary">
+                    <tr>
+                        <th rowspan="2" class="align-middle">N°</th>
+                        <th rowspan="2" class="align-middle">Matricule</th>
+                        <th rowspan="2" class="align-middle">Nom Complet</th>
+                        {% for matiere in matieres %}
+                        <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
+                            {{ matiere.nom }} (Coef: {{ matiere.coefficient }})
+                        </th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for matiere in matieres %}
+                            {% for evaluation in evaluations_par_matiere|get_item:matiere.id %}
+                            <th class="text-center periode-col" data-matiere-id="{{ matiere.id }}" data-periode="{{ evaluation.periode }}" style="font-size: 0.75rem;">
+                                {{ evaluation.titre|truncatewords:2 }}
+                            </th>
+                            {% endfor %}
+                            <th class="text-center bg-light periode-col" data-matiere-id="{{ matiere.id }}" data-periode="moyenne" style="font-size: 0.75rem;">Moy</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve_data in eleves_toutes_notes %}
+                    <tr>
+                        <td class="text-center">{{ forloop.counter }}</td>
+                        <td><small><strong>{{ eleve_data.eleve.matricule }}</strong></small></td>
+                        <td><small>{{ eleve_data.eleve.nom }} {{ eleve_data.eleve.prenom }}</small></td>
+                        {% for matiere in matieres %}
+                            {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
+                                {% for note_info in notes_matiere.notes %}
+                                <td class="text-center note-cell" data-matiere-id="{{ matiere.id }}" data-periode="{{ note_info.evaluation.periode }}">
+                                    {% if note_info.absent %}
+                                        <span class="text-danger">ABS</span>
+                                    {% elif note_info.note is not None %}
+                                        {{ note_info.note }}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                                <td class="text-center bg-light note-cell" data-matiere-id="{{ matiere.id }}" data-periode="moyenne">
+                                    {% if notes_matiere.moyenne %}
+                                        <strong class="text-primary">{{ notes_matiere.moyenne }}</strong>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            {% endwith %}
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="mt-3">
+            <p class="text-muted">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>{{ eleves_toutes_notes|length }}</strong> élève(s) - 
+                <strong>{{ matieres|length }}</strong> matière(s) - 
+                Trimestre 1 (Octobre, Novembre, Décembre + Composition)
+            </p>
+        </div>
+    </div>
+    
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Veuillez sélectionner une classe, une matière et une période pour consulter les notes.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function exportToExcel() {
+    const table = document.getElementById('notesTable') || document.getElementById('notesTableComplete');
+    let html = table.outerHTML;
+    const url = 'data:application/vnd.ms-excel,' + encodeURIComponent(html);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'notes_{{ classe_selectionnee.nom|default:"classe" }}_{{ matiere_selectionnee.nom|default:"matiere" }}.xls';
+    link.click();
+}
+
+// Filtres dynamiques pour la vue complète
+document.addEventListener('DOMContentLoaded', function() {
+    const filtreMatiere = document.getElementById('filtreMatiere');
+    const filtrePeriode = document.getElementById('filtrePeriode');
+    const filtreType = document.getElementById('filtreType');
+    const rechercheEleve = document.getElementById('rechercheEleve');
+    
+    if (!filtreMatiere || !filtrePeriode || !rechercheEleve) return;
+    
+    function appliquerFiltres() {
+        const matiereSelectionnee = filtreMatiere.value;
+        const periodeSelectionnee = filtrePeriode.value;
+        const typeSelectionne = filtreType ? filtreType.value : '';
+        const rechercheTexte = rechercheEleve.value.toLowerCase();
+        
+        // Filtrer les colonnes d'en-tête (matières)
+        const matieresCols = document.querySelectorAll('.matiere-col');
+        const periodesCols = document.querySelectorAll('.periode-col');
+        
+        matieresCols.forEach(col => {
+            const matiereId = col.dataset.matiereId;
+            if (matiereSelectionnee === '' || matiereId === matiereSelectionnee) {
+                col.style.display = '';
+            } else {
+                col.style.display = 'none';
+            }
+        });
+        
+        periodesCols.forEach(col => {
+            const matiereId = col.dataset.matiereId;
+            const periode = col.dataset.periode;
+            
+            let afficher = true;
+            
+            // Filtre par matière
+            if (matiereSelectionnee !== '' && matiereId !== matiereSelectionnee) {
+                afficher = false;
+            }
+            
+            // Filtre par période (Trimestre/Semestre)
+            if (periodeSelectionnee !== '') {
+                if (periode === 'moyenne') {
+                    // Toujours afficher la colonne moyenne
+                    afficher = afficher && true;
+                } else if (periode !== periodeSelectionnee) {
+                    afficher = false;
+                }
+            }
+            
+            // Filtre par type
+            if (typeSelectionne !== '' && periode !== 'moyenne') {
+                const typeEval = col.dataset.typeEvaluation || '';
+                
+                if (typeSelectionne === 'moyenne') {
+                    // Afficher uniquement les colonnes moyennes
+                    afficher = false;
+                } else if (typeSelectionne === 'mensuelle') {
+                    // Afficher uniquement les notes mensuelles
+                    const mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'];
+                    if (!mois.includes(periode.toUpperCase())) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'trimestrielle') {
+                    // Afficher uniquement les notes trimestrielles
+                    if (!periode.includes('TRIMESTRE')) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'semestrielle') {
+                    // Afficher uniquement les notes semestrielles
+                    if (!periode.includes('SEMESTRE')) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'composition') {
+                    // Afficher uniquement les compositions
+                    const titre = col.textContent.toLowerCase();
+                    if (!titre.includes('comp')) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'appreciation') {
+                    // Afficher uniquement les appréciations
+                    const titre = col.textContent.toLowerCase();
+                    if (!titre.includes('appr')) {
+                        afficher = false;
+                    }
+                }
+            } else if (typeSelectionne === 'moyenne') {
+                // Si type = moyenne, afficher uniquement les colonnes moyennes
+                afficher = afficher && (periode === 'moyenne');
+            }
+            
+            col.style.display = afficher ? '' : 'none';
+        });
+        
+        // Filtrer les cellules de données
+        const noteCells = document.querySelectorAll('.note-cell');
+        noteCells.forEach(cell => {
+            const matiereId = cell.dataset.matiereId;
+            const periode = cell.dataset.periode;
+            
+            let afficher = true;
+            
+            // Filtre par matière
+            if (matiereSelectionnee !== '' && matiereId !== matiereSelectionnee) {
+                afficher = false;
+            }
+            
+            // Filtre par période (Trimestre/Semestre)
+            if (periodeSelectionnee !== '') {
+                if (periode === 'moyenne') {
+                    afficher = afficher && true;
+                } else if (periode !== periodeSelectionnee) {
+                    afficher = false;
+                }
+            }
+            
+            // Filtre par type
+            if (typeSelectionne !== '' && periode !== 'moyenne') {
+                if (typeSelectionne === 'moyenne') {
+                    afficher = false;
+                } else if (typeSelectionne === 'mensuelle') {
+                    const mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'];
+                    if (!mois.includes(periode.toUpperCase())) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'trimestrielle') {
+                    if (!periode.includes('TRIMESTRE')) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'semestrielle') {
+                    if (!periode.includes('SEMESTRE')) {
+                        afficher = false;
+                    }
+                } else if (typeSelectionne === 'composition' || typeSelectionne === 'appreciation') {
+                    // Pour composition et appréciation, on filtre par le titre de la colonne
+                    // Ces filtres sont gérés au niveau des colonnes
+                }
+            } else if (typeSelectionne === 'moyenne') {
+                afficher = afficher && (periode === 'moyenne');
+            }
+            
+            cell.style.display = afficher ? '' : 'none';
+        });
+        
+        // Filtrer les lignes (élèves)
+        const tbody = document.querySelector('#notesTableComplete tbody');
+        if (tbody) {
+            const rows = tbody.querySelectorAll('tr');
+            rows.forEach(row => {
+                const matricule = row.cells[1]?.textContent.toLowerCase() || '';
+                const nom = row.cells[2]?.textContent.toLowerCase() || '';
+                
+                if (rechercheTexte === '' || 
+                    matricule.includes(rechercheTexte) || 
+                    nom.includes(rechercheTexte)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    }
+    
+    // Événements
+    filtreMatiere.addEventListener('change', appliquerFiltres);
+    filtrePeriode.addEventListener('change', appliquerFiltres);
+    if (filtreType) filtreType.addEventListener('change', appliquerFiltres);
+    rechercheEleve.addEventListener('input', appliquerFiltres);
+});
+</script>
+{% endblock %}

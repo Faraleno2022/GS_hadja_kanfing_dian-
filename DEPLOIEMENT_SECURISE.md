@@ -25,7 +25,7 @@ ssh myschoolgn@ssh.pythonanywhere.com
 ### 1.2 Mise à jour du code
 
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 
 # Sauvegarder la page d'accueil personnalisée
 cp templates/home.html templates/home.html.backup
@@ -43,7 +43,7 @@ git update-index --assume-unchanged templates/home.html
 ### 1.3 Créer le fichier .env SÉCURISÉ
 
 ```bash
-nano ~/GS_hadja_kanfing_dian-/.env
+nano ~/myschool-/.env
 ```
 
 **Contenu du .env (ADAPTER LES VALEURS) :**
@@ -73,7 +73,7 @@ ADMIN_WHITELIST_IPS=
 ### 1.4 Générer SECRET_KEY sécurisée
 
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python3 -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
@@ -82,9 +82,9 @@ python3 -c "from django.core.management.utils import get_random_secret_key; prin
 ### 1.5 Sécuriser les permissions
 
 ```bash
-chmod 600 ~/GS_hadja_kanfing_dian-/.env
-chmod 600 ~/GS_hadja_kanfing_dian-/db.sqlite3
-chmod 755 ~/GS_hadja_kanfing_dian-/logs
+chmod 600 ~/myschool-/.env
+chmod 600 ~/myschool-/db.sqlite3
+chmod 755 ~/myschool-/logs
 ```
 
 ---
@@ -94,7 +94,7 @@ chmod 755 ~/GS_hadja_kanfing_dian-/logs
 ### 2.1 Activer l'environnement virtuel
 
 ```bash
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 source venv/bin/activate
 ```
 
@@ -189,7 +189,7 @@ touch /var/www/myschoolgn_pythonanywhere_com_wsgi.py
 ### 5.2 Vérifier les logs
 
 ```bash
-tail -f ~/GS_hadja_kanfing_dian-/logs/security.log
+tail -f ~/myschool-/logs/security.log
 ```
 
 ### 5.3 Tester HTTPS
@@ -245,10 +245,10 @@ crontab -e
 Ajouter :
 ```cron
 # Rotation logs sécurité (tous les jours à 2h)
-0 2 * * * cd ~/GS_hadja_kanfing_dian- && python manage.py clearsessions
+0 2 * * * cd ~/myschool- && python manage.py clearsessions
 
 # Backup quotidien (tous les jours à 3h)
-0 3 * * * cd ~/GS_hadja_kanfing_dian- && python manage.py dumpdata > ~/backups/backup_$(date +\%Y\%m\%d).json
+0 3 * * * cd ~/myschool- && python manage.py dumpdata > ~/backups/backup_$(date +\%Y\%m\%d).json
 
 # Nettoyage anciens backups (garder 30 jours)
 0 4 * * * find ~/backups -name "backup_*.json" -mtime +30 -delete
@@ -258,13 +258,13 @@ Ajouter :
 
 ```bash
 # Voir les IP bloquées
-grep "IP_BLOCKED" ~/GS_hadja_kanfing_dian-/logs/security.log
+grep "IP_BLOCKED" ~/myschool-/logs/security.log
 
 # Voir les tentatives SQL Injection
-grep "SQL_INJECTION" ~/GS_hadja_kanfing_dian-/logs/security.log
+grep "SQL_INJECTION" ~/myschool-/logs/security.log
 
 # Voir les tentatives XSS
-grep "XSS_ATTEMPT" ~/GS_hadja_kanfing_dian-/logs/security.log
+grep "XSS_ATTEMPT" ~/myschool-/logs/security.log
 ```
 
 ---
@@ -275,7 +275,7 @@ grep "XSS_ATTEMPT" ~/GS_hadja_kanfing_dian-/logs/security.log
 
 ```bash
 # 1. Activer le mode maintenance
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python manage.py shell
 ```
 
@@ -290,7 +290,7 @@ exit()
 
 ```bash
 # 2. Analyser les logs
-tail -100 ~/GS_hadja_kanfing_dian-/logs/security.log
+tail -100 ~/myschool-/logs/security.log
 
 # 3. Bloquer IP suspecte manuellement
 python manage.py shell
@@ -309,7 +309,7 @@ exit()
 touch /var/www/myschoolgn_pythonanywhere_com_wsgi.py
 
 # 2. Restaurer la base de données
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python manage.py flush --noinput
 python manage.py loaddata ~/backups/backup_YYYYMMDD.json
 

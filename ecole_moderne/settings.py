@@ -112,6 +112,7 @@ INSTALLED_APPS = [
     'administration',
     'bus',
     'notes',
+    'abonnements',
 ]
 
 # =================== Middleware ===================

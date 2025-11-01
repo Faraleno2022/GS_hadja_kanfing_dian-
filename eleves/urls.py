@@ -31,10 +31,12 @@ urlpatterns = [
     path('<int:eleve_id>/fiche-inscription-pdf/', views.fiche_inscription_pdf, name='fiche_inscription_pdf'),
     path('<int:eleve_id>/ticket-retrait-pdf/', views.generer_ticket_retrait_pdf, name='ticket_retrait_pdf'),
     path('<int:eleve_id>/ticket-bus-pdf/', views.generer_ticket_bus_pdf, name='ticket_bus_pdf'),
+    path('<int:eleve_id>/carte-scolaire-pdf/', views.generer_carte_scolaire_pdf, name='carte_scolaire_pdf'),
     
     # Génération en masse de tickets par classe
     path('classe/<int:classe_id>/tickets-retrait-pdf/', views.generer_tickets_retrait_classe_pdf, name='tickets_retrait_classe_pdf'),
     path('classe/<int:classe_id>/tickets-bus-pdf/', views.generer_tickets_bus_classe_pdf, name='tickets_bus_classe_pdf'),
+    path('classe/<int:classe_id>/cartes-scolaires-pdf/', views.generer_cartes_classe_pdf, name='cartes_scolaires_classe_pdf'),
 
     # Exports par classe
     path('export/classe/<int:classe_id>/pdf/', views.export_eleves_classe_pdf, name='export_eleves_classe_pdf'),

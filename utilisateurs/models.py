@@ -42,14 +42,15 @@ class Profil(models.Model):
     peut_supprimer_abonnements = models.BooleanField(default=False, verbose_name="Peut supprimer les abonnements")
     peut_supprimer_eleves_definitivement = models.BooleanField(default=False, verbose_name="Peut supprimer les élèves définitivement")
     peut_consulter_rapports = models.BooleanField(default=True, verbose_name="Peut consulter les rapports")
-    peut_gerer_notes = models.BooleanField(default=True, verbose_name="Peut gérer les notes et matières")
+    peut_gerer_notes = models.BooleanField(default=True, verbose_name="Peut gérer les notes et matières (DÉSACTIVÉ)")
     
     # Informations de connexion
     derniere_connexion = models.DateTimeField(null=True, blank=True, verbose_name="Dernière connexion")
     actif = models.BooleanField(default=True, verbose_name="Actif")
     is_validated = models.BooleanField(default=False, verbose_name="Compte validé par l'administrateur")
     # Menus visibles (configuration par administrateur)
-    # Exemple de clés: 'eleves', 'paiements', 'depenses', 'salaires', 'bus', 'notes', 'rapports', 'administration'
+    # Exemple de clés: 'eleves', 'paiements', 'depenses', 'salaires', 'bus', 'rapports', 'administration'
+    # Note: 'notes' est désactivé mais reste dans la liste pour compatibilité
     allowed_menus = models.JSONField(default=list, blank=True, verbose_name="Menus autorisés")
     
     # Métadonnées
@@ -74,7 +75,7 @@ MENUS = [
     ('depenses', 'Dépenses'),
     ('salaires', 'Salaires'),
     ('bus', 'Bus scolaire'),
-    ('notes', 'Gestion de notes'),
+    ('notes', 'Gestion de notes (DÉSACTIVÉ)'),  # Conservé pour compatibilité
     ('rapports', 'Rapports'),
 ]
 

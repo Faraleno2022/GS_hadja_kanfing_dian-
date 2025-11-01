@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Script d'initialisation des données de base pour l'École Moderne HADJA KANFING DIANÉ
+Script d'initialisation des données de base pour l'myschool
 """
 import os
 import sys
@@ -22,7 +22,7 @@ def init_ecoles():
     print("🏫 Initialisation des écoles...")
     
     ecole, created = Ecole.objects.get_or_create(
-        nom="École Moderne HADJA KANFING DIANÉ",
+        nom="myschool",
         defaults={
             'adresse': "Conakry, Guinée",
             'telephone': "+22462200000",
@@ -259,7 +259,7 @@ def init_parametres_systeme():
 
 def main():
     """Fonction principale d'initialisation"""
-    print("🚀 Initialisation des données de base pour l'École Moderne HADJA KANFING DIANÉ")
+    print("🚀 Initialisation des données de base pour l'myschool")
     print("=" * 80)
     
     try:

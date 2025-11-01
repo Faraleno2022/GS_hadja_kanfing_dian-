@@ -1,0 +1,730 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Bulletin Dynamique{% endblock %}
+
+{% block extra_css %}
+<style>
+    @page {
+        size: A4;
+        margin: 0;
+    }
+    
+    @media print {
+        .no-print { display: none !important; }
+        body { 
+            margin: 0; 
+            padding: 0;
+            background: white;
+        }
+        .bulletin-container { 
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 6mm 8mm !important;
+            page-break-after: avoid !important;
+            page-break-inside: avoid !important;
+            min-height: auto !important;
+            max-height: 297mm !important;
+            height: auto !important;
+            overflow: visible !important;
+            width: 210mm !important;
+        }
+        .header-section {
+            padding-bottom: 3px !important;
+            margin-bottom: 3px !important;
+            border-bottom-width: 2px !important;
+        }
+        .header-section h1 {
+            font-size: 14px !important;
+            margin: 0 !important;
+        }
+        .header-section h2 {
+            font-size: 12px !important;
+            margin: 3px 0 !important;
+        }
+        .header-section p {
+            font-size: 9px !important;
+            margin: 1px 0 !important;
+        }
+        .info-grid {
+            margin: 3px 0 !important;
+            gap: 3px !important;
+        }
+        .info-item {
+            padding: 2px 4px !important;
+            font-size: 8px !important;
+        }
+        .notes-table {
+            margin: 3px 0 !important;
+            font-size: 7.5px !important;
+        }
+        .notes-table th {
+            padding: 3px 2px !important;
+            font-size: 6.5px !important;
+        }
+        .notes-table td {
+            padding: 2px 1px !important;
+            font-size: 7.5px !important;
+        }
+        .notes-table tfoot td {
+            padding: 3px 2px !important;
+            font-size: 8px !important;
+        }
+        .resultats-section {
+            margin: 3px 0 !important;
+            gap: 5px !important;
+        }
+        .resultat-card {
+            padding: 5px !important;
+        }
+        .resultat-card h3 {
+            font-size: 8px !important;
+            margin: 0 0 3px 0 !important;
+        }
+        .resultat-card .value {
+            font-size: 13px !important;
+            margin: 3px 0 !important;
+        }
+        .mention-badge {
+            padding: 3px 10px !important;
+            font-size: 10px !important;
+        }
+        .footer-section {
+            margin-top: 2px !important;
+            padding-top: 2px !important;
+        }
+        .footer-section p {
+            margin: 1px 0 !important;
+            font-size: 6.5px !important;
+        }
+        .footer-section div {
+            margin-top: 2px !important;
+            padding-top: 2px !important;
+        }
+        .signatures-section {
+            margin-top: 3px !important;
+            gap: 5px !important;
+        }
+        .signature-box {
+            padding: 2px !important;
+            font-size: 7px !important;
+        }
+        .signature-box .title {
+            margin-bottom: 2px !important;
+            font-size: 7px !important;
+        }
+        .signature-box .space {
+            height: 25px !important;
+            margin: 2px 0 !important;
+        }
+        .watermark {
+            display: none !important;
+        }
+    }
+    
+    body {
+        font-family: 'Arial', sans-serif;
+        background: #f5f5f5;
+    }
+    
+    .bulletin-container {
+        background: white;
+        width: 210mm;
+        min-height: auto;
+        max-height: 297mm;
+        margin: 20px auto;
+        padding: 10mm;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: visible;
+    }
+    
+    /* Filigrane */
+    .watermark {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        opacity: 0.03;
+        width: 400px;
+        height: 400px;
+        z-index: 0;
+        pointer-events: none;
+    }
+    
+    /* En-tête */
+    .header-section {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        border-bottom: 3px solid #000;
+        padding-bottom: 8px;
+        margin-bottom: 10px;
+    }
+    
+    .logo-left {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+    }
+    
+    .photo-right {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 70px;
+        height: 90px;
+        border: 2px solid #333;
+        object-fit: cover;
+    }
+    
+    .header-section h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: bold;
+        color: #000;
+    }
+    
+    .header-section h2 {
+        font-size: 14px;
+        margin: 5px 0;
+        color: #333;
+    }
+    
+    .header-section p {
+        font-size: 10px;
+        margin: 2px 0;
+        color: #666;
+    }
+    
+    /* Informations élève */
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin: 10px 0;
+        font-size: 10px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .info-item {
+        background: #f9f9f9;
+        padding: 5px 8px;
+        border-radius: 3px;
+        border-left: 3px solid #007bff;
+    }
+    
+    .info-item strong {
+        color: #007bff;
+        display: block;
+        font-size: 9px;
+        margin-bottom: 2px;
+    }
+    
+    /* Tableau des notes */
+    .notes-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+        font-size: 9px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .notes-table thead {
+        background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+        color: white;
+    }
+    
+    .notes-table th {
+        padding: 6px 4px;
+        text-align: center;
+        font-weight: bold;
+        border: 1px solid #fff;
+        font-size: 8px;
+    }
+    
+    .notes-table td {
+        padding: 4px;
+        text-align: center;
+        border: 1px solid #ddd;
+    }
+    
+    .notes-table tbody tr:nth-child(even) {
+        background: #f9f9f9;
+    }
+    
+    .notes-table tbody tr:hover {
+        background: #e3f2fd;
+    }
+    
+    .notes-table .matiere-col {
+        text-align: left;
+        font-weight: 500;
+        padding-left: 8px;
+    }
+    
+    .notes-table tfoot {
+        background: #333;
+        color: white;
+        font-weight: bold;
+    }
+    
+    /* Résultats */
+    .resultats-section {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin: 10px 0;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .resultat-card {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        color: #1565c0;
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        border: 2px solid #90caf9;
+    }
+    
+    .resultat-card h3 {
+        font-size: 10px;
+        margin: 0 0 5px 0;
+        opacity: 0.9;
+        font-weight: bold;
+    }
+    
+    .resultat-card .value {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 5px 0;
+        color: #0d47a1;
+    }
+    
+    /* Mentions */
+    .mention-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 11px;
+        margin-top: 5px;
+    }
+    
+    .mention-tres-bien { background: #28a745; color: white; }
+    .mention-bien { background: #17a2b8; color: white; }
+    .mention-assez-bien { background: #ffc107; color: #000; }
+    .mention-passable { background: #fd7e14; color: white; }
+    .mention-insuffisant { background: #dc3545; color: white; }
+    
+    /* Appréciation */
+    .appreciation-section {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 5px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .appreciation-section h3 {
+        font-size: 11px;
+        margin: 0 0 5px 0;
+        color: #856404;
+    }
+    
+    .appreciation-section p {
+        font-size: 10px;
+        margin: 0;
+        color: #333;
+        min-height: 40px;
+    }
+    
+    /* Signatures */
+    .signatures-section {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 8px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .signature-box {
+        text-align: center;
+        font-size: 8px;
+    }
+    
+    .signature-box .title {
+        font-weight: bold;
+        margin-bottom: 3px;
+        color: #333;
+    }
+    
+    .signature-box .space {
+        height: 35px;
+        border-bottom: 1px solid #333;
+        margin: 3px 0;
+    }
+    
+    /* Footer */
+    .footer-section {
+        text-align: center;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #ddd;
+        font-size: 9px;
+        color: #666;
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Formulaire */
+    .form-section {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .btn-group {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Formulaire de sélection -->
+    <div class="form-section no-print">
+        <h2 class="mb-4"><i class="fas fa-graduation-cap me-2"></i>Bulletin Dynamique</h2>
+        
+        {% if messages %}
+        <div class="alert-container mb-3">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        
+        <form method="get">
+            <div class="form-row">
+                <div>
+                    <label class="form-label">Classe</label>
+                    <select name="classe_id" class="form-select" onchange="this.form.submit()" required>
+                        <option value="">-- Sélectionner une classe --</option>
+                        {% for classe in classes %}
+                        <option value="{{ classe.id }}" {% if classe_selectionnee and classe.id == classe_selectionnee.id %}selected{% endif %}>
+                            {{ classe.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                {% if classe_selectionnee %}
+                <div>
+                    <label class="form-label">Système</label>
+                    <select name="system_type" class="form-select" onchange="this.form.submit()" required>
+                        <option value="mensuel" {% if system_type == 'mensuel' %}selected{% endif %}>Mensuel</option>
+                        <option value="trimestre" {% if system_type == 'trimestre' %}selected{% endif %}>Trimestriel</option>
+                        <option value="semestre" {% if system_type == 'semestre' %}selected{% endif %}>Semestriel</option>
+                        <option value="annuel" {% if system_type == 'annuel' %}selected{% endif %}>Annuel</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="form-label">Période</label>
+                    <select name="periode" class="form-select" onchange="this.form.submit()" required>
+                        <option value="">-- Sélectionner --</option>
+                        {% for code, libelle in periodes_disponibles %}
+                        <option value="{{ code }}" {% if periode_selectionnee == code %}selected{% endif %}>
+                            {{ libelle }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="form-label">Élève</label>
+                    <select name="eleve_id" class="form-select" onchange="this.form.submit()" required>
+                        <option value="">-- Sélectionner un élève --</option>
+                        {% for eleve in eleves %}
+                        <option value="{{ eleve.id }}" {% if eleve_selectionne and eleve.id == eleve_selectionne.id %}selected{% endif %}>
+                            {{ eleve.nom }} {{ eleve.prenom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+            </div>
+            
+        </form>
+    </div>
+
+    <!-- Messages informatifs -->
+    {% if not classes %}
+    <div class="alert alert-info no-print">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Aucune classe disponible.</strong> 
+        <p class="mb-0 mt-2">
+            Pour créer des classes, accédez au menu 
+            <a href="{% url 'notes:gerer_classes' %}" class="alert-link">
+                <i class="fas fa-arrow-right me-1"></i>Gestion des Classes
+            </a>
+        </p>
+    </div>
+    {% elif not classe_selectionnee and classe_id %}
+    <div class="alert alert-warning no-print">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>Classe introuvable.</strong> Veuillez sélectionner une classe valide.
+    </div>
+    {% elif classe_selectionnee and not eleves %}
+    <div class="alert alert-info no-print">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Aucun élève dans cette classe.</strong> Veuillez d'abord ajouter des élèves.
+    </div>
+    {% elif classe_selectionnee and not periode_selectionnee %}
+    <div class="alert alert-info no-print">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Sélectionnez une période</strong> pour générer le bulletin.
+    </div>
+    {% elif classe_selectionnee and periode_selectionnee and not eleve_selectionne %}
+    <div class="alert alert-info no-print">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Sélectionnez un élève</strong> pour afficher son bulletin.
+    </div>
+    {% endif %}
+
+    <!-- Bulletin -->
+    {% if bulletin_data %}
+    <div class="bulletin-container" id="bulletin">
+        <!-- Filigrane -->
+        {% if ecole.logo %}
+        <img src="{{ ecole.logo.url }}" class="watermark" alt="Filigrane">
+        {% endif %}
+        
+        <!-- En-tête -->
+        <div class="header-section">
+            {% if ecole.logo %}
+            <img src="{{ ecole.logo.url }}" class="logo-left" alt="Logo">
+            {% endif %}
+            
+            {% if bulletin_data.eleve.photo %}
+            <img src="{{ bulletin_data.eleve.photo.url }}" class="photo-right" alt="Photo">
+            {% endif %}
+            
+            <h1>RÉPUBLIQUE DE GUINÉE</h1>
+            <h2>BULLETIN DE NOTES - {{ bulletin_data.titre_periode|upper }}</h2>
+            <p>{{ ecole.nom|default:"École" }} - Année Scolaire {{ annee_scolaire }}</p>
+        </div>
+        
+        <!-- Informations élève -->
+        <div class="info-grid">
+            <div class="info-item">
+                <strong>NOM</strong>
+                {{ bulletin_data.eleve.nom|upper }}
+            </div>
+            <div class="info-item">
+                <strong>PRÉNOM</strong>
+                {{ bulletin_data.eleve.prenom|title }}
+            </div>
+            <div class="info-item">
+                <strong>MATRICULE</strong>
+                {{ bulletin_data.eleve.matricule }}
+            </div>
+            <div class="info-item">
+                <strong>CLASSE</strong>
+                {{ classe_selectionnee.nom }}
+            </div>
+            <div class="info-item">
+                <strong>PÉRIODE</strong>
+                {{ bulletin_data.titre_periode }}
+            </div>
+            <div class="info-item">
+                <strong>EFFECTIF</strong>
+                {{ bulletin_data.effectif }} élèves
+            </div>
+        </div>
+        
+        <!-- Tableau des notes -->
+        <table class="notes-table">
+            <thead>
+                <tr>
+                    <th rowspan="2">MATIÈRE</th>
+                    <th rowspan="2">COEF</th>
+                    {% if system_type == 'mensuel' %}
+                        <th rowspan="2">NOTE</th>
+                    {% elif system_type in 'trimestre,semestre' %}
+                        <th colspan="2">NOTES</th>
+                    {% elif system_type == 'annuel' %}
+                        <th colspan="2">SEMESTRES</th>
+                    {% endif %}
+                    <th rowspan="2">MOY</th>
+                    <th rowspan="2">PTS</th>
+                </tr>
+                <tr>
+                    {% if system_type == 'trimestre' or system_type == 'semestre' %}
+                        <th>Moy. Continue</th>
+                        <th>Composition</th>
+                    {% elif system_type == 'annuel' %}
+                        <th>1er Sem</th>
+                        <th>2ème Sem</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for matiere_note in bulletin_data.matieres_notes %}
+                <tr>
+                    <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
+                    <td>{{ matiere_note.coefficient }}</td>
+                    
+                    {% if matiere_note.notes %}
+                        {% for note in matiere_note.notes %}
+                            <td>
+                                {% if note.absent %}
+                                    <span style="color: red;">ABS</span>
+                                {% elif note.note is not None %}
+                                    {{ note.note|floatformat:2 }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                        {% endfor %}
+                    {% else %}
+                        {% if system_type == 'mensuel' %}
+                            <td>-</td>
+                        {% else %}
+                            <td colspan="2">-</td>
+                        {% endif %}
+                    {% endif %}
+                    
+                    <td><strong>
+                        {% if matiere_note.moyenne %}
+                            {{ matiere_note.moyenne|floatformat:2 }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </strong></td>
+                    <td><strong>
+                        {% if matiere_note.points %}
+                            {{ matiere_note.points|floatformat:2 }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </strong></td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center">Aucune matière disponible</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2"><strong>TOTAL</strong></td>
+                    {% if system_type == 'mensuel' %}
+                        <td></td>
+                    {% else %}
+                        <td colspan="2"></td>
+                    {% endif %}
+                    <td><strong>
+                        {% if bulletin_data.total_coefficients %}
+                            {{ bulletin_data.total_coefficients|floatformat:0 }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </strong></td>
+                    <td><strong>
+                        {% if bulletin_data.total_points %}
+                            {{ bulletin_data.total_points|floatformat:2 }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </strong></td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <!-- Résultats -->
+        <div class="resultats-section">
+            <div class="resultat-card">
+                <h3>MOYENNE GÉNÉRALE</h3>
+                <div class="value">{{ bulletin_data.moyenne_generale|floatformat:2 }}/20</div>
+            </div>
+            <div class="resultat-card">
+                <h3>RANG</h3>
+                <div class="value">{{ bulletin_data.rang }}/{{ bulletin_data.effectif }}</div>
+            </div>
+            <div class="resultat-card">
+                <h3>MENTION</h3>
+                <div class="mention-badge mention-{{ bulletin_data.mention|lower|cut:' ' }}">
+                    {{ bulletin_data.mention|upper }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Appréciation -->
+        <div class="appreciation-section">
+            <h3><i class="fas fa-comment-dots me-2"></i>APPRÉCIATION DU CONSEIL DE CLASSE</h3>
+            <p>{{ bulletin_data.appreciation|default:"Bon travail. Continuez vos efforts." }}</p>
+        </div>
+        
+        <!-- Signatures -->
+        <div class="signatures-section">
+            <div class="signature-box">
+                <div class="title">Professeur Principal</div>
+                <div class="space"></div>
+                <div>Signature</div>
+            </div>
+            <div class="signature-box">
+                <div class="title">Chef d'Établissement</div>
+                <div class="space"></div>
+                <div>Signature et Cachet</div>
+            </div>
+            <div class="signature-box">
+                <div class="title">Parent d'Élève</div>
+                <div class="space"></div>
+                <div>Signature</div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer-section">
+            <p style="margin: 0; font-size: 9px;"><em>Fait à {{ ecole.ville|default:"Kindia" }}, le {{ "now"|date:"d/m/Y" }}</em></p>
+            <p style="font-size: 7px; margin: 2px 0;">
+                <strong>Mois concernés:</strong> {{ bulletin_data.mois_libelle }}
+            </p>
+            <div style="border-top: 1px solid #ddd; margin-top: 3px; padding-top: 3px;">
+                <p style="font-size: 7px; margin: 0; color: #666;">
+                    © Tous droits réservés | 
+                    <a href="/" style="color: #666; text-decoration: none;">Accueil</a> | 
+                    📞 +224 622613559 | 
+                    📧 faraleno16@gmail.com
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

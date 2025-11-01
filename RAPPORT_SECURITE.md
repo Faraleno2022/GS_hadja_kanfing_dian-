@@ -1,6 +1,6 @@
 # 🔒 RAPPORT D'AUDIT DE SÉCURITÉ - MySchool GN
 **Date:** 06/10/2025  
-**Projet:** Système de Gestion Scolaire GS Hadja Kanfing Diané
+**Projet:** Système de Gestion Scolaire GS myschool
 
 ---
 
@@ -173,7 +173,7 @@ safety check
 ### 5. **Backup Automatique Base de Données**
 ```bash
 # Cron job sur PythonAnywhere
-0 2 * * * cd ~/GS_hadja_kanfing_dian- && python manage.py dumpdata > backup_$(date +\%Y\%m\%d).json
+0 2 * * * cd ~/myschool- && python manage.py dumpdata > backup_$(date +\%Y\%m\%d).json
 ```
 
 ### 6. **Headers de Sécurité Supplémentaires**
@@ -191,7 +191,7 @@ SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
 
 ```bash
 # 1. Créer fichier .env
-nano ~/GS_hadja_kanfing_dian-/.env
+nano ~/myschool-/.env
 ```
 
 ```env
@@ -208,11 +208,11 @@ BLOCK_SUPERUSER_PUBLIC_LOGIN=true
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 
 # 3. Permissions fichiers
-chmod 600 ~/GS_hadja_kanfing_dian-/.env
-chmod 600 ~/GS_hadja_kanfing_dian-/db.sqlite3
+chmod 600 ~/myschool-/.env
+chmod 600 ~/myschool-/db.sqlite3
 
 # 4. Vérifier configuration
-cd ~/GS_hadja_kanfing_dian-
+cd ~/myschool-
 python manage.py check --deploy
 
 # 5. Collecter fichiers statiques

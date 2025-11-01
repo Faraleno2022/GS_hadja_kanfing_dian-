@@ -141,9 +141,8 @@
                         return;
                     }
                     
-                    // Rediriger vers la page des cartes scolaires
-                    const url = `{% url 'notes:cartes_scolaires_classe' 0 %}`.replace('0', classeId);
-                    window.open(url, '_blank');
+                    // Générer les cartes scolaires
+                    window.location.href = `/eleves/classe/${classeId}/cartes-scolaires-pdf/`;
                 });
             }
             
@@ -267,12 +266,13 @@
 
     // Fonction pour imprimer la carte scolaire
     function imprimerCarte(matricule) {
-        const url = `{% url 'notes:carte_eleve_pdf' 'MATRICULE_PLACEHOLDER' %}`.replace('MATRICULE_PLACEHOLDER', matricule);
+        window.location.href = `/eleves/${matricule}/carte-scolaire-pdf/`;
+        return;
         
         // Créer un iframe invisible pour télécharger et imprimer
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
-        iframe.src = url;
+        // iframe.src = url;
         
         // Ajouter l'iframe au document
         document.body.appendChild(iframe);
