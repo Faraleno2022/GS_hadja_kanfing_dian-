@@ -398,3 +398,176 @@ def get_eleve_info_json(request, eleve_id):
         return JsonResponse(data)
     except Eleve.DoesNotExist:
         return JsonResponse({'error': 'Élève non trouvé'}, status=404)
+
+
+@login_required
+@require_school_object(model=AbonnementCantine, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
+def generer_recu_cantine_pdf(request, abo_id):
+    """Génère un reçu PDF pour un abonnement cantine"""
+    abo = get_object_or_404(
+        AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'), 
+        id=abo_id
+    )
+    
+    try:
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.utils import ImageReader
+        from django.contrib.staticfiles import finders
+        import os
+    except Exception:
+        messages.error(request, "ReportLab requis (pip install reportlab)")
+        return redirect('bus:cantine_liste')
+    
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Filigrane
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
+        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=ecole_obj)
+    except Exception:
+        pass
+    
+    # Logo de l'école en haut à gauche
+    try:
+        logo_path = None
+        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
+        
+        if ecole_obj and hasattr(ecole_obj, 'logo'):
+            school_logo_path = getattr(getattr(ecole_obj, 'logo', None), 'path', None)
+            if school_logo_path and os.path.exists(school_logo_path):
+                logo_path = school_logo_path
+        
+        if not logo_path:
+            logo_path = finders.find('logos/logo.png')
+        
+        if logo_path:
+            try:
+                logo_img = ImageReader(logo_path)
+                logo_w, logo_h = 60, 60
+                c.drawImage(logo_img, 40, height - 100, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+            except Exception:
+                pass
+    except Exception:
+        pass
+    
+    # Titre
+    c.setFont('Helvetica-Bold', 18)
+    title = 'REÇU ABONNEMENT CANTINE SCOLAIRE'
+    tw = c.stringWidth(title, 'Helvetica-Bold', 18)
+    c.drawString((width - tw)/2, height - 50, title)
+    
+    # Nom de l'école sous le titre
+    try:
+        ecole_nom = getattr(ecole_obj, 'nom', '')
+        if ecole_nom:
+            c.setFont('Helvetica-Bold', 12)
+            tw_ecole = c.stringWidth(ecole_nom, 'Helvetica-Bold', 12)
+            c.drawString((width - tw_ecole)/2, height - 70, ecole_nom)
+    except Exception:
+        pass
+    
+    # Photo de l'élève en haut à droite
+    try:
+        img_drawn = False
+        img_w, img_h = 100, 100
+        x_img = width - 40 - img_w
+        y_img = height - 40 - img_h
+        
+        el = abo.eleve
+        photo_path = getattr(getattr(el, 'photo', None), 'path', None)
+        
+        if photo_path and os.path.exists(photo_path):
+            try:
+                img = ImageReader(photo_path)
+                c.drawImage(img, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+                img_drawn = True
+            except Exception:
+                img_drawn = False
+        
+        if not img_drawn:
+            # Dessiner un placeholder avec initiales
+            nom_complet = f"{getattr(el, 'prenom', '')} {getattr(el, 'nom', '')}".strip()
+            initiales = ''.join([p[0].upper() for p in nom_complet.split()[:2]]) or 'E'
+            c.setLineWidth(1)
+            try:
+                c.roundRect(x_img, y_img, img_w, img_h, 8)
+            except Exception:
+                c.rect(x_img, y_img, img_w, img_h)
+            c.setFont('Helvetica-Bold', 24)
+            c.drawCentredString(x_img + img_w/2, y_img + img_h/2 - 8, initiales)
+            c.setFont('Helvetica', 8)
+            c.drawCentredString(x_img + img_w/2, y_img + 6, "Pas de photo")
+        
+        # Afficher le nom de l'élève sous l'image/placeholder
+        try:
+            nom_aff = f"{getattr(el, 'prenom', '')} {getattr(el, 'nom', '')}".strip()
+            if nom_aff:
+                c.setFont('Helvetica-Bold', 10)
+                c.drawCentredString(x_img + img_w/2, y_img - 12, nom_aff)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    
+    # Corps
+    y = height - 110
+    c.setFont('Helvetica', 12)
+    
+    def line(lbl, val):
+        nonlocal y
+        c.setFont('Helvetica-Bold', 12)
+        c.drawString(40, y, f"{lbl} :")
+        c.setFont('Helvetica', 12)
+        c.drawString(200, y, str(val))
+        y -= 20
+    
+    el = abo.eleve
+    line('Élève', f"{el.prenom} {el.nom} ({el.matricule})")
+    line('Classe', getattr(el.classe, 'nom', ''))
+    line('École', getattr(getattr(el.classe, 'ecole', None), 'nom', ''))
+    line('Type de repas', abo.get_type_repas_display())
+    line('Périodicité', abo.get_periodicite_display())
+    line('Montant', f"{int(abo.montant):,}".replace(',', ' ') + ' GNF')
+    line('Début', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
+    line('Expiration', abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else '')
+    
+    # Calcul et affichage de la durée en jours
+    if abo.date_debut and abo.date_expiration:
+        duree_jours = (abo.date_expiration - abo.date_debut).days
+        line('Durée', f"{duree_jours} jours")
+    
+    # Informations spécifiques à la cantine
+    if abo.regime_alimentaire:
+        line('Régime alimentaire', abo.regime_alimentaire)
+    if abo.allergies:
+        line('Allergies', abo.allergies)
+    if abo.contact_parent:
+        line('Contact parent', abo.contact_parent)
+    
+    # Pied de page avec date d'émission
+    y -= 30
+    c.setFont('Helvetica', 9)
+    c.setFillGray(0.5)
+    c.drawString(40, y, f"Reçu émis le {timezone.localdate().strftime('%d/%m/%Y')}")
+    c.setFillGray(0)
+    
+    # Signature
+    y -= 40
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(width - 200, y, "Signature et cachet")
+    c.line(width - 200, y - 5, width - 40, y - 5)
+    
+    c.showPage()
+    c.save()
+    
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    resp = HttpResponse(content_type='application/pdf')
+    resp['Content-Disposition'] = f'inline; filename=recu_cantine_{abo.id}.pdf'
+    resp.write(pdf)
+    return resp

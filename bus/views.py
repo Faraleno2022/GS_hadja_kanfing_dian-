@@ -283,19 +283,102 @@ def generer_recu_abonnement_pdf(request, abo_id):
     except Exception:
         pass
 
+    # Logo de l'école en haut à gauche
+    try:
+        from reportlab.lib.utils import ImageReader
+        import os
+        logo_path = None
+        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
+        
+        # Essayer d'abord le logo de l'école
+        if ecole_obj and hasattr(ecole_obj, 'logo'):
+            school_logo_path = getattr(getattr(ecole_obj, 'logo', None), 'path', None)
+            if school_logo_path and os.path.exists(school_logo_path):
+                logo_path = school_logo_path
+        
+        # Fallback vers le logo statique global
+        if not logo_path:
+            logo_path = finders.find('logos/logo.png')
+        
+        if logo_path:
+            try:
+                logo_img = ImageReader(logo_path)
+                logo_w, logo_h = 60, 60
+                c.drawImage(logo_img, 40, height - 100, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # Titre
-    c.setFont('Helvetica-Bold', 16)
-    title = 'Reçu Abonnement Bus'
-    tw = c.stringWidth(title, 'Helvetica-Bold', 16)
-    c.drawString((width - tw)/2, height - 40, title)
+    c.setFont('Helvetica-Bold', 18)
+    title = 'REÇU ABONNEMENT BUS SCOLAIRE'
+    tw = c.stringWidth(title, 'Helvetica-Bold', 18)
+    c.drawString((width - tw)/2, height - 50, title)
+    
+    # Nom de l'école sous le titre
+    try:
+        ecole_nom = getattr(ecole_obj, 'nom', '')
+        if ecole_nom:
+            c.setFont('Helvetica-Bold', 12)
+            tw_ecole = c.stringWidth(ecole_nom, 'Helvetica-Bold', 12)
+            c.drawString((width - tw_ecole)/2, height - 70, ecole_nom)
+    except Exception:
+        pass
+
+    # Photo de l'élève en haut à droite
+    try:
+        from reportlab.lib.utils import ImageReader
+        import os
+        img_drawn = False
+        img_w, img_h = 100, 100
+        x_img = width - 40 - img_w
+        y_img = height - 40 - img_h
+        
+        el = abo.eleve
+        photo_path = getattr(getattr(el, 'photo', None), 'path', None)
+        
+        if photo_path and os.path.exists(photo_path):
+            try:
+                img = ImageReader(photo_path)
+                c.drawImage(img, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+                img_drawn = True
+            except Exception:
+                img_drawn = False
+        
+        if not img_drawn:
+            # Dessiner un placeholder avec initiales
+            nom_complet = f"{getattr(el, 'prenom', '')} {getattr(el, 'nom', '')}".strip()
+            initiales = ''.join([p[0].upper() for p in nom_complet.split()[:2]]) or 'E'
+            c.setLineWidth(1)
+            try:
+                c.roundRect(x_img, y_img, img_w, img_h, 8)
+            except Exception:
+                c.rect(x_img, y_img, img_w, img_h)
+            c.setFont('Helvetica-Bold', 24)
+            c.drawCentredString(x_img + img_w/2, y_img + img_h/2 - 8, initiales)
+            c.setFont('Helvetica', 8)
+            c.drawCentredString(x_img + img_w/2, y_img + 6, "Pas de photo")
+        
+        # Afficher le nom de l'élève sous l'image/placeholder
+        try:
+            nom_aff = f"{getattr(el, 'prenom', '')} {getattr(el, 'nom', '')}".strip()
+            if nom_aff:
+                c.setFont('Helvetica-Bold', 10)
+                c.drawCentredString(x_img + img_w/2, y_img - 12, nom_aff)
+        except Exception:
+            pass
+    except Exception:
+        # En cas de problème, ne pas bloquer la génération du reçu
+        pass
 
     # Corps
-    y = height - 80
+    y = height - 110
     c.setFont('Helvetica', 12)
     def line(lbl, val):
         nonlocal y
         c.setFont('Helvetica-Bold', 12); c.drawString(40, y, f"{lbl} :")
-        c.setFont('Helvetica', 12); c.drawString(180, y, str(val)); y -= 18
+        c.setFont('Helvetica', 12); c.drawString(200, y, str(val)); y -= 20
 
     el = abo.eleve
     line('Élève', f"{el.prenom} {el.nom} ({el.matricule})")

@@ -23,6 +23,7 @@ urlpatterns = [
     path('cantine/nouveau/', views_cantine.creer_abonnement_cantine, name='creer_abonnement_cantine'),
     path('cantine/<int:pk>/modifier/', views_cantine.modifier_abonnement_cantine, name='modifier_abonnement_cantine'),
     path('cantine/<int:pk>/supprimer/', views_cantine.supprimer_abonnement_cantine, name='supprimer_abonnement_cantine'),
+    path('cantine/<int:abo_id>/recu/pdf/', views_cantine.generer_recu_cantine_pdf, name='recu_cantine_pdf'),
     path('cantine/export/excel/', views_cantine.export_cantine_excel, name='export_cantine_excel'),
     path('cantine/api/alertes/', views_cantine.alertes_cantine_json, name='alertes_cantine_json'),
     path('cantine/api/eleve/<int:eleve_id>/', views_cantine.get_eleve_info_json, name='get_eleve_info_json'),
