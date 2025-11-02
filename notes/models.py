@@ -130,7 +130,7 @@ class NoteEleve(models.Model):
     
     evaluation = models.ForeignKey(Evaluation, on_delete=models.CASCADE, related_name='notes')
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='notes_evaluations')
-    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note obtenue")
+    note = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Note obtenue")
     absent = models.BooleanField(default=False, verbose_name="Absent")
     commentaire = models.TextField(blank=True, null=True, verbose_name="Commentaire")
     

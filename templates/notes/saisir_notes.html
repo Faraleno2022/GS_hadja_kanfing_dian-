@@ -173,6 +173,47 @@
         background: #dcfce7;
         color: #166534;
     }
+    
+    .note-modified {
+        background: #fef3c7 !important;
+        border-left: 4px solid #f59e0b !important;
+    }
+    
+    .note-saved {
+        background: #dcfce7 !important;
+        border-left: 4px solid #16a34a !important;
+    }
+    
+    .unsaved-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: #f59e0b;
+        border-radius: 50%;
+        margin-left: 5px;
+        animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .error-details {
+        background: #fee2e2;
+        border-left: 4px solid #dc2626;
+        padding: 1rem;
+        margin-top: 1rem;
+        border-radius: 6px;
+    }
+    
+    .success-details {
+        background: #dcfce7;
+        border-left: 4px solid #16a34a;
+        padding: 1rem;
+        margin-top: 1rem;
+        border-radius: 6px;
+    }
 </style>
 {% endblock %}
 
@@ -386,9 +427,10 @@
         
         <!-- Bouton de sauvegarde -->
         <div class="text-center mt-4">
-            <button onclick="sauvegarderToutesLesNotes()" class="save-btn" id="saveBtn">
+            <button onclick="confirmerSauvegarde()" class="save-btn" id="saveBtn">
                 <i class="fas fa-save me-2"></i>
                 <span id="saveBtnText">Sauvegarder Toutes les Notes ({{ eleves|length }} élèves)</span>
+                <span id="unsavedIndicator" style="display: none;" class="unsaved-indicator"></span>
             </button>
             <div id="saveProgress" class="mt-3" style="display: none;">
                 <div class="progress" style="height: 30px;">
@@ -410,6 +452,9 @@
                     <strong>Raccourci:</strong> Ctrl+S pour sauvegarder rapidement
                 </div>
             </div>
+            
+            <!-- Zone de résultats détaillés -->
+            <div id="saveResults" class="mt-3" style="display: none;"></div>
         </div>
         
         {% else %}
@@ -538,6 +583,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Variables globales pour le suivi des modifications
+let hasUnsavedChanges = false;
+let originalValues = {};
+
 // Toast notification
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
@@ -547,16 +596,67 @@ function showToast(message, type = 'success') {
     
     setTimeout(() => {
         toast.remove();
-    }, 3000);
+    }, 4000);
 }
 
-// Sauvegarder toutes les notes
+// Marquer une ligne comme modifiée
+function markRowAsModified(row) {
+    row.classList.add('note-modified');
+    row.classList.remove('note-saved');
+    hasUnsavedChanges = true;
+    document.getElementById('unsavedIndicator').style.display = 'inline-block';
+}
+
+// Marquer une ligne comme sauvegardée
+function markRowAsSaved(row) {
+    row.classList.add('note-saved');
+    row.classList.remove('note-modified');
+}
+
+// Sauvegarder les valeurs originales
+function saveOriginalValues() {
+    const rows = document.querySelectorAll('#elevesTableBody tr');
+    rows.forEach(row => {
+        const eleveId = row.dataset.eleveId;
+        if (typeNote === 'appreciation') {
+            const appreciationSelect = row.querySelector('[data-field="appreciation"]');
+            const commentaireInput = row.querySelector('[data-field="commentaire"]');
+            originalValues[eleveId] = {
+                appreciation: appreciationSelect.value,
+                commentaire: commentaireInput.value,
+                absent: row.querySelector('[data-field="absent"]').checked
+            };
+        } else {
+            const noteInput = row.querySelector('[data-field="note"]');
+            originalValues[eleveId] = {
+                note: noteInput.value,
+                absent: row.querySelector('[data-field="absent"]').checked
+            };
+        }
+    });
+}
+
+// Confirmation avant sauvegarde
+function confirmerSauvegarde() {
+    const count = compterNotesSaisies();
+    if (count === 0) {
+        showToast('⚠️ Aucune note à sauvegarder', 'error');
+        return;
+    }
+    
+    if (confirm(`Voulez-vous vraiment sauvegarder ${count} note(s) ?\n\nCette action va enregistrer ou modifier les notes dans la base de données.`)) {
+        sauvegarderToutesLesNotes();
+    }
+}
+
+// Sauvegarder toutes les notes avec vérification et rechargement
 async function sauvegarderToutesLesNotes() {
     const saveBtn = document.getElementById('saveBtn');
     const saveBtnText = document.getElementById('saveBtnText');
     const saveProgress = document.getElementById('saveProgress');
     const progressBar = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
+    const saveResults = document.getElementById('saveResults');
     
     const rows = document.querySelectorAll('#elevesTableBody tr');
     const notes = [];
@@ -605,6 +705,7 @@ async function sauvegarderToutesLesNotes() {
     saveBtn.disabled = true;
     saveBtnText.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sauvegarde en cours...';
     saveProgress.style.display = 'block';
+    saveResults.style.display = 'none';
     
     // Animation de la barre de progression
     let progress = 0;
@@ -654,18 +755,78 @@ async function sauvegarderToutesLesNotes() {
             progressBar.style.width = '0%';
             
             if (data.success) {
-                showToast('✅ ' + data.message, 'success');
+                // Afficher le message de succès
+                showToast(data.message, 'success');
                 saveBtnText.innerHTML = '<i class="fas fa-check me-2"></i>Notes sauvegardées !';
+                
+                // Afficher les détails de la sauvegarde
+                let resultsHTML = '<div class="success-details">';
+                resultsHTML += `<h5><i class="fas fa-check-circle me-2"></i>Sauvegarde réussie</h5>`;
+                resultsHTML += `<p><strong>${data.total}</strong> note(s) enregistrée(s) :</p>`;
+                resultsHTML += '<ul>';
+                if (data.notes_sauvegardees > 0) {
+                    resultsHTML += `<li>✨ <strong>${data.notes_sauvegardees}</strong> nouvelle(s) note(s) ajoutée(s)</li>`;
+                }
+                if (data.notes_modifiees > 0) {
+                    resultsHTML += `<li>✏️ <strong>${data.notes_modifiees}</strong> note(s) modifiée(s)</li>`;
+                }
+                resultsHTML += '</ul>';
+                
+                // Afficher les erreurs s'il y en a
+                if (data.erreurs && data.erreurs.length > 0) {
+                    resultsHTML += '<div class="mt-2"><strong>⚠️ Erreurs détectées:</strong><ul>';
+                    data.erreurs.forEach(err => {
+                        resultsHTML += `<li class="text-danger">${err}</li>`;
+                    });
+                    resultsHTML += '</ul></div>';
+                }
+                
+                resultsHTML += '<p class="mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>Les notes ont été enregistrées dans la base de données. Vous pouvez continuer à les modifier si nécessaire.</p>';
+                resultsHTML += '</div>';
+                
+                saveResults.innerHTML = resultsHTML;
+                saveResults.style.display = 'block';
+                
+                // Marquer toutes les lignes comme sauvegardées
+                rows.forEach(row => {
+                    const eleveId = row.dataset.eleveId;
+                    const noteDetail = data.notes_details.find(n => n.eleve_id == eleveId);
+                    if (noteDetail) {
+                        markRowAsSaved(row);
+                    }
+                });
+                
+                // Réinitialiser les valeurs originales
+                saveOriginalValues();
+                hasUnsavedChanges = false;
+                document.getElementById('unsavedIndicator').style.display = 'none';
                 
                 // Réactiver le bouton après 2 secondes
                 setTimeout(() => {
                     saveBtn.disabled = false;
-                    saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Sauvegarder Toutes les Notes (' + notes.length + ' élèves)';
+                    saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Sauvegarder Toutes les Notes';
+                    
+                    // Retirer les indicateurs visuels après 5 secondes
+                    setTimeout(() => {
+                        rows.forEach(row => {
+                            row.classList.remove('note-saved');
+                        });
+                    }, 5000);
                 }, 2000);
             } else {
+                // Afficher l'erreur
                 showToast('❌ Erreur: ' + data.error, 'error');
+                
+                let resultsHTML = '<div class="error-details">';
+                resultsHTML += `<h5><i class="fas fa-exclamation-triangle me-2"></i>Erreur de sauvegarde</h5>`;
+                resultsHTML += `<p>${data.error}</p>`;
+                resultsHTML += '</div>';
+                
+                saveResults.innerHTML = resultsHTML;
+                saveResults.style.display = 'block';
+                
                 saveBtn.disabled = false;
-                saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Sauvegarder Toutes les Notes (' + notes.length + ' élèves)';
+                saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Réessayer la sauvegarde';
             }
         }, 500);
         
@@ -674,11 +835,20 @@ async function sauvegarderToutesLesNotes() {
         saveProgress.style.display = 'none';
         progressBar.style.width = '0%';
         
-        showToast('❌ Erreur de connexion', 'error');
-        console.error(error);
+        showToast('❌ Erreur de connexion au serveur', 'error');
+        console.error('Erreur:', error);
+        
+        let resultsHTML = '<div class="error-details">';
+        resultsHTML += `<h5><i class="fas fa-exclamation-triangle me-2"></i>Erreur de connexion</h5>`;
+        resultsHTML += `<p>Impossible de communiquer avec le serveur. Vérifiez votre connexion et réessayez.</p>`;
+        resultsHTML += `<p class="small text-muted">Détails: ${error.message}</p>`;
+        resultsHTML += '</div>';
+        
+        saveResults.innerHTML = resultsHTML;
+        saveResults.style.display = 'block';
         
         saveBtn.disabled = false;
-        saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Sauvegarder Toutes les Notes (' + notes.length + ' élèves)';
+        saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Réessayer la sauvegarde';
     }
 }
 
@@ -717,7 +887,7 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault();
         const saveBtn = document.getElementById('saveBtn');
         if (saveBtn && !saveBtn.disabled) {
-            sauvegarderToutesLesNotes();
+            confirmerSauvegarde();
         }
     }
 });
@@ -746,17 +916,35 @@ function compterNotesSaisies() {
     return count;
 }
 
-// Mettre à jour le compteur du bouton en temps réel
+// Mettre à jour le compteur du bouton en temps réel et suivre les modifications
 {% if eleves %}
-document.querySelectorAll('.note-input, .absent-checkbox, .appreciation-select').forEach(element => {
+document.querySelectorAll('.note-input, .absent-checkbox, .appreciation-select, .commentaire-input').forEach(element => {
     element.addEventListener('change', function() {
+        const row = this.closest('tr');
+        const eleveId = row.dataset.eleveId;
+        
+        // Marquer la ligne comme modifiée
+        markRowAsModified(row);
+        
+        // Mettre à jour le compteur
         const count = compterNotesSaisies();
         const saveBtnText = document.getElementById('saveBtnText');
         if (saveBtnText && count > 0) {
             saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Sauvegarder ' + count + ' note(s)';
         }
     });
+    
+    // Pour les inputs, détecter aussi la saisie au clavier
+    if (element.tagName === 'INPUT' && element.type !== 'checkbox') {
+        element.addEventListener('input', function() {
+            const row = this.closest('tr');
+            markRowAsModified(row);
+        });
+    }
 });
+
+// Sauvegarder les valeurs originales au chargement
+saveOriginalValues();
 {% endif %}
 
 // Afficher un message d'aide au chargement

@@ -3228,7 +3228,166 @@ def statistiques(request):
     # Période sélectionnée
     periode = request.GET.get('periode', 'TRIMESTRE_1')
     
-    # Pour l'instant, affichage simple
+    # Initialiser les statistiques
+    nb_evalues = 0
+    nb_non_evalues = 0
+    nb_non_admis = 0
+    nb_a_suivre = 0
+    nb_excellents = 0
+    nb_precaution = 0
+    eleves_non_admis = []
+    eleves_a_suivre = []
+    eleves_excellents = []
+    eleves_precaution = []
+    recommandations = []
+    
+    # Si une classe est sélectionnée, calculer les statistiques
+    if classe_selectionnee and periode:
+        from decimal import Decimal
+        
+        # Récupérer les élèves de la classe
+        try:
+            classe_eleve = ClasseEleve.objects.get(
+                nom=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        except ClasseEleve.DoesNotExist:
+            eleves = []
+        
+        # Récupérer les matières de la classe
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
+        
+        if eleves.exists() and matieres.exists():
+            # Pour chaque élève, calculer sa moyenne
+            for eleve in eleves:
+                total_points = Decimal('0')
+                total_coefficients = Decimal('0')
+                has_notes = False
+                
+                for matiere in matieres:
+                    # Récupérer les évaluations de la période
+                    evaluations = Evaluation.objects.filter(
+                        matiere=matiere,
+                        periode=periode
+                    )
+                    
+                    if evaluations.exists():
+                        # Calculer la moyenne de la matière
+                        total_devoirs = Decimal('0')
+                        count_devoirs = 0
+                        total_compo = Decimal('0')
+                        count_compo = 0
+                        
+                        for evaluation in evaluations:
+                            try:
+                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                                if note_obj.note is not None and not note_obj.absent:
+                                    has_notes = True
+                                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                        total_compo += Decimal(str(note_obj.note))
+                                        count_compo += 1
+                                    else:
+                                        total_devoirs += Decimal(str(note_obj.note))
+                                        count_devoirs += 1
+                            except NoteEleve.DoesNotExist:
+                                pass
+                        
+                        # Calculer la moyenne de la matière
+                        moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
+                        note_composition = total_compo / count_compo if count_compo > 0 else None
+                        
+                        moyenne_matiere = None
+                        if moyenne_continue is not None and note_composition is not None:
+                            moyenne_matiere = (moyenne_continue + note_composition * 2) / 3
+                        elif note_composition is not None:
+                            moyenne_matiere = note_composition
+                        elif moyenne_continue is not None:
+                            moyenne_matiere = moyenne_continue
+                        
+                        if moyenne_matiere is not None:
+                            total_points += moyenne_matiere * matiere.coefficient
+                            total_coefficients += matiere.coefficient
+                
+                # Calculer la moyenne générale
+                if has_notes and total_coefficients > 0:
+                    moyenne_generale = float(total_points / total_coefficients)
+                    nb_evalues += 1
+                    
+                    # Classifier l'élève
+                    eleve_data = {
+                        'eleve': eleve,
+                        'moyenne': round(moyenne_generale, 2)
+                    }
+                    
+                    if moyenne_generale < 10:
+                        nb_non_admis += 1
+                        eleves_non_admis.append(eleve_data)
+                    elif moyenne_generale < 12:
+                        nb_a_suivre += 1
+                        eleves_a_suivre.append(eleve_data)
+                    elif moyenne_generale < 14:
+                        nb_precaution += 1
+                        eleves_precaution.append(eleve_data)
+                    else:
+                        nb_excellents += 1
+                        eleves_excellents.append(eleve_data)
+                else:
+                    nb_non_evalues += 1
+            
+            # Calculer les taux
+            total_eleves_classe = eleves.count()
+            taux_reussite = round((nb_evalues - nb_non_admis) / nb_evalues * 100, 1) if nb_evalues > 0 else 0
+            taux_echec = round(nb_non_admis / nb_evalues * 100, 1) if nb_evalues > 0 else 0
+            
+            # Générer des recommandations
+            if nb_non_admis > 0:
+                recommandations.append({
+                    'type': 'DANGER',
+                    'message': f'{nb_non_admis} élève(s) en difficulté (moyenne < 10/20). Mise en place de soutien scolaire recommandée.',
+                    'couleur': 'danger'
+                })
+            
+            if nb_a_suivre > 0:
+                recommandations.append({
+                    'type': 'WARNING',
+                    'message': f'{nb_a_suivre} élève(s) à suivre (moyenne entre 10 et 12/20). Accompagnement personnalisé conseillé.',
+                    'couleur': 'warning'
+                })
+            
+            if nb_excellents > 0:
+                recommandations.append({
+                    'type': 'SUCCESS',
+                    'message': f'{nb_excellents} élève(s) excellent(s) (moyenne ≥ 14/20). Félicitations !',
+                    'couleur': 'success'
+                })
+            
+            if nb_non_evalues > 0:
+                recommandations.append({
+                    'type': 'INFO',
+                    'message': f'{nb_non_evalues} élève(s) non évalué(s) pour cette période.',
+                    'couleur': 'info'
+                })
+            
+            if not recommandations:
+                recommandations.append({
+                    'type': 'INFO',
+                    'message': 'Statistiques calculées avec succès.',
+                    'couleur': 'info'
+                })
+        else:
+            recommandations.append({
+                'type': 'WARNING',
+                'message': 'Aucune donnée disponible pour cette classe et cette période.',
+                'couleur': 'warning'
+            })
+    else:
+        recommandations.append({
+            'type': 'INFO',
+            'message': 'Sélectionnez une classe et une période pour voir les statistiques.',
+            'couleur': 'info'
+        })
+    
     context = {
         'titre_page': 'Statistiques de l\'École',
         'ecole': ecole,
@@ -3237,24 +3396,21 @@ def statistiques(request):
         'periode': periode,
         'total_eleves': total_eleves,
         'total_classes': total_classes,
-        'nb_evalues': 0,
-        'nb_non_evalues': total_eleves,
-        'nb_non_admis': 0,
-        'nb_a_suivre': 0,
-        'nb_excellents': 0,
-        'nb_precaution': 0,
-        'total_echecs': 0,
-        'taux_reussite': 0,
-        'taux_echec': 0,
-        'eleves_non_admis': [],
-        'eleves_a_suivre': [],
-        'eleves_excellents': [],
+        'nb_evalues': nb_evalues,
+        'nb_non_evalues': nb_non_evalues,
+        'nb_non_admis': nb_non_admis,
+        'nb_a_suivre': nb_a_suivre,
+        'nb_excellents': nb_excellents,
+        'nb_precaution': nb_precaution,
+        'total_echecs': nb_non_admis,
+        'taux_reussite': round((nb_evalues - nb_non_admis) / nb_evalues * 100, 1) if nb_evalues > 0 else 0,
+        'taux_echec': round(nb_non_admis / nb_evalues * 100, 1) if nb_evalues > 0 else 0,
+        'eleves_non_admis': eleves_non_admis,
+        'eleves_a_suivre': eleves_a_suivre,
+        'eleves_excellents': eleves_excellents,
+        'eleves_precaution': eleves_precaution,
         'strategies': [],
-        'recommandations': [{
-            'type': 'INFO',
-            'message': 'Page de statistiques - Données en cours de chargement',
-            'couleur': 'info'
-        }],
+        'recommandations': recommandations,
         'periodes': [
             ('TRIMESTRE_1', 'Trimestre 1'),
             ('TRIMESTRE_2', 'Trimestre 2'),
@@ -3871,11 +4027,15 @@ def liste_saisie_pdf(request):
 
 @login_required
 def sauvegarder_notes(request):
-    """Sauvegarder les notes saisies"""
+    """Sauvegarder les notes saisies avec support des transactions"""
     from django.http import JsonResponse
     from eleves.models import Eleve
+    from django.db import transaction
     import json
     from decimal import Decimal, InvalidOperation
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
@@ -3884,72 +4044,159 @@ def sauvegarder_notes(request):
         data = json.loads(request.body)
         notes_data = data.get('notes', [])
         evaluation_id = data.get('evaluation_id')
+        matiere_id = data.get('matiere_id')
+        periode = data.get('periode')
         
+        # Validation des paramètres
+        if not all([matiere_id, periode]):
+            return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
+        
+        # Récupérer ou créer l'évaluation
+        matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        
+        # Créer l'évaluation si elle n'existe pas
         if not evaluation_id:
-            return JsonResponse({'success': False, 'error': 'ID d\'évaluation manquant'}, status=400)
-        
-        evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
+            evaluation, created = Evaluation.objects.get_or_create(
+                matiere=matiere,
+                periode=periode,
+                defaults={
+                    'date_evaluation': timezone.now().date(),
+                    'note_sur': 20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
+                    'coefficient': matiere.coefficient,
+                }
+            )
+            logger.info(f"Évaluation {'créée' if created else 'récupérée'}: {evaluation.id}")
+        else:
+            evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
         
         notes_sauvegardees = 0
+        notes_modifiees = 0
         erreurs = []
+        notes_details = []
         
-        for note_data in notes_data:
-            try:
-                eleve_id = note_data.get('eleve_id')
-                note_value = note_data.get('note', '').strip()
-                absent = note_data.get('absent', False)
-                
-                if not eleve_id:
-                    continue
-                
-                eleve = Eleve.objects.get(pk=eleve_id)
-                
-                # Valider la note
-                note_decimal = None
-                if note_value and not absent:
-                    try:
-                        note_decimal = Decimal(note_value.replace(',', '.'))
-                        if note_decimal < 0 or note_decimal > evaluation.note_sur:
-                            erreurs.append(f"{eleve.nom}: Note invalide (0-{evaluation.note_sur})")
-                            continue
-                    except (InvalidOperation, ValueError):
-                        erreurs.append(f"{eleve.nom}: Format de note invalide")
+        # Utiliser une transaction pour garantir l'intégrité des données
+        with transaction.atomic():
+            for note_data in notes_data:
+                try:
+                    eleve_id = note_data.get('eleve_id')
+                    absent = note_data.get('absent', False)
+                    
+                    if not eleve_id:
                         continue
-                
-                # Créer ou mettre à jour la note
-                note_obj, created = NoteEleve.objects.update_or_create(
-                    eleve=eleve,
-                    evaluation=evaluation,
-                    defaults={
-                        'note': note_decimal if not absent else None,
-                        'absent': absent,
-                        'saisi_par': request.user,
-                    }
-                )
-                
-                notes_sauvegardees += 1
-                
-            except Eleve.DoesNotExist:
-                erreurs.append(f"Élève ID {eleve_id} introuvable")
-            except Exception as e:
-                erreurs.append(f"Erreur: {str(e)}")
+                    
+                    eleve = Eleve.objects.get(pk=eleve_id)
+                    
+                    # Traiter selon le type de note
+                    if 'appreciation' in note_data:
+                        # Appréciation (pour maternelle) - utiliser AppreciationMaternelle
+                        from notes.models import AppreciationMaternelle
+                        
+                        appreciation = note_data.get('appreciation', '').strip()
+                        commentaire = note_data.get('commentaire', '').strip()
+                        
+                        if not appreciation and not absent:
+                            continue
+                        
+                        # Déterminer le trimestre depuis la période
+                        trimestre = periode if periode.startswith('TRIMESTRE') else 'TRIMESTRE_1'
+                        
+                        note_obj, created = AppreciationMaternelle.objects.update_or_create(
+                            eleve=eleve,
+                            matiere=matiere,
+                            trimestre=trimestre,
+                            annee_scolaire=matiere.classe.annee_scolaire,
+                            defaults={
+                                'appreciation': appreciation if appreciation else None,
+                                'commentaire': commentaire if commentaire else None,
+                                'absent': absent,
+                                'cree_par': request.user,
+                            }
+                        )
+                    else:
+                        # Note numérique
+                        note_value = str(note_data.get('note', '')).strip()
+                        
+                        # Valider la note
+                        note_decimal = None
+                        if note_value and not absent:
+                            try:
+                                note_decimal = Decimal(note_value.replace(',', '.'))
+                                if note_decimal < 0 or note_decimal > evaluation.note_sur:
+                                    erreurs.append(f"{eleve.nom} {eleve.prenom}: Note invalide (doit être entre 0 et {evaluation.note_sur})")
+                                    continue
+                            except (InvalidOperation, ValueError, TypeError):
+                                erreurs.append(f"{eleve.nom} {eleve.prenom}: Format de note invalide")
+                                continue
+                        elif not absent:
+                            # Pas de note et pas absent, on ignore
+                            continue
+                        
+                        # Créer ou mettre à jour la note
+                        note_obj, created = NoteEleve.objects.update_or_create(
+                            eleve=eleve,
+                            evaluation=evaluation,
+                            defaults={
+                                'note': note_decimal if not absent else None,
+                                'absent': absent,
+                                'cree_par': request.user,
+                            }
+                        )
+                    
+                    if created:
+                        notes_sauvegardees += 1
+                    else:
+                        notes_modifiees += 1
+                    
+                    # Ajouter les détails de la note sauvegardée
+                    notes_details.append({
+                        'eleve_id': eleve_id,
+                        'eleve_nom': f"{eleve.nom} {eleve.prenom}",
+                        'note': float(note_obj.note) if note_obj.note else None,
+                        'appreciation': note_obj.appreciation,
+                        'absent': note_obj.absent,
+                        'created': created
+                    })
+                    
+                except Eleve.DoesNotExist:
+                    erreurs.append(f"Élève ID {eleve_id} introuvable")
+                except Exception as e:
+                    logger.error(f"Erreur lors de la sauvegarde de la note pour l'élève {eleve_id}: {str(e)}")
+                    erreurs.append(f"Erreur: {str(e)}")
+        
+        # Préparer la réponse
+        total_notes = notes_sauvegardees + notes_modifiees
+        message_parts = []
+        
+        if notes_sauvegardees > 0:
+            message_parts.append(f"{notes_sauvegardees} nouvelle(s) note(s) ajoutée(s)")
+        if notes_modifiees > 0:
+            message_parts.append(f"{notes_modifiees} note(s) modifiée(s)")
+        
+        message = " et ".join(message_parts) if message_parts else "Aucune note à sauvegarder"
         
         response_data = {
             'success': True,
             'notes_sauvegardees': notes_sauvegardees,
-            'message': f'{notes_sauvegardees} note(s) sauvegardée(s) avec succès'
+            'notes_modifiees': notes_modifiees,
+            'total': total_notes,
+            'message': f'✅ {message}',
+            'notes_details': notes_details,
+            'evaluation_id': evaluation.id
         }
         
         if erreurs:
             response_data['erreurs'] = erreurs
-            response_data['message'] += f' ({len(erreurs)} erreur(s))'
+            response_data['message'] += f' ⚠️ {len(erreurs)} erreur(s) détectée(s)'
+        
+        logger.info(f"Sauvegarde terminée: {total_notes} notes traitées, {len(erreurs)} erreurs")
         
         return JsonResponse(response_data)
         
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        logger.error(f"Erreur lors de la sauvegarde des notes: {str(e)}")
+        return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
 
 
 @login_required
@@ -4293,9 +4540,12 @@ def bulletin_dynamique(request):
                 bulletin_data['matieres_notes'].append({
                     'matiere': matiere,
                     'notes': notes_matiere,
+                    'moyenne_continue': moyenne_continue,
+                    'note_composition': note_composition,
                     'moyenne': moyenne_matiere,
                     'coefficient': matiere.coefficient,
                     'points': points,
+                    'total': points,  # Alias pour compatibilité
                 })
             
             # Ajouter les totaux au bulletin
@@ -4407,6 +4657,200 @@ def bulletin_dynamique(request):
     }
     
     return render(request, 'notes/bulletin_dynamique.html', context)
+
+
+@login_required
+def bulletin_dynamique_pdf(request):
+    """Générer le bulletin dynamique en PDF"""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from weasyprint.text.fonts import FontConfiguration
+    import tempfile
+    import os
+    
+    # Récupérer les mêmes paramètres que bulletin_dynamique
+    classe_id = request.GET.get('classe_id')
+    eleve_id = request.GET.get('eleve_id')
+    periode = request.GET.get('periode', '')
+    system_type = request.GET.get('system_type', 'trimestre')
+    
+    if not all([classe_id, eleve_id, periode]):
+        return HttpResponse("Paramètres manquants (classe_id, eleve_id, periode)", status=400)
+    
+    # Réutiliser la logique de bulletin_dynamique pour obtenir les données
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from decimal import Decimal
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+    eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
+    matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+    
+    # Récupérer les élèves pour calculer le rang
+    try:
+        classe_eleve = ClasseEleve.objects.get(
+            nom=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire
+        )
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    except ClasseEleve.DoesNotExist:
+        eleves = []
+    
+    # Déterminer le titre de la période
+    periodes_map = {
+        'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre',
+        'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars',
+        'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
+        'TRIMESTRE_1': '1er Trimestre', 'TRIMESTRE_2': '2ème Trimestre', 'TRIMESTRE_3': '3ème Trimestre',
+        'SEMESTRE_1': '1er Semestre', 'SEMESTRE_2': '2ème Semestre',
+        'ANNUEL': 'Bulletin Annuel'
+    }
+    titre_periode = periodes_map.get(periode, periode)
+    
+    # Préparer les données du bulletin (logique simplifiée)
+    bulletin_data = {
+        'eleve': eleve_selectionne,
+        'classe': classe_selectionnee,
+        'periode': periode,
+        'system_type': system_type,
+        'titre_periode': titre_periode,
+        'matieres_notes': [],
+        'moyenne_generale': None,
+        'rang': None,
+        'mention': None,
+        'effectif': len(eleves),
+        'mois_libelle': titre_periode,
+    }
+    
+    # Calculer les notes pour chaque matière
+    total_points = Decimal('0')
+    total_coefficients = Decimal('0')
+    
+    for matiere in matieres:
+        evaluations = Evaluation.objects.filter(
+            matiere=matiere,
+            matiere__classe=classe_selectionnee,
+            periode=periode
+        ).order_by('date_evaluation')
+        
+        total_devoirs = Decimal('0')
+        count_devoirs = 0
+        total_compo = Decimal('0')
+        count_compo = 0
+        
+        for evaluation in evaluations:
+            try:
+                note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
+                if note_obj.note is not None and not note_obj.absent:
+                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                        total_compo += Decimal(str(note_obj.note))
+                        count_compo += 1
+                    else:
+                        total_devoirs += Decimal(str(note_obj.note))
+                        count_devoirs += 1
+            except NoteEleve.DoesNotExist:
+                pass
+        
+        moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
+        note_composition = total_compo / count_compo if count_compo > 0 else None
+        
+        # Calculer la moyenne de la matière
+        if system_type == 'mensuel':
+            moyenne_matiere = moyenne_continue
+        elif moyenne_continue is not None and note_composition is not None:
+            moyenne_matiere = (moyenne_continue + note_composition * 2) / 3
+        elif note_composition is not None:
+            moyenne_matiere = note_composition
+        elif moyenne_continue is not None:
+            moyenne_matiere = moyenne_continue
+        else:
+            moyenne_matiere = None
+        
+        if moyenne_matiere is not None:
+            total_points += moyenne_matiere * matiere.coefficient
+            total_coefficients += matiere.coefficient
+        
+        # Préparer les notes pour l'affichage
+        notes_matiere = [
+            {'note': moyenne_continue, 'absent': False},
+            {'note': note_composition, 'absent': False}
+        ]
+        
+        bulletin_data['matieres_notes'].append({
+            'matiere': matiere,
+            'notes': notes_matiere,
+            'moyenne_continue': moyenne_continue,
+            'note_composition': note_composition,
+            'moyenne': float(moyenne_matiere) if moyenne_matiere else None,
+            'coefficient': matiere.coefficient,
+            'points': float(moyenne_matiere * matiere.coefficient) if moyenne_matiere else None,
+            'total': float(moyenne_matiere * matiere.coefficient) if moyenne_matiere else None,
+        })
+    
+    # Calculer la moyenne générale
+    if total_coefficients > 0:
+        moyenne_generale = total_points / total_coefficients
+        bulletin_data['moyenne_generale'] = float(moyenne_generale)
+        
+        # Déterminer la mention
+        if moyenne_generale >= 16:
+            bulletin_data['mention'] = "Très Bien"
+        elif moyenne_generale >= 14:
+            bulletin_data['mention'] = "Bien"
+        elif moyenne_generale >= 12:
+            bulletin_data['mention'] = "Assez Bien"
+        elif moyenne_generale >= 10:
+            bulletin_data['mention'] = "Passable"
+        else:
+            bulletin_data['mention'] = "Insuffisant"
+    
+    # Préparer le contexte pour le template
+    context = {
+        'bulletin_data': bulletin_data,
+        'classe_selectionnee': classe_selectionnee,
+        'ecole': ecole,
+        'annee_scolaire': classe_selectionnee.annee_scolaire,
+        'for_pdf': True,  # Indicateur pour le template
+    }
+    
+    # Rendre le template HTML
+    html_string = render_to_string('notes/bulletin_dynamique.html', context, request=request)
+    
+    # Générer le PDF avec WeasyPrint
+    try:
+        from weasyprint import HTML, CSS
+        from weasyprint.text.fonts import FontConfiguration
+        
+        font_config = FontConfiguration()
+        html = HTML(string=html_string, base_url=request.build_absolute_uri())
+        
+        # Créer le PDF
+        pdf_file = html.write_pdf(font_config=font_config)
+        
+        # Préparer la réponse
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        filename = f"bulletin_{eleve_selectionne.nom}_{eleve_selectionne.prenom}_{periode}.pdf"
+        # Utiliser 'inline' au lieu de 'attachment' pour ouvrir dans le navigateur
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        
+        return response
+        
+    except ImportError:
+        # Si WeasyPrint n'est pas installé, retourner le HTML avec un message
+        return HttpResponse(
+            "<h1>WeasyPrint non installé</h1>"
+            "<p>Pour générer des PDF, installez WeasyPrint:</p>"
+            "<pre>pip install weasyprint</pre>"
+            "<p>En attendant, utilisez le bouton 'Imprimer' et sélectionnez 'Enregistrer au format PDF' dans votre navigateur.</p>"
+            f"<p><a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a></p>",
+            status=501
+        )
+    except Exception as e:
+        # En cas d'erreur, retourner un message d'erreur
+        return HttpResponse(f"Erreur lors de la génération du PDF: {str(e)}<br><br><a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a>", status=500)
 
 
 @login_required

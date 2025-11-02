@@ -42,6 +42,7 @@ from .calculs import (
     obtenir_appreciation,
     calculer_rang
 )
+from .classifier import classify
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import require_school_object
 
@@ -54,14 +55,26 @@ class CalculateurBulletinIntelligent:
         self.classe_note = classe_note
         self.periode = periode
         self.systeme = systeme
-        self.niveau = self._detecter_niveau()
+        self.niveau, self.serie, self.section = self._detecter_niveau_intelligent()
         
-    def _detecter_niveau(self):
-        """Détecte si primaire ou secondaire"""
-        niveau_ens = self.classe_note.niveau_enseignement
-        if niveau_ens == 'PRIMAIRE':
-            return 'PRIMAIRE'
-        return 'SECONDAIRE'
+    def _detecter_niveau_intelligent(self):
+        """Détecte intelligemment le niveau, la série et la section à partir du nom de classe"""
+        # Essayer d'abord le champ niveau_enseignement si disponible et cohérent
+        niveau_db = getattr(self.classe_note, 'niveau_enseignement', None)
+        
+        # Classification intelligente à partir du nom
+        niveau_auto, serie, section = classify(self.classe_note.nom)
+        
+        # Si le niveau DB existe et est cohérent, on le garde
+        if niveau_db in ['PRIMAIRE', 'MATERNELLE']:
+            niveau_final = 'PRIMAIRE'
+        elif niveau_db in ['COLLEGE', 'LYCEE']:
+            niveau_final = 'SECONDAIRE'
+        else:
+            # Sinon on utilise la détection automatique
+            niveau_final = niveau_auto
+        
+        return niveau_final, serie, section
     
     def _obtenir_mois_periode(self):
         """Retourne les mois d'une période"""
@@ -160,6 +173,8 @@ class CalculateurBulletinIntelligent:
             'classe': self.classe_note.nom,
             'periode': self.periode,
             'niveau': self.niveau,
+            'serie': self.serie,
+            'section': self.section,
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
             'mention': obtenir_mention(moyenne_generale) if moyenne_generale else None,

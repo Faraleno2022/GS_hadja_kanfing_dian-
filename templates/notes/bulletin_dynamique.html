@@ -515,6 +515,21 @@
     </div>
     {% endif %}
 
+    <!-- Boutons d'action -->
+    {% if bulletin_data and bulletin_data.eleve %}
+    <div class="text-center mb-3 no-print">
+        <button onclick="window.print()" class="btn btn-primary btn-lg me-2">
+            <i class="fas fa-print me-2"></i>Imprimer
+        </button>
+        <a href="{% url 'notes:bulletin_dynamique_pdf' %}?classe_id={{ classe_id }}&eleve_id={{ eleve_id }}&periode={{ periode }}&system_type={{ system_type }}" 
+           class="btn btn-success btn-lg" 
+           target="_blank"
+           title="Ouvrir le bulletin en PDF dans un nouvel onglet">
+            <i class="fas fa-file-pdf me-2"></i>Ouvrir PDF
+        </a>
+    </div>
+    {% endif %}
+
     <!-- Bulletin -->
     {% if bulletin_data %}
     <div class="bulletin-container" id="bulletin">
