@@ -3470,9 +3470,14 @@ def modifier_classe(request, classe_id):
     """Modifier une classe"""
     classe = get_object_or_404(ClasseNote, pk=classe_id)
     
-    # Récupérer l'école
+    # Vérifier que l'utilisateur a accès à cette classe
     user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else classe.ecole
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Sécurité : Vérifier que la classe appartient à l'école de l'utilisateur
+    if ecole and classe.ecole != ecole:
+        messages.error(request, "❌ Vous n'avez pas accès à cette classe")
+        return redirect('notes:gerer_classes')
     
     if request.method == 'POST':
         form = ClasseNoteForm(request.POST, instance=classe, ecole=ecole)
@@ -3511,6 +3516,12 @@ def supprimer_classe(request, classe_id):
     
     try:
         classe = get_object_or_404(ClasseNote, pk=classe_id)
+        
+        # Sécurité : Vérifier que la classe appartient à l'école de l'utilisateur
+        user_profil = getattr(request.user, 'profil', None)
+        ecole = user_profil.ecole if user_profil else None
+        if ecole and classe.ecole != ecole:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
         
         # Vérifier s'il y a des matières ou notes liées
         has_matieres = MatiereNote.objects.filter(classe=classe).exists()
@@ -3593,6 +3604,13 @@ def gerer_matieres(request):
 def modifier_matiere(request, matiere_id):
     """Modifier une matière"""
     matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+    
+    # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    if ecole and matiere.classe.ecole != ecole:
+        messages.error(request, "❌ Vous n'avez pas accès à cette matière")
+        return redirect('notes:gerer_matieres')
     classe_id = matiere.classe.id
     
     if request.method == 'POST':
@@ -3635,6 +3653,13 @@ def supprimer_matiere(request, matiere_id):
     
     try:
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        
+        # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
+        user_profil = getattr(request.user, 'profil', None)
+        ecole = user_profil.ecole if user_profil else None
+        if ecole and matiere.classe.ecole != ecole:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+        
         classe_id = matiere.classe.id
         
         # Vérifier s'il y a des évaluations ou notes liées
@@ -3671,10 +3696,10 @@ def charger_matieres_defaut(request, classe_id):
     
     classe = get_object_or_404(ClasseNote, pk=classe_id)
     
-    # Vérifier les permissions
+    # Sécurité : Vérifier les permissions
     user_profil = getattr(request.user, 'profil', None)
     if user_profil and user_profil.ecole and classe.ecole != user_profil.ecole:
-        messages.error(request, "Vous n'avez pas accès à cette classe")
+        messages.error(request, "❌ Vous n'avez pas accès à cette classe")
         return redirect('notes:gerer_matieres')
     
     # Charger les matières par défaut
@@ -4152,6 +4177,12 @@ def sauvegarder_notes(request):
         
         # Récupérer ou créer l'évaluation
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        
+        # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
+        user_profil = getattr(request.user, 'profil', None)
+        ecole = user_profil.ecole if user_profil else None
+        if ecole and matiere.classe.ecole != ecole:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
         
         # Créer l'évaluation si elle n'existe pas
         if not evaluation_id:
