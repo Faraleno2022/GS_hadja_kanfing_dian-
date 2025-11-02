@@ -3253,7 +3253,7 @@ def statistiques(request):
             )
             eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         except ClasseEleve.DoesNotExist:
-            eleves = []
+            eleves = Eleve.objects.none()
         
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
