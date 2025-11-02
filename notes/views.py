@@ -4904,8 +4904,12 @@ def bulletin_dynamique_pdf(request):
     periode = request.GET.get('periode', '')
     system_type = request.GET.get('system_type', 'trimestre')
     
-    if not all([classe_id, eleve_id, periode]):
-        return HttpResponse("Paramètres manquants (classe_id, eleve_id, periode)", status=400)
+    # Validation des paramètres
+    if not classe_id or not eleve_id or not periode:
+        from django.contrib import messages
+        from django.shortcuts import redirect
+        messages.error(request, "❌ Veuillez sélectionner une classe, un élève et une période avant de générer le bulletin PDF.")
+        return redirect('notes:bulletin_dynamique')
     
     # Réutiliser la logique de bulletin_dynamique pour obtenir les données
     from eleves.models import Eleve, Classe as ClasseEleve
