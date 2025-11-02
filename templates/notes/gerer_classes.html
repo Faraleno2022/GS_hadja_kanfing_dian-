@@ -139,8 +139,27 @@
                         <i class="fas fa-tag me-1"></i>Nom de la classe *
                     </label>
                     {{ form.nom }}
+                    
+                    <!-- Datalist avec les classes disponibles -->
+                    <datalist id="classes-disponibles">
+                        {% if form.classes_disponibles %}
+                            {% for classe_nom in form.classes_disponibles %}
+                                <option value="{{ classe_nom }}">
+                            {% endfor %}
+                        {% endif %}
+                    </datalist>
+                    
+                    {% if form.nom.help_text %}
+                        <div class="form-text"><i class="fas fa-info-circle me-1"></i>{{ form.nom.help_text }}</div>
+                    {% endif %}
                     {% if form.nom.errors %}
                         <div class="text-danger small mt-1">{{ form.nom.errors }}</div>
+                    {% endif %}
+                    
+                    {% if form.classes_disponibles %}
+                        <div class="alert alert-info mt-2 py-2 px-3">
+                            <small><i class="fas fa-lightbulb me-1"></i><strong>{{ form.classes_disponibles|length }} classe(s) disponible(s)</strong> dans le module Élèves. Commencez à taper pour voir les suggestions.</small>
+                        </div>
                     {% endif %}
                 </div>
                 

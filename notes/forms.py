@@ -4,14 +4,22 @@ from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, ThemeBulleti
 class ClasseNoteForm(forms.ModelForm):
     """Formulaire pour créer/modifier une classe"""
     
+    # Champ personnalisé pour le nom avec datalist
+    nom = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Ex: 7ème A, CM2 B, etc.',
+            'list': 'classes-disponibles',
+            'autocomplete': 'off'
+        }),
+        help_text='Sélectionnez une classe existante ou saisissez un nouveau nom'
+    )
+    
     class Meta:
         model = ClasseNote
         fields = ['nom', 'niveau', 'annee_scolaire', 'effectif', 'description', 'actif']
         widgets = {
-            'nom': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Ex: 7ème A, CM2 B, etc.'
-            }),
             'niveau': forms.Select(attrs={
                 'class': 'form-select'
             }),
@@ -33,6 +41,27 @@ class ClasseNoteForm(forms.ModelForm):
                 'class': 'form-check-input'
             }),
         }
+    
+    def __init__(self, *args, **kwargs):
+        # Récupérer l'école depuis les kwargs
+        ecole = kwargs.pop('ecole', None)
+        super().__init__(*args, **kwargs)
+        
+        # Charger les classes disponibles depuis le module Élèves
+        if ecole:
+            try:
+                from eleves.models import Classe as ClasseEleve
+                # Récupérer les noms de classes uniques pour l'école
+                classes_eleves = ClasseEleve.objects.filter(
+                    ecole=ecole
+                ).values_list('nom', flat=True).distinct().order_by('nom')
+                
+                # Stocker pour utilisation dans le template
+                self.classes_disponibles = list(classes_eleves)
+            except Exception:
+                self.classes_disponibles = []
+        else:
+            self.classes_disponibles = []
 
 class MatiereNoteForm(forms.ModelForm):
     """Formulaire pour créer/modifier une matière"""

@@ -3440,9 +3440,9 @@ def gerer_classes(request):
     classes_actives = classes.filter(actif=True).count()
     
     # Traitement du formulaire
-    form = ClasseNoteForm()
+    form = ClasseNoteForm(ecole=ecole)
     if request.method == 'POST':
-        form = ClasseNoteForm(request.POST)
+        form = ClasseNoteForm(request.POST, ecole=ecole)
         if form.is_valid():
             classe = form.save(commit=False)
             if ecole:
@@ -3470,8 +3470,12 @@ def modifier_classe(request, classe_id):
     """Modifier une classe"""
     classe = get_object_or_404(ClasseNote, pk=classe_id)
     
+    # Récupérer l'école
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else classe.ecole
+    
     if request.method == 'POST':
-        form = ClasseNoteForm(request.POST, instance=classe)
+        form = ClasseNoteForm(request.POST, instance=classe, ecole=ecole)
         if form.is_valid():
             # Sauvegarder sans commit pour garder l'école
             instance = form.save(commit=False)
@@ -3486,7 +3490,7 @@ def modifier_classe(request, classe_id):
                 for error in errors:
                     messages.error(request, f'❌ {field}: {error}')
     else:
-        form = ClasseNoteForm(instance=classe)
+        form = ClasseNoteForm(instance=classe, ecole=ecole)
     
     context = {
         'titre_page': 'Modifier une Classe',
