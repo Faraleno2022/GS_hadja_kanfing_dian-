@@ -4291,14 +4291,24 @@ def sauvegarder_notes(request):
                         notes_modifiees += 1
                     
                     # Ajouter les détails de la note sauvegardée
-                    notes_details.append({
+                    note_detail = {
                         'eleve_id': eleve_id,
                         'eleve_nom': f"{eleve.nom} {eleve.prenom}",
-                        'note': float(note_obj.note) if note_obj.note else None,
-                        'appreciation': note_obj.appreciation,
                         'absent': note_obj.absent,
                         'created': created
-                    })
+                    }
+                    
+                    # Ajouter les champs spécifiques selon le type d'objet
+                    if hasattr(note_obj, 'appreciation'):
+                        # AppreciationMaternelle
+                        note_detail['appreciation'] = note_obj.appreciation
+                        note_detail['note'] = None
+                    else:
+                        # NoteEleve
+                        note_detail['note'] = float(note_obj.note) if note_obj.note else None
+                        note_detail['appreciation'] = None
+                    
+                    notes_details.append(note_detail)
                     
                 except Eleve.DoesNotExist:
                     erreurs.append(f"Élève ID {eleve_id} introuvable")
