@@ -3737,11 +3737,13 @@ def gerer_eleves(request):
         
         # Méthode 1 : Correspondance exacte par nom et année scolaire
         try:
-            classe_eleve = ClasseEleve.objects.get(
+            # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
+            classe_eleve = ClasseEleve.objects.filter(
                 nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire
-            )
-        except ClasseEleve.DoesNotExist:
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=ecole
+            ).first()
+        except Exception:
             pass
         
         # Méthode 2 : Recherche approximative améliorée

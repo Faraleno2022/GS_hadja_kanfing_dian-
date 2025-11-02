@@ -99,6 +99,80 @@
     .btn-danger:hover {
         background: linear-gradient(135deg, #495057 0%, #343a40 100%);
     }
+    
+    /* Styles pour la liste déroulante des classes */
+    .classes-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        background: white;
+        border: 2px solid #007bff;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 123, 255, 0.3);
+        margin-top: 5px;
+        max-height: 400px;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .classes-dropdown-header {
+        padding: 10px;
+        border-bottom: 1px solid #e9ecef;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 8px 8px 0 0;
+    }
+    
+    .classes-dropdown-body {
+        overflow-y: auto;
+        max-height: 300px;
+        padding: 5px;
+    }
+    
+    .classes-dropdown-body::-webkit-scrollbar {
+        width: 8px;
+    }
+    
+    .classes-dropdown-body::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    .classes-dropdown-body::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border-radius: 10px;
+    }
+    
+    .classes-dropdown-body::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #0056b3 0%, #003d82 100%);
+    }
+    
+    .classe-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        border-radius: 5px;
+        transition: all 0.2s ease;
+        margin: 2px 0;
+    }
+    
+    .classe-item:hover {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        transform: translateX(5px);
+    }
+    
+    .classe-item.hidden {
+        display: none;
+    }
+    
+    .classes-dropdown-footer {
+        padding: 8px 15px;
+        border-top: 1px solid #e9ecef;
+        background: #f8f9fa;
+        border-radius: 0 0 8px 8px;
+        text-align: center;
+    }
 </style>
 {% endblock %}
 
@@ -138,16 +212,50 @@
                     <label for="{{ form.nom.id_for_label }}" class="form-label">
                         <i class="fas fa-tag me-1"></i>Nom de la classe *
                     </label>
-                    {{ form.nom }}
                     
-                    <!-- Datalist avec les classes disponibles -->
-                    <datalist id="classes-disponibles">
+                    <div class="position-relative">
+                        {{ form.nom }}
+                        
+                        <!-- Datalist avec les classes disponibles -->
+                        <datalist id="classes-disponibles">
+                            {% if form.classes_disponibles %}
+                                {% for classe_nom in form.classes_disponibles %}
+                                    <option value="{{ classe_nom }}">
+                                {% endfor %}
+                            {% endif %}
+                        </datalist>
+                        
+                        <!-- Bouton pour afficher la liste complète -->
                         {% if form.classes_disponibles %}
-                            {% for classe_nom in form.classes_disponibles %}
-                                <option value="{{ classe_nom }}">
-                            {% endfor %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary position-absolute" 
+                                    style="right: 5px; top: 5px; z-index: 10;"
+                                    onclick="toggleClassesList()"
+                                    title="Voir toutes les classes">
+                                <i class="fas fa-list"></i>
+                            </button>
                         {% endif %}
-                    </datalist>
+                    </div>
+                    
+                    <!-- Liste déroulante avec scroll -->
+                    {% if form.classes_disponibles %}
+                        <div id="classes-dropdown" class="classes-dropdown" style="display: none;">
+                            <div class="classes-dropdown-header">
+                                <input type="text" id="classes-search" class="form-control form-control-sm" 
+                                       placeholder="🔍 Rechercher une classe..." 
+                                       onkeyup="filterClasses()">
+                            </div>
+                            <div class="classes-dropdown-body">
+                                {% for classe_nom in form.classes_disponibles %}
+                                    <div class="classe-item" onclick="selectClasse('{{ classe_nom }}')">
+                                        <i class="fas fa-school me-2"></i>{{ classe_nom }}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div class="classes-dropdown-footer">
+                                <small class="text-muted">{{ form.classes_disponibles|length }} classe(s) disponible(s)</small>
+                            </div>
+                        </div>
+                    {% endif %}
                     
                     {% if form.nom.help_text %}
                         <div class="form-text"><i class="fas fa-info-circle me-1"></i>{{ form.nom.help_text }}</div>
@@ -158,7 +266,7 @@
                     
                     {% if form.classes_disponibles %}
                         <div class="alert alert-info mt-2 py-2 px-3">
-                            <small><i class="fas fa-lightbulb me-1"></i><strong>{{ form.classes_disponibles|length }} classe(s) disponible(s)</strong> dans le module Élèves. Commencez à taper pour voir les suggestions.</small>
+                            <small><i class="fas fa-lightbulb me-1"></i><strong>{{ form.classes_disponibles|length }} classe(s) disponible(s)</strong> dans le module Élèves. Cliquez sur <i class="fas fa-list"></i> pour voir la liste complète.</small>
                         </div>
                     {% endif %}
                 </div>
@@ -405,6 +513,63 @@ function showToast(message, type = 'success') {
         toast.remove();
     }, 3000);
 }
+
+// Fonctions pour la liste déroulante des classes
+function toggleClassesList() {
+    const dropdown = document.getElementById('classes-dropdown');
+    const isVisible = dropdown.style.display !== 'none';
+    
+    if (isVisible) {
+        dropdown.style.display = 'none';
+    } else {
+        dropdown.style.display = 'flex';
+        // Focus sur le champ de recherche
+        document.getElementById('classes-search').focus();
+    }
+}
+
+function selectClasse(nomClasse) {
+    // Remplir le champ avec le nom de la classe sélectionnée
+    const inputField = document.querySelector('input[list="classes-disponibles"]');
+    if (inputField) {
+        inputField.value = nomClasse;
+    }
+    // Fermer la liste
+    document.getElementById('classes-dropdown').style.display = 'none';
+}
+
+function filterClasses() {
+    const searchValue = document.getElementById('classes-search').value.toLowerCase();
+    const items = document.querySelectorAll('.classe-item');
+    let visibleCount = 0;
+    
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(searchValue)) {
+            item.classList.remove('hidden');
+            visibleCount++;
+        } else {
+            item.classList.add('hidden');
+        }
+    });
+    
+    // Mettre à jour le compteur
+    const footer = document.querySelector('.classes-dropdown-footer small');
+    if (footer) {
+        footer.textContent = `${visibleCount} classe(s) trouvée(s)`;
+    }
+}
+
+// Fermer la liste si on clique en dehors
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('classes-dropdown');
+    const button = event.target.closest('button[onclick="toggleClassesList()"]');
+    const input = document.querySelector('input[list="classes-disponibles"]');
+    
+    if (dropdown && !dropdown.contains(event.target) && !button && event.target !== input) {
+        dropdown.style.display = 'none';
+    }
+});
 </script>
 
 <style>
