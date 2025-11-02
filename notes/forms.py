@@ -71,6 +71,13 @@ class MatiereNoteForm(forms.ModelForm):
                 'class': 'form-check-input'
             }),
         }
+    
+    def clean_coefficient(self):
+        """Si le coefficient est vide, retourner la valeur par défaut"""
+        coefficient = self.cleaned_data.get('coefficient')
+        if coefficient is None or coefficient == '':
+            return 1.0
+        return coefficient
 
 class EvaluationForm(forms.ModelForm):
     """Formulaire pour créer/modifier une évaluation"""

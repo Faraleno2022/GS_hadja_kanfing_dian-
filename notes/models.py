@@ -56,7 +56,7 @@ class MatiereNote(models.Model):
     classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='matieres')
     nom = models.CharField(max_length=100, verbose_name="Nom de la matière")
     code = models.CharField(max_length=20, verbose_name="Code", help_text="Ex: MATH, FR, ANG")
-    coefficient = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, verbose_name="Coefficient")
+    coefficient = models.DecimalField(max_digits=4, decimal_places=2, default=1.0, null=True, blank=True, verbose_name="Coefficient")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
     actif = models.BooleanField(default=True, verbose_name="Active")
     
