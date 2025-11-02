@@ -3703,25 +3703,82 @@ def gerer_eleves(request):
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
         
         # Trouver la classe d'élèves correspondante
+        classe_eleve = None
+        
+        # Méthode 1 : Correspondance exacte par nom et année scolaire
         try:
             classe_eleve = ClasseEleve.objects.get(
                 nom=classe_selectionnee.nom,
                 annee_scolaire=classe_selectionnee.annee_scolaire
             )
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         except ClasseEleve.DoesNotExist:
-            # Essayer une recherche approximative
-            nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
-            classes_similaires = ClasseEleve.objects.filter(nom__icontains=nom_recherche)
-            if classes_similaires.count() == 1:
-                classe_eleve = classes_similaires.first()
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            pass
+        
+        # Méthode 2 : Recherche approximative améliorée
+        if not classe_eleve:
+            # Extraire les chiffres et mots-clés du nom
+            nom_recherche = classe_selectionnee.nom.lower()
+            # Nettoyer le nom
+            nom_nettoye = nom_recherche.replace('série', '').replace('année', '').replace('ème', '').replace('eme', '').strip()
+            
+            # Chercher dans les classes de la même année scolaire
+            classes_similaires = ClasseEleve.objects.filter(
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            
+            # Essayer de trouver une correspondance
+            for classe_candidate in classes_similaires:
+                nom_candidate = classe_candidate.nom.lower()
+                # Vérifier si le nom nettoyé est contenu dans le nom de la classe candidate
+                if nom_nettoye in nom_candidate or any(mot in nom_candidate for mot in nom_nettoye.split() if len(mot) > 2):
+                    classe_eleve = classe_candidate
+                    break
+        
+        # Méthode 3 : Recherche par niveau si disponible
+        if not classe_eleve and hasattr(classe_selectionnee, 'niveau'):
+            niveau_map = {
+                'MATERNELLE': ['maternelle', 'petite', 'moyenne', 'grande'],
+                'PRIMAIRE': ['cp', 'ce', 'cm', 'primaire', '1ère', '2ème', '3ème', '4ème', '5ème', '6ème'],
+                'COLLEGE': ['7ème', '8ème', '9ème', '10ème', 'collège', 'college'],
+                'LYCEE': ['11ème', '12ème', 'lycée', 'lycee', 'terminale', 'première', 'seconde']
+            }
+            
+            niveau = classe_selectionnee.niveau
+            mots_cles = niveau_map.get(niveau, [])
+            nom_classe_lower = classe_selectionnee.nom.lower()
+            
+            for classe_candidate in ClasseEleve.objects.filter(annee_scolaire=classe_selectionnee.annee_scolaire):
+                nom_candidate_lower = classe_candidate.nom.lower()
+                # Vérifier si des mots-clés du niveau sont présents dans les deux noms
+                if any(mot in nom_classe_lower and mot in nom_candidate_lower for mot in mots_cles):
+                    classe_eleve = classe_candidate
+                    break
+        
+        # Récupérer les élèves si une classe a été trouvée
+        if classe_eleve:
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    
+    # Calculer les statistiques
+    total_eleves = len(eleves)
+    eleves_avec_notes = 0  # TODO: Calculer le nombre d'élèves avec des notes
+    
+    # Informations de débogage pour l'utilisateur
+    classe_eleve_trouvee = None
+    classes_disponibles = []
+    if classe_selectionnee and not eleves:
+        # Lister toutes les classes d'élèves disponibles pour aider au diagnostic
+        classes_disponibles = list(ClasseEleve.objects.filter(
+            annee_scolaire=classe_selectionnee.annee_scolaire
+        ).values_list('nom', flat=True))
     
     context = {
         'titre_page': 'Gestion des Élèves',
         'classes': classes_notes,
         'classe_selectionnee': classe_selectionnee,
         'eleves': eleves,
+        'total_eleves': total_eleves,
+        'eleves_avec_notes': eleves_avec_notes,
+        'classes_disponibles': classes_disponibles,
     }
     
     return render(request, 'notes/gerer_eleves.html', context)

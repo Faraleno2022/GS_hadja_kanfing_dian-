@@ -201,11 +201,33 @@
                 </table>
             </div>
             {% else %}
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                Aucun élève actif trouvé pour cette classe. 
+            <div class="alert alert-warning">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>Aucun élève actif trouvé pour cette classe</h5>
                 {% if classe_selectionnee %}
-                    <br><small>Vérifiez que la classe "{{ classe_selectionnee.nom }}" existe dans le module Élèves avec la même année scolaire ({{ classe_selectionnee.annee_scolaire }}).</small>
+                    <p class="mb-2">
+                        <strong>Classe recherchée :</strong> "{{ classe_selectionnee.nom }}" ({{ classe_selectionnee.annee_scolaire }})
+                    </p>
+                    
+                    {% if classes_disponibles %}
+                        <p class="mb-2">
+                            <strong>Classes disponibles dans le module Élèves pour l'année {{ classe_selectionnee.annee_scolaire }} :</strong>
+                        </p>
+                        <ul class="mb-3">
+                            {% for classe_dispo in classes_disponibles %}
+                                <li>{{ classe_dispo }}</li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                    
+                    <hr>
+                    <p class="mb-2"><strong>Solutions possibles :</strong></p>
+                    <ol class="mb-0">
+                        <li>Vérifiez que la classe existe dans le <a href="{% url 'eleves:liste_eleves' %}" target="_blank">module Élèves</a></li>
+                        <li>Assurez-vous que le nom de la classe correspond exactement (ex: "7ème Année" vs "Collège 7ème")</li>
+                        <li>Vérifiez que l'année scolaire est la même ({{ classe_selectionnee.annee_scolaire }})</li>
+                        <li>Assurez-vous qu'il y a des élèves avec le statut "ACTIF" dans cette classe</li>
+                        <li>Si le problème persiste, contactez l'administrateur pour synchroniser les classes</li>
+                    </ol>
                 {% endif %}
             </div>
             {% endif %}
