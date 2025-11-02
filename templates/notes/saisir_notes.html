@@ -425,13 +425,20 @@
             </table>
         </div>
         
-        <!-- Bouton de sauvegarde -->
+        <!-- Boutons de sauvegarde et suppression -->
         <div class="text-center mt-4">
             <button onclick="confirmerSauvegarde()" class="save-btn" id="saveBtn">
                 <i class="fas fa-save me-2"></i>
                 <span id="saveBtnText">Sauvegarder Toutes les Notes ({{ eleves|length }} élèves)</span>
                 <span id="unsavedIndicator" style="display: none;" class="unsaved-indicator"></span>
             </button>
+            
+            {% if notes_deja_saisies %}
+            <button onclick="confirmerSuppression()" class="btn btn-danger btn-lg ms-3" id="deleteBtn" style="padding: 1rem 2.5rem; border-radius: 10px; font-weight: 600; font-size: 1.2rem;">
+                <i class="fas fa-trash-alt me-2"></i>
+                <span id="deleteBtnText">Supprimer les Notes</span>
+            </button>
+            {% endif %}
             <div id="saveProgress" class="mt-3" style="display: none;">
                 <div class="progress" style="height: 30px;">
                     <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
@@ -969,6 +976,130 @@ function imprimerListePDF() {
     
     // Ouvrir dans un nouvel onglet
     window.open(url, '_blank');
+}
+
+// Fonction de confirmation de suppression
+function confirmerSuppression() {
+    const nombreNotes = {{ nombre_notes_existantes|default:0 }};
+    
+    if (nombreNotes === 0) {
+        showToast('⚠️ Aucune note à supprimer', 'error');
+        return;
+    }
+    
+    const message = `⚠️ ATTENTION ⚠️\n\nVous êtes sur le point de supprimer ${nombreNotes} note(s) pour :\n\n` +
+                    `📚 Matière : {{ matiere_selectionnee.nom|default:"" }}\n` +
+                    `📅 Période : {{ periode|title }}\n` +
+                    `🏫 Classe : {{ classe_selectionnee.nom|default:"" }}\n\n` +
+                    `Cette action est IRRÉVERSIBLE !\n\n` +
+                    `Êtes-vous absolument sûr(e) de vouloir continuer ?`;
+    
+    if (confirm(message)) {
+        // Demander une double confirmation
+        if (confirm('⚠️ DERNIÈRE CONFIRMATION\n\nConfirmez-vous vraiment la suppression de ces notes ?\n\nCette action ne peut pas être annulée !')) {
+            supprimerNotes();
+        }
+    }
+}
+
+// Fonction de suppression des notes
+async function supprimerNotes() {
+    const deleteBtn = document.getElementById('deleteBtn');
+    const deleteBtnText = document.getElementById('deleteBtnText');
+    const saveResults = document.getElementById('saveResults');
+    
+    if (!matiereId || !periode) {
+        showToast('⚠️ Paramètres manquants', 'error');
+        return;
+    }
+    
+    // Désactiver le bouton
+    deleteBtn.disabled = true;
+    deleteBtnText.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Suppression en cours...';
+    
+    try {
+        const response = await fetch('{% url "notes:supprimer_notes" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                matiere_id: matiereId,
+                periode: periode
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Afficher le message de succès
+            showToast(data.message, 'success');
+            
+            // Afficher les détails
+            let resultsHTML = '<div class="success-details">';
+            resultsHTML += `<h5><i class="fas fa-check-circle me-2"></i>Suppression réussie</h5>`;
+            resultsHTML += `<p><strong>${data.notes_supprimees}</strong> note(s) supprimée(s) avec succès.</p>`;
+            resultsHTML += '<p class="mt-2 mb-0"><i class="fas fa-info-circle me-1"></i>Les notes ont été définitivement supprimées de la base de données.</p>';
+            resultsHTML += '</div>';
+            
+            saveResults.innerHTML = resultsHTML;
+            saveResults.style.display = 'block';
+            
+            // Vider tous les champs du formulaire
+            const rows = document.querySelectorAll('#elevesTableBody tr');
+            rows.forEach(row => {
+                const noteInput = row.querySelector('[data-field="note"]');
+                const absentCheckbox = row.querySelector('[data-field="absent"]');
+                const appreciationSelect = row.querySelector('[data-field="appreciation"]');
+                const commentaireInput = row.querySelector('[data-field="commentaire"]');
+                
+                if (noteInput) noteInput.value = '';
+                if (absentCheckbox) absentCheckbox.checked = false;
+                if (appreciationSelect) appreciationSelect.value = '';
+                if (commentaireInput) commentaireInput.value = '';
+                
+                // Retirer les classes visuelles
+                row.classList.remove('note-saved', 'note-modified');
+            });
+            
+            // Recharger la page après 2 secondes pour mettre à jour l'affichage
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+            
+        } else {
+            // Afficher l'erreur
+            showToast('❌ Erreur: ' + data.error, 'error');
+            
+            let resultsHTML = '<div class="error-details">';
+            resultsHTML += `<h5><i class="fas fa-exclamation-triangle me-2"></i>Erreur de suppression</h5>`;
+            resultsHTML += `<p>${data.error}</p>`;
+            resultsHTML += '</div>';
+            
+            saveResults.innerHTML = resultsHTML;
+            saveResults.style.display = 'block';
+            
+            deleteBtn.disabled = false;
+            deleteBtnText.innerHTML = '<i class="fas fa-trash-alt me-2"></i>Supprimer les Notes';
+        }
+        
+    } catch (error) {
+        showToast('❌ Erreur de connexion au serveur', 'error');
+        console.error('Erreur:', error);
+        
+        let resultsHTML = '<div class="error-details">';
+        resultsHTML += `<h5><i class="fas fa-exclamation-triangle me-2"></i>Erreur de connexion</h5>`;
+        resultsHTML += `<p>Impossible de communiquer avec le serveur. Vérifiez votre connexion et réessayez.</p>`;
+        resultsHTML += `<p class="small text-muted">Détails: ${error.message}</p>`;
+        resultsHTML += '</div>';
+        
+        saveResults.innerHTML = resultsHTML;
+        saveResults.style.display = 'block';
+        
+        deleteBtn.disabled = false;
+        deleteBtnText.innerHTML = '<i class="fas fa-trash-alt me-2"></i>Supprimer les Notes';
+    }
 }
 </script>
 {% endblock %}

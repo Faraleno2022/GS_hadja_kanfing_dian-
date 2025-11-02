@@ -32,6 +32,7 @@ urlpatterns = [
     path('statistiques/', views.statistiques, name='statistiques'),
     path('liste-saisie-pdf/', views.liste_saisie_pdf, name='liste_saisie_pdf'),
     path('sauvegarder-notes/', views.sauvegarder_notes, name='sauvegarder_notes'),
+    path('supprimer-notes/', views.supprimer_notes, name='supprimer_notes'),
     
     # Bulletin Intelligent avec calculs automatiques et exports
     path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/', 

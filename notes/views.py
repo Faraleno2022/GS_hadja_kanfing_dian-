@@ -4200,6 +4200,69 @@ def sauvegarder_notes(request):
 
 
 @login_required
+def supprimer_notes(request):
+    """Supprimer les notes d'une évaluation ou d'une période spécifique"""
+    from django.http import JsonResponse
+    from eleves.models import Eleve
+    from django.db import transaction
+    import json
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        matiere_id = data.get('matiere_id')
+        periode = data.get('periode')
+        eleve_ids = data.get('eleve_ids', [])  # Liste optionnelle d'élèves spécifiques
+        
+        # Validation des paramètres
+        if not all([matiere_id, periode]):
+            return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
+        
+        # Récupérer la matière
+        matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        
+        # Récupérer les évaluations correspondantes
+        evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
+        
+        if not evaluations.exists():
+            return JsonResponse({'success': False, 'error': 'Aucune évaluation trouvée pour cette période'}, status=404)
+        
+        notes_supprimees = 0
+        
+        # Utiliser une transaction pour garantir l'intégrité des données
+        with transaction.atomic():
+            # Construire la requête de suppression
+            notes_query = NoteEleve.objects.filter(evaluation__in=evaluations)
+            
+            # Si des élèves spécifiques sont fournis, filtrer par élève
+            if eleve_ids:
+                notes_query = notes_query.filter(eleve_id__in=eleve_ids)
+            
+            # Compter et supprimer
+            notes_supprimees = notes_query.count()
+            notes_query.delete()
+            
+            logger.info(f"Suppression de {notes_supprimees} notes pour la matière {matiere.nom}, période {periode}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'✅ {notes_supprimees} note(s) supprimée(s) avec succès',
+            'notes_supprimees': notes_supprimees
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression des notes: {str(e)}")
+        return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
+
+
+@login_required
 def consulter_notes(request):
     """Consulter les notes - Vue complète par classe"""
     from eleves.models import Eleve, Classe as ClasseEleve
