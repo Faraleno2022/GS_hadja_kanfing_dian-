@@ -1,5 +1,10 @@
 from django.urls import path
 from . import views
+from .bulletin_intelligent import (
+    bulletin_intelligent_view,
+    bulletin_intelligent_pdf,
+    bulletin_intelligent_excel
+)
 
 app_name = 'notes'
 
@@ -26,4 +31,12 @@ urlpatterns = [
     path('statistiques/', views.statistiques, name='statistiques'),
     path('liste-saisie-pdf/', views.liste_saisie_pdf, name='liste_saisie_pdf'),
     path('sauvegarder-notes/', views.sauvegarder_notes, name='sauvegarder_notes'),
+    
+    # Bulletin Intelligent avec calculs automatiques et exports
+    path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/', 
+         bulletin_intelligent_view, name='bulletin_intelligent'),
+    path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/pdf/', 
+         bulletin_intelligent_pdf, name='bulletin_intelligent_pdf'),
+    path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/excel/', 
+         bulletin_intelligent_excel, name='bulletin_intelligent_excel'),
 ]

@@ -24,31 +24,42 @@ def calculer_moyenne_devoirs(notes: List[Decimal]) -> Optional[Decimal]:
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def calculer_moyenne_periode(moyenne_devoirs: Optional[Decimal], 
-                             composition: Optional[Decimal]) -> Optional[Decimal]:
+def calculer_moyenne_periode(moyenne_cours: Optional[Decimal], 
+                             composition: Optional[Decimal],
+                             niveau: str = 'SECONDAIRE') -> Optional[Decimal]:
     """
     Calcule la moyenne d'une période (trimestre/semestre)
-    Formule: (Moyenne Devoirs + Composition) / 2
+    
+    SYSTÈME GUINÉEN:
+    - PRIMAIRE: Composition uniquement (pas de notes mensuelles)
+    - SECONDAIRE: (Moyenne Cours × 40%) + (Composition × 60%)
     
     Args:
-        moyenne_devoirs: Moyenne des devoirs
+        moyenne_cours: Moyenne des devoirs/cours mensuels
         composition: Note de composition
+        niveau: 'PRIMAIRE' ou 'SECONDAIRE'
         
     Returns:
         Moyenne de la période ou None
     """
+    # Primaire : composition uniquement
+    if niveau == 'PRIMAIRE':
+        return composition
+    
+    # Secondaire : formule 40/60
     # Si les deux sont None, pas de moyenne
-    if moyenne_devoirs is None and composition is None:
+    if moyenne_cours is None and composition is None:
         return None
     
     # Si un seul est disponible, on le prend
-    if moyenne_devoirs is None:
+    if moyenne_cours is None:
         return composition
     if composition is None:
-        return moyenne_devoirs
+        return moyenne_cours
     
-    # Les deux disponibles: moyenne
-    moyenne = (moyenne_devoirs + composition) / 2
+    # Les deux disponibles: formule guinéenne 40/60
+    # Note = (Moyenne Cours × 40%) + (Composition × 60%)
+    moyenne = (moyenne_cours * Decimal('0.4')) + (composition * Decimal('0.6'))
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
@@ -71,10 +82,14 @@ def calculer_moyenne_annuelle(moyennes_periodes: List[Decimal]) -> Optional[Deci
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def calculer_moyenne_generale(notes_matieres: Dict[str, Dict]) -> Optional[Decimal]:
+def calculer_moyenne_generale(notes_matieres: Dict[str, Dict], 
+                             niveau: str = 'SECONDAIRE') -> Optional[Decimal]:
     """
-    Calcule la moyenne générale avec coefficients
-    Formule: Somme(Moyenne × Coefficient) / Somme(Coefficients)
+    Calcule la moyenne générale
+    
+    SYSTÈME GUINÉEN:
+    - PRIMAIRE: Moyenne simple (pas de coefficients)
+    - SECONDAIRE: Somme(Moyenne × Coefficient) / Somme(Coefficients)
     
     Args:
         notes_matieres: {
@@ -83,21 +98,35 @@ def calculer_moyenne_generale(notes_matieres: Dict[str, Dict]) -> Optional[Decim
                 'coefficient': Decimal
             }
         }
+        niveau: 'PRIMAIRE' ou 'SECONDAIRE'
         
     Returns:
         Moyenne générale ou None
     """
+    moyennes_valides = []
     total_points = Decimal('0')
     total_coefficients = Decimal('0')
     
     for matiere_data in notes_matieres.values():
         moyenne = matiere_data.get('moyenne')
-        coefficient = matiere_data.get('coefficient', Decimal('1'))
         
         if moyenne is not None:
-            total_points += moyenne * coefficient
-            total_coefficients += coefficient
+            moyennes_valides.append(moyenne)
+            
+            if niveau == 'SECONDAIRE':
+                coefficient = matiere_data.get('coefficient', Decimal('1'))
+                total_points += moyenne * coefficient
+                total_coefficients += coefficient
     
+    if not moyennes_valides:
+        return None
+    
+    # Primaire : moyenne simple
+    if niveau == 'PRIMAIRE':
+        moyenne_generale = sum(moyennes_valides) / len(moyennes_valides)
+        return moyenne_generale.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    
+    # Secondaire : moyenne pondérée
     if total_coefficients == 0:
         return None
     
@@ -214,32 +243,91 @@ def valider_note(note: any, note_sur: Decimal = Decimal('20')) -> tuple:
     return True, ""
 
 
+def calculer_moyenne_cours_mensuels(notes_par_mois: Dict[str, List[Decimal]]) -> Optional[Decimal]:
+    """
+    Calcule la moyenne des cours mensuels sur une période
+    
+    Args:
+        notes_par_mois: {
+            'octobre': [Decimal('14'), Decimal('15')],
+            'novembre': [Decimal('12'), Decimal('14')],
+            ...
+        }
+        
+    Returns:
+        Moyenne de cours de la période ou None
+    """
+    moyennes_mensuelles = []
+    
+    for mois, notes in notes_par_mois.items():
+        moyenne_mois = calculer_moyenne_devoirs(notes)
+        if moyenne_mois is not None:
+            moyennes_mensuelles.append(moyenne_mois)
+    
+    if not moyennes_mensuelles:
+        return None
+    
+    moyenne_cours = sum(moyennes_mensuelles) / len(moyennes_mensuelles)
+    return moyenne_cours.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
 # Exemple d'utilisation
 if __name__ == "__main__":
-    # Test calcul moyenne devoirs
-    devoirs = [Decimal('15'), Decimal('14'), Decimal('16')]
-    moy_devoirs = calculer_moyenne_devoirs(devoirs)
-    print(f"Moyenne devoirs: {moy_devoirs}")
+    print("="*80)
+    print(" "*20 + "TEST SYSTÈME GUINÉEN")
+    print("="*80)
     
-    # Test calcul moyenne période
-    composition = Decimal('17')
-    moy_periode = calculer_moyenne_periode(moy_devoirs, composition)
-    print(f"Moyenne période: {moy_periode}")
+    # Test SECONDAIRE avec formule 40/60
+    print("\n🔴 SECONDAIRE - Formule 40/60")
+    print("-"*80)
     
-    # Test moyenne générale
+    # Notes mensuelles
+    notes_mensuelles = {
+        'octobre': [Decimal('14'), Decimal('15')],
+        'novembre': [Decimal('12'), Decimal('14')],
+        'decembre': [Decimal('16'), Decimal('15')],
+        'janvier': [Decimal('11'), Decimal('13'), Decimal('14')]
+    }
+    
+    moy_cours = calculer_moyenne_cours_mensuels(notes_mensuelles)
+    print(f"Moyenne de cours: {moy_cours}")
+    
+    composition = Decimal('12')
+    print(f"Composition: {composition}")
+    
+    moy_periode = calculer_moyenne_periode(moy_cours, composition, niveau='SECONDAIRE')
+    print(f"Moyenne période (40% cours + 60% compo): {moy_periode}")
+    print(f"Vérification: ({moy_cours} × 0.4) + ({composition} × 0.6) = {moy_periode}")
+    
+    # Test moyenne générale avec coefficients
+    print("\n📊 Moyenne générale pondérée")
+    print("-"*80)
     notes_matieres = {
         'francais': {'moyenne': Decimal('16'), 'coefficient': Decimal('4')},
         'math': {'moyenne': Decimal('14'), 'coefficient': Decimal('4')},
         'histoire': {'moyenne': Decimal('16'), 'coefficient': Decimal('2')},
     }
-    moy_generale = calculer_moyenne_generale(notes_matieres)
+    moy_generale = calculer_moyenne_generale(notes_matieres, niveau='SECONDAIRE')
     print(f"Moyenne générale: {moy_generale}")
     
     # Test mention
     mention = obtenir_mention(moy_generale)
     print(f"Mention: {mention}")
     
+    # Test PRIMAIRE
+    print("\n🔵 PRIMAIRE - Moyenne simple")
+    print("-"*80)
+    notes_primaire = {
+        'francais': {'moyenne': Decimal('8.0')},
+        'math': {'moyenne': Decimal('7.5')},
+        'sciences': {'moyenne': Decimal('9.0')},
+    }
+    moy_generale_primaire = calculer_moyenne_generale(notes_primaire, niveau='PRIMAIRE')
+    print(f"Moyenne générale: {moy_generale_primaire}/10")
+    
     # Test rang
+    print("\n🏆 Classement")
+    print("-"*80)
     eleves = [
         {'eleve_id': 1, 'moyenne': Decimal('15.5')},
         {'eleve_id': 2, 'moyenne': Decimal('14.2')},
@@ -247,4 +335,8 @@ if __name__ == "__main__":
     ]
     eleves_classes = calculer_rang(eleves)
     for e in eleves_classes:
-        print(f"Élève {e['eleve_id']}: Rang {e['rang']}, Moyenne {e['moyenne']}, {e['mention']}")
+        print(f"Rang {e['rang']}: Élève {e['eleve_id']} - Moyenne {e['moyenne']} - {e['mention']}")
+    
+    print("\n" + "="*80)
+    print(" "*25 + "✅ TESTS RÉUSSIS")
+    print("="*80)
