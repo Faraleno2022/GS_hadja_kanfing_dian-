@@ -1486,7 +1486,11 @@ def statistiques_eleves(request):
         ecole_u = user_school(request.user)
         eleves_base = Eleve.objects.filter(classe__ecole=ecole_u)
         classes_base = Classe.objects.filter(ecole=ecole_u)
-        responsables_base = Responsable.objects.all()
+        # Filtrer les responsables par école
+        responsables_base = Responsable.objects.filter(
+            Q(eleves_principal__classe__ecole=ecole_u) |
+            Q(eleves_secondaire__classe__ecole=ecole_u)
+        ).distinct()
         ecoles_base = Ecole.objects.filter(id=ecole_u.id)
     total_eleves = eleves_base.count()
     stats_generales = {
@@ -1576,7 +1580,8 @@ def statistiques_eleves(request):
                 'filles': eleves_niveau.filter(sexe='F').count(),
                 'actifs': eleves_niveau.filter(statut='ACTIF').count(),
                 'pourcentage': round((count / total_pour_pourcentage) * 100, 1),
-                'classes': Classe.objects.filter(niveau=niveau_code, eleves__isnull=False).distinct().count(),
+                # Utiliser classes_base pour respecter le filtrage par école
+                'classes': classes_base.filter(niveau=niveau_code, eleves__isnull=False).distinct().count(),
             }
             stats_par_niveau.append(niveau_stats)
     
@@ -1601,13 +1606,14 @@ def statistiques_eleves(request):
     current_year = datetime.now().year
     current_month = datetime.now().month
     
+    # Utiliser eleves_base pour respecter le filtrage par école
     stats_temporelles = {
-        'inscriptions_cette_annee': Eleve.objects.filter(date_inscription__year=current_year).count(),
-        'inscriptions_ce_mois': Eleve.objects.filter(
+        'inscriptions_cette_annee': eleves_base.filter(date_inscription__year=current_year).count(),
+        'inscriptions_ce_mois': eleves_base.filter(
             date_inscription__year=current_year,
             date_inscription__month=current_month
         ).count(),
-        'inscriptions_cette_semaine': Eleve.objects.filter(
+        'inscriptions_cette_semaine': eleves_base.filter(
             date_inscription__gte=date.today() - relativedelta(days=7)
         ).count(),
     }
@@ -1616,7 +1622,8 @@ def statistiques_eleves(request):
     evolution_mensuelle = []
     for i in range(6):
         mois_date = date.today() - relativedelta(months=i)
-        nb_inscriptions = Eleve.objects.filter(
+        # Utiliser eleves_base pour respecter le filtrage par école
+        nb_inscriptions = eleves_base.filter(
             date_inscription__year=mois_date.year,
             date_inscription__month=mois_date.month
         ).count()
@@ -1641,7 +1648,8 @@ def statistiques_eleves(request):
     # Répartition par relation
     relations_stats = []
     for relation_code, relation_nom in Responsable.RELATION_CHOICES:
-        count = Responsable.objects.filter(relation=relation_code).count()
+        # Utiliser responsables_base pour respecter le filtrage par école
+        count = responsables_base.filter(relation=relation_code).count()
         if count > 0:
             relations_stats.append({
                 'relation': relation_nom,
