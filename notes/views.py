@@ -3246,13 +3246,15 @@ def statistiques(request):
         from decimal import Decimal
         
         # Récupérer les élèves de la classe
-        try:
-            classe_eleve = ClasseEleve.objects.get(
-                nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire
-            )
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole
+        ).first()
+        
+        if classe_eleve:
             eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
-        except ClasseEleve.DoesNotExist:
+        else:
             eleves = Eleve.objects.none()
         
         # Récupérer les matières de la classe
@@ -3967,18 +3969,27 @@ def saisir_notes(request):
             
             # Récupérer les élèves
             try:
-                classe_eleve = ClasseEleve.objects.get(
+                # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
+                classe_eleve = ClasseEleve.objects.filter(
                     nom=classe_selectionnee.nom,
-                    annee_scolaire=classe_selectionnee.annee_scolaire
-                )
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
-            except ClasseEleve.DoesNotExist:
-                # Recherche approximative
-                nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
-                classes_similaires = ClasseEleve.objects.filter(nom__icontains=nom_recherche)
-                if classes_similaires.count() == 1:
-                    classe_eleve = classes_similaires.first()
+                    annee_scolaire=classe_selectionnee.annee_scolaire,
+                    ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+                ).first()
+                
+                if classe_eleve:
                     eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                else:
+                    # Recherche approximative
+                    nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
+                    classes_similaires = ClasseEleve.objects.filter(
+                        nom__icontains=nom_recherche,
+                        ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+                    )
+                    if classes_similaires.count() >= 1:
+                        classe_eleve = classes_similaires.first()
+                        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            except Exception:
+                pass
     
     # Préparer les informations sur les notes existantes
     notes_deja_saisies = False
@@ -4058,13 +4069,15 @@ def liste_saisie_pdf(request):
         note_sur = 20
     
     # Récupérer les élèves
-    try:
-        classe_eleve = ClasseEleve.objects.get(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire
-        )
+    classe_eleve = ClasseEleve.objects.filter(
+        nom=classe.nom,
+        annee_scolaire=classe.annee_scolaire,
+        ecole=classe.ecole
+    ).first()
+    
+    if classe_eleve:
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
-    except ClasseEleve.DoesNotExist:
+    else:
         eleves = []
     
     # Créer le PDF
@@ -4444,11 +4457,17 @@ def consulter_notes(request):
         
         # Récupérer les élèves
         try:
-            classe_eleve = ClasseEleve.objects.get(
+            # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
+            classe_eleve = ClasseEleve.objects.filter(
                 nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire
-            )
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+            ).first()
+            
+            if classe_eleve:
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            else:
+                eleves = []
             
             # Pour chaque élève, récupérer toutes ses notes pour toutes les matières
             for eleve in eleves:
@@ -4592,20 +4611,27 @@ def bulletin_dynamique(request):
             ]
         
         # Récupérer les élèves de la classe
-        try:
-            # Essayer d'abord une correspondance exacte
-            classe_eleve = ClasseEleve.objects.get(
-                nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire
-            )
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
-        except ClasseEleve.DoesNotExist:
+        # Essayer d'abord une correspondance exacte
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole
+        ).first()
+        
+        if not classe_eleve:
             # Si pas de correspondance exacte, essayer avec insensibilité à la casse
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=classe_selectionnee.ecole
+            ).first()
+        
+        if classe_eleve:
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        else:
             try:
-                classe_eleve = ClasseEleve.objects.get(
-                    nom__iexact=classe_selectionnee.nom,
-                    annee_scolaire=classe_selectionnee.annee_scolaire
-                )
+                # Recherche approximative
+                pass
                 eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
             except (ClasseEleve.DoesNotExist, ClasseEleve.MultipleObjectsReturned):
                 eleves = []
@@ -4883,13 +4909,15 @@ def bulletin_dynamique_pdf(request):
     matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
     
     # Récupérer les élèves pour calculer le rang
-    try:
-        classe_eleve = ClasseEleve.objects.get(
-            nom=classe_selectionnee.nom,
-            annee_scolaire=classe_selectionnee.annee_scolaire
-        )
+    classe_eleve = ClasseEleve.objects.filter(
+        nom=classe_selectionnee.nom,
+        annee_scolaire=classe_selectionnee.annee_scolaire,
+        ecole=classe_selectionnee.ecole
+    ).first()
+    
+    if classe_eleve:
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
-    except ClasseEleve.DoesNotExist:
+    else:
         eleves = []
     
     # Déterminer le titre de la période
