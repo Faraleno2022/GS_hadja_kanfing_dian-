@@ -1,96 +1,103 @@
 # Matières par Défaut - Module Notes
 
-## ✅ Fonctionnalité implémentée!
+## ✅ Fonctionnalité Améliorée - Version 2.0!
 
-Un système de chargement automatique des matières par défaut a été créé selon les niveaux scolaires.
+Un système de chargement automatique des matières par défaut a été créé selon les niveaux scolaires avec détection automatique des séries pour le lycée.
 
 ## 📚 Matières définies par niveau
 
-### Collège 7ème et 8ème
+### 🏫 COLLÈGE (7ème, 8ème, 9ème, 10ème)
 | Matière | Code | Coefficient |
 |---------|------|-------------|
-| MATHEMATIQUE | MATH | 2.0 |
-| DICTEE ET OUEST | DICT | 2.0 |
-| REDACTION | REDA | 1.0 |
-| PHYSIQUE | PHY | 1.0 |
-| CHIMIE | CHIM | 1.0 |
-| HISTOIRE | HIST | 1.0 |
-| GEOGRAPHIE | GEO | 1.0 |
+| Mathématique | MATHS | 2.0 |
+| Physique | PHYS | 1.0 |
+| Chimie | CHI | 1.0 |
+| Biologie | BIO | 1.0 |
+| Français | FR | 2.0 |
+| Anglais | ANG | 1.0 |
+| Histoire | HIS | 1.0 |
+| Géographie | GEO | 1.0 |
+| Education Civique et Morale | ECM | 1.0 |
+| Education Physique et Sportive | EPS | 1.0 |
+| Dictée et Questions | DICQ | 2.0 |
+| Rédaction | RED | 1.0 |
+
+**Total: 12 matières**
+
+### 📖 PRIMAIRE (CP, CE1, CE2, CM1, CM2, 6ème)
+| Matière | Code | Coefficient |
+|---------|------|-------------|
+| Calcul écrit | CALC | 1.0 |
+| Dictée et Questions | DICQ | 1.0 |
+| Géographie | GEO | 1.0 |
+| Histoire | HIS | 1.0 |
 | E.C.M | ECM | 1.0 |
-| BIOLOGIE | BIO | 1.0 |
-| ANGLAIS | ANG | 1.0 |
-| E.P.S | EPS | 1.0 |
+| Rédaction | RED | 1.0 |
+| Sciences d'observation | SCI | 1.0 |
+| Lecture | LECT | 1.0 |
+| Langage | LANG | 1.0 |
+| Écriture | ECR | 1.0 |
+| Récitation/Chant | REC | 1.0 |
+| Dessin | DESS | 1.0 |
+| EPS | EPS | 1.0 |
 
-**Total: 11 matières**
+**Total: 13 matières**
 
-### Collège 9ème
+### 👶 MATERNELLE (Petite, Moyenne, Grande Section)
 | Matière | Code | Coefficient |
 |---------|------|-------------|
-| MATHEMATIQUE | MATH | 4.0 |
-| PHYSIQUE | PHY | 3.0 |
-| CHIMIE | CHIM | 3.0 |
-| ANGLAIS | ANG | 2.0 |
-| ECONOMIE | ECO | 2.0 |
-| PHYLOSOPHIE | PHILO | 2.0 |
-| BIOLOGIE | BIO | 1.0 |
-| FRANCAIS | FR | 2.0 |
-| GEOLOGIE | GEOL | 1.0 |
-
-**Total: 9 matières**
-
-### Collège 10ème
-| Matière | Code | Coefficient |
-|---------|------|-------------|
-| BIOLOGIE | BIO | 3.0 |
-| PHYSIQUE | PHY | 3.0 |
-| CHIMIE | CHIM | 3.0 |
-| ANGLAIS | ANG | 2.0 |
-| ECONOMIE | ECO | 2.0 |
-| PHYLOSOPHIE | PHILO | 2.0 |
-| MATHEMATIQUE | MATH | 2.0 |
-| FRANCAIS | FR | 2.0 |
-| GEOLOGIE | GEOL | 1.0 |
-
-**Total: 9 matières**
-
-### Lycée 11ème, 12ème et Terminale
-| Matière | Code | Coefficient |
-|---------|------|-------------|
-| Francais | FR | 4.0 |
-| PHYLOSOPHIE | PHILO | 3.0 |
-| ANGLAIS | ANG | 3.0 |
-| MATHEMATIQUE | MATH | 2.0 |
-| GEOGRAPHIE | GEO | 2.0 |
-| HISTOIRE | HIST | 2.0 |
-| ECONOMIE | ECO | 2.0 |
+| Langage | LANG | 1.0 |
+| Écriture | ECR | 1.0 |
+| Calcul | CALC | 1.0 |
+| Dessin | DESS | 1.0 |
+| Récitation/Chant | REC | 1.0 |
+| Jeux éducatifs | JEUX | 1.0 |
+| Psychomotricité | PSYCH | 1.0 |
 
 **Total: 7 matières**
 
-### Primaire (1ère à 6ème)
+### 🎓 LYCÉE - Série Sciences Mathématiques (11ème SM, 12ème SM)
 | Matière | Code | Coefficient |
 |---------|------|-------------|
-| MATHEMATIQUE | MATH | 2.0 |
-| FRANCAIS | FR | 2.0 |
-| LECTURE | LECT | 1.0 |
-| DICTEE | DICT | 1.0 |
-| SCIENCES | SCI | 1.0 |
-| HISTOIRE-GEOGRAPHIE | HG | 1.0 |
-| E.C.M | ECM | 1.0 |
-| ANGLAIS | ANG | 1.0 |
-| E.P.S | EPS | 1.0 |
+| Mathématique | MATHS | 4.0 |
+| Physique | PHYS | 3.0 |
+| Chimie | CHI | 3.0 |
+| Anglais | ANG | 2.0 |
+| Économie | ECO | 2.0 |
+| Philosophie | PHILO | 2.0 |
+| Biologie | BIO | 1.0 |
+| Français | FR | 2.0 |
+| Géologie | GEOL | 1.0 |
 
 **Total: 9 matières**
 
-### Maternelle et Garderie
+### 🔬 LYCÉE - Série Sciences Expérimentales (11ème SE, 12ème SE)
 | Matière | Code | Coefficient |
 |---------|------|-------------|
-| LECTURE | LECT | 1.0 |
-| ECRITURE | ECR | 1.0 |
-| CALCUL | CALC | 1.0 |
-| DESSIN | DESS | 1.0 |
-| CHANT | CHANT | 1.0 |
+| Biologie | BIO | 3.0 |
+| Physique | PHYS | 3.0 |
+| Chimie | CHI | 3.0 |
+| Anglais | ANG | 2.0 |
+| Économie | ECO | 2.0 |
+| Philosophie | PHILO | 2.0 |
+| Mathématique | MATHS | 2.0 |
+| Français | FR | 2.0 |
+| Géologie | GEOL | 1.0 |
 
-**Total: 5 matières**
+**Total: 9 matières**
+
+### 📚 LYCÉE - Série Sciences Sociales/Lettres (11ème SL, 12ème SL)
+| Matière | Code | Coefficient |
+|---------|------|-------------|
+| Français | FR | 4.0 |
+| Philosophie | PHILO | 3.0 |
+| Anglais | ANG | 3.0 |
+| Mathématique | MATHS | 2.0 |
+| Géographie | GEO | 2.0 |
+| Histoire | HIS | 2.0 |
+| Économie | ECO | 2.0 |
+
+**Total: 7 matières**
 
 ## 🎯 Utilisation
 
@@ -105,19 +112,28 @@ Un système de chargement automatique des matières par défaut a été créé s
 ### Fonctionnement intelligent
 
 - ✅ **Détection automatique** du niveau de la classe
+- ✅ **Détection automatique** de la série pour le lycée (SM, SE, SL)
 - ✅ **Vérification des doublons** - Ne crée pas de matières déjà existantes
 - ✅ **Messages informatifs** :
   - Nombre de matières ajoutées
   - Nombre de matières déjà existantes
+  - Erreurs éventuelles
 - ✅ **Confirmation** avant chargement
 - ✅ **Redirection** automatique vers la classe
 
 ## 📁 Fichiers créés
 
-### `notes/matieres_par_defaut.py`
+### `notes/matieres_defaut.py` ⭐ NOUVEAU
 Fichier contenant:
-- Dictionnaire `MATIERES_PAR_NIVEAU` avec toutes les matières par niveau
-- Fonction `obtenir_matieres_par_niveau(niveau)` pour récupérer les matières
+- `MATIERES_COLLEGE` : 12 matières pour le collège
+- `MATIERES_PRIMAIRE` : 13 matières pour le primaire
+- `MATIERES_MATERNELLE` : 7 matières pour la maternelle
+- `MATIERES_LYCEE_SM` : 9 matières pour Sciences Mathématiques
+- `MATIERES_LYCEE_SE` : 9 matières pour Sciences Expérimentales
+- `MATIERES_LYCEE_SL` : 7 matières pour Sciences Sociales/Lettres
+- Fonction `get_matieres_par_defaut(niveau, serie, nom_classe)` avec détection automatique
+- Fonction `charger_matieres_pour_classe(classe, user)` pour le chargement
+- Fonction `detecter_niveau_depuis_nom(nom_classe)` pour la détection automatique
 
 ### Vue ajoutée
 - `charger_matieres_defaut(request, classe_id)` dans `notes/views.py`

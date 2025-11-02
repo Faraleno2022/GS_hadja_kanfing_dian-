@@ -3662,8 +3662,34 @@ def supprimer_matiere(request, matiere_id):
 
 @login_required
 def charger_matieres_defaut(request, classe_id):
-    """Charger les matières par défaut"""
-    messages.info(request, 'Fonction en cours de développement')
+    """Charger les matières par défaut pour une classe"""
+    from notes.matieres_defaut import charger_matieres_pour_classe
+    
+    classe = get_object_or_404(ClasseNote, pk=classe_id)
+    
+    # Vérifier les permissions
+    user_profil = getattr(request.user, 'profil', None)
+    if user_profil and user_profil.ecole and classe.ecole != user_profil.ecole:
+        messages.error(request, "Vous n'avez pas accès à cette classe")
+        return redirect('notes:gerer_matieres')
+    
+    # Charger les matières par défaut
+    nombre_creees, nombre_existantes, erreurs = charger_matieres_pour_classe(classe, request.user)
+    
+    # Messages de retour
+    if nombre_creees > 0:
+        messages.success(request, f'✅ {nombre_creees} matière(s) créée(s) avec succès pour {classe.nom}')
+    
+    if nombre_existantes > 0:
+        messages.info(request, f'ℹ️ {nombre_existantes} matière(s) existaient déjà')
+    
+    if erreurs:
+        for erreur in erreurs:
+            messages.warning(request, f'⚠️ {erreur}')
+    
+    if nombre_creees == 0 and nombre_existantes == 0:
+        messages.warning(request, 'Aucune matière par défaut disponible pour ce niveau')
+    
     return redirect('notes:gerer_matieres')
 
 
