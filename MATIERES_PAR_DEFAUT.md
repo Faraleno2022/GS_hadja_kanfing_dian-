@@ -24,7 +24,20 @@ Un système de chargement automatique des matières par défaut a été créé s
 
 **Total: 12 matières**
 
-### 📖 PRIMAIRE (CP, CE1, CE2, CM1, CM2, 6ème)
+### 📖 PRIMAIRE CYCLE 1 (1ère, 2ème, 3ème année)
+| Matière | Code | Coefficient |
+|---------|------|-------------|
+| Calcul écrit | CALC | 1.0 |
+| Sciences d'observation | SCI | 1.0 |
+| Lecture | LECT | 1.0 |
+| Langage | LANG | 1.0 |
+| Dessin | DESS | 1.0 |
+| Écriture | ECR | 1.0 |
+| Récitation et chant | REC | 1.0 |
+
+**Total: 7 matières** ⭐ NOUVEAU
+
+### 📖 PRIMAIRE CYCLE 2 (4ème, 5ème, 6ème année - CP, CE, CM)
 | Matière | Code | Coefficient |
 |---------|------|-------------|
 | Calcul écrit | CALC | 1.0 |
@@ -37,7 +50,7 @@ Un système de chargement automatique des matières par défaut a été créé s
 | Lecture | LECT | 1.0 |
 | Langage | LANG | 1.0 |
 | Écriture | ECR | 1.0 |
-| Récitation/Chant | REC | 1.0 |
+| Récitation et chant | REC | 1.0 |
 | Dessin | DESS | 1.0 |
 | EPS | EPS | 1.0 |
 
@@ -113,6 +126,7 @@ Un système de chargement automatique des matières par défaut a été créé s
 
 - ✅ **Détection automatique** du niveau de la classe
 - ✅ **Détection automatique** de la série pour le lycée (SM, SE, SL)
+- ✅ **Détection automatique** du cycle pour le primaire (Cycle 1 : 1-3ème, Cycle 2 : 4-6ème) ⭐ NOUVEAU
 - ✅ **Vérification des doublons** - Ne crée pas de matières déjà existantes
 - ✅ **Messages informatifs** :
   - Nombre de matières ajoutées
@@ -126,12 +140,13 @@ Un système de chargement automatique des matières par défaut a été créé s
 ### `notes/matieres_defaut.py` ⭐ NOUVEAU
 Fichier contenant:
 - `MATIERES_COLLEGE` : 12 matières pour le collège
-- `MATIERES_PRIMAIRE` : 13 matières pour le primaire
+- `MATIERES_PRIMAIRE_CYCLE1` : 7 matières pour le primaire cycle 1 (1-3ème) ⭐ NOUVEAU
+- `MATIERES_PRIMAIRE_CYCLE2` : 13 matières pour le primaire cycle 2 (4-6ème)
 - `MATIERES_MATERNELLE` : 7 matières pour la maternelle
 - `MATIERES_LYCEE_SM` : 9 matières pour Sciences Mathématiques
 - `MATIERES_LYCEE_SE` : 9 matières pour Sciences Expérimentales
 - `MATIERES_LYCEE_SL` : 7 matières pour Sciences Sociales/Lettres
-- Fonction `get_matieres_par_defaut(niveau, serie, nom_classe)` avec détection automatique
+- Fonction `get_matieres_par_defaut(niveau, serie, nom_classe)` avec détection automatique du cycle
 - Fonction `charger_matieres_pour_classe(classe, user)` pour le chargement
 - Fonction `detecter_niveau_depuis_nom(nom_classe)` pour la détection automatique
 

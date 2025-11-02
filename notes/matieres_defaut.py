@@ -18,8 +18,19 @@ MATIERES_COLLEGE = [
     {'nom': 'Rédaction', 'code': 'RED', 'coefficient': 1.0},
 ]
 
-# Matières par défaut pour le PRIMAIRE (CP, CE1, CE2, CM1, CM2)
-MATIERES_PRIMAIRE = [
+# Matières par défaut pour le PRIMAIRE CYCLE 1 (1ère, 2ème, 3ème année)
+MATIERES_PRIMAIRE_CYCLE1 = [
+    {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': 1.0},
+    {'nom': 'Sciences d\'observation', 'code': 'SCI', 'coefficient': 1.0},
+    {'nom': 'Lecture', 'code': 'LECT', 'coefficient': 1.0},
+    {'nom': 'Langage', 'code': 'LANG', 'coefficient': 1.0},
+    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': 1.0},
+    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': 1.0},
+    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': 1.0},
+]
+
+# Matières par défaut pour le PRIMAIRE CYCLE 2 (4ème, 5ème, 6ème année - CP, CE, CM)
+MATIERES_PRIMAIRE_CYCLE2 = [
     {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': 1.0},
     {'nom': 'Dictée et Questions', 'code': 'DICQ', 'coefficient': 1.0},
     {'nom': 'Géographie', 'code': 'GEO', 'coefficient': 1.0},
@@ -30,10 +41,13 @@ MATIERES_PRIMAIRE = [
     {'nom': 'Lecture', 'code': 'LECT', 'coefficient': 1.0},
     {'nom': 'Langage', 'code': 'LANG', 'coefficient': 1.0},
     {'nom': 'Écriture', 'code': 'ECR', 'coefficient': 1.0},
-    {'nom': 'Récitation/Chant', 'code': 'REC', 'coefficient': 1.0},
+    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': 1.0},
     {'nom': 'Dessin', 'code': 'DESS', 'coefficient': 1.0},
     {'nom': 'EPS', 'code': 'EPS', 'coefficient': 1.0},
 ]
+
+# Alias pour compatibilité
+MATIERES_PRIMAIRE = MATIERES_PRIMAIRE_CYCLE2
 
 # Matières par défaut pour la MATERNELLE
 MATIERES_MATERNELLE = [
@@ -112,7 +126,17 @@ def get_matieres_par_defaut(niveau, serie=None, nom_classe=None):
         return MATIERES_MATERNELLE.copy()
     
     elif niveau == 'PRIMAIRE':
-        return MATIERES_PRIMAIRE.copy()
+        # Détecter le cycle pour le primaire
+        if nom_classe:
+            nom_lower = nom_classe.lower()
+            # Cycle 1 : 1ère, 2ème, 3ème année
+            if any(x in nom_lower for x in ['1ère', '1ere', '2ème', '2eme', '3ème', '3eme', '1ème année', '2ème année', '3ème année']):
+                return MATIERES_PRIMAIRE_CYCLE1.copy()
+            # Cycle 2 : 4ème, 5ème, 6ème année, CP, CE, CM
+            elif any(x in nom_lower for x in ['4ème', '4eme', '5ème', '5eme', '6ème', '6eme', 'cp', 'ce1', 'ce2', 'cm1', 'cm2']):
+                return MATIERES_PRIMAIRE_CYCLE2.copy()
+        # Par défaut, retourner Cycle 2 (plus complet)
+        return MATIERES_PRIMAIRE_CYCLE2.copy()
     
     elif niveau == 'COLLEGE':
         return MATIERES_COLLEGE.copy()
