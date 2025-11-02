@@ -3735,13 +3735,16 @@ def gerer_eleves(request):
         # Trouver la classe d'élèves correspondante
         classe_eleve = None
         
-        # Méthode 1 : Correspondance exacte par nom et année scolaire
+        # Utiliser l'école de la classe sélectionnée (pas celle de l'utilisateur)
+        ecole_classe = classe_selectionnee.ecole
+        
+        # Méthode 1 : Correspondance exacte par nom, année scolaire ET école
         try:
             # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
             classe_eleve = ClasseEleve.objects.filter(
                 nom=classe_selectionnee.nom,
                 annee_scolaire=classe_selectionnee.annee_scolaire,
-                ecole=ecole
+                ecole=ecole_classe  # Utiliser l'école de la classe, pas celle de l'utilisateur
             ).first()
         except Exception:
             pass
@@ -3753,9 +3756,10 @@ def gerer_eleves(request):
             # Nettoyer le nom
             nom_nettoye = nom_recherche.replace('série', '').replace('année', '').replace('ème', '').replace('eme', '').strip()
             
-            # Chercher dans les classes de la même année scolaire
+            # Chercher dans les classes de la même année scolaire ET de la même école
             classes_similaires = ClasseEleve.objects.filter(
-                annee_scolaire=classe_selectionnee.annee_scolaire
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=ecole_classe  # Filtrer par l'école de la classe
             )
             
             # Essayer de trouver une correspondance
@@ -3779,7 +3783,11 @@ def gerer_eleves(request):
             mots_cles = niveau_map.get(niveau, [])
             nom_classe_lower = classe_selectionnee.nom.lower()
             
-            for classe_candidate in ClasseEleve.objects.filter(annee_scolaire=classe_selectionnee.annee_scolaire):
+            # Filtrer par année scolaire ET école
+            for classe_candidate in ClasseEleve.objects.filter(
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=ecole_classe  # Filtrer par l'école de la classe
+            ):
                 nom_candidate_lower = classe_candidate.nom.lower()
                 # Vérifier si des mots-clés du niveau sont présents dans les deux noms
                 if any(mot in nom_classe_lower and mot in nom_candidate_lower for mot in mots_cles):
@@ -3799,8 +3807,10 @@ def gerer_eleves(request):
     classes_disponibles = []
     if classe_selectionnee and not eleves:
         # Lister toutes les classes d'élèves disponibles pour aider au diagnostic
+        # Filtrer par l'école de la classe sélectionnée
         classes_disponibles = list(ClasseEleve.objects.filter(
-            annee_scolaire=classe_selectionnee.annee_scolaire
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
         ).values_list('nom', flat=True))
     
     context = {
