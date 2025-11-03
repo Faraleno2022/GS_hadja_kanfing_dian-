@@ -180,6 +180,22 @@
                 <button class="btn btn-primary btn-sm" onclick="exportToExcel()">
                     <i class="fas fa-file-excel me-1"></i>Exporter Excel
                 </button>
+                {% if classe_selectionnee %}
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-trophy me-1"></i>Exporter Classement
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general'); return false;">
+                            <i class="fas fa-star me-2"></i>Classement Général
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere'); return false;">
+                            <i class="fas fa-book me-2"></i>Par Matière (filtrée)
+                        </a></li>
+                    </ul>
+                </div>
+                {% endif %}
             </div>
         </div>
         
@@ -493,5 +509,38 @@ document.addEventListener('DOMContentLoaded', function() {
     if (filtreType) filtreType.addEventListener('change', appliquerFiltres);
     rechercheEleve.addEventListener('input', appliquerFiltres);
 });
+
+// Fonction pour exporter le classement
+function exporterClassementAvecFiltres(typeClassement) {
+    const classeId = document.getElementById('classe_id')?.value;
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    // Récupérer les filtres actuels
+    const matiereId = document.getElementById('filtreMatiere')?.value || '';
+    const periode = document.getElementById('filtrePeriode')?.value || '';
+    const typeNote = document.getElementById('filtreType')?.value || 'mensuelle';
+    
+    // Construire l'URL d'export
+    let url = "{% url 'notes:exporter_classement' %}?classe_id=" + classeId;
+    
+    if (typeClassement === 'matiere' && matiereId) {
+        url += "&matiere_id=" + matiereId;
+    }
+    
+    if (periode) {
+        url += "&periode=" + periode;
+    }
+    
+    if (typeNote) {
+        url += "&type_note=" + typeNote;
+    }
+    
+    // Ouvrir l'URL pour télécharger le fichier
+    window.location.href = url;
+}
 </script>
 {% endblock %}

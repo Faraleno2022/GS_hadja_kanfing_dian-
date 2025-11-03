@@ -5,6 +5,7 @@ from .bulletin_intelligent import (
     bulletin_intelligent_pdf,
     bulletin_intelligent_excel
 )
+from .export_classement import exporter_classement_classe
 
 app_name = 'notes'
 
@@ -41,4 +42,7 @@ urlpatterns = [
          bulletin_intelligent_pdf, name='bulletin_intelligent_pdf'),
     path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/excel/', 
          bulletin_intelligent_excel, name='bulletin_intelligent_excel'),
+    
+    # Export des classements
+    path('exporter-classement/', exporter_classement_classe, name='exporter_classement'),
 ]
