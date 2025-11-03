@@ -3414,11 +3414,23 @@ def statistiques(request):
         'strategies': [],
         'recommandations': recommandations,
         'periodes': [
-            ('TRIMESTRE_1', 'Trimestre 1'),
-            ('TRIMESTRE_2', 'Trimestre 2'),
-            ('TRIMESTRE_3', 'Trimestre 3'),
-            ('SEMESTRE_1', 'Semestre 1'),
-            ('SEMESTRE_2', 'Semestre 2'),
+            # Mois
+            ('OCTOBRE', 'Octobre'),
+            ('NOVEMBRE', 'Novembre'),
+            ('DECEMBRE', 'Décembre'),
+            ('JANVIER', 'Janvier'),
+            ('FEVRIER', 'Février'),
+            ('MARS', 'Mars'),
+            ('AVRIL', 'Avril'),
+            ('MAI', 'Mai'),
+            ('JUIN', 'Juin'),
+            # Trimestres
+            ('TRIMESTRE_1', '1er Trimestre'),
+            ('TRIMESTRE_2', '2ème Trimestre'),
+            ('TRIMESTRE_3', '3ème Trimestre'),
+            # Semestres
+            ('SEMESTRE_1', '1er Semestre'),
+            ('SEMESTRE_2', '2ème Semestre'),
         ]
     }
     
