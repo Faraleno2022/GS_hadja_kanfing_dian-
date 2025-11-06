@@ -1096,7 +1096,7 @@ def export_tous_eleves_pdf(request):
 
         # En-têtes du tableau
         headers = ["École", "Classe", "Matricule", "Nom", "Responsable", "Téléphone"]
-        col_widths = [4.5*cm, 4.5*cm, 3*cm, 5*cm, 4.5*cm, 3.5*cm]
+        col_widths = [4.5*cm, 4.5*cm, 3*cm, 5.5*cm, 5*cm, 3*cm]
         
         current_ecole = None
         
@@ -1166,7 +1166,7 @@ def export_tous_eleves_pdf(request):
             ]
             
             # Limites de caractères par colonne pour éviter le chevauchement
-            max_chars = [27, 13, 25, 22, 15]  # Classe, Matricule, Nom, Responsable, Téléphone
+            max_chars = [27, 13, 28, 25, 13]  # Classe, Matricule, Nom, Responsable, Téléphone
             
             for i, val in enumerate(values):
                 # Tronquer si trop long selon la colonne
