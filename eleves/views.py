@@ -1096,7 +1096,7 @@ def export_tous_eleves_pdf(request):
 
         # En-têtes du tableau
         headers = ["École", "Classe", "Matricule", "Nom", "Responsable"]
-        col_widths = [4.5*cm, 3*cm, 3*cm, 6*cm, 5*cm]
+        col_widths = [4.5*cm, 5*cm, 3.5*cm, 5.5*cm, 5*cm]
         
         current_ecole = None
         
@@ -1158,9 +1158,14 @@ def export_tous_eleves_pdf(request):
                 eleve.responsable_principal.nom_complet if eleve.responsable_principal else '',
             ]
             
+            # Limites de caractères par colonne pour éviter le chevauchement
+            max_chars = [30, 15, 28, 25]  # Classe, Matricule, Nom, Responsable
+            
             for i, val in enumerate(values):
-                # Tronquer si trop long
-                text = str(val)[:25] + '...' if len(str(val)) > 25 else str(val)
+                # Tronquer si trop long selon la colonne
+                text = str(val)
+                if len(text) > max_chars[i]:
+                    text = text[:max_chars[i]-3] + '...'
                 c.drawString(x, y, text)
                 x += col_widths[i+1]
             y -= 12
