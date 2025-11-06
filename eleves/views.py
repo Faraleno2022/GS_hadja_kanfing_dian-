@@ -1054,8 +1054,6 @@ def export_tous_eleves_pdf(request):
         
         # Ajouter le filigrane (au périmètre de l'utilisateur)
         try:
-            from ecole_moderne.pdf_utils import draw_logo_watermark
-            from utilisateurs.utils import user_school
             draw_logo_watermark(c, width, height, ecole=user_school(request.user))
         except Exception:
             pass
