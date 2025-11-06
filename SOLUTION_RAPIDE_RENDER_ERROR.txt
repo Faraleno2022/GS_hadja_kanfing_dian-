@@ -1,0 +1,81 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                    FIX RAPIDE - ERREUR RENDER                            ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+🔴 PROBLÈME
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Erreur: NameError: name 'render' is not defined
+URL: https://www.myschoolgn.space/eleves/liste/
+Fichier: /home/myschoolgn/GS_hadja_kanfing_dian-/eleves/views.py, ligne 165
+
+🔍 CAUSE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Le serveur de production a une version obsolète du code.
+Le fichier local est correct, mais le serveur n'a pas été mis à jour.
+
+✅ SOLUTION (3 COMMANDES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SE CONNECTER AU SERVEUR
+   ssh myschoolgn@www.myschoolgn.space
+
+2. EXÉCUTER LE SCRIPT DE DÉPLOIEMENT
+   cd /home/myschoolgn/GS_hadja_kanfing_dian-
+   chmod +x deploy_production.sh
+   ./deploy_production.sh
+
+3. VÉRIFIER
+   Ouvrir: https://www.myschoolgn.space/eleves/liste/
+
+⚡ SOLUTION MANUELLE (SI LE SCRIPT NE FONCTIONNE PAS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ssh myschoolgn@www.myschoolgn.space
+
+cd /home/myschoolgn/GS_hadja_kanfing_dian-
+
+# Mettre à jour le code
+git pull origin main
+
+# Nettoyer les caches
+find . -type f -name "*.pyc" -delete
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+# Redémarrer uWSGI
+sudo systemctl restart uwsgi
+
+# Vérifier
+curl -I https://www.myschoolgn.space/eleves/liste/
+
+📋 VÉRIFICATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Code local est correct (import render existe)
+✓ Dernier commit: 96d7472
+✓ Fichiers poussés sur GitHub
+✓ Script de déploiement créé
+✓ Documentation complète créée
+
+⏱️ TEMPS ESTIMÉ: 2-5 MINUTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 EN CAS DE PROBLÈME
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Consulter la documentation complète:
+  FIX_PRODUCTION_RENDER_ERROR.md
+
+Vérifier les logs:
+  sudo tail -100 /var/log/uwsgi/myschoolgn.log
+  sudo journalctl -u uwsgi -n 100
+
+Tester l'import:
+  source /home/myschoolgn/venv/bin/activate
+  python manage.py shell
+  >>> from django.shortcuts import render
+  >>> print(render)
+
+═══════════════════════════════════════════════════════════════════════════
+
+Date: 6 novembre 2025
+Statut: 🔴 EN ATTENTE DE DÉPLOIEMENT SUR LE SERVEUR
