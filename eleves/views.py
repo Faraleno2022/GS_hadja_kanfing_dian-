@@ -1095,10 +1095,11 @@ def export_tous_eleves_pdf(request):
         y -= 25
 
         # En-têtes du tableau
-        headers = ["École", "Classe", "Matricule", "Nom", "Responsable"]
-        col_widths = [4.5*cm, 5*cm, 3.5*cm, 5.5*cm, 5*cm]
+        headers = ["École", "N°", "Classe", "Matricule", "Nom", "Responsable"]
+        col_widths = [4.5*cm, 1*cm, 4.5*cm, 3.5*cm, 5*cm, 4.5*cm]
         
         current_ecole = None
+        numero_eleve = 0
         
         for eleve in eleves:
             # Nouvelle école
@@ -1110,6 +1111,7 @@ def export_tous_eleves_pdf(request):
                     y = height - margin
                 
                 current_ecole = eleve.classe.ecole.nom
+                numero_eleve = 0  # Réinitialiser le compteur pour chaque école
                 
                 # Titre de l'école
                 c.setFont(font_bold, 14)
@@ -1148,10 +1150,14 @@ def export_tous_eleves_pdf(request):
                     x += col_widths[i+1]
                 y -= 18
             
+            # Incrémenter le numéro d'élève
+            numero_eleve += 1
+            
             # Ligne de données
             c.setFont(font_name, 9)
             x = margin
             values = [
+                str(numero_eleve),
                 eleve.classe.nom,
                 eleve.matricule or '',
                 f"{eleve.nom} {eleve.prenom}",
@@ -1159,7 +1165,7 @@ def export_tous_eleves_pdf(request):
             ]
             
             # Limites de caractères par colonne pour éviter le chevauchement
-            max_chars = [30, 15, 28, 25]  # Classe, Matricule, Nom, Responsable
+            max_chars = [5, 27, 15, 25, 22]  # N°, Classe, Matricule, Nom, Responsable
             
             for i, val in enumerate(values):
                 # Tronquer si trop long selon la colonne
