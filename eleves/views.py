@@ -837,7 +837,6 @@ def _get_classe_or_403(request, classe_id):
 
 @login_required
 @vary_on_cookie
-@cache_page(60 * 10)
 def export_eleves_classe_pdf(request, classe_id):
     """Exporte la liste des élèves d'une classe en PDF."""
     classe = _get_classe_or_403(request, classe_id)
@@ -1023,7 +1022,6 @@ def export_eleves_classe_excel(request, classe_id):
 
 @login_required
 @vary_on_cookie
-@cache_page(60 * 10)
 def export_tous_eleves_pdf(request):
     """Exporte la liste de tous les élèves en PDF."""
     # Filtrer selon les permissions
@@ -2112,9 +2110,8 @@ def fiche_inscription_pdf(request, eleve_id):
     return response
 
 @login_required
-@cache_page(60)  # Cache 1 minute pour les recherches identiques
 def ajax_rechercher_responsable_telephone(request):
-    """Vue AJAX optimisée pour rechercher un responsable par numéro de téléphone"""
+    """Vue AJAX optimisée pour rechercher un responsable par numéro de téléphone (cache géré manuellement)"""
     if request.method != 'GET':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
     
