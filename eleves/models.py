@@ -436,8 +436,33 @@ class Eleve(models.Model):
         - ### est une séquence à 3 chiffres, incrémentée par classe (et donc par école)
         - Si des matricules existants de la classe contiennent un préfixe d'école (ex: "AL-FUR/PN4-001"),
           ce préfixe est détecté et conservé pour les nouveaux matricules de la même classe.
+        - Si la classe change, le matricule est automatiquement régénéré avec le code de la nouvelle classe.
         """
-        if not self.matricule and getattr(self, 'classe_id', None):
+        # Détecter un changement de classe pour régénérer le matricule
+        regenerer_matricule = False
+        ancienne_classe = None
+        ancien_matricule = None
+        changement_classe_info = None
+        
+        if self.pk:  # Si l'élève existe déjà
+            try:
+                old_instance = Eleve.objects.get(pk=self.pk)
+                if old_instance.classe_id != self.classe_id:
+                    # Changement de classe détecté
+                    regenerer_matricule = True
+                    ancienne_classe = old_instance.classe
+                    ancien_matricule = self.matricule
+                    # Stocker les infos pour créer l'historique après la sauvegarde
+                    changement_classe_info = {
+                        'ancienne_classe': old_instance.classe.nom,
+                        'nouvelle_classe': self.classe.nom,
+                        'ancien_matricule': ancien_matricule,
+                        'utilisateur': getattr(self, '_current_user', None)
+                    }
+            except Eleve.DoesNotExist:
+                pass
+        
+        if (not self.matricule or regenerer_matricule) and getattr(self, 'classe_id', None):
             code = _code_classe_from_nom_ou_niveau(self.classe)
             # Fallback de sécurité pour éviter un matricule vide si le code n'est pas résolu
             if not code:
@@ -504,6 +529,15 @@ class Eleve(models.Model):
                     next_num += 1
 
         super().save(*args, **kwargs)
+        
+        # Créer l'historique du changement de classe après la sauvegarde
+        if changement_classe_info:
+            HistoriqueEleve.objects.create(
+                eleve=self,
+                action='CHANGEMENT_CLASSE',
+                description=f"Changement de classe: {changement_classe_info['ancienne_classe']} → {changement_classe_info['nouvelle_classe']}. Ancien matricule: {changement_classe_info['ancien_matricule']}, Nouveau matricule: {self.matricule}",
+                utilisateur=changement_classe_info['utilisateur']
+            )
 
 class HistoriqueEleve(models.Model):
     """Modèle pour l'historique des modifications d'un élève"""

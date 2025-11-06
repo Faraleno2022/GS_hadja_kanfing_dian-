@@ -752,7 +752,10 @@ def modifier_eleve(request, eleve_id):
                     nouveau_val = form.cleaned_data[field]
                     changements.append(f"{form.fields[field].label}: {ancien_val} → {nouveau_val}")
             
-            eleve = form.save()
+            # Passer l'utilisateur actuel pour la génération automatique du matricule
+            eleve = form.save(commit=False)
+            eleve._current_user = request.user
+            eleve.save()
             print(f"Eleve saved successfully: {eleve}")  # Debug
             
             # Créer l'historique si des changements ont été effectués
