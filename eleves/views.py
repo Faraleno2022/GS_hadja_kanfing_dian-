@@ -1294,6 +1294,15 @@ def supprimer_eleve(request, eleve_id):
         code_verification = request.POST.get('code_verification', '').strip()
         suppression_definitive = request.POST.get('suppression_definitive') == 'on'
         
+        # Pour les admins, toujours activer la suppression définitive par défaut
+        if user_is_admin(request.user):
+            # Si l'admin n'a pas explicitement décoché, on force la suppression définitive
+            suppression_definitive = request.POST.get('suppression_definitive') != 'off'
+            # Log pour debug
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Admin {request.user.username} - Suppression définitive: {suppression_definitive}")
+        
         if code_verification != '625196629':
             messages.error(request, "Code de vérification incorrect. Suppression annulée.")
             return render(request, 'eleves/confirmer_suppression.html', {
