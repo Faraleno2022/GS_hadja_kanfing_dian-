@@ -28,10 +28,12 @@ Système complet de génération de cartes scolaires avec design moderne et prof
    - **Matricule/ID** 
    - **Classe**
    - **Niveau**
+   - **Date de naissance** avec âge calculé automatiquement
+   - **Lieu de naissance**
    - **Badge de validité** avec date d'expiration
 
 4. **Contact d'urgence (Bas)**
-   - Nom du responsable principal
+   - **Prénom et nom** du responsable principal (affichés séparément)
    - Téléphone
    - Adresse (tronquée si trop longue)
    - Police plus petite, séparée par une ligne pointillée
