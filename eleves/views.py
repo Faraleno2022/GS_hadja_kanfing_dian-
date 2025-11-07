@@ -3509,7 +3509,7 @@ def carte_scolaire_preview(request, eleve_id):
 @login_required
 def generer_carte_scolaire_pdf(request, eleve_id):
     """Génère une carte scolaire moderne pour un élève"""
-    from .carte_scolaire_generator import generer_carte_scolaire_moderne
+    from .carte_scolaire_generator import generer_carte_scolaire_moderne, generer_carte_pvc_haute_qualite
     
     eleve = get_object_or_404(
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
@@ -3523,12 +3523,20 @@ def generer_carte_scolaire_pdf(request, eleve_id):
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
     
+    # Vérifier si on demande une version PVC
+    format_pvc = request.GET.get('format') == 'pvc'
+    
     # Créer le PDF avec le nouveau design
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
     
-    # Utiliser le nouveau générateur
-    return generer_carte_scolaire_moderne(eleve, response)
+    if format_pvc:
+        response['Content-Disposition'] = f'attachment; filename="carte_pvc_{eleve.matricule}.pdf"'
+        # Utiliser le générateur PVC haute qualité
+        return generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True)
+    else:
+        response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
+        # Utiliser le générateur standard
+        return generer_carte_scolaire_moderne(eleve, response)
     
     # Polices
     try:

@@ -15,16 +15,42 @@ from django.utils import timezone
 from datetime import timedelta
 
 
-def generer_carte_scolaire_moderne(eleve, response):
+def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None, 
+                                  offset_x=0, offset_y=0, 
+                                  custom_width=None, custom_height=None):
     """
     Génère une carte scolaire moderne avec le design spécifié:
     - Haut: Logo + nom de l'établissement
     - Gauche: Photo (35-40% de la hauteur)
     - Droite: Informations alignées
+    
+    Args:
+        eleve: L'objet élève
+        response: HttpResponse pour le PDF
+        custom_canvas: Canvas existant (optionnel, pour intégration PVC)
+        offset_x, offset_y: Décalage pour positionnement (pour PVC)
+        custom_width, custom_height: Dimensions personnalisées (pour PVC)
     """
     # Configuration des dimensions (format carte de crédit standard)
-    width, height = 86*mm, 54*mm
-    c = canvas.Canvas(response, pagesize=(width, height))
+    if custom_width and custom_height:
+        width, height = custom_width, custom_height
+    else:
+        width, height = 86*mm, 54*mm
+    
+    if custom_canvas:
+        c = custom_canvas
+        # Ajuster toutes les positions avec les offsets
+        def draw_x(x):
+            return x + offset_x
+        def draw_y(y):
+            return y + offset_y
+    else:
+        c = canvas.Canvas(response, pagesize=(width, height))
+        # Pas d'offset si canvas normal
+        def draw_x(x):
+            return x
+        def draw_y(y):
+            return y
     
     # Enregistrement des polices
     try:
@@ -52,9 +78,37 @@ def generer_carte_scolaire_moderne(eleve, response):
     c.setFillColor(colors.white)
     c.rect(0, 0, width, height, stroke=0, fill=1)
     
-    # Bordure externe avec coins arrondis
+    # FILIGRANE DU LOGO (arrière-plan)
+    c.saveState()
+    c.setFillAlpha(0.08)  # Très transparent pour effet filigrane
+    
+    # Dessiner le logo en filigrane au centre
+    filigrane_size = 35*mm
+    filigrane_x = (width - filigrane_size) / 2
+    filigrane_y = (height - filigrane_size) / 2
+    
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                c.drawImage(eleve.classe.ecole.logo.path, 
+                          filigrane_x, filigrane_y,
+                          width=filigrane_size, height=filigrane_size,
+                          preserveAspectRatio=True, mask='auto')
+        else:
+            # Filigrane texte si pas de logo
+            c.setFillColor(colors.HexColor(primary_blue))
+            c.setFont(bold_font, 48)
+            c.rotate(30)
+            ecole_initiales = ''.join([mot[0] for mot in eleve.classe.ecole.nom.split()[:3]])
+            c.drawCentredString(width/2 + 10, height/2 - 10, ecole_initiales.upper())
+    except:
+        pass
+    
+    c.restoreState()
+    
+    # Bordure externe avec coins arrondis (optimisée pour PVC)
     c.setStrokeColor(colors.HexColor(primary_blue))
-    c.setLineWidth(1.5)
+    c.setLineWidth(2)  # Plus épais pour PVC
     c.roundRect(1, 1, width-2, height-2, 6, stroke=1, fill=0)
     
     # 2. EN-TÊTE (Logo + Nom de l'école)
@@ -294,10 +348,171 @@ def generer_carte_scolaire_moderne(eleve, response):
     c.setFillColor(colors.HexColor(accent_green))
     c.rect(2, 1, width-4, 2, stroke=0, fill=1)
     
-    # 7. Numéro de série (optionnel)
+    # 7. MOTIF DE SÉCURITÉ (micro-texte pour PVC)
+    c.saveState()
+    c.setFont(main_font, 3)
+    c.setFillColor(colors.HexColor('#e5e7eb'))
+    security_text = f"{eleve.classe.ecole.nom} " * 10
+    c.drawString(2, 0.5, security_text[:150])
+    c.restoreState()
+    
+    # 8. Numéro de série et marquage PVC
     c.setFont(main_font, 5)
-    c.setFillColor(colors.HexColor('#d1d5db'))
+    c.setFillColor(colors.HexColor('#9ca3af'))
     c.drawRightString(width - 3*mm, 2*mm, f"#{eleve.id:06d}")
+    c.drawString(3*mm, 2*mm, "PVC CARD")
+    
+    # 9. MARQUES DE DÉCOUPE pour impression PVC (coins)
+    if False:  # Activer si nécessaire pour l'imprimeur
+        c.setStrokeColor(colors.HexColor('#cbd5e1'))
+        c.setLineWidth(0.25)
+        mark_length = 3*mm
+        # Coin supérieur gauche
+        c.line(0, height-mark_length, 0, height)
+        c.line(0, height, mark_length, height)
+        # Coin supérieur droit
+        c.line(width-mark_length, height, width, height)
+        c.line(width, height, width, height-mark_length)
+        # Coin inférieur gauche
+        c.line(0, mark_length, 0, 0)
+        c.line(0, 0, mark_length, 0)
+        # Coin inférieur droit
+        c.line(width-mark_length, 0, width, 0)
+        c.line(width, 0, width, mark_length)
+    
+    c.showPage()
+    c.save()
+    return response
+
+
+def generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True):
+    """
+    Génère une carte scolaire optimisée pour l'impression PVC professionnelle
+    Format CR80 standard: 85.6mm x 53.98mm (format carte bancaire)
+    Résolution: 300 DPI minimum recommandé
+    """
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    import io
+    import os
+    
+    # Dimensions standard carte PVC CR80
+    width, height = 85.6*mm, 53.98*mm
+    
+    # Ajouter une marge de fond perdu (bleed) pour l'impression
+    if with_crop_marks:
+        bleed = 3*mm
+        total_width = width + (2 * bleed)
+        total_height = height + (2 * bleed)
+        c = canvas.Canvas(response, pagesize=(total_width, total_height))
+    else:
+        c = canvas.Canvas(response, pagesize=(width, height))
+        bleed = 0
+    
+    # Configuration haute résolution
+    c.setPageCompression(0)  # Pas de compression pour qualité maximale
+    
+    # Enregistrement des polices
+    try:
+        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
+        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
+        main_font = 'Arial'
+        bold_font = 'Arial-Bold'
+    except:
+        main_font = 'Helvetica'
+        bold_font = 'Helvetica-Bold'
+    
+    # Couleurs optimisées pour impression PVC (CMYK friendly)
+    primary_blue = '#004494'  # Bleu plus foncé pour meilleur contraste
+    text_black = '#000000'    # Noir pur pour texte
+    
+    # Zone de carte principale (avec bleed)
+    card_x = bleed
+    card_y = bleed
+    
+    # Fond blanc avec filigrane
+    c.setFillColor(colors.white)
+    c.rect(card_x, card_y, width, height, stroke=0, fill=1)
+    
+    # FILIGRANE HAUTE QUALITÉ
+    c.saveState()
+    c.setFillAlpha(0.06)  # Encore plus subtil pour PVC
+    
+    filigrane_size = 40*mm
+    filigrane_x = card_x + (width - filigrane_size) / 2
+    filigrane_y = card_y + (height - filigrane_size) / 2
+    
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                # Rotation du filigrane pour effet professionnel
+                c.translate(card_x + width/2, card_y + height/2)
+                c.rotate(15)
+                c.drawImage(eleve.classe.ecole.logo.path,
+                          -filigrane_size/2, -filigrane_size/2,
+                          width=filigrane_size, height=filigrane_size,
+                          preserveAspectRatio=True, mask='auto')
+    except:
+        pass
+    
+    c.restoreState()
+    
+    # MARQUES DE DÉCOUPE (si activées)
+    if with_crop_marks:
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.25)
+        mark_length = 5*mm
+        mark_offset = 1*mm
+        
+        # Coins avec marques de repérage
+        corners = [
+            (bleed, bleed),  # Bas gauche
+            (bleed + width, bleed),  # Bas droit
+            (bleed, bleed + height),  # Haut gauche
+            (bleed + width, bleed + height)  # Haut droit
+        ]
+        
+        for x, y in corners:
+            # Marques horizontales
+            c.line(x - bleed + mark_offset, y, x - mark_offset, y)
+            c.line(x + mark_offset, y, x + bleed - mark_offset, y)
+            # Marques verticales
+            c.line(x, y - bleed + mark_offset, x, y - mark_offset)
+            c.line(x, y + mark_offset, x, y + bleed - mark_offset)
+    
+    # Dessiner directement le contenu optimisé pour PVC
+    # (Copie simplifiée du design principal avec optimisations PVC)
+    
+    # En-tête
+    header_height = 12*mm
+    c.setFillColor(colors.HexColor(primary_blue))
+    c.roundRect(card_x + 1, card_y + height - header_height - 1, 
+               width - 2, header_height, 4, stroke=0, fill=1)
+    
+    # Texte de l'école
+    c.setFillColor(colors.white)
+    c.setFont(bold_font, 10)
+    school_name = eleve.classe.ecole.nom.upper()[:35]
+    c.drawString(card_x + 5*mm, card_y + height - 8*mm, school_name)
+    
+    # Informations principales
+    c.setFillColor(colors.HexColor(text_black))
+    c.setFont(bold_font, 11)
+    nom = f"{eleve.prenom} {eleve.nom}".upper()[:25]
+    c.drawString(card_x + 30*mm, card_y + 32*mm, nom)
+    
+    c.setFont(main_font, 8)
+    c.drawString(card_x + 30*mm, card_y + 27*mm, f"Mat: {eleve.matricule}")
+    c.drawString(card_x + 30*mm, card_y + 23*mm, f"Classe: {eleve.classe.nom}")
+    c.drawString(card_x + 30*mm, card_y + 19*mm, f"Niveau: {eleve.classe.niveau}")
+    
+    # Indicateur PVC
+    c.setFont(main_font, 4)
+    c.setFillColor(colors.HexColor('#9ca3af'))
+    c.drawString(card_x + 2, card_y + 1, "PVC CARD - HIGH QUALITY")
     
     c.showPage()
     c.save()
