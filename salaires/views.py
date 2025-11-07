@@ -1725,27 +1725,140 @@ def modifier_enseignant(request, enseignant_id):
 
 @login_required
 def supprimer_enseignant(request, enseignant_id):
-    """Supprimer un enseignant"""
-    enseignant = get_object_or_404(Enseignant, id=enseignant_id)
+    """Vue pour supprimer un enseignant avec ses états de salaire (avec code de vérification)"""
+    # Filtrer selon les permissions
+    qs = Enseignant.objects.all()
+    if not user_is_admin(request.user):
+        qs = qs.filter(ecole=user_school(request.user))
+    
+    try:
+        enseignant = qs.get(id=enseignant_id)
+    except Enseignant.DoesNotExist:
+        messages.error(request, f"L'enseignant avec l'ID {enseignant_id} n'existe pas ou a déjà été supprimé.")
+        return redirect('salaires:liste_enseignants')
+    
+    nom_complet = enseignant.nom_complet
+    
+    # Vérifier la permission de suppression définitive
+    peut_supprimer_definitivement = user_is_admin(request.user) or (
+        hasattr(request.user, 'profil') and 
+        request.user.profil.peut_supprimer_enseignants_definitivement
+    )
+    
+    # Compter les éléments associés
+    etats_salaire_count = enseignant.etats_salaire.count()
+    affectations_count = enseignant.affectations.count()
+    presences_count = enseignant.presences.count()
     
     if request.method == 'POST':
-        # Vérifier s'il y a des états de salaire associés
-        etats_count = enseignant.etats_salaire.count()
-        affectations_count = enseignant.affectations.count()
+        # Vérifier le code de sécurité
+        code_verification = request.POST.get('code_verification', '').strip()
+        suppression_definitive = request.POST.get('suppression_definitive') == 'on'
         
-        if etats_count > 0 or affectations_count > 0:
-            messages.warning(
-                request, 
-                f"Impossible de supprimer {enseignant.nom_complet}. "
-                f"Cet enseignant a {etats_count} état(s) de salaire et {affectations_count} affectation(s). "
-                f"Vous pouvez le désactiver en changeant son statut."
-            )
-        else:
-            nom_complet = enseignant.nom_complet
-            enseignant.delete()
-            messages.success(
-                request, 
-                f"L'enseignant {nom_complet} a été supprimé avec succès."
-            )
+        # Pour les admins, toujours activer la suppression définitive par défaut
+        if user_is_admin(request.user):
+            suppression_definitive = request.POST.get('suppression_definitive') != 'off'
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Admin {request.user.username} - Suppression définitive enseignant: {suppression_definitive}")
+        
+        if code_verification != '625196629':
+            messages.error(request, "Code de vérification incorrect. Suppression annulée.")
+            return render(request, 'salaires/confirmer_suppression_enseignant.html', {
+                'enseignant': enseignant,
+                'etats_salaire_count': etats_salaire_count,
+                'affectations_count': affectations_count,
+                'presences_count': presences_count,
+                'peut_supprimer_definitivement': peut_supprimer_definitivement,
+                'titre_page': f'Supprimer {nom_complet}'
+            })
+        
+        # Vérifier la permission pour suppression définitive
+        if suppression_definitive and not peut_supprimer_definitivement:
+            messages.error(request, "Vous n'avez pas la permission de supprimer définitivement un enseignant.")
+            return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
+        
+        # Procéder à la suppression avec le code correct
+        from django.db import transaction
+        try:
+            with transaction.atomic():
+                if suppression_definitive and peut_supprimer_definitivement:
+                    # Suppression définitive pour les utilisateurs autorisés
+                    # Collecter les informations avant suppression
+                    etats_supprimes = []
+                    for etat in enseignant.etats_salaire.all():
+                        etats_supprimes.append(f"{etat.periode.nom_periode} - {etat.salaire_net} GNF")
+                    
+                    affectations_supprimees = []
+                    for affectation in enseignant.affectations.all():
+                        affectations_supprimees.append(f"{affectation.classe.nom} - {affectation.matiere or 'Toutes matières'}")
+                    
+                    # Créer l'entrée dans la corbeille avant suppression
+                    from administration.models import SystemLog
+                    SystemLog.objects.create(
+                        action='SUPPRESSION_DEFINITIVE_ENSEIGNANT',
+                        description=f"Suppression définitive de l'enseignant {nom_complet} avec {etats_salaire_count} état(s) de salaire, {affectations_count} affectation(s) et {presences_count} présence(s)",
+                        user=request.user,
+                        ip_address=request.META.get('REMOTE_ADDR', ''),
+                        details={
+                            'enseignant_id': enseignant.id,
+                            'nom_complet': nom_complet,
+                            'ecole': enseignant.ecole.nom,
+                            'type_enseignant': enseignant.type_enseignant,
+                            'salaire_fixe': str(enseignant.salaire_fixe) if enseignant.salaire_fixe else None,
+                            'taux_horaire': str(enseignant.taux_horaire) if enseignant.taux_horaire else None,
+                            'etats_supprimes': etats_supprimes,
+                            'affectations_supprimees': affectations_supprimees,
+                            'verification_code_used': True,
+                            'user_agent': request.META.get('HTTP_USER_AGENT', '')
+                        }
+                    )
+                    
+                    # Supprimer les états de salaire
+                    enseignant.etats_salaire.all().delete()
+                    
+                    # Supprimer les affectations
+                    enseignant.affectations.all().delete()
+                    
+                    # Supprimer les présences
+                    enseignant.presences.all().delete()
+                    
+                    # Supprimer l'enseignant définitivement
+                    enseignant.delete()
+                    
+                    total_elements = etats_salaire_count + affectations_count + presences_count
+                    messages.success(request, f"L'enseignant {nom_complet} et tous ses éléments associés ({total_elements} au total) ont été supprimés définitivement et sauvegardés dans la corbeille.")
+                else:
+                    # Soft delete - changer le statut au lieu de supprimer
+                    enseignant.statut = 'DEMISSIONNAIRE'
+                    enseignant.save()
+                    
+                    # Log de l'activité
+                    from utilisateurs.models import JournalActivite
+                    JournalActivite.objects.create(
+                        user=request.user,
+                        action='DESACTIVATION',
+                        type_objet='ENSEIGNANT',
+                        objet_id=enseignant.id,
+                        description=f"Désactivation de l'enseignant {nom_complet} (statut → Démissionnaire)",
+                        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+                        user_agent=request.META.get('HTTP_USER_AGENT', '')
+                    )
+                    
+                    messages.success(request, f"L'enseignant {nom_complet} a été marqué comme démissionnaire (soft delete).")
+                    
+        except Exception as e:
+            messages.error(request, f"Erreur lors de la suppression: {e}")
+            return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
+        
+        return redirect('salaires:liste_enseignants')
     
-    return redirect('salaires:liste_enseignants')
+    # Afficher le formulaire de confirmation
+    return render(request, 'salaires/confirmer_suppression_enseignant.html', {
+        'enseignant': enseignant,
+        'etats_salaire_count': etats_salaire_count,
+        'affectations_count': affectations_count,
+        'presences_count': presences_count,
+        'peut_supprimer_definitivement': peut_supprimer_definitivement,
+        'titre_page': f'Supprimer {nom_complet}'
+    })
