@@ -3485,8 +3485,8 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
 
 
 @login_required
-def generer_carte_scolaire_pdf(request, eleve_id):
-    """Génère une carte scolaire pour un élève (format agrand 105x74mm avec plus d'infos)"""
+def carte_scolaire_preview(request, eleve_id):
+    """Affiche un aperçu HTML de la carte scolaire"""
     eleve = get_object_or_404(
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
         id=eleve_id
@@ -3499,14 +3499,36 @@ def generer_carte_scolaire_pdf(request, eleve_id):
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
     
-    # Créer le PDF
+    context = {
+        'eleve': eleve,
+        'titre_page': f'Carte Scolaire - {eleve.nom_complet}'
+    }
+    return render(request, 'eleves/carte_scolaire_preview.html', context)
+
+
+@login_required
+def generer_carte_scolaire_pdf(request, eleve_id):
+    """Génère une carte scolaire moderne pour un élève"""
+    from .carte_scolaire_generator import generer_carte_scolaire_moderne
+    
+    eleve = get_object_or_404(
+        Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
+        id=eleve_id
+    )
+    
+    # Vérifier permissions
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or eleve.classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cet élève.")
+            return redirect('eleves:liste_eleves')
+    
+    # Créer le PDF avec le nouveau design
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
     
-    from reportlab.lib.units import mm
-    # Taille augmentée : 105mm x 74mm (environ 1.4x plus grand)
-    width, height = 105*mm, 74*mm
-    c = canvas.Canvas(response, pagesize=(width, height))
+    # Utiliser le nouveau générateur
+    return generer_carte_scolaire_moderne(eleve, response)
     
     # Polices
     try:
@@ -3669,7 +3691,9 @@ def generer_carte_scolaire_pdf(request, eleve_id):
 
 @login_required
 def generer_cartes_classe_pdf(request, classe_id):
-    """Génère toutes les cartes d'une classe (2 cartes par page A4)"""
+    """Génère toutes les cartes d'une classe (4 cartes par page A4)"""
+    from .carte_scolaire_generator import generer_cartes_classe_moderne
+    
     classe = get_object_or_404(Classe, id=classe_id)
     
     if not user_is_admin(request.user):
@@ -3679,7 +3703,7 @@ def generer_cartes_classe_pdf(request, classe_id):
             return redirect('eleves:liste_eleves')
     
     eleves = Eleve.objects.filter(classe=classe, statut='ACTIF').select_related(
-        'classe', 'classe__ecole').order_by('nom', 'prenom')
+        'classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
     
     if not eleves.exists():
         messages.warning(request, "Aucun élève actif dans cette classe.")
@@ -3687,6 +3711,9 @@ def generer_cartes_classe_pdf(request, classe_id):
     
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="cartes_scolaires_{classe.nom}.pdf"'
+    
+    # Utiliser le nouveau générateur
+    return generer_cartes_classe_moderne(classe, eleves, response)
     
     from reportlab.lib.units import mm
     from reportlab.lib.pagesizes import A4

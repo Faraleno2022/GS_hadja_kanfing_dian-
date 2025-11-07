@@ -89,6 +89,9 @@
                                         <a href="{% url 'eleves:ticket_bus_pdf' eleve.id %}" class="btn btn-outline-warning btn-sm" title="Ticket bus" target="_blank">
                                             <i class="fas fa-bus"></i> Bus
                                         </a>
+                                        <a href="{% url 'eleves:carte_scolaire_preview' eleve.id %}" class="btn btn-outline-primary btn-sm" title="Carte scolaire">
+                                            <i class="fas fa-id-card"></i> Carte
+                                        </a>
                                     </div>
                                 </td>
                             </tr>

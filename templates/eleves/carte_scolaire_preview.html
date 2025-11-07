@@ -1,0 +1,448 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Carte Scolaire - {{ eleve.nom_complet }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .card-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 2rem;
+    }
+
+    .school-card {
+        width: 420px;
+        height: 260px;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* En-tête avec logo et nom de l'école */
+    .card-header {
+        background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .school-logo {
+        width: 45px;
+        height: 45px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .school-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .school-logo .logo-placeholder {
+        font-size: 20px;
+        font-weight: bold;
+        color: #2563eb;
+    }
+
+    .school-info {
+        flex: 1;
+    }
+
+    .school-name {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .school-subtitle {
+        font-size: 11px;
+        opacity: 0.9;
+        margin-top: 2px;
+    }
+
+    /* Corps de la carte */
+    .card-body {
+        flex: 1;
+        display: flex;
+        padding: 20px;
+        gap: 20px;
+    }
+
+    /* Section photo (gauche) */
+    .photo-section {
+        width: 35%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .student-photo {
+        width: 120px;
+        height: 150px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 3px solid #e5e7eb;
+        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .student-photo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .photo-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #9ca3af;
+    }
+
+    .photo-placeholder i {
+        font-size: 40px;
+        margin-bottom: 5px;
+    }
+
+    .photo-placeholder span {
+        font-size: 12px;
+        text-align: center;
+    }
+
+    /* Section informations (droite) */
+    .info-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .student-name {
+        font-size: 20px;
+        font-weight: 800;
+        color: #1f2937;
+        margin-bottom: 3px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .info-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+        font-size: 13px;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: #6b7280;
+        width: 80px;
+        flex-shrink: 0;
+    }
+
+    .info-value {
+        color: #374151;
+        font-weight: 500;
+    }
+
+    .validity-badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 5px;
+    }
+
+    /* Section contact d'urgence */
+    .emergency-section {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px dashed #e5e7eb;
+    }
+
+    .emergency-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #ef4444;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .emergency-title i {
+        font-size: 12px;
+    }
+
+    .emergency-info {
+        font-size: 12px;
+        color: #6b7280;
+        line-height: 1.4;
+    }
+
+    .emergency-info strong {
+        color: #374151;
+        font-weight: 600;
+    }
+
+    /* Bande décorative */
+    .decoration-stripe {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #10b981 0%, #3b82f6 50%, #8b5cf6 100%);
+    }
+
+    /* QR Code optionnel */
+    .qr-code {
+        position: absolute;
+        bottom: 15px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        background: #f3f4f6;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        color: #9ca3af;
+    }
+
+    /* Boutons d'action */
+    .action-buttons {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        display: flex;
+        gap: 10px;
+    }
+
+    .action-btn {
+        padding: 12px 24px;
+        border-radius: 12px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s;
+        font-size: 14px;
+    }
+
+    .btn-print {
+        background: white;
+        color: #6b7280;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-print:hover {
+        background: #f9fafb;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-download {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-download:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    @media print {
+        body {
+            background: white;
+        }
+
+        .card-container {
+            min-height: auto;
+            padding: 0;
+        }
+
+        .school-card {
+            box-shadow: none;
+            width: 85mm;
+            height: 54mm;
+            page-break-inside: avoid;
+        }
+
+        .action-buttons {
+            display: none;
+        }
+
+        .decoration-stripe {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card-container">
+    <div class="school-card">
+        <!-- En-tête avec logo et nom de l'école -->
+        <div class="card-header">
+            <div class="school-logo">
+                {% if eleve.classe.ecole.logo %}
+                    <img src="{{ eleve.classe.ecole.logo.url }}" alt="Logo">
+                {% else %}
+                    <span class="logo-placeholder">{{ eleve.classe.ecole.nom|slice:":2"|upper }}</span>
+                {% endif %}
+            </div>
+            <div class="school-info">
+                <h1 class="school-name">{{ eleve.classe.ecole.nom }}</h1>
+                <div class="school-subtitle">Excellence - Discipline - Réussite</div>
+            </div>
+        </div>
+
+        <!-- Corps de la carte -->
+        <div class="card-body">
+            <!-- Section photo (gauche) -->
+            <div class="photo-section">
+                <div class="student-photo">
+                    {% if eleve.photo %}
+                        <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}">
+                    {% else %}
+                        <div class="photo-placeholder">
+                            <i class="fas fa-user"></i>
+                            <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Section informations (droite) -->
+            <div class="info-section">
+                <div>
+                    <div class="student-name">{{ eleve.prenom }} {{ eleve.nom }}</div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">Matricule:</span>
+                        <span class="info-value">{{ eleve.matricule }}</span>
+                    </div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">Classe:</span>
+                        <span class="info-value">{{ eleve.classe.nom }}</span>
+                    </div>
+                    
+                    <div class="info-row">
+                        <span class="info-label">Niveau:</span>
+                        <span class="info-value">{{ eleve.classe.niveau }}</span>
+                    </div>
+                    
+                    <div class="validity-badge">
+                        <i class="fas fa-calendar-check"></i>
+                        Valide jusqu'au {{ eleve.classe.get_fin_annee_scolaire|date:"d/m/Y" }}
+                    </div>
+                </div>
+
+                <!-- Section contact d'urgence -->
+                <div class="emergency-section">
+                    <div class="emergency-title">
+                        <i class="fas fa-phone-alt"></i>
+                        Contact d'urgence
+                    </div>
+                    <div class="emergency-info">
+                        {% if eleve.responsable_principal %}
+                            <strong>{{ eleve.responsable_principal.nom_complet }}</strong><br>
+                            📞 {{ eleve.responsable_principal.telephone }}<br>
+                            {% if eleve.responsable_principal.adresse %}
+                                📍 {{ eleve.responsable_principal.adresse|truncatechars:50 }}
+                            {% endif %}
+                        {% else %}
+                            Non renseigné
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bande décorative -->
+        <div class="decoration-stripe"></div>
+
+        <!-- QR Code (optionnel) -->
+        <div class="qr-code" title="Code QR">
+            <span>QR</span>
+        </div>
+    </div>
+</div>
+
+<!-- Boutons d'action -->
+<div class="action-buttons">
+    <button onclick="window.print()" class="action-btn btn-print">
+        <i class="fas fa-print"></i>
+        Imprimer
+    </button>
+    <button onclick="downloadPDF()" class="action-btn btn-download">
+        <i class="fas fa-download"></i>
+        Télécharger PDF
+    </button>
+</div>
+
+<script>
+function downloadPDF() {
+    window.location.href = "{% url 'eleves:carte_scolaire_pdf' eleve.id %}";
+}
+
+// Charger la photo de l'élève si elle existe
+document.addEventListener('DOMContentLoaded', function() {
+    const photoImg = document.querySelector('.student-photo img');
+    if (photoImg) {
+        photoImg.onerror = function() {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'photo-placeholder';
+            placeholder.innerHTML = `
+                <i class="fas fa-user"></i>
+                <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
+            `;
+            this.parentElement.replaceChild(placeholder, this);
+        };
+    }
+});
+</script>
+{% endblock %}
