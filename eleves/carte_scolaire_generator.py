@@ -161,12 +161,12 @@ def generer_carte_scolaire_moderne(eleve, response):
     
     # 4. SECTION INFORMATIONS (Droite - 65% de la largeur)
     info_x = photo_x + photo_width + 4*mm
-    info_y_start = height - header_height - 8*mm
+    info_y_start = height - header_height - 6*mm
     line_height = 5*mm
     
     # Nom complet (en gras et plus grand)
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 11)
+    c.setFont(bold_font, 10)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 25:
         nom_complet = nom_complet[:22] + "..."
@@ -178,36 +178,60 @@ def generer_carte_scolaire_moderne(eleve, response):
     c.line(info_x, info_y_start - 2*mm, width - 4*mm, info_y_start - 2*mm)
     
     # Informations détaillées
-    info_y = info_y_start - 6*mm
+    info_y = info_y_start - 5*mm
     
     # Matricule
-    c.setFont(bold_font, 8)
+    c.setFont(bold_font, 7)
     c.setFillColor(colors.HexColor(text_gray))
     c.drawString(info_x, info_y, "Matricule:")
-    c.setFont(main_font, 8)
+    c.setFont(main_font, 7)
     c.setFillColor(colors.HexColor(text_dark))
-    c.drawString(info_x + 18*mm, info_y, eleve.matricule)
+    c.drawString(info_x + 16*mm, info_y, eleve.matricule)
     
     # Classe
-    info_y -= 4*mm
-    c.setFont(bold_font, 8)
+    info_y -= 3.5*mm
+    c.setFont(bold_font, 7)
     c.setFillColor(colors.HexColor(text_gray))
     c.drawString(info_x, info_y, "Classe:")
-    c.setFont(main_font, 8)
+    c.setFont(main_font, 7)
     c.setFillColor(colors.HexColor(text_dark))
-    c.drawString(info_x + 18*mm, info_y, eleve.classe.nom)
+    c.drawString(info_x + 16*mm, info_y, eleve.classe.nom)
     
     # Niveau
-    info_y -= 4*mm
-    c.setFont(bold_font, 8)
+    info_y -= 3.5*mm
+    c.setFont(bold_font, 7)
     c.setFillColor(colors.HexColor(text_gray))
     c.drawString(info_x, info_y, "Niveau:")
-    c.setFont(main_font, 8)
+    c.setFont(main_font, 7)
     c.setFillColor(colors.HexColor(text_dark))
-    c.drawString(info_x + 18*mm, info_y, eleve.classe.niveau)
+    c.drawString(info_x + 16*mm, info_y, eleve.classe.niveau)
+    
+    # Date de naissance et âge
+    info_y -= 3.5*mm
+    c.setFont(bold_font, 7)
+    c.setFillColor(colors.HexColor(text_gray))
+    c.drawString(info_x, info_y, "Né(e) le:")
+    c.setFont(main_font, 7)
+    c.setFillColor(colors.HexColor(text_dark))
+    # Calculer l'âge
+    from datetime import date
+    today = date.today()
+    age = today.year - eleve.date_naissance.year - ((today.month, today.day) < (eleve.date_naissance.month, eleve.date_naissance.day))
+    date_info = f"{eleve.date_naissance.strftime('%d/%m/%Y')} ({age} ans)"
+    c.drawString(info_x + 16*mm, info_y, date_info)
+    
+    # Lieu de naissance
+    info_y -= 3.5*mm
+    c.setFont(bold_font, 7)
+    c.setFillColor(colors.HexColor(text_gray))
+    c.drawString(info_x, info_y, "À:")
+    c.setFont(main_font, 7)
+    c.setFillColor(colors.HexColor(text_dark))
+    lieu_naissance = eleve.lieu_naissance[:25] if len(eleve.lieu_naissance) > 25 else eleve.lieu_naissance
+    c.drawString(info_x + 16*mm, info_y, lieu_naissance)
     
     # Année scolaire avec badge de validité
-    info_y -= 5*mm
+    info_y -= 4*mm
     c.setFillColor(colors.HexColor('#fef3c7'))
     c.roundRect(info_x - 1, info_y - 1, 45*mm, 5*mm, 2, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor('#fbbf24'))
@@ -240,9 +264,15 @@ def generer_carte_scolaire_moderne(eleve, response):
         c.setFont(main_font, 6)
         c.setFillColor(colors.HexColor(text_dark))
         
-        # Nom du responsable
-        resp_nom = eleve.responsable_principal.nom_complet[:30]
-        c.drawString(info_x, contact_y + 1*mm, resp_nom)
+        # Nom complet du responsable (prénom et nom)
+        resp_prenom = eleve.responsable_principal.prenom if hasattr(eleve.responsable_principal, 'prenom') else ""
+        resp_nom = eleve.responsable_principal.nom if hasattr(eleve.responsable_principal, 'nom') else ""
+        resp_complet = f"{resp_prenom} {resp_nom}".strip()
+        if not resp_complet:
+            resp_complet = eleve.responsable_principal.nom_complet[:30]
+        else:
+            resp_complet = resp_complet[:30]
+        c.drawString(info_x, contact_y + 1*mm, resp_complet)
         
         # Téléphone et adresse sur la même ligne
         contact_info = ""

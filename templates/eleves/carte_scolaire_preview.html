@@ -175,6 +175,27 @@
         color: #374151;
         font-weight: 500;
     }
+    
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 0;
+        border-bottom: 1px dotted #e5e7eb;
+        font-size: 12px;
+        margin-bottom: 4px;
+    }
+    
+    .info-item .label {
+        color: #6b7280;
+        font-weight: 600;
+        min-width: 70px;
+    }
+    
+    .info-item .value {
+        color: #1f2937;
+        flex: 1;
+        text-align: right;
+    }
 
     .validity-badge {
         display: inline-block;
@@ -370,9 +391,19 @@
                         <span class="info-value">{{ eleve.classe.nom }}</span>
                     </div>
                     
-                    <div class="info-row">
-                        <span class="info-label">Niveau:</span>
-                        <span class="info-value">{{ eleve.classe.niveau }}</span>
+                    <div class="info-item">
+                        <span class="label">Niveau:</span>
+                        <span class="value">{{ eleve.classe.niveau }}</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span class="label">Né(e) le:</span>
+                        <span class="value">{{ eleve.date_naissance|date:"d/m/Y" }} ({{ eleve.age }} ans)</span>
+                    </div>
+                    
+                    <div class="info-item">
+                        <span class="label">À:</span>
+                        <span class="value">{{ eleve.lieu_naissance|truncatechars:30 }}</span>
                     </div>
                     
                     <div class="validity-badge">
@@ -380,22 +411,82 @@
                         Valide jusqu'au {{ eleve.classe.get_fin_annee_scolaire|date:"d/m/Y" }}
                     </div>
                 </div>
+            </div>
 
-                <!-- Section contact d'urgence -->
-                <div class="emergency-section">
-                    <div class="emergency-title">
-                        <i class="fas fa-phone-alt"></i>
-                        Contact d'urgence
-                    </div>
-                    <div class="emergency-info">
-                        {% if eleve.responsable_principal %}
-                            <strong>{{ eleve.responsable_principal.nom_complet }}</strong><br>
-                            📞 {{ eleve.responsable_principal.telephone }}<br>
-                            {% if eleve.responsable_principal.adresse %}
-                                📍 {{ eleve.responsable_principal.adresse|truncatechars:50 }}
-                            {% endif %}
+            <!-- Corps de la carte -->
+            <div class="card-body">
+                <!-- Section photo (gauche) -->
+                <div class="photo-section">
+                    <div class="student-photo">
+                        {% if eleve.photo %}
+                            <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}">
                         {% else %}
-                            Non renseigné
+                            <div class="photo-placeholder">
+                                <i class="fas fa-user"></i>
+                                <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Section informations (droite) -->
+                <div class="info-section">
+                    <div>
+                        <div class="student-name">{{ eleve.prenom }} {{ eleve.nom }}</div>
+                        
+                        <div class="info-row">
+                            <span class="info-label">Matricule:</span>
+                            <span class="info-value">{{ eleve.matricule }}</span>
+                        </div>
+                        
+                        <div class="info-row">
+                            <span class="info-label">Classe:</span>
+                            <span class="info-value">{{ eleve.classe.nom }}</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span class="label">Niveau:</span>
+                            <span class="value">{{ eleve.classe.niveau }}</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span class="label">Né(e) le:</span>
+                            <span class="value">{{ eleve.date_naissance|date:"d/m/Y" }} ({{ eleve.age }} ans)</span>
+                        </div>
+                        
+                        <div class="info-item">
+                            <span class="label">À:</span>
+                            <span class="value">{{ eleve.lieu_naissance|truncatechars:30 }}</span>
+                        </div>
+                        
+                        <div class="validity-badge">
+                            <i class="fas fa-calendar-check"></i>
+                            Valide jusqu'au {{ eleve.classe.get_fin_annee_scolaire|date:"d/m/Y" }}
+                        </div>
+                    </div>
+
+                    <!-- Section contact d'urgence -->
+                    <div class="emergency-section">
+                        <div class="emergency-title">CONTACT D'URGENCE</div>
+                        {% if eleve.responsable_principal %}
+                            <div class="emergency-name">
+                                {% if eleve.responsable_principal.prenom %}
+                                    {{ eleve.responsable_principal.prenom }} {{ eleve.responsable_principal.nom|truncatechars:20 }}
+                                {% else %}
+                                    {{ eleve.responsable_principal.nom_complet|truncatechars:30 }}
+                                {% endif %}
+                            </div>
+                            <div class="emergency-info">
+                                <strong><br>
+                                📞 {{ eleve.responsable_principal.telephone }}<br>
+                                {% if eleve.responsable_principal.adresse %}
+                                    📍 {{ eleve.responsable_principal.adresse|truncatechars:50 }}
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <div class="emergency-info">
+                                Non renseigné
+                            </div>
                         {% endif %}
                     </div>
                 </div>
