@@ -32,8 +32,11 @@ static_collected/
 .DS_Store
 Thumbs.db
 
-# Migrations cache (keep migrations themselves)
-*/__pycache__/
+# Migrations
+*/migrations/
+
+# Fichiers de test PDF
+carte_test*.pdf
 
 # Reports/PDF outputs
 reports/
