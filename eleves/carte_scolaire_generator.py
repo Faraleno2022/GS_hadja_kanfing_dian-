@@ -640,17 +640,59 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:25])
     
     # Matricule
-    info_y -= 5*mm
+    info_y -= 4.5*mm
     c.setFont(main_font, 7)
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(info_x, info_y, f"Mat: {eleve.matricule}")
+    c.drawString(info_x, info_y, f"Matricule: {eleve.matricule}")
     
-    # Classe
+    # Classe et niveau
     info_y -= 4*mm
-    c.drawString(info_x, info_y, f"Classe: {eleve.classe.nom}")
+    c.drawString(info_x, info_y, f"Classe: {eleve.classe.nom[:20]}")
     
-    # Contact
-    if eleve.responsable_principal and eleve.responsable_principal.telephone:
+    # Date de naissance et âge
+    info_y -= 4*mm
+    if eleve.date_naissance:
+        from datetime import date
+        age = date.today().year - eleve.date_naissance.year
+        if date.today() < date(date.today().year, eleve.date_naissance.month, eleve.date_naissance.day):
+            age -= 1
+        c.drawString(info_x, info_y, f"Né(e) le: {eleve.date_naissance.strftime('%d/%m/%Y')} ({age} ans)")
+    
+    # Lieu de naissance
+    if eleve.lieu_naissance:
         info_y -= 4*mm
-        c.setFont(main_font, 6)
-        c.drawString(info_x, info_y, f"Urgence: {eleve.responsable_principal.telephone}")
+        c.drawString(info_x, info_y, f"À: {eleve.lieu_naissance[:30]}")
+    
+    # Responsable
+    info_y -= 5*mm
+    c.setFont(bold_font, 7)
+    c.setFillColor(colors.HexColor(text_dark))
+    c.drawString(info_x, info_y, "Contact urgence:")
+    
+    c.setFont(main_font, 6)
+    c.setFillColor(colors.HexColor(text_gray))
+    
+    if eleve.responsable_principal:
+        info_y -= 3.5*mm
+        resp = eleve.responsable_principal
+        if resp.prenom and resp.nom:
+            c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:25])
+        
+        if resp.telephone:
+            info_y -= 3*mm
+            c.drawString(info_x, info_y, f"Tél: {resp.telephone}")
+        
+        # Adresse
+        if resp.adresse:
+            info_y -= 3*mm
+            # Diviser l'adresse si trop longue
+            adresse = resp.adresse[:40]
+            c.drawString(info_x, info_y, adresse)
+            if len(resp.adresse) > 40:
+                info_y -= 3*mm
+                c.drawString(info_x, info_y, resp.adresse[40:80])
+    
+    # Année scolaire en bas
+    c.setFont(main_font, 5)
+    c.setFillColor(colors.HexColor(text_gray))
+    c.drawString(x + 3*mm, y + 2*mm, f"Année scolaire {eleve.classe.annee_scolaire}")
