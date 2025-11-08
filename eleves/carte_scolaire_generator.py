@@ -173,7 +173,7 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
     photo_inserted = False
     if eleve.photo:
         try:
-            if hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+            if hasattr(eleve.photo, 'path') and eleve.photo.name and os.path.exists(eleve.photo.path):
                 img = Image.open(eleve.photo.path)
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
@@ -604,9 +604,11 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.setFillColor(colors.HexColor('#f3f4f6'))
     c.rect(photo_x, photo_y, photo_size, photo_size, stroke=1, fill=1)
     
+    # Gestion de la photo ou placeholder
+    photo_drawn = False
     if eleve.photo:
         try:
-            if hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+            if hasattr(eleve.photo, 'path') and eleve.photo.name and os.path.exists(eleve.photo.path):
                 from PIL import Image
                 img = Image.open(eleve.photo.path)
                 if img.mode != 'RGB':
@@ -617,11 +619,12 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
                 temp_buffer.seek(0)
                 c.drawImage(temp_buffer, photo_x, photo_y, 
                           width=photo_size, height=photo_size, preserveAspectRatio=True)
+                photo_drawn = True
         except:
-            pass
+            photo_drawn = False
     
-    # Si pas de photo, initiales
-    if not eleve.photo or not os.path.exists(eleve.photo.path) if hasattr(eleve.photo, 'path') else True:
+    # Si pas de photo, afficher les initiales
+    if not photo_drawn:
         c.setFillColor(colors.HexColor(text_gray))
         c.setFont(bold_font, 14)
         c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 2, 
