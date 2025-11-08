@@ -599,10 +599,10 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # FILIGRANE DU LOGO (arrière-plan) - Ajouté en premier pour être derrière
     c.saveState()
-    c.setFillAlpha(0.06)  # Très transparent pour effet filigrane subtil
+    c.setFillAlpha(0.15)  # Opacité augmentée pour meilleure visibilité du filigrane
     
     # Dessiner le logo en filigrane au centre de la carte
-    filigrane_size = 20*mm  # Réduit de 30mm à 20mm pour cartes plus petites
+    filigrane_size = 25*mm  # Taille augmentée pour meilleure visibilité
     filigrane_x = x + (width - filigrane_size) / 2
     filigrane_y = y + (height - filigrane_size) / 2
     
