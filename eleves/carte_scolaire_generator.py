@@ -761,27 +761,27 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # Informations de l'élève (ajustées pour photo plus grande)
     info_x = photo_x + photo_size + 3*mm  # Décalage adapté
-    info_y = y + height - header_height - 2*mm  # Position haute
+    info_y = y + height - header_height - 6*mm  # Position descendue
     
     # Nom
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 10)  # Police encore augmentée
+    c.setFont(bold_font, 12)  # Police maximale
     c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:20])
     
     # Matricule
-    info_y -= 4*mm  # Espacement ajusté
-    c.setFont(main_font, 9)  # Police encore augmentée
+    info_y -= 4.5*mm  # Espacement ajusté
+    c.setFont(main_font, 11)  # Police maximale
     c.setFillColor(colors.HexColor(text_gray))
     c.drawString(info_x, info_y, f"Mat: {eleve.matricule}")
     
     # Classe et niveau
-    info_y -= 3.5*mm  # Espacement ajusté
-    c.setFont(main_font, 8)  # Police encore augmentée
+    info_y -= 4*mm  # Espacement ajusté
+    c.setFont(main_font, 10)  # Police maximale
     c.drawString(info_x, info_y, f"Cl: {eleve.classe.nom[:16]}")
     
     # Date de naissance et âge
-    info_y -= 3.5*mm  # Espacement ajusté
-    c.setFont(main_font, 7)  # Police encore augmentée
+    info_y -= 4*mm  # Espacement ajusté
+    c.setFont(main_font, 9)  # Police maximale
     if eleve.date_naissance:
         from datetime import date
         age = date.today().year - eleve.date_naissance.year
@@ -791,36 +791,36 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # Lieu de naissance
     if eleve.lieu_naissance:
-        info_y -= 3*mm  # Espacement ajusté
-        c.setFont(main_font, 7)  # Police encore augmentée
+        info_y -= 3.5*mm  # Espacement ajusté
+        c.setFont(main_font, 9)  # Police maximale
         c.drawString(info_x, info_y, f"{eleve.lieu_naissance[:18]}")
     
     # Responsable
-    info_y -= 3.5*mm  # Espacement ajusté
-    c.setFont(bold_font, 7)  # Police encore augmentée
+    info_y -= 4*mm  # Espacement ajusté
+    c.setFont(bold_font, 9)  # Police maximale
     c.setFillColor(colors.HexColor(text_dark))
     c.drawString(info_x, info_y, "Contact:")
     
-    c.setFont(main_font, 7)  # Police encore augmentée
+    c.setFont(main_font, 9)  # Police maximale
     c.setFillColor(colors.HexColor(text_gray))
     
     if eleve.responsable_principal:
-        info_y -= 3*mm  # Espacement ajusté
+        info_y -= 3.5*mm  # Espacement ajusté
         resp = eleve.responsable_principal
         if resp.prenom and resp.nom:
             c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:18])
         
         if resp.telephone:
-            info_y -= 2.5*mm  # Espacement ajusté
+            info_y -= 3*mm  # Espacement ajusté
             c.drawString(info_x, info_y, f"{resp.telephone}")
         
         # Adresse (version condensée)
         if resp.adresse:
-            info_y -= 2.5*mm  # Espacement ajusté
+            info_y -= 3*mm  # Espacement ajusté
             adresse = resp.adresse[:20]  # Adapté PVC
             c.drawString(info_x, info_y, adresse)
     
     # Année scolaire en bas
-    c.setFont(main_font, 5)  # Police encore augmentée
+    c.setFont(main_font, 6)  # Police maximale
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(x + 2*mm, y + 1.5*mm, f"AS {eleve.classe.annee_scolaire}")
+    c.drawString(x + 2*mm, y + 2*mm, f"AS {eleve.classe.annee_scolaire}")
