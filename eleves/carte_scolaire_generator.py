@@ -522,24 +522,31 @@ def generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True):
 def generer_cartes_classe_moderne(classe, eleves, response):
     """
     Génère plusieurs cartes par page pour une classe entière
-    Format: 2 cartes par page A4
+    Format: 8 cartes par page A4
     """
     from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
     
-    card_width, card_height = 86*mm, 54*mm
-    margin = 15*mm
-    spacing = 10*mm
-    
+    # Créer le canvas PDF
     c = canvas.Canvas(response, pagesize=A4)
-    page_width, page_height = A4
     
-    # Positions des cartes sur la page (2 cartes par page)
-    positions = [
-        (margin, page_height - margin - card_height),
-        (margin + card_width + spacing, page_height - margin - card_height),
-        (margin, page_height - margin - (2 * card_height) - spacing),
-        (margin + card_width + spacing, page_height - margin - (2 * card_height) - spacing),
-    ]
+    # Dimensions et positions pour l'impression en masse (4x2 = 8 cartes)
+    page_width, page_height = A4
+    margin = 10*mm  # Marge réduite
+    h_spacing = 5*mm  # Espacement horizontal
+    v_spacing = 5*mm  # Espacement vertical
+    
+    # Calculer la taille des cartes pour en mettre 8 par page (4 lignes x 2 colonnes)
+    card_width = (page_width - 2*margin - h_spacing) / 2
+    card_height = (page_height - 2*margin - 3*v_spacing) / 4  # 4 lignes
+    
+    # Positions des 8 cartes (4 lignes, 2 colonnes)
+    positions = []
+    for row in range(4):  # 4 lignes
+        for col in range(2):  # 2 colonnes
+            x = margin + col * (card_width + h_spacing)
+            y = page_height - margin - (row + 1) * card_height - row * v_spacing
+            positions.append((x, y))
     
     # Enregistrement des polices
     try:
@@ -554,7 +561,7 @@ def generer_cartes_classe_moderne(classe, eleves, response):
     card_count = 0
     
     for eleve in eleves:
-        pos_index = card_count % 4
+        pos_index = card_count % 8  # 8 cartes par page
         x, y = positions[pos_index]
         
         # Dessiner la carte à la position donnée
@@ -562,8 +569,8 @@ def generer_cartes_classe_moderne(classe, eleves, response):
         
         card_count += 1
         
-        # Nouvelle page après 4 cartes
-        if card_count % 4 == 0 and card_count < len(eleves):
+        # Nouvelle page après 8 cartes
+        if card_count % 8 == 0 and card_count < len(eleves):
             c.showPage()
     
     c.showPage()
@@ -586,7 +593,7 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.setFillAlpha(0.06)  # Très transparent pour effet filigrane subtil
     
     # Dessiner le logo en filigrane au centre de la carte
-    filigrane_size = 30*mm
+    filigrane_size = 20*mm  # Réduit de 30mm à 20mm pour cartes plus petites
     filigrane_x = x + (width - filigrane_size) / 2
     filigrane_y = y + (height - filigrane_size) / 2
     
@@ -623,14 +630,14 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.roundRect(x, y, width, height, 4, stroke=1, fill=0)
     
     # En-tête
-    header_height = 12*mm
+    header_height = 8*mm  # Réduit de 12mm
     c.setFillColor(colors.HexColor(primary_blue))
     c.roundRect(x+1, y+height-header_height-1, width-2, header_height, 3, stroke=0, fill=1)
     
     # Logo dans l'en-tête (à gauche)
-    logo_size = 8*mm
-    logo_x = x + 2*mm
-    logo_y = y + height - 10.5*mm
+    logo_size = 5*mm  # Réduit de 8mm
+    logo_x = x + 1.5*mm
+    logo_y = y + height - 6.5*mm  # Ajusté
     
     # Cercle blanc pour le logo
     c.setFillColor(colors.white)
@@ -647,39 +654,39 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
             else:
                 # Initiales si pas de logo
                 c.setFillColor(colors.HexColor(primary_blue))
-                c.setFont(bold_font, 10)
+                c.setFont(bold_font, 6)  # Réduit de 10 à 6
                 initiales = eleve.classe.ecole.nom[:2].upper()
-                c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+                c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1, initiales)
         else:
             # Initiales si pas de logo
             c.setFillColor(colors.HexColor(primary_blue))
-            c.setFont(bold_font, 10)
+            c.setFont(bold_font, 6)  # Réduit à 6
             initiales = eleve.classe.ecole.nom[:2].upper()
-            c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+            c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1, initiales)
     except:
         # En cas d'erreur, afficher les initiales
         c.setFillColor(colors.HexColor(primary_blue))
-        c.setFont(bold_font, 10)
+        c.setFont(bold_font, 6)  # Réduit à 6
         initiales = eleve.classe.ecole.nom[:2].upper()
-        c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+        c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1, initiales)
     
     # Nom de l'école (décalé à droite du logo)
     c.setFillColor(colors.white)
-    c.setFont(bold_font, 9)
-    c.drawString(logo_x + logo_size + 2*mm, y+height-8*mm, eleve.classe.ecole.nom.upper()[:30])
+    c.setFont(bold_font, 6)  # Police réduite de 9 à 6
+    c.drawString(logo_x + logo_size + 1*mm, y+height-5.5*mm, eleve.classe.ecole.nom.upper()[:25])  # Texte raccourci
     
     # Photo (simplifiée)
-    photo_size = 20*mm
-    photo_x = x + 3*mm
-    photo_y = y + 10*mm
+    photo_size = 15*mm  # Réduit de 20mm à 15mm
+    photo_x = x + 2*mm
+    photo_y = y + 5*mm  # Ajusté
     
     c.setFillColor(colors.HexColor('#f3f4f6'))
     c.rect(photo_x, photo_y, photo_size, photo_size, stroke=1, fill=1)
     
     # Petit logo dans le coin supérieur gauche du cadre photo
-    corner_logo_size = 5*mm
-    corner_logo_x = photo_x + 1*mm
-    corner_logo_y = photo_y + photo_size - corner_logo_size - 1*mm
+    corner_logo_size = 3*mm  # Réduit de 5mm à 3mm
+    corner_logo_x = photo_x + 0.5*mm
+    corner_logo_y = photo_y + photo_size - corner_logo_size - 0.5*mm
     
     # Dessiner le petit logo avec transparence
     c.saveState()
@@ -701,17 +708,17 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
             else:
                 # Initiales en bleu si pas de logo
                 c.setFillColor(colors.HexColor(primary_blue))
-                c.setFont(bold_font, 7)
+                c.setFont(bold_font, 5)  # Réduit de 7 à 5
                 initiales = eleve.classe.ecole.nom[0].upper()
                 c.drawCentredString(corner_logo_x + corner_logo_size/2, 
-                                  corner_logo_y + corner_logo_size/2 - 1, initiales)
+                                  corner_logo_y + corner_logo_size/2 - 0.5, initiales)
         else:
             # Initiales en bleu si pas de logo
             c.setFillColor(colors.HexColor(primary_blue))
-            c.setFont(bold_font, 7)
+            c.setFont(bold_font, 5)  # Réduit de 7 à 5
             initiales = eleve.classe.ecole.nom[0].upper()
             c.drawCentredString(corner_logo_x + corner_logo_size/2, 
-                              corner_logo_y + corner_logo_size/2 - 1, initiales)
+                              corner_logo_y + corner_logo_size/2 - 0.5, initiales)
     except:
         pass
     
@@ -739,73 +746,70 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     # Si pas de photo, afficher les initiales
     if not photo_drawn:
         c.setFillColor(colors.HexColor(text_gray))
-        c.setFont(bold_font, 14)
-        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 2, 
+        c.setFont(bold_font, 10)  # Réduit de 14 à 10
+        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 1.5, 
                           f"{eleve.prenom[0]}{eleve.nom[0]}".upper())
     
-    # Informations de l'élève
-    info_x = photo_x + photo_size + 3*mm
-    info_y = y + height - header_height - 8*mm
+    # Informations de l'élève (décalées vers le centre)
+    info_x = photo_x + photo_size + 8*mm  # Décalage vers le centre (était 3*mm)
+    info_y = y + height - header_height - 6*mm  # Ajusté pour cartes plus petites
     
     # Nom
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 9)
+    c.setFont(bold_font, 7)  # Police réduite (était 9)
     c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:25])
     
     # Matricule
-    info_y -= 4.5*mm
-    c.setFont(main_font, 7)
+    info_y -= 3.5*mm  # Espacement réduit
+    c.setFont(main_font, 6)  # Police réduite (était 7)
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(info_x, info_y, f"Matricule: {eleve.matricule}")
+    c.drawString(info_x, info_y, f"Mat: {eleve.matricule}")  # Texte abrégé
     
     # Classe et niveau
-    info_y -= 4*mm
-    c.drawString(info_x, info_y, f"Classe: {eleve.classe.nom[:20]}")
+    info_y -= 3*mm  # Espacement réduit
+    c.drawString(info_x, info_y, f"Cl: {eleve.classe.nom[:18]}")  # Texte abrégé
     
     # Date de naissance et âge
-    info_y -= 4*mm
+    info_y -= 3*mm  # Espacement réduit
+    c.setFont(main_font, 5)  # Police réduite
     if eleve.date_naissance:
         from datetime import date
         age = date.today().year - eleve.date_naissance.year
         if date.today() < date(date.today().year, eleve.date_naissance.month, eleve.date_naissance.day):
             age -= 1
-        c.drawString(info_x, info_y, f"Né(e) le: {eleve.date_naissance.strftime('%d/%m/%Y')} ({age} ans)")
+        c.drawString(info_x, info_y, f"{eleve.date_naissance.strftime('%d/%m/%Y')} ({age}a)")  # Format abrégé
     
     # Lieu de naissance
     if eleve.lieu_naissance:
-        info_y -= 4*mm
-        c.drawString(info_x, info_y, f"À: {eleve.lieu_naissance[:30]}")
+        info_y -= 2.5*mm  # Espacement réduit
+        c.drawString(info_x, info_y, f"{eleve.lieu_naissance[:20]}")  # Texte raccourci
     
     # Responsable
-    info_y -= 5*mm
-    c.setFont(bold_font, 7)
+    info_y -= 3*mm  # Espacement réduit
+    c.setFont(bold_font, 5)  # Police réduite
     c.setFillColor(colors.HexColor(text_dark))
-    c.drawString(info_x, info_y, "Contact urgence:")
+    c.drawString(info_x, info_y, "Contact:")  # Titre abrégé
     
-    c.setFont(main_font, 6)
+    c.setFont(main_font, 5)  # Police réduite
     c.setFillColor(colors.HexColor(text_gray))
     
     if eleve.responsable_principal:
-        info_y -= 3.5*mm
+        info_y -= 2.5*mm  # Espacement réduit
         resp = eleve.responsable_principal
         if resp.prenom and resp.nom:
-            c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:25])
+            c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:20])  # Texte raccourci
         
         if resp.telephone:
-            info_y -= 3*mm
-            c.drawString(info_x, info_y, f"Tél: {resp.telephone}")
+            info_y -= 2*mm  # Espacement réduit
+            c.drawString(info_x, info_y, f"{resp.telephone}")  # Sans "Tél:"
         
-        # Adresse
+        # Adresse (version condensée)
         if resp.adresse:
-            info_y -= 3*mm
-            # Diviser l'adresse si trop longue
-            adresse = resp.adresse[:40]
+            info_y -= 2*mm  # Espacement réduit
+            adresse = resp.adresse[:25]  # Texte très raccourci
             c.drawString(info_x, info_y, adresse)
-            if len(resp.adresse) > 40:
-                info_y -= 3*mm
-                c.drawString(info_x, info_y, resp.adresse[40:80])
     
     # Année scolaire en bas
-    c.setFont(main_font, 5)
+    c.setFont(main_font, 4)  # Police réduite
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(x + 3*mm, y + 2*mm, f"Année scolaire {eleve.classe.annee_scolaire}")
+    c.drawString(x + 2*mm, y + 1*mm, f"AS {eleve.classe.annee_scolaire}")  # Texte abrégé
