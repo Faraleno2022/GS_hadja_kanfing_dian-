@@ -581,6 +581,42 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     text_gray = '#6b7280'
     border_color = '#e5e7eb'
     
+    # FILIGRANE DU LOGO (arrière-plan) - Ajouté en premier pour être derrière
+    c.saveState()
+    c.setFillAlpha(0.06)  # Très transparent pour effet filigrane subtil
+    
+    # Dessiner le logo en filigrane au centre de la carte
+    filigrane_size = 30*mm
+    filigrane_x = x + (width - filigrane_size) / 2
+    filigrane_y = y + (height - filigrane_size) / 2
+    
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                # Rotation du filigrane pour effet professionnel
+                c.translate(x + width/2, y + height/2)
+                c.rotate(15)  # Rotation de 15 degrés
+                c.drawImage(eleve.classe.ecole.logo.path,
+                          -filigrane_size/2, -filigrane_size/2,
+                          width=filigrane_size, height=filigrane_size,
+                          preserveAspectRatio=True, mask='auto')
+                c.rotate(-15)  # Annuler la rotation
+                c.translate(-(x + width/2), -(y + height/2))
+        else:
+            # Filigrane texte si pas de logo
+            c.setFillColor(colors.HexColor(primary_blue))
+            c.setFont(bold_font, 24)
+            c.translate(x + width/2, y + height/2)
+            c.rotate(15)
+            initiales = eleve.classe.ecole.nom[:3].upper()
+            c.drawCentredString(0, 0, initiales)
+            c.rotate(-15)
+            c.translate(-(x + width/2), -(y + height/2))
+    except:
+        pass
+    
+    c.restoreState()  # Restaurer l'état normal (opacité normale)
+    
     # Bordure de la carte
     c.setStrokeColor(colors.HexColor(primary_blue))
     c.setLineWidth(1)
@@ -591,10 +627,46 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.setFillColor(colors.HexColor(primary_blue))
     c.roundRect(x+1, y+height-header_height-1, width-2, header_height, 3, stroke=0, fill=1)
     
-    # Nom de l'école
+    # Logo dans l'en-tête (à gauche)
+    logo_size = 8*mm
+    logo_x = x + 2*mm
+    logo_y = y + height - 10.5*mm
+    
+    # Cercle blanc pour le logo
+    c.setFillColor(colors.white)
+    c.circle(logo_x + logo_size/2, logo_y + logo_size/2, logo_size/2, stroke=0, fill=1)
+    
+    # Insérer le logo ou les initiales
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                c.drawImage(eleve.classe.ecole.logo.path, 
+                          logo_x + 0.5, logo_y + 0.5,
+                          width=logo_size-1, height=logo_size-1,
+                          preserveAspectRatio=True, mask='auto')
+            else:
+                # Initiales si pas de logo
+                c.setFillColor(colors.HexColor(primary_blue))
+                c.setFont(bold_font, 10)
+                initiales = eleve.classe.ecole.nom[:2].upper()
+                c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+        else:
+            # Initiales si pas de logo
+            c.setFillColor(colors.HexColor(primary_blue))
+            c.setFont(bold_font, 10)
+            initiales = eleve.classe.ecole.nom[:2].upper()
+            c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+    except:
+        # En cas d'erreur, afficher les initiales
+        c.setFillColor(colors.HexColor(primary_blue))
+        c.setFont(bold_font, 10)
+        initiales = eleve.classe.ecole.nom[:2].upper()
+        c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2 - 1.5, initiales)
+    
+    # Nom de l'école (décalé à droite du logo)
     c.setFillColor(colors.white)
     c.setFont(bold_font, 9)
-    c.drawString(x+3*mm, y+height-8*mm, eleve.classe.ecole.nom.upper()[:35])
+    c.drawString(logo_x + logo_size + 2*mm, y+height-8*mm, eleve.classe.ecole.nom.upper()[:30])
     
     # Photo (simplifiée)
     photo_size = 20*mm
@@ -603,6 +675,47 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     c.setFillColor(colors.HexColor('#f3f4f6'))
     c.rect(photo_x, photo_y, photo_size, photo_size, stroke=1, fill=1)
+    
+    # Petit logo dans le coin supérieur gauche du cadre photo
+    corner_logo_size = 5*mm
+    corner_logo_x = photo_x + 1*mm
+    corner_logo_y = photo_y + photo_size - corner_logo_size - 1*mm
+    
+    # Dessiner le petit logo avec transparence
+    c.saveState()
+    c.setFillAlpha(0.7)  # Semi-transparent
+    
+    # Fond blanc circulaire pour le logo
+    c.setFillColor(colors.white)
+    c.circle(corner_logo_x + corner_logo_size/2, corner_logo_y + corner_logo_size/2, 
+             corner_logo_size/2, stroke=0, fill=1)
+    
+    # Logo ou initiales
+    try:
+        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
+            if os.path.exists(eleve.classe.ecole.logo.path):
+                c.drawImage(eleve.classe.ecole.logo.path,
+                          corner_logo_x, corner_logo_y,
+                          width=corner_logo_size, height=corner_logo_size,
+                          preserveAspectRatio=True, mask='auto')
+            else:
+                # Initiales en bleu si pas de logo
+                c.setFillColor(colors.HexColor(primary_blue))
+                c.setFont(bold_font, 7)
+                initiales = eleve.classe.ecole.nom[0].upper()
+                c.drawCentredString(corner_logo_x + corner_logo_size/2, 
+                                  corner_logo_y + corner_logo_size/2 - 1, initiales)
+        else:
+            # Initiales en bleu si pas de logo
+            c.setFillColor(colors.HexColor(primary_blue))
+            c.setFont(bold_font, 7)
+            initiales = eleve.classe.ecole.nom[0].upper()
+            c.drawCentredString(corner_logo_x + corner_logo_size/2, 
+                              corner_logo_y + corner_logo_size/2 - 1, initiales)
+    except:
+        pass
+    
+    c.restoreState()  # Restaurer l'opacité normale
     
     # Gestion de la photo ou placeholder
     photo_drawn = False
