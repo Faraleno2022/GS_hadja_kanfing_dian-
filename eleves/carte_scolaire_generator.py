@@ -532,20 +532,29 @@ def generer_cartes_classe_moderne(classe, eleves, response):
     
     # Dimensions et positions pour l'impression en masse (4x2 = 8 cartes)
     page_width, page_height = A4
-    margin = 10*mm  # Marge réduite
+    
+    # Dimensions fixes format PVC standard (CR80)
+    card_width = 85.6*mm   # Largeur standard carte PVC
+    card_height = 53.98*mm  # Hauteur standard carte PVC
+    
+    # Calcul des marges et espacements pour centrer les 8 cartes
+    total_cards_width = 2 * card_width  # 2 colonnes
+    total_cards_height = 4 * card_height  # 4 lignes
+    
+    # Espacement entre les cartes
     h_spacing = 5*mm  # Espacement horizontal
     v_spacing = 5*mm  # Espacement vertical
     
-    # Calculer la taille des cartes pour en mettre 8 par page (4 lignes x 2 colonnes)
-    card_width = (page_width - 2*margin - h_spacing) / 2
-    card_height = (page_height - 2*margin - 3*v_spacing) / 4  # 4 lignes
+    # Marges automatiques pour centrer sur la page
+    margin_x = (page_width - total_cards_width - h_spacing) / 2
+    margin_y = (page_height - total_cards_height - 3*v_spacing) / 2
     
     # Positions des 8 cartes (4 lignes, 2 colonnes)
     positions = []
     for row in range(4):  # 4 lignes
         for col in range(2):  # 2 colonnes
-            x = margin + col * (card_width + h_spacing)
-            y = page_height - margin - (row + 1) * card_height - row * v_spacing
+            x = margin_x + col * (card_width + h_spacing)
+            y = page_height - margin_y - (row + 1) * card_height - row * v_spacing
             positions.append((x, y))
     
     # Enregistrement des polices
@@ -630,14 +639,14 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     c.roundRect(x, y, width, height, 4, stroke=1, fill=0)
     
     # En-tête
-    header_height = 8*mm  # Réduit de 12mm
+    header_height = 7*mm  # Adapté pour format PVC
     c.setFillColor(colors.HexColor(primary_blue))
     c.roundRect(x+1, y+height-header_height-1, width-2, header_height, 3, stroke=0, fill=1)
     
     # Logo dans l'en-tête (à gauche)
-    logo_size = 5*mm  # Réduit de 8mm
+    logo_size = 4.5*mm  # Adapté pour format PVC
     logo_x = x + 1.5*mm
-    logo_y = y + height - 6.5*mm  # Ajusté
+    logo_y = y + height - 6*mm  # Ajusté
     
     # Cercle blanc pour le logo
     c.setFillColor(colors.white)
@@ -672,13 +681,13 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # Nom de l'école (décalé à droite du logo)
     c.setFillColor(colors.white)
-    c.setFont(bold_font, 6)  # Police réduite de 9 à 6
-    c.drawString(logo_x + logo_size + 1*mm, y+height-5.5*mm, eleve.classe.ecole.nom.upper()[:25])  # Texte raccourci
+    c.setFont(bold_font, 5)  # Police adaptée format PVC
+    c.drawString(logo_x + logo_size + 1*mm, y+height-5*mm, eleve.classe.ecole.nom.upper()[:22])  # Texte raccourci
     
     # Photo (simplifiée)
-    photo_size = 15*mm  # Réduit de 20mm à 15mm
+    photo_size = 12*mm  # Adapté pour format PVC
     photo_x = x + 2*mm
-    photo_y = y + 5*mm  # Ajusté
+    photo_y = y + 4*mm  # Ajusté
     
     c.setFillColor(colors.HexColor('#f3f4f6'))
     c.rect(photo_x, photo_y, photo_size, photo_size, stroke=1, fill=1)
@@ -746,70 +755,70 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     # Si pas de photo, afficher les initiales
     if not photo_drawn:
         c.setFillColor(colors.HexColor(text_gray))
-        c.setFont(bold_font, 10)  # Réduit de 14 à 10
-        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 1.5, 
+        c.setFont(bold_font, 8)  # Adapté format PVC
+        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 1, 
                           f"{eleve.prenom[0]}{eleve.nom[0]}".upper())
     
     # Informations de l'élève (décalées vers le centre)
-    info_x = photo_x + photo_size + 8*mm  # Décalage vers le centre (était 3*mm)
-    info_y = y + height - header_height - 6*mm  # Ajusté pour cartes plus petites
+    info_x = photo_x + photo_size + 5*mm  # Décalage adapté format PVC
+    info_y = y + height - header_height - 4*mm  # Ajusté pour format PVC
     
     # Nom
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 7)  # Police réduite (était 9)
-    c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:25])
+    c.setFont(bold_font, 6)  # Police adaptée format PVC
+    c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:20])
     
     # Matricule
-    info_y -= 3.5*mm  # Espacement réduit
-    c.setFont(main_font, 6)  # Police réduite (était 7)
+    info_y -= 3*mm  # Espacement réduit
+    c.setFont(main_font, 5)  # Police adaptée format PVC
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(info_x, info_y, f"Mat: {eleve.matricule}")  # Texte abrégé
+    c.drawString(info_x, info_y, f"Mat: {eleve.matricule}")
     
     # Classe et niveau
-    info_y -= 3*mm  # Espacement réduit
-    c.drawString(info_x, info_y, f"Cl: {eleve.classe.nom[:18]}")  # Texte abrégé
+    info_y -= 2.5*mm  # Espacement réduit
+    c.drawString(info_x, info_y, f"Cl: {eleve.classe.nom[:16]}")
     
     # Date de naissance et âge
-    info_y -= 3*mm  # Espacement réduit
-    c.setFont(main_font, 5)  # Police réduite
+    info_y -= 2.5*mm  # Espacement adapté PVC
+    c.setFont(main_font, 4)  # Police adaptée PVC
     if eleve.date_naissance:
         from datetime import date
         age = date.today().year - eleve.date_naissance.year
         if date.today() < date(date.today().year, eleve.date_naissance.month, eleve.date_naissance.day):
             age -= 1
-        c.drawString(info_x, info_y, f"{eleve.date_naissance.strftime('%d/%m/%Y')} ({age}a)")  # Format abrégé
+        c.drawString(info_x, info_y, f"{eleve.date_naissance.strftime('%d/%m/%Y')} ({age}a)")
     
     # Lieu de naissance
     if eleve.lieu_naissance:
-        info_y -= 2.5*mm  # Espacement réduit
-        c.drawString(info_x, info_y, f"{eleve.lieu_naissance[:20]}")  # Texte raccourci
+        info_y -= 2*mm  # Espacement adapté PVC
+        c.drawString(info_x, info_y, f"{eleve.lieu_naissance[:18]}")
     
     # Responsable
-    info_y -= 3*mm  # Espacement réduit
-    c.setFont(bold_font, 5)  # Police réduite
+    info_y -= 2.5*mm  # Espacement adapté PVC
+    c.setFont(bold_font, 4)  # Police adaptée PVC
     c.setFillColor(colors.HexColor(text_dark))
-    c.drawString(info_x, info_y, "Contact:")  # Titre abrégé
+    c.drawString(info_x, info_y, "Contact:")
     
-    c.setFont(main_font, 5)  # Police réduite
+    c.setFont(main_font, 4)  # Police adaptée PVC
     c.setFillColor(colors.HexColor(text_gray))
     
     if eleve.responsable_principal:
-        info_y -= 2.5*mm  # Espacement réduit
+        info_y -= 2*mm  # Espacement adapté PVC
         resp = eleve.responsable_principal
         if resp.prenom and resp.nom:
-            c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:20])  # Texte raccourci
+            c.drawString(info_x, info_y, f"{resp.prenom} {resp.nom}".upper()[:18])
         
         if resp.telephone:
-            info_y -= 2*mm  # Espacement réduit
-            c.drawString(info_x, info_y, f"{resp.telephone}")  # Sans "Tél:"
+            info_y -= 1.8*mm  # Espacement adapté PVC
+            c.drawString(info_x, info_y, f"{resp.telephone}")
         
         # Adresse (version condensée)
         if resp.adresse:
-            info_y -= 2*mm  # Espacement réduit
-            adresse = resp.adresse[:25]  # Texte très raccourci
+            info_y -= 1.8*mm  # Espacement adapté PVC
+            adresse = resp.adresse[:20]  # Adapté PVC
             c.drawString(info_x, info_y, adresse)
     
     # Année scolaire en bas
-    c.setFont(main_font, 4)  # Police réduite
+    c.setFont(main_font, 3.5)  # Police adaptée PVC
     c.setFillColor(colors.HexColor(text_gray))
-    c.drawString(x + 2*mm, y + 1*mm, f"AS {eleve.classe.annee_scolaire}")  # Texte abrégé
+    c.drawString(x + 2*mm, y + 1*mm, f"AS {eleve.classe.annee_scolaire}")
