@@ -6,6 +6,7 @@ from .bulletin_intelligent import (
     bulletin_intelligent_excel
 )
 from .export_classement import exporter_classement_classe
+from .export_classement_fixed import exporter_classement_classe_fixed
 
 app_name = 'notes'
 
@@ -45,4 +46,5 @@ urlpatterns = [
     
     # Export des classements
     path('exporter-classement/', exporter_classement_classe, name='exporter_classement'),
+    path('exporter-classement-fixed/', exporter_classement_classe_fixed, name='exporter_classement_fixed'),
 ]

@@ -1,4 +1,4 @@
-# Accord Grammatical des Rangs selon le Sexe
+# Accord Grammatical Intelligent des Rangs selon le Sexe - Mis à jour 11/11/2024
 
 ## 📝 Fonctionnalité Ajoutée
 
@@ -8,12 +8,14 @@
 
 ---
 
-## 🎯 Description
+## 🎯 Description - SYSTÈME INTELLIGENT
 
-L'export des classements utilise maintenant l'**accord grammatical** pour les rangs selon le sexe de l'élève :
+✨ **Le système est INTELLIGENT** : il adapte automatiquement l'accord grammatical selon le sexe de l'élève !
 
-- **Filles** : 1**ère**, 2ème, 3ème, 4ème, etc.
-- **Garçons** : 1**er**, 2ème, 3ème, 4ème, etc.
+### Accord automatique :
+- **Si c'est une FILLE qui est première** → **1ère** (première)
+- **Si c'est un GARÇON qui est premier** → **1er** (premier)
+- **Pour tous les autres rangs** → **2ème, 3ème...** (identique pour les deux sexes)
 
 ---
 

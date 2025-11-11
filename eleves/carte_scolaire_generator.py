@@ -112,16 +112,16 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
     c.roundRect(1, 1, width-2, height-2, 6, stroke=1, fill=0)
     
     # 2. EN-TÊTE (Logo + Nom de l'école)
-    header_height = 14*mm
+    header_height = 16*mm  # Augmenté de 14mm à 16mm pour plus d'espace
     
     # Fond dégradé pour l'en-tête
     c.setFillColor(colors.HexColor(primary_blue))
     c.roundRect(2, height - header_height - 1, width-4, header_height, 5, stroke=0, fill=1)
     
     # Logo de l'école
-    logo_size = 10*mm
+    logo_size = 12*mm  # Augmenté de 10mm à 12mm
     logo_x = 4*mm
-    logo_y = height - 12*mm
+    logo_y = height - 14*mm  # Ajusté pour le nouvel en-tête
     
     # Cercle blanc pour le logo
     c.setFillColor(colors.white)
@@ -143,10 +143,17 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
     
     # Nom de l'école
     c.setFillColor(colors.white)
-    c.setFont(bold_font, 11)
     school_name = eleve.classe.ecole.nom.upper()
-    if len(school_name) > 30:
-        school_name = school_name[:30] + "..."
+    
+    # Ajuster la taille de police selon la longueur du nom (TAILLES AUGMENTÉES)
+    if len(school_name) > 35:
+        c.setFont(bold_font, 10)  # Police réduite mais lisible pour les noms longs
+    elif len(school_name) > 25:
+        c.setFont(bold_font, 12)  # Police moyenne augmentée
+    else:
+        c.setFont(bold_font, 14)  # Police normale augmentée
+    
+    # Afficher le nom complet sans troncature
     c.drawString(logo_x + logo_size + 3*mm, logo_y + logo_size - 3*mm, school_name)
     
     # Sous-titre
@@ -192,7 +199,10 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
                 img_x = photo_x + 1*mm
                 img_y = photo_y + 1*mm
                 
-                c.drawImage(temp_buffer, img_x, img_y, 
+                # Utiliser ImageReader pour BytesIO
+                from reportlab.lib.utils import ImageReader
+                img_reader = ImageReader(temp_buffer)
+                c.drawImage(img_reader, img_x, img_y, 
                           width=img_width, height=img_height, 
                           preserveAspectRatio=True)
                 photo_inserted = True
@@ -215,12 +225,12 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
     
     # 4. SECTION INFORMATIONS (Droite - 65% de la largeur)
     info_x = photo_x + photo_width + 4*mm
-    info_y_start = height - header_height - 6*mm
+    info_y_start = height - header_height - 4*mm  # Ajusté pour le nouvel en-tête
     line_height = 5*mm
     
-    # Nom complet (en gras et plus grand)
+    # Nom complet (taille réduite)
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 10)
+    c.setFont(bold_font, 9)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 25:
         nom_complet = nom_complet[:22] + "..."
@@ -494,13 +504,21 @@ def generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True):
     
     # Texte de l'école
     c.setFillColor(colors.white)
-    c.setFont(bold_font, 10)
-    school_name = eleve.classe.ecole.nom.upper()[:35]
+    school_name = eleve.classe.ecole.nom.upper()
+    
+    # Ajuster la taille de police selon la longueur du nom (PVC - TAILLES AUGMENTÉES)
+    if len(school_name) > 35:
+        c.setFont(bold_font, 9)  # Police réduite mais plus grande
+    elif len(school_name) > 25:
+        c.setFont(bold_font, 11)  # Police moyenne augmentée
+    else:
+        c.setFont(bold_font, 13)  # Police normale augmentée
+    
     c.drawString(card_x + 5*mm, card_y + height - 8*mm, school_name)
     
     # Informations principales
     c.setFillColor(colors.HexColor(text_black))
-    c.setFont(bold_font, 11)
+    c.setFont(bold_font, 9)
     nom = f"{eleve.prenom} {eleve.nom}".upper()[:25]
     c.drawString(card_x + 30*mm, card_y + 32*mm, nom)
     
@@ -681,8 +699,33 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # Nom de l'école (décalé à droite du logo)
     c.setFillColor(colors.white)
-    c.setFont(bold_font, 5)  # Police adaptée format PVC
-    c.drawString(logo_x + logo_size + 1*mm, y+height-5*mm, eleve.classe.ecole.nom.upper()[:22])  # Texte raccourci
+    school_name = eleve.classe.ecole.nom.upper()
+    
+    # Ajuster la taille de police selon la longueur du nom (cartes en masse - TAILLES AUGMENTÉES)
+    available_width = width - (logo_x + logo_size + 3*mm)  # Espace disponible
+    
+    if len(school_name) > 30:
+        c.setFont(bold_font, 6)  # Police plus grande pour les noms très longs
+    elif len(school_name) > 22:
+        c.setFont(bold_font, 7)  # Police moyenne augmentée
+    else:
+        c.setFont(bold_font, 8)  # Police normale augmentée
+    
+    # Si le nom est vraiment trop long, on peut le diviser sur deux lignes
+    if len(school_name) > 40:
+        # Trouver un point de coupure approprié
+        mid_point = len(school_name) // 2
+        space_index = school_name.rfind(' ', 0, mid_point + 10)
+        if space_index == -1:
+            space_index = mid_point
+        
+        line1 = school_name[:space_index].strip()
+        line2 = school_name[space_index:].strip()
+        
+        c.drawString(logo_x + logo_size + 1*mm, y+height-4.5*mm, line1)
+        c.drawString(logo_x + logo_size + 1*mm, y+height-6.5*mm, line2)
+    else:
+        c.drawString(logo_x + logo_size + 1*mm, y+height-5*mm, school_name)
     
     # Photo (simplifiée)
     photo_size = 22*mm  # Encore plus grande pour meilleure visibilité
@@ -746,7 +789,10 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
                 temp_buffer = io.BytesIO()
                 img.save(temp_buffer, format='JPEG', quality=90)
                 temp_buffer.seek(0)
-                c.drawImage(temp_buffer, photo_x, photo_y, 
+                # Utiliser ImageReader pour BytesIO
+                from reportlab.lib.utils import ImageReader
+                img_reader = ImageReader(temp_buffer)
+                c.drawImage(img_reader, photo_x, photo_y, 
                           width=photo_size, height=photo_size, preserveAspectRatio=True)
                 photo_drawn = True
         except:
@@ -765,7 +811,7 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     
     # Nom
     c.setFillColor(colors.HexColor(text_dark))
-    c.setFont(bold_font, 12)  # Police maximale
+    c.setFont(bold_font, 10)  # Police réduite
     c.drawString(info_x, info_y, f"{eleve.prenom} {eleve.nom}".upper()[:20])
     
     # Matricule

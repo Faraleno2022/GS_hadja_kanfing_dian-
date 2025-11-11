@@ -1,5 +1,6 @@
 """
-Système de calcul des notes selon le système guinéen
+Système de calcul intelligent des notes avec mentions et appréciations dynamiques
+Version améliorée du 11 novembre 2024
 """
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Optional
@@ -51,24 +52,25 @@ def calculer_moyenne_periode(moyenne_cours: Optional[Decimal],
     if moyenne_cours is None and composition is None:
         return None
     
-    # Si un seul est disponible, on le prend
+    # Si on n'a que la composition
     if moyenne_cours is None:
         return composition
+    
+    # Si on n'a que les cours
     if composition is None:
         return moyenne_cours
     
-    # Les deux disponibles: formule guinéenne 40/60
-    # Note = (Moyenne Cours × 40%) + (Composition × 60%)
-    moyenne = (moyenne_cours * Decimal('0.4')) + (composition * Decimal('0.6'))
-    return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    # Formule 40/60
+    moyenne_ponderee = (moyenne_cours * Decimal('0.4')) + (composition * Decimal('0.6'))
+    return moyenne_ponderee.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def calculer_moyenne_annuelle(moyennes_periodes: List[Decimal]) -> Optional[Decimal]:
+def calculer_moyenne_annuelle(moyennes_periodes: List[Optional[Decimal]]) -> Optional[Decimal]:
     """
-    Calcule la moyenne annuelle d'une matière
+    Calcule la moyenne annuelle
     
     Args:
-        moyennes_periodes: Liste des moyennes de chaque période
+        moyennes_periodes: Liste des moyennes par période
         
     Returns:
         Moyenne annuelle ou None
@@ -78,25 +80,20 @@ def calculer_moyenne_annuelle(moyennes_periodes: List[Decimal]) -> Optional[Deci
     if not moyennes_valides:
         return None
     
-    moyenne = sum(moyennes_valides) / len(moyennes_valides)
-    return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    moyenne_annuelle = sum(moyennes_valides) / len(moyennes_valides)
+    return moyenne_annuelle.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def calculer_moyenne_generale(notes_matieres: Dict[str, Dict], 
-                             niveau: str = 'SECONDAIRE') -> Optional[Decimal]:
+                              niveau: str = 'SECONDAIRE') -> Optional[Decimal]:
     """
-    Calcule la moyenne générale
-    
-    SYSTÈME GUINÉEN:
-    - PRIMAIRE: Moyenne simple (pas de coefficients)
-    - SECONDAIRE: Somme(Moyenne × Coefficient) / Somme(Coefficients)
+    Calcule la moyenne générale de toutes les matières
     
     Args:
         notes_matieres: {
-            'matiere_id': {
-                'moyenne': Decimal,
-                'coefficient': Decimal
-            }
+            'matiere1': {'moyenne': Decimal('15'), 'coefficient': Decimal('3')},
+            'matiere2': {'moyenne': Decimal('12'), 'coefficient': Decimal('2')},
+            ...
         }
         niveau: 'PRIMAIRE' ou 'SECONDAIRE'
         
@@ -134,11 +131,11 @@ def calculer_moyenne_generale(notes_matieres: Dict[str, Dict],
     return moyenne_generale.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def obtenir_mention(moyenne: Optional[Decimal]) -> str:
+def obtenir_mention_intelligente(moyenne: Optional[Decimal]) -> str:
     """
-    Détermine la mention selon la moyenne avec seuils intelligents
+    Détermine la mention selon la moyenne avec les seuils précis demandés
     
-    SEUILS DYNAMIQUES:
+    SYSTÈME INTELLIGENT:
     - >= 18.5: Excellent
     - >= 16.5: Très bien
     - >= 14.5: Bien
@@ -151,7 +148,7 @@ def obtenir_mention(moyenne: Optional[Decimal]) -> str:
         moyenne: Moyenne de l'élève
         
     Returns:
-        Mention (Excellent, Très Bien, etc.)
+        Mention appropriée
     """
     if moyenne is None:
         return "Non évalué"
@@ -172,13 +169,13 @@ def obtenir_mention(moyenne: Optional[Decimal]) -> str:
         return "Insuffisant"
 
 
-def obtenir_appreciation(moyenne: Optional[Decimal], prenom: str = None) -> str:
+def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = None) -> str:
     """
-    Génère une appréciation dynamique du conseil de classe selon la moyenne
+    Génère une appréciation dynamique et personnalisée selon la moyenne
     
     Args:
         moyenne: Moyenne de l'élève
-        prenom: Prénom de l'élève pour personnaliser (optionnel)
+        prenom: Prénom de l'élève pour personnaliser
         
     Returns:
         Appréciation du conseil de classe
@@ -186,6 +183,7 @@ def obtenir_appreciation(moyenne: Optional[Decimal], prenom: str = None) -> str:
     if moyenne is None:
         return "L'élève n'a pas été évalué sur cette période."
     
+    # Personnalisation avec le prénom si disponible
     nom = prenom if prenom else "L'élève"
     
     if moyenne >= Decimal('18.5'):
@@ -224,7 +222,7 @@ def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = No
         total_eleves: Nombre total d'élèves (optionnel)
         
     Returns:
-        Rang formaté avec accord grammatical (ex: "1er", "1ère", "2ème")
+        Rang formaté avec accord grammatical (ex: "1er/25", "1ère/25", "2ème/25")
     """
     if rang is None or rang == 0:
         return "-"
@@ -235,29 +233,30 @@ def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = No
     else:
         rang_str = f"{rang}ème"
     
-    # On peut ajouter le total si disponible
-    if total_eleves and total_eleves > 1:
+    # Ajouter le total si disponible
+    if total_eleves:
         return f"{rang_str}/{total_eleves}"
     else:
         return rang_str
 
 
-def calculer_rang(moyennes_eleves: List[Dict]) -> List[Dict]:
+def calculer_rang_intelligent(moyennes_eleves: List[Dict]) -> List[Dict]:
     """
-    Calcule le rang de chaque élève
+    Calcule le rang de chaque élève avec gestion des ex-aequo
     
     Args:
         moyennes_eleves: [
-            {'eleve_id': 1, 'moyenne': Decimal('15.5')},
-            {'eleve_id': 2, 'moyenne': Decimal('14.2')},
+            {'eleve_id': 1, 'moyenne': Decimal('15.5'), 'sexe': 'F', 'prenom': 'Fatou'},
+            {'eleve_id': 2, 'moyenne': Decimal('14.2'), 'sexe': 'M', 'prenom': 'Mamadou'},
             ...
         ]
         
     Returns:
-        Liste avec rangs ajoutés, triée par moyenne décroissante
+        Liste avec rangs formatés intelligemment, triée par moyenne décroissante
     """
     # Filtrer les élèves avec moyenne
     eleves_avec_moyenne = [e for e in moyennes_eleves if e.get('moyenne') is not None]
+    eleves_sans_moyenne = [e for e in moyennes_eleves if e.get('moyenne') is None]
     
     # Trier par moyenne décroissante
     eleves_tries = sorted(
@@ -268,7 +267,7 @@ def calculer_rang(moyennes_eleves: List[Dict]) -> List[Dict]:
     
     # Attribuer les rangs avec gestion des ex-aequo
     rang_actuel = 1
-    total_eleves = len(eleves_tries)
+    total_eleves = len(eleves_avec_moyenne)
     
     for i, eleve in enumerate(eleves_tries):
         # Gérer les ex-aequo
@@ -283,13 +282,14 @@ def calculer_rang(moyennes_eleves: List[Dict]) -> List[Dict]:
         sexe = eleve.get('sexe', 'M')
         eleve['rang'] = formater_rang_intelligent(eleve['rang_num'], sexe, total_eleves)
         
-        # Ajouter mention et appréciation
-        eleve['mention'] = obtenir_mention(eleve['moyenne'])
-        prenom = eleve.get('prenom', None)
-        eleve['appreciation'] = obtenir_appreciation(eleve['moyenne'], prenom)
+        # Ajouter mention et appréciation intelligentes
+        eleve['mention'] = obtenir_mention_intelligente(eleve['moyenne'])
+        eleve['appreciation'] = obtenir_appreciation_intelligente(
+            eleve['moyenne'], 
+            eleve.get('prenom')
+        )
     
     # Gérer les élèves sans moyenne
-    eleves_sans_moyenne = [e for e in moyennes_eleves if e.get('moyenne') is None]
     for eleve in eleves_sans_moyenne:
         eleve['rang'] = "-"
         eleve['rang_num'] = None
@@ -299,32 +299,31 @@ def calculer_rang(moyennes_eleves: List[Dict]) -> List[Dict]:
     return eleves_tries + eleves_sans_moyenne
 
 
-def valider_note(note: any, note_sur: Decimal = Decimal('20')) -> tuple:
+def obtenir_encouragements(moyenne: Optional[Decimal]) -> str:
     """
-    Valide une note
+    Détermine les encouragements selon la performance
     
     Args:
-        note: Note à valider
-        note_sur: Note maximale (défaut 20)
+        moyenne: Moyenne de l'élève
         
     Returns:
-        (est_valide: bool, message_erreur: str)
+        Type d'encouragement ou distinction
     """
-    if note is None:
-        return True, ""
+    if moyenne is None:
+        return ""
     
-    try:
-        note_decimal = Decimal(str(note))
-    except:
-        return False, "Format de note invalide"
-    
-    if note_decimal < 0:
-        return False, "La note ne peut pas être négative"
-    
-    if note_decimal > note_sur:
-        return False, f"La note ne peut pas dépasser {note_sur}"
-    
-    return True, ""
+    if moyenne >= Decimal('18'):
+        return "Tableau d'Excellence"
+    elif moyenne >= Decimal('16'):
+        return "Tableau d'Honneur"
+    elif moyenne >= Decimal('14'):
+        return "Félicitations"
+    elif moyenne >= Decimal('12'):
+        return "Encouragements"
+    elif moyenne >= Decimal('10.5'):
+        return "À encourager"
+    else:
+        return ""
 
 
 def calculer_moyenne_cours_mensuels(notes_par_mois: Dict[str, List[Decimal]]) -> Optional[Decimal]:
@@ -355,72 +354,124 @@ def calculer_moyenne_cours_mensuels(notes_par_mois: Dict[str, List[Decimal]]) ->
     return moyenne_cours.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-# Exemple d'utilisation
+def valider_note(note: any, note_sur: Decimal = Decimal('20')) -> tuple:
+    """
+    Valide une note
+    
+    Args:
+        note: Note à valider
+        note_sur: Note maximale (défaut 20)
+        
+    Returns:
+        (est_valide: bool, message_erreur: str)
+    """
+    if note is None:
+        return True, ""
+    
+    try:
+        note_decimal = Decimal(str(note))
+    except:
+        return False, "Format de note invalide"
+    
+    if note_decimal < 0:
+        return False, "La note ne peut pas être négative"
+    
+    if note_decimal > note_sur:
+        return False, f"La note ne peut pas dépasser {note_sur}"
+    
+    return True, ""
+
+
+# Fonctions de compatibilité (anciens noms conservés)
+def obtenir_mention(moyenne: Decimal) -> str:
+    """Fonction de compatibilité - utilise la version intelligente"""
+    return obtenir_mention_intelligente(moyenne)
+
+
+def obtenir_appreciation(moyenne: Decimal) -> str:
+    """Fonction de compatibilité - utilise la version intelligente"""
+    return obtenir_appreciation_intelligente(moyenne)
+
+
+def calculer_rang(moyennes_eleves: List[Dict]) -> List[Dict]:
+    """Fonction de compatibilité - utilise la version intelligente"""
+    return calculer_rang_intelligent(moyennes_eleves)
+
+
+# Tests du système intelligent
 if __name__ == "__main__":
-    print("="*80)
-    print(" "*20 + "TEST SYSTÈME GUINÉEN")
-    print("="*80)
-    
-    # Test SECONDAIRE avec formule 40/60
-    print("\n🔴 SECONDAIRE - Formule 40/60")
-    print("-"*80)
-    
-    # Notes mensuelles
-    notes_mensuelles = {
-        'octobre': [Decimal('14'), Decimal('15')],
-        'novembre': [Decimal('12'), Decimal('14')],
-        'decembre': [Decimal('16'), Decimal('15')],
-        'janvier': [Decimal('11'), Decimal('13'), Decimal('14')]
-    }
-    
-    moy_cours = calculer_moyenne_cours_mensuels(notes_mensuelles)
-    print(f"Moyenne de cours: {moy_cours}")
-    
-    composition = Decimal('12')
-    print(f"Composition: {composition}")
-    
-    moy_periode = calculer_moyenne_periode(moy_cours, composition, niveau='SECONDAIRE')
-    print(f"Moyenne période (40% cours + 60% compo): {moy_periode}")
-    print(f"Vérification: ({moy_cours} × 0.4) + ({composition} × 0.6) = {moy_periode}")
-    
-    # Test moyenne générale avec coefficients
-    print("\n📊 Moyenne générale pondérée")
-    print("-"*80)
-    notes_matieres = {
-        'francais': {'moyenne': Decimal('16'), 'coefficient': Decimal('4')},
-        'math': {'moyenne': Decimal('14'), 'coefficient': Decimal('4')},
-        'histoire': {'moyenne': Decimal('16'), 'coefficient': Decimal('2')},
-    }
-    moy_generale = calculer_moyenne_generale(notes_matieres, niveau='SECONDAIRE')
-    print(f"Moyenne générale: {moy_generale}")
-    
-    # Test mention
-    mention = obtenir_mention(moy_generale)
-    print(f"Mention: {mention}")
-    
-    # Test PRIMAIRE
-    print("\n🔵 PRIMAIRE - Moyenne simple")
-    print("-"*80)
-    notes_primaire = {
-        'francais': {'moyenne': Decimal('8.0')},
-        'math': {'moyenne': Decimal('7.5')},
-        'sciences': {'moyenne': Decimal('9.0')},
-    }
-    moy_generale_primaire = calculer_moyenne_generale(notes_primaire, niveau='PRIMAIRE')
-    print(f"Moyenne générale: {moy_generale_primaire}/10")
-    
-    # Test rang
-    print("\n🏆 Classement")
-    print("-"*80)
-    eleves = [
-        {'eleve_id': 1, 'moyenne': Decimal('15.5')},
-        {'eleve_id': 2, 'moyenne': Decimal('14.2')},
-        {'eleve_id': 3, 'moyenne': Decimal('16.8')},
-    ]
-    eleves_classes = calculer_rang(eleves)
-    for e in eleves_classes:
-        print(f"Rang {e['rang']}: Élève {e['eleve_id']} - Moyenne {e['moyenne']} - {e['mention']}")
+    from colorama import init, Fore, Style, Back
+    init()
     
     print("\n" + "="*80)
-    print(" "*25 + "✅ TESTS RÉUSSIS")
+    print(Fore.CYAN + " "*20 + "✨ SYSTÈME INTELLIGENT DE CALCUL ✨" + Style.RESET_ALL)
     print("="*80)
+    
+    print("\n" + Fore.YELLOW + "📊 TEST DES MENTIONS INTELLIGENTES" + Style.RESET_ALL)
+    print("-"*80)
+    
+    # Test des mentions
+    test_moyennes = [
+        Decimal('19.2'), Decimal('18.5'), Decimal('17.8'), 
+        Decimal('16.5'), Decimal('15.3'), Decimal('14.5'),
+        Decimal('13.2'), Decimal('12.5'), Decimal('11.0'),
+        Decimal('10.0'), Decimal('9.5'), Decimal('9.0'),
+        Decimal('8.5'), Decimal('7.0')
+    ]
+    
+    for moyenne in test_moyennes:
+        mention = obtenir_mention_intelligente(moyenne)
+        
+        # Couleur selon la mention
+        if "Excellent" in mention:
+            couleur = Fore.GREEN + Style.BRIGHT
+        elif "Très bien" in mention:
+            couleur = Fore.GREEN
+        elif "Bien" in mention:
+            couleur = Fore.CYAN
+        elif "Assez" in mention:
+            couleur = Fore.YELLOW
+        elif "Passable" in mention:
+            couleur = Fore.MAGENTA
+        elif "Faible" in mention:
+            couleur = Fore.RED
+        else:
+            couleur = Fore.RED + Style.BRIGHT
+        
+        print(f"Moyenne: {moyenne:>5.2f}/20 → {couleur}{mention:15s}{Style.RESET_ALL}")
+    
+    print("\n" + Fore.YELLOW + "🎯 TEST DES RANGS INTELLIGENTS" + Style.RESET_ALL)
+    print("-"*80)
+    
+    # Test des rangs avec accord grammatical
+    eleves_test = [
+        {'eleve_id': 1, 'prenom': 'Fatoumata', 'sexe': 'F', 'moyenne': Decimal('18.5')},
+        {'eleve_id': 2, 'prenom': 'Mamadou', 'sexe': 'M', 'moyenne': Decimal('17.2')},
+        {'eleve_id': 3, 'prenom': 'Aissatou', 'sexe': 'F', 'moyenne': Decimal('16.8')},
+        {'eleve_id': 4, 'prenom': 'Ibrahim', 'sexe': 'M', 'moyenne': Decimal('16.8')},  # Ex-aequo
+        {'eleve_id': 5, 'prenom': 'Mariam', 'sexe': 'F', 'moyenne': Decimal('14.5')},
+    ]
+    
+    eleves_classes = calculer_rang_intelligent(eleves_test)
+    
+    print("\n┌──────────┬──────────────┬──────┬─────────┬───────────────┬─────────────┐")
+    print("│   Rang   │    Prénom    │ Sexe │ Moyenne │    Mention    │ Distinction │")
+    print("├──────────┼──────────────┼──────┼─────────┼───────────────┼─────────────┤")
+    
+    for eleve in eleves_classes:
+        distinction = obtenir_encouragements(eleve['moyenne'])
+        icone = "👧" if eleve['sexe'] == 'F' else "👦"
+        
+        print(f"│ {eleve['rang']:^8} │ {eleve['prenom']:12s} │  {icone}  │ {eleve['moyenne']:>7.2f} │ {eleve['mention']:13s} │ {distinction:11s} │")
+    
+    print("└──────────┴──────────────┴──────┴─────────┴───────────────┴─────────────┘")
+    
+    print("\n" + Fore.YELLOW + "💬 TEST DES APPRÉCIATIONS DYNAMIQUES" + Style.RESET_ALL)
+    print("-"*80)
+    
+    for eleve in eleves_classes[:3]:
+        print(f"\n{eleve['prenom']} ({eleve['moyenne']:.2f}/20):")
+        print(f"→ {eleve['appreciation']}")
+    
+    print("\n" + Back.GREEN + Fore.WHITE + " ✅ SYSTÈME INTELLIGENT OPÉRATIONNEL " + Style.RESET_ALL)
+    print("="*80 + "\n")

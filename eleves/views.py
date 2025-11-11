@@ -16,6 +16,7 @@ from django.core.cache import cache
 from django.views.decorators.cache import never_cache
 from datetime import date
 import os
+import io
 from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve, GrilleTarifaire
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, EcoleForm
 from utilisateurs.forms import SignupInlineForm
@@ -2372,30 +2373,30 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     c.drawCentredString(width/2, height-32, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
     
-    # Photo de l'élève dans un cercle moderne très agrandi (côté droit)
+    # Photo de l'élève (côté droit) - affichage direct uniquement si disponible
     photo_x = width - 45
     photo_y = height/2 - 8
     photo_radius = 30
     
-    # Ombre de la photo
-    c.setFillColor(colors.HexColor('#000000'))
-    c.setFillAlpha(0.1)
-    c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Cercle de fond blanc avec double bordure
-    c.setFillColor(colors.white)
-    c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(3)
-    c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
-    # Charger et afficher la photo si elle existe
+    # Afficher la photo UNIQUEMENT si elle existe
     if eleve.photo:
         try:
             from PIL import Image, ImageDraw
             photo_path = eleve.photo.path
             if os.path.exists(photo_path):
+                # Ombre de la photo
+                c.setFillColor(colors.HexColor('#000000'))
+                c.setFillAlpha(0.1)
+                c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
+                c.setFillAlpha(1)
+                
+                # Cercle de fond blanc avec double bordure
+                c.setFillColor(colors.white)
+                c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
+                c.setStrokeColor(colors.HexColor(primary_color))
+                c.setLineWidth(3)
+                c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
+                
                 # Ouvrir l'image avec PIL
                 img = Image.open(photo_path)
                 
@@ -2432,24 +2433,16 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                 output.save(temp_buffer, format='PNG')
                 temp_buffer.seek(0)
                 
-                # Dessiner sur le PDF
-                c.drawImage(temp_buffer, photo_x - photo_radius, photo_y - photo_radius, 
+                # Dessiner sur le PDF avec ImageReader
+                from reportlab.lib.utils import ImageReader
+                img_reader = ImageReader(temp_buffer)
+                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius, 
                            width=photo_radius * 2, height=photo_radius * 2, mask='auto')
         except Exception as e:
-            # Placeholder en cas d'erreur
+            # Ne rien afficher en cas d'erreur
             print(f"Erreur photo retrait: {e}")
-            c.setFillColor(colors.HexColor(light_color))
-            c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-            c.setFillColor(colors.HexColor(primary_color))
-            c.setFont(main_font, 7)
-            c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    else:
-        # Placeholder si pas de photo
-        c.setFillColor(colors.HexColor(light_color))
-        c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-        c.setFillColor(colors.HexColor(primary_color))
-        c.setFont(main_font, 7)
-        c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
+            pass
+    # Si pas de photo, on n'affiche rien (pas de cercle ni de placeholder)
     
     # Carte d'information avec fond coloré (style moderne)
     info_box_x = 8
@@ -2466,16 +2459,16 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     x_start = 12
     y_start = height/2 + 5
     
-    # Nom complet (grand et en gras)
+    # Nom complet (taille encore réduite)
     c.setFillColor(colors.HexColor('#1f2937'))
-    c.setFont(main_font_bold, 12)
+    c.setFont(main_font_bold, 9)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 20:
         nom_complet = nom_complet[:17] + "..."
     c.drawString(x_start, y_start, nom_complet)
     
     # Ligne décorative sous le nom (ajustée à la longueur du nom)
-    nom_width = c.stringWidth(nom_complet, main_font_bold, 12)
+    nom_width = c.stringWidth(nom_complet, main_font_bold, 9)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + nom_width, y_start - 2)
@@ -2732,30 +2725,30 @@ def generer_ticket_bus_pdf(request, eleve_id):
     c.drawCentredString(width/2, height-32, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
     
-    # Photo de l'élève dans un cercle moderne très agrandi (côté droit)
+    # Photo de l'élève (côté droit) - affichage direct uniquement si disponible
     photo_x = width - 45
     photo_y = height/2 - 8
     photo_radius = 30
     
-    # Ombre de la photo
-    c.setFillColor(colors.HexColor('#000000'))
-    c.setFillAlpha(0.1)
-    c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Cercle de fond blanc avec double bordure
-    c.setFillColor(colors.white)
-    c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(3)
-    c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
-    # Charger et afficher la photo si elle existe
+    # Afficher la photo UNIQUEMENT si elle existe
     if eleve.photo:
         try:
             from PIL import Image, ImageDraw
             photo_path = eleve.photo.path
             if os.path.exists(photo_path):
+                # Ombre de la photo
+                c.setFillColor(colors.HexColor('#000000'))
+                c.setFillAlpha(0.1)
+                c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
+                c.setFillAlpha(1)
+                
+                # Cercle de fond blanc avec double bordure
+                c.setFillColor(colors.white)
+                c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
+                c.setStrokeColor(colors.HexColor(primary_color))
+                c.setLineWidth(3)
+                c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
+                
                 # Ouvrir l'image avec PIL
                 img = Image.open(photo_path)
                 
@@ -2792,24 +2785,16 @@ def generer_ticket_bus_pdf(request, eleve_id):
                 output.save(temp_buffer, format='PNG')
                 temp_buffer.seek(0)
                 
-                # Dessiner sur le PDF
-                c.drawImage(temp_buffer, photo_x - photo_radius, photo_y - photo_radius, 
+                # Dessiner sur le PDF avec ImageReader
+                from reportlab.lib.utils import ImageReader
+                img_reader = ImageReader(temp_buffer)
+                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius, 
                            width=photo_radius * 2, height=photo_radius * 2, mask='auto')
         except Exception as e:
-            # Placeholder en cas d'erreur
+            # Ne rien afficher en cas d'erreur
             print(f"Erreur photo bus: {e}")
-            c.setFillColor(colors.HexColor(light_color))
-            c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-            c.setFillColor(colors.HexColor(primary_color))
-            c.setFont(main_font, 7)
-            c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    else:
-        # Placeholder si pas de photo
-        c.setFillColor(colors.HexColor(light_color))
-        c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-        c.setFillColor(colors.HexColor(primary_color))
-        c.setFont(main_font, 7)
-        c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
+            pass
+    # Si pas de photo, on n'affiche rien (pas de cercle ni de placeholder)
     
     # Carte d'information avec fond coloré (style moderne)
     info_box_x = 8
@@ -2826,16 +2811,16 @@ def generer_ticket_bus_pdf(request, eleve_id):
     x_start = 12
     y_start = height/2 + 5
     
-    # Nom complet (grand et en gras)
+    # Nom complet (taille encore réduite)
     c.setFillColor(colors.HexColor('#1f2937'))
-    c.setFont(main_font_bold, 12)
+    c.setFont(main_font_bold, 9)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 18:
         nom_complet = nom_complet[:15] + "..."
     c.drawString(x_start, y_start, nom_complet)
     
     # Ligne décorative sous le nom (ajustée à la longueur du nom)
-    nom_width = c.stringWidth(nom_complet, main_font_bold, 12)
+    nom_width = c.stringWidth(nom_complet, main_font_bold, 9)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + nom_width, y_start - 2)
@@ -3523,19 +3508,21 @@ def generer_carte_scolaire_pdf(request, eleve_id):
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
     
-    # Vérifier si on demande une version PVC
-    format_pvc = request.GET.get('format') == 'pvc'
+    # Par défaut, utiliser le format PVC pour les cartes individuelles
+    # Le format standard n'est utilisé que si explicitement demandé
+    format_standard = request.GET.get('format') == 'standard'
     
     # Créer le PDF avec le nouveau design
     response = HttpResponse(content_type='application/pdf')
     
-    if format_pvc:
-        response['Content-Disposition'] = f'attachment; filename="carte_pvc_{eleve.matricule}.pdf"'
-        # Utiliser le générateur PVC haute qualité
-        return generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True)
-    else:
+    if format_standard:
+        # Format standard (si explicitement demandé)
         response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
-        # Utiliser le générateur standard
+        return generer_carte_scolaire_moderne(eleve, response)
+    else:
+        # Par défaut : format PVC optimisé pour impression directe
+        response['Content-Disposition'] = f'attachment; filename="carte_pvc_{eleve.matricule}.pdf"'
+        # Utiliser le générateur moderne qui est déjà au format carte bancaire (86mm x 54mm)
         return generer_carte_scolaire_moderne(eleve, response)
     
     # Polices
