@@ -425,13 +425,26 @@ def saisie_notes(request, evaluation_id):
     # Préparer un export des élèves de la classe avec matricules pour aide à la saisie
     eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
-    # Notes existantes pour cette évaluation
-    notes_existantes = evaluation.notes.select_related('eleve').order_by('eleve__prenom', 'eleve__nom')
+    # Notes existantes pour cette évaluation (map JSON par élève)
+    notes_qs = evaluation.notes.select_related('eleve')
+    try:
+        import json as _json
+        notes_existantes_map = {
+            n.eleve_id: {
+                'note': float(n.note) if getattr(n, 'note', None) is not None else None,
+                'absent': bool(getattr(n, 'absent', False)),
+            }
+            for n in notes_qs
+        }
+        notes_existantes_json = _json.dumps(notes_existantes_map)
+    except Exception:
+        notes_existantes_json = '{}'
+
     return render(request, 'notes/saisir_notes.html', {
         'evaluation': evaluation,
         'form': form,
         'eleves': eleves,
-        'notes_existantes': notes_existantes,
+        'notes_existantes_json': notes_existantes_json,
     })
 
 

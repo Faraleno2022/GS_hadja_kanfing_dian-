@@ -214,6 +214,12 @@
         margin-top: 1rem;
         border-radius: 6px;
     }
+    
+    /* Surlignage des élèves sans note */
+    .no-note {
+        background: #fff5f5 !important;
+        border-left: 4px solid #dc2626 !important;
+    }
 </style>
 {% endblock %}
 
@@ -298,6 +304,14 @@
                             <i class="fas fa-sync me-2"></i>Charger
                         </button>
                     </div>
+                    {% if classe_selectionnee and matiere_selectionnee and periode %}
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <button type="button" class="btn btn-outline-light w-100" onclick="reloadNotes()" title="Recharger les notes dans les champs">
+                            <i class="fas fa-rotate me-2"></i>Recharger les notes
+                        </button>
+                    </div>
+                    {% endif %}
                     
                     {% if classe_selectionnee and matiere_selectionnee and periode %}
                     <div class="col-md-2">
@@ -474,7 +488,7 @@
 </div>
 
 <script>
-const notesExistantes = {{ notes_existantes|safe }};
+const notesExistantes = JSON.parse('{{ notes_existantes_json|escapejs }}');
 const typeNote = '{{ type_note }}';
 const periode = '{{ periode }}';
 const matiereId = {{ matiere_selectionnee.id|default:'null' }};
@@ -539,42 +553,48 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Charger les notes existantes
-document.addEventListener('DOMContentLoaded', function() {
+function applyExistingNotes() {
     const rows = document.querySelectorAll('#elevesTableBody tr');
-    
     rows.forEach(row => {
+        row.classList.remove('no-note');
         const eleveId = row.dataset.eleveId;
-        const noteData = notesExistantes[eleveId];
-        
-        if (noteData) {
-            if (typeNote === 'appreciation') {
-                const appreciationSelect = row.querySelector('[data-field="appreciation"]');
-                const commentaireInput = row.querySelector('[data-field="commentaire"]');
-                
-                if (noteData.appreciation) {
-                    appreciationSelect.value = noteData.appreciation;
-                }
-                if (noteData.commentaire) {
-                    commentaireInput.value = noteData.commentaire;
-                }
-                if (noteData.absent) {
-                    row.querySelector('[data-field="absent"]').checked = true;
-                }
+        const noteData = notesExistantes[String(eleveId)] || notesExistantes[parseInt(eleveId)];
+        if (typeNote === 'appreciation') {
+            const appreciationSelect = row.querySelector('[data-field="appreciation"]');
+            const commentaireInput = row.querySelector('[data-field="commentaire"]');
+            const absentCheckbox = row.querySelector('[data-field="absent"]');
+            if (noteData) {
+                if (noteData.appreciation) appreciationSelect.value = noteData.appreciation;
+                if (noteData.commentaire) commentaireInput.value = noteData.commentaire;
+                if (noteData.absent) absentCheckbox.checked = true;
             } else {
-                const noteInput = row.querySelector('[data-field="note"]');
-                const absentCheckbox = row.querySelector('[data-field="absent"]');
-                
-                if (noteData.note !== null && noteData.note !== undefined) {
-                    noteInput.value = noteData.note;
-                }
-                if (noteData.absent) {
-                    absentCheckbox.checked = true;
-                    noteInput.disabled = true;
-                }
+                // Pas de données → surligner
+                row.classList.add('no-note');
+            }
+        } else {
+            const noteInput = row.querySelector('[data-field="note"]');
+            const absentCheckbox = row.querySelector('[data-field="absent"]');
+            if (noteData && noteData.note !== null && noteData.note !== undefined) {
+                noteInput.value = noteData.note;
+            } else {
+                // aucun chiffre de note → surligner
+                row.classList.add('no-note');
+            }
+            if (noteData && noteData.absent) {
+                absentCheckbox.checked = true;
+                if (noteInput) noteInput.disabled = true;
             }
         }
     });
-    
+}
+
+function reloadNotes() {
+    applyExistingNotes();
+    showToast('Notes rechargées dans les champs.', 'success');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    applyExistingNotes();
     // Gérer les checkboxes absent
     document.querySelectorAll('.absent-checkbox').forEach(checkbox => {
         checkbox.addEventListener('change', function() {
@@ -582,9 +602,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const noteInput = row.querySelector('[data-field="note"]');
             if (noteInput) {
                 noteInput.disabled = this.checked;
-                if (this.checked) {
-                    noteInput.value = '';
-                }
+                if (this.checked) noteInput.value = '';
+            }
+            // Mise à jour visuelle de "sans note"
+            if (!this.checked && noteInput && noteInput.value) {
+                row.classList.remove('no-note');
+            } else if (!noteInput || !noteInput.value) {
+                row.classList.add('no-note');
             }
         });
     });
