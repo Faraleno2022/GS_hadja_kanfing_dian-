@@ -111,6 +111,10 @@ def test_note_rappel():
         # Sauvegarder le PDF
         matricule_clean = eleve.matricule.replace('/', '_').replace('\\', '_')
         filename = f"note_rappel_{matricule_clean}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        # Créer le dossier si un chemin est présent
+        out_dir = os.path.dirname(filename)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(filename, 'wb') as f:
             f.write(buffer.read())
         
