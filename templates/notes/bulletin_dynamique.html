@@ -317,10 +317,12 @@
         margin-top: 5px;
     }
     
+    .mention-excellent { background: #146c43; color: white; }
     .mention-tres-bien { background: #28a745; color: white; }
     .mention-bien { background: #17a2b8; color: white; }
     .mention-assez-bien { background: #ffc107; color: #000; }
     .mention-passable { background: #fd7e14; color: white; }
+    .mention-faible { background: #e55353; color: white; }
     .mention-insuffisant { background: #dc3545; color: white; }
     
     /* Appréciation */
@@ -692,7 +694,7 @@
             </div>
             <div class="resultat-card">
                 <h3>MENTION</h3>
-                <div class="mention-badge mention-{{ bulletin_data.mention|lower|cut:' ' }}">
+                <div class="mention-badge mention-{{ bulletin_data.mention|slugify }}">
                     {{ bulletin_data.mention|upper }}
                 </div>
             </div>

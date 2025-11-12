@@ -4812,7 +4812,7 @@ def bulletin_dynamique(request):
                 # Calculer le rang
                 # Récupérer toutes les moyennes de la classe pour cette période
                 if periode:
-                    moyennes_classe = []
+                    moyennes_classe_pairs = []  # (eleve_id, moyenne_float)
                     for eleve_classe in eleves:
                         total_eleve = Decimal('0')
                         total_coef_eleve = Decimal('0')
@@ -4865,16 +4865,28 @@ def bulletin_dynamique(request):
                         
                         if total_coef_eleve > 0:
                             moy_eleve = float(total_eleve / total_coef_eleve)
-                            moyennes_classe.append(moy_eleve)
+                            moyennes_classe_pairs.append((eleve_classe.id, moy_eleve))
                     
-                    # Trier et trouver le rang numérique
-                    moyennes_classe.sort(reverse=True)
-                    try:
-                        rang_num = moyennes_classe.index(moyenne_generale) + 1
-                        # Formater le rang avec accord grammatical et effectif
+                    # Trier et attribuer les rangs avec gestion des ex-aequo
+                    moyennes_classe_pairs.sort(key=lambda p: p[1], reverse=True)
+                    rang_map = {}
+                    prev_moy = None
+                    prev_rank = None
+                    for idx, (eid, mg) in enumerate(moyennes_classe_pairs, start=1):
+                        if prev_moy is not None and abs(mg - prev_moy) < 0.01:
+                            # ex-aequo: même rang que le précédent
+                            rang_map[eid] = prev_rank
+                        else:
+                            rang_map[eid] = idx
+                            prev_rank = idx
+                            prev_moy = mg
+
+                    rang_num = rang_map.get(eleve_selectionne.id)
+                    
+                    if rang_num is not None:
                         sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
-                        bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe))
-                    except ValueError:
+                        bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe_pairs))
+                    else:
                         bulletin_data['rang'] = "-"
                 else:
                     bulletin_data['rang'] = "-"
