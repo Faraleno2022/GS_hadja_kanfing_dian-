@@ -423,11 +423,11 @@ def saisie_notes(request, evaluation_id):
     else:
         form = NotesBulkForm()
     # Préparer un export des élèves de la classe avec matricules pour aide à la saisie
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     # Notes existantes pour cette évaluation
-    notes_existantes = evaluation.notes.select_related('eleve').order_by('eleve__nom', 'eleve__prenom')
-    return render(request, 'notes/saisie_notes.html', {
+    notes_existantes = evaluation.notes.select_related('eleve').order_by('eleve__prenom', 'eleve__nom')
+    return render(request, 'notes/saisir_notes.html', {
         'evaluation': evaluation,
         'form': form,
         'eleves': eleves,
@@ -456,7 +456,7 @@ def saisie_notes_individuelle(request, evaluation_id: int):
 
     eleves_context = []
     notes_saisies = 0
-    for e in eleves_qs.order_by('nom', 'prenom'):
+    for e in eleves_qs.order_by('prenom', 'nom'):
         n = notes_map.get(e.id)
         note_val = n.note if n else None
         if n:

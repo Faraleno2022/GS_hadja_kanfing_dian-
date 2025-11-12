@@ -374,8 +374,8 @@
                     <tr>
                         <th style="width: 50px;">#</th>
                         <th>Matricule</th>
-                        <th>Nom</th>
                         <th>Prénom</th>
+                        <th>Nom</th>
                         {% if type_note == 'appreciation' %}
                         <th style="width: 250px;">Appréciation</th>
                         <th>Commentaire</th>
@@ -390,8 +390,8 @@
                     <tr data-eleve-id="{{ eleve.id }}">
                         <td>{{ forloop.counter }}</td>
                         <td>{{ eleve.matricule }}</td>
-                        <td><strong>{{ eleve.nom }}</strong></td>
                         <td>{{ eleve.prenom }}</td>
+                        <td><strong>{{ eleve.nom }}</strong></td>
                         {% if type_note == 'appreciation' %}
                         <td>
                             <select class="appreciation-select" data-field="appreciation">

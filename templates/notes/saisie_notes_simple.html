@@ -175,7 +175,7 @@
                             {% if eleves %}
                                 {% for eleve in eleves %}
                                 <option value="{{ eleve.id }}" {% if eleve_selectionne and eleve.id == eleve_selectionne.id %}selected{% endif %}>
-                                    {{ eleve.nom }} {{ eleve.prenom }} ({{ eleve.matricule }})
+                                    {{ eleve.prenom }} {{ eleve.nom }} ({{ eleve.matricule }})
                                 </option>
                                 {% endfor %}
                             {% endif %}
@@ -209,7 +209,7 @@
         <div class="alert alert-info mb-4">
             <div class="row">
                 <div class="col-md-3">
-                    <strong>Élève:</strong> {{ eleve_selectionne.nom }} {{ eleve_selectionne.prenom }}
+                    <strong>Élève:</strong> {{ eleve_selectionne.prenom }} {{ eleve_selectionne.nom }}
                 </div>
                 <div class="col-md-3">
                     <strong>Classe:</strong> {{ classe_selectionnee.nom }}
