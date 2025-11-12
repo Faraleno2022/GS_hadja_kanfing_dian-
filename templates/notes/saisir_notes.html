@@ -492,7 +492,7 @@ const notesExistantes = JSON.parse('{{ notes_existantes_json|escapejs }}');
 const typeNote = '{{ type_note }}';
 const periode = '{{ periode }}';
 const matiereId = {{ matiere_selectionnee.id|default:'null' }};
-const anneeScolaire = '{{ classe_selectionnee.annee_scolaire|default:'' }}';
+const anneeScolaire = '{{ classe_selectionnee.annee_scolaire|default:"" }}';
 
 // Gestion dynamique des sélections
 document.addEventListener('DOMContentLoaded', function() {
@@ -523,6 +523,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Auto-submit quand on change de type de note
     if (typeNoteSelect) {
         typeNoteSelect.addEventListener('change', function() {
+            if (this.value) {
+                document.getElementById('selectionForm').submit();
+            }
+        });
+    }
+    
+    // Auto-submit quand on change de période
+    if (periodeSelect) {
+        periodeSelect.addEventListener('change', function() {
             if (this.value) {
                 document.getElementById('selectionForm').submit();
             }

@@ -4024,11 +4024,30 @@ def saisir_notes(request):
     # Préparer les informations sur les notes existantes
     notes_deja_saisies = False
     nombre_notes_existantes = 0
+    notes_existantes_json = '{}'
     if matiere_selectionnee and periode and evaluations.exists():
-        nombre_notes_existantes = NoteEleve.objects.filter(
+        qs_notes = NoteEleve.objects.filter(
             evaluation__in=evaluations
-        ).count()
+        ).select_related('eleve')
+        nombre_notes_existantes = qs_notes.count()
         notes_deja_saisies = nombre_notes_existantes > 0
+        try:
+            import json as _json
+            notes_map = {}
+            for n in qs_notes:
+                try:
+                    # Dernière valeur écrase la précédente si plusieurs evals
+                    notes_map[n.eleve_id] = {
+                        'note': float(n.note) if getattr(n, 'note', None) is not None else None,
+                        'absent': bool(getattr(n, 'absent', False)),
+                        'appreciation': getattr(n, 'appreciation_finale', None),
+                        'commentaire': getattr(n, 'commentaire', None),
+                    }
+                except Exception:
+                    continue
+            notes_existantes_json = _json.dumps(notes_map)
+        except Exception:
+            notes_existantes_json = '{}'
     
     # Déterminer la note maximale selon le niveau
     note_sur = 20  # Par défaut
@@ -4052,7 +4071,7 @@ def saisir_notes(request):
         'types_notes_disponibles': types_notes_disponibles,
         'system_type': system_type,
         'niveau_enseignement': niveau_enseignement,
-        'notes_existantes': '{}',  # À implémenter
+        'notes_existantes_json': notes_existantes_json,
         'notes_deja_saisies': notes_deja_saisies,
         'nombre_notes_existantes': nombre_notes_existantes,
         'note_sur': note_sur,
