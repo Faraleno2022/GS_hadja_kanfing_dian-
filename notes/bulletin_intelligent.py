@@ -40,7 +40,8 @@ from .calculs import (
     calculer_moyenne_cours_mensuels,
     obtenir_mention,
     obtenir_appreciation,
-    calculer_rang
+    calculer_rang,
+    formater_rang_intelligent
 )
 from .classifier import classify
 from utilisateurs.utils import filter_by_user_school, user_school
@@ -178,7 +179,7 @@ class CalculateurBulletinIntelligent:
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
             'mention': obtenir_mention(moyenne_generale) if moyenne_generale else None,
-            'appreciation': obtenir_appreciation(moyenne_generale) if moyenne_generale else None,
+            'appreciation': obtenir_appreciation(moyenne_generale, self.eleve.prenom) if moyenne_generale else None,
             'rang': rang,
             'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
         }
@@ -203,10 +204,12 @@ class CalculateurBulletinIntelligent:
             if bulletin['moyenne_generale']:
                 moyennes_eleves.append({
                     'eleve_id': eleve.id,
+                    'prenom': eleve.prenom,
+                    'sexe': eleve.sexe,
                     'moyenne': bulletin['moyenne_generale']
                 })
         
-        # Calculer les rangs
+        # Calculer les rangs avec accord grammatical
         eleves_classes = calculer_rang(moyennes_eleves)
         
         # Trouver le rang de notre élève
@@ -328,7 +331,10 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None):
     c.setFont("Helvetica-Bold", 12)
     if bulletin_data['moyenne_generale']:
         c.drawString(2*cm, y, f"Moyenne Générale: {bulletin_data['moyenne_generale']:.2f}/20")
-        c.drawString(10*cm, y, f"Rang: {bulletin_data['rang']}/{bulletin_data['total_eleves']}")
+        
+        # Afficher le rang correctement formaté
+        rang_affiche = bulletin_data['rang'] if bulletin_data['rang'] else "-"
+        c.drawString(10*cm, y, f"Rang: {rang_affiche}")
         
         y -= 0.7*cm
         c.drawString(2*cm, y, f"Mention: {bulletin_data['mention']}")
@@ -437,7 +443,8 @@ def generer_excel(bulletin_data):
         
         row += 1
         ws.cell(row=row, column=1, value="Rang:").font = subtitle_font
-        ws.cell(row=row, column=2, value=f"{bulletin_data['rang']}/{bulletin_data['total_eleves']}")
+        rang_affiche = bulletin_data['rang'] if bulletin_data['rang'] else "-"
+        ws.cell(row=row, column=2, value=rang_affiche)
         
         row += 1
         ws.cell(row=row, column=1, value="Mention:").font = subtitle_font

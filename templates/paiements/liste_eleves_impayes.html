@@ -1,0 +1,199 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}Élèves avec impayés - myschool{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card-header-custom {
+        background: linear-gradient(135deg, #dc3545, #c82333);
+        color: white;
+    }
+    .progress-bar-custom {
+        background: linear-gradient(90deg, #28a745, #20c997);
+    }
+    .btn-note-rappel {
+        background: linear-gradient(135deg, #ff9800, #f57c00);
+        color: white;
+        border: none;
+    }
+    .btn-note-rappel:hover {
+        background: linear-gradient(135deg, #f57c00, #e65100);
+        color: white;
+    }
+    .stat-card {
+        border-radius: 15px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        background: white;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .table-impayes th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    .badge-danger-light {
+        background-color: #fee;
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-exclamation-triangle text-warning"></i> Élèves avec impayés</h2>
+                    <p class="text-muted">Liste des élèves ayant des frais de scolarité non réglés</p>
+                </div>
+                <div>
+                    <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card text-center">
+                <div class="stat-number text-danger">{{ eleves_avec_soldes|length }}</div>
+                <div class="text-muted">Élèves avec impayés</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card text-center">
+                <div class="stat-number text-warning">{{ total_impayes|floatformat:0|intcomma }} GNF</div>
+                <div class="text-muted">Total des impayés</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card text-center">
+                <div class="stat-number text-info">
+                    {% if eleves_avec_soldes %}
+                        {{ total_impayes|floatformat:0|intcomma }} / {{ eleves_avec_soldes|length }}
+                    {% else %}
+                        0
+                    {% endif %}
+                </div>
+                <div class="text-muted">Moyenne par élève</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card text-center">
+                <button class="btn btn-note-rappel btn-lg" onclick="genererToutesNotes()">
+                    <i class="fas fa-file-pdf"></i> Générer toutes les notes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des élèves -->
+    <div class="card">
+        <div class="card-header card-header-custom">
+            <h5 class="mb-0"><i class="fas fa-list"></i> Détail des impayés</h5>
+        </div>
+        <div class="card-body">
+            {% if eleves_avec_soldes %}
+            <div class="table-responsive">
+                <table class="table table-hover table-impayes">
+                    <thead>
+                        <tr>
+                            <th>Matricule</th>
+                            <th>Nom complet</th>
+                            <th>Classe</th>
+                            <th>Montant total</th>
+                            <th>Montant payé</th>
+                            <th>Reste à payer</th>
+                            <th>Progression</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in eleves_avec_soldes %}
+                        <tr>
+                            <td>
+                                <span class="badge badge-secondary">{{ item.eleve.matricule }}</span>
+                            </td>
+                            <td>
+                                <a href="{% url 'eleves:detail_eleve' item.eleve.id %}" class="text-dark">
+                                    <strong>{{ item.eleve.nom_complet }}</strong>
+                                </a>
+                            </td>
+                            <td>{{ item.eleve.classe.nom }}</td>
+                            <td>{{ item.montant_total|floatformat:0|intcomma }} GNF</td>
+                            <td class="text-success">{{ item.montant_paye|floatformat:0|intcomma }} GNF</td>
+                            <td class="text-danger">
+                                <strong>{{ item.reste_a_payer|floatformat:0|intcomma }} GNF</strong>
+                            </td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar progress-bar-custom" role="progressbar" 
+                                         data-width="{{ item.pourcentage_paye }}"
+                                         aria-valuenow="{{ item.pourcentage_paye }}" 
+                                         aria-valuemin="0" aria-valuemax="100">
+                                        {{ item.pourcentage_paye }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{% url 'paiements:generer_note_rappel_pdf' item.eleve.id %}" 
+                                       class="btn btn-warning" title="Note de rappel">
+                                        <i class="fas fa-file-pdf"></i>
+                                    </a>
+                                    <a href="{% url 'paiements:ajouter_paiement_eleve' item.eleve.id %}" 
+                                       class="btn btn-success" title="Enregistrer paiement">
+                                        <i class="fas fa-plus"></i>
+                                    </a>
+                                    <a href="{% url 'paiements:echeancier_eleve' item.eleve.id %}" 
+                                       class="btn btn-info" title="Échéancier">
+                                        <i class="fas fa-calendar-alt"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-success text-center">
+                <i class="fas fa-check-circle fa-3x mb-3"></i>
+                <h4>Aucun impayé !</h4>
+                <p>Tous les élèves sont à jour dans leurs paiements.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Appliquer la largeur aux barres de progression
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.progress-bar[data-width]').forEach(function(bar) {
+        var width = bar.getAttribute('data-width');
+        bar.style.width = width + '%';
+    });
+});
+
+function genererToutesNotes() {
+    if (confirm('Voulez-vous générer les notes de rappel pour tous les élèves avec des impayés ?')) {
+        // TODO: Implémenter la génération groupée
+        alert('Fonctionnalité en cours de développement');
+    }
+}
+</script>
+{% endblock %}

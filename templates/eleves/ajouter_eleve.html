@@ -114,8 +114,14 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label class="form-label">Matricule</label>
+                                <div class="form-check mb-2">
+                                    {{ form.saisie_manuelle_matricule }}
+                                    <label class="form-check-label" for="{{ form.saisie_manuelle_matricule.id_for_label }}">
+                                        Saisir manuellement le matricule
+                                    </label>
+                                </div>
                                 {{ form.matricule }}
-                                <div class="form-text">Sera généré automatiquement après enregistrement.</div>
+                                <div class="form-text" id="matricule-help-text">Sera généré automatiquement après enregistrement.</div>
                                 {% if form.matricule.errors %}
                                     <div class="text-danger small mt-1">{{ form.matricule.errors.0 }}</div>
                                 {% endif %}
@@ -444,6 +450,40 @@
 // JavaScript minimal - pas d'interférence avec la soumission
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Formulaire d\'ajout d\'élève chargé et prêt');
+    
+    // Gestion de la saisie manuelle du matricule
+    const checkboxSaisieManuelle = document.getElementById('saisie-manuelle-matricule');
+    const inputMatricule = document.getElementById('matricule-input');
+    const helpTextMatricule = document.getElementById('matricule-help-text');
+    
+    if (checkboxSaisieManuelle && inputMatricule && helpTextMatricule) {
+        function toggleMatriculeSaisie() {
+            if (checkboxSaisieManuelle.checked) {
+                // Mode saisie manuelle
+                inputMatricule.removeAttribute('readonly');
+                inputMatricule.setAttribute('required', 'required');
+                inputMatricule.placeholder = 'Saisir le matricule (ex: PN3-001)';
+                inputMatricule.classList.add('bg-white');
+                helpTextMatricule.textContent = 'Saisissez le matricule manuellement.';
+                console.log('Mode: Saisie manuelle du matricule activée');
+            } else {
+                // Mode génération automatique
+                inputMatricule.setAttribute('readonly', 'readonly');
+                inputMatricule.removeAttribute('required');
+                inputMatricule.placeholder = 'Généré automatiquement (ex: PN3-001)';
+                inputMatricule.value = '';  // Vider le champ
+                inputMatricule.classList.remove('bg-white');
+                helpTextMatricule.textContent = 'Sera généré automatiquement après enregistrement.';
+                console.log('Mode: Génération automatique du matricule');
+            }
+        }
+        
+        // Écouter les changements de la checkbox
+        checkboxSaisieManuelle.addEventListener('change', toggleMatriculeSaisie);
+        
+        // Initialiser l'état au chargement
+        toggleMatriculeSaisie();
+    }
     
     // Gestion du basculement responsable existant/nouveau
     const checkboxNouveau = document.querySelector('input[name="responsable_principal_nouveau"]');

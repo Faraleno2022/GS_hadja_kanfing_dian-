@@ -110,6 +110,9 @@
                     <a href="{% url 'eleves:modifier_eleve' eleve.pk %}" class="btn btn-light">
                         <i class="fas fa-edit"></i> Modifier
                     </a>
+                    <a href="{% url 'paiements:generer_note_rappel_pdf' eleve.pk %}" class="btn btn-warning">
+                        <i class="fas fa-file-pdf"></i> Note de rappel
+                    </a>
                     {% if eleve.statut != 'EXCLU' %}
                     <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmDeleteModal">
                         <i class="fas fa-trash"></i> Supprimer

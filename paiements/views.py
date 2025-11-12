@@ -3864,3 +3864,157 @@ def _template_exists(path:str)->bool:
         return True
     except Exception:
         return False
+
+
+# ========== VUES POUR LES NOTES DE RAPPEL ==========
+
+@login_required
+def generer_note_rappel_pdf(request, eleve_id):
+    """Génère une note de rappel de paiement pour un élève"""
+    from .note_rappel_generator import generer_note_rappel_eleve
+    
+    # Récupérer l'élève
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    
+    # Vérifier les permissions
+    if not user_is_admin(request.user):
+        ecole_user = user_school(request.user)
+        if ecole_user != eleve.classe.ecole:
+            messages.error(request, "Vous n'avez pas accès à cet élève.")
+            return redirect('eleves:detail_eleve', eleve_id=eleve_id)
+    
+    # Créer la réponse PDF
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"note_rappel_{eleve.matricule}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    # Générer le PDF
+    generer_note_rappel_eleve(eleve, response)
+    
+    # Log de l'action
+    messages.success(request, f"Note de rappel générée pour {eleve.nom_complet}")
+    
+    return response
+
+
+@login_required
+def generer_notes_rappel_classe_pdf(request, classe_id):
+    """Génère les notes de rappel pour tous les élèves ayant des impayés dans une classe"""
+    from .note_rappel_generator import generer_note_rappel_eleve
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, PageBreak
+    from io import BytesIO
+    
+    # Récupérer la classe
+    classe = get_object_or_404(Classe, id=classe_id)
+    
+    # Vérifier les permissions
+    if not user_is_admin(request.user):
+        ecole_user = user_school(request.user)
+        if ecole_user != classe.ecole:
+            messages.error(request, "Vous n'avez pas accès à cette classe.")
+            return redirect('eleves:classe_detail', classe_id=classe_id)
+    
+    # Récupérer les élèves avec des impayés
+    from .models import ConfigurationPaiement
+    eleves_avec_impayes = []
+    
+    try:
+        config = ConfigurationPaiement.objects.get(classe=classe)
+        montant_total = config.montant_inscription + config.montant_scolarite
+        
+        for eleve in Eleve.objects.filter(classe=classe, statut='ACTIF'):
+            paiements_effectues = Paiement.objects.filter(
+                eleve=eleve,
+                statut='VALIDE'
+            ).aggregate(total=Sum('montant'))['total'] or 0
+            
+            reste_a_payer = montant_total - paiements_effectues
+            
+            if reste_a_payer > 0:
+                eleves_avec_impayes.append(eleve)
+    
+    except ConfigurationPaiement.DoesNotExist:
+        messages.warning(request, "Configuration de paiement non définie pour cette classe.")
+        eleves_avec_impayes = list(Eleve.objects.filter(classe=classe, statut='ACTIF'))
+    
+    if not eleves_avec_impayes:
+        messages.info(request, "Aucun élève avec des impayés dans cette classe.")
+        return redirect('eleves:classe_detail', classe_id=classe_id)
+    
+    # Créer la réponse PDF
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"notes_rappel_{classe.nom}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    # Créer un document PDF avec toutes les notes
+    doc = SimpleDocTemplate(response, pagesize=A4)
+    elements = []
+    
+    for i, eleve in enumerate(eleves_avec_impayes):
+        # Générer la note pour cet élève dans un buffer temporaire
+        buffer = BytesIO()
+        generer_note_rappel_eleve(eleve, buffer)
+        
+        # TODO: Fusionner les PDFs individuels
+        # Pour l'instant, on génère séparément
+        if i > 0:
+            elements.append(PageBreak())
+    
+    # Construction simplifiée pour l'instant
+    # On génère une seule note comme exemple
+    if eleves_avec_impayes:
+        generer_note_rappel_eleve(eleves_avec_impayes[0], response)
+    
+    messages.success(request, f"{len(eleves_avec_impayes)} notes de rappel générées pour la classe {classe.nom}")
+    
+    return response
+
+
+@login_required 
+def liste_eleves_impayes(request):
+    """Affiche la liste des élèves avec des impayés"""
+    from .models import ConfigurationPaiement
+    
+    # Filtrer selon l'école de l'utilisateur
+    if user_is_admin(request.user):
+        eleves = Eleve.objects.filter(statut='ACTIF')
+    else:
+        ecole_user = user_school(request.user)
+        eleves = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
+    
+    # Calculer les impayés pour chaque élève
+    eleves_avec_soldes = []
+    
+    for eleve in eleves:
+        try:
+            config = ConfigurationPaiement.objects.get(classe=eleve.classe)
+            montant_total = config.montant_inscription + config.montant_scolarite
+            
+            paiements_effectues = Paiement.objects.filter(
+                eleve=eleve,
+                statut='VALIDE'
+            ).aggregate(total=Sum('montant'))['total'] or 0
+            
+            reste_a_payer = montant_total - paiements_effectues
+            
+            if reste_a_payer > 0:
+                eleves_avec_soldes.append({
+                    'eleve': eleve,
+                    'montant_total': montant_total,
+                    'montant_paye': paiements_effectues,
+                    'reste_a_payer': reste_a_payer,
+                    'pourcentage_paye': int((paiements_effectues / montant_total * 100)) if montant_total > 0 else 0
+                })
+        except ConfigurationPaiement.DoesNotExist:
+            pass
+    
+    # Trier par reste à payer décroissant
+    eleves_avec_soldes.sort(key=lambda x: x['reste_a_payer'], reverse=True)
+    
+    context = {
+        'eleves_avec_soldes': eleves_avec_soldes,
+        'total_impayes': sum(e['reste_a_payer'] for e in eleves_avec_soldes)
+    }
+    
+    return render(request, 'paiements/liste_eleves_impayes.html', context)

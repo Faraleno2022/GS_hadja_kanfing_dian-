@@ -132,8 +132,8 @@
         width: 210mm;
         min-height: auto;
         max-height: 297mm;
-        margin: 20px auto;
-        padding: 10mm;
+        margin: 10px auto;
+        padding: 8mm;
         box-shadow: 0 0 20px rgba(0,0,0,0.1);
         position: relative;
         overflow: visible;
@@ -278,8 +278,8 @@
     .resultats-section {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin: 10px 0;
+        gap: 8px;
+        margin: 6px 0;
         position: relative;
         z-index: 1;
     }
@@ -287,10 +287,10 @@
     .resultat-card {
         background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
         color: #1565c0;
-        padding: 10px;
-        border-radius: 8px;
+        padding: 6px;
+        border-radius: 6px;
         text-align: center;
-        border: 2px solid #90caf9;
+        border: 1px solid #90caf9;
     }
     
     .resultat-card h3 {
@@ -326,10 +326,10 @@
     /* Appréciation */
     .appreciation-section {
         background: #fff3cd;
-        border-left: 4px solid #ffc107;
-        padding: 10px;
-        margin: 10px 0;
-        border-radius: 5px;
+        border-left: 3px solid #ffc107;
+        padding: 6px;
+        margin: 6px 0;
+        border-radius: 4px;
         position: relative;
         z-index: 1;
     }
@@ -351,8 +351,8 @@
     .signatures-section {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 8px;
+        gap: 6px;
+        margin-top: 6px;
         position: relative;
         z-index: 1;
     }
@@ -377,10 +377,10 @@
     /* Footer */
     .footer-section {
         text-align: center;
-        margin-top: 10px;
-        padding-top: 10px;
+        margin-top: 6px;
+        padding-top: 6px;
         border-top: 1px solid #ddd;
-        font-size: 9px;
+        font-size: 8px;
         color: #666;
         position: relative;
         z-index: 1;
@@ -688,7 +688,7 @@
             </div>
             <div class="resultat-card">
                 <h3>RANG</h3>
-                <div class="value">{{ bulletin_data.rang }}/{{ bulletin_data.effectif }}</div>
+                <div class="value">{{ bulletin_data.rang }}</div>
             </div>
             <div class="resultat-card">
                 <h3>MENTION</h3>

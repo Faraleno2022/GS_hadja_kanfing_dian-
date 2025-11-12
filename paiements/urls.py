@@ -26,6 +26,9 @@ urlpatterns = [
     
     # Génération de documents
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
+    path('note-rappel/<int:eleve_id>/pdf/', views.generer_note_rappel_pdf, name='generer_note_rappel_pdf'),
+    path('notes-rappel/classe/<int:classe_id>/pdf/', views.generer_notes_rappel_classe_pdf, name='generer_notes_rappel_classe_pdf'),
+    path('eleves-impayes/', views.liste_eleves_impayes, name='liste_eleves_impayes'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
     path('export/liste/excel/', views.export_liste_paiements_excel, name='export_liste_paiements_excel'),

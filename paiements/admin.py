@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TypePaiement, ModePaiement, Paiement, RemiseReduction, EcheancierPaiement, TwilioInboundMessage
+from .models import TypePaiement, ModePaiement, Paiement, RemiseReduction, EcheancierPaiement, TwilioInboundMessage, ConfigurationPaiement
 
 
 @admin.register(TypePaiement)
@@ -43,3 +43,11 @@ class TwilioInboundMessageAdmin(admin.ModelAdmin):
     list_filter = ("channel", "delivery_status")
     search_fields = ("from_number", "to_number", "message_sid", "body")
     date_hierarchy = "received_at"
+
+
+@admin.register(ConfigurationPaiement)
+class ConfigurationPaiementAdmin(admin.ModelAdmin):
+    list_display = ("classe", "montant_inscription", "montant_scolarite", "nombre_tranches", "montant_total")
+    search_fields = ("classe__nom", "classe__ecole__nom")
+    list_filter = ("nombre_tranches", "classe__niveau")
+    readonly_fields = ("montant_total", "montant_par_tranche", "date_creation", "date_modification")

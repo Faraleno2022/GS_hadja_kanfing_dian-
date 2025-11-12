@@ -22,6 +22,11 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.units import cm
+from .calculs_intelligent import (
+    obtenir_mention_intelligente,
+    obtenir_appreciation_intelligente,
+    formater_rang_intelligent,
+)
 # from .utils import (
 #     semester_course_avg,
 #     semester_compo_avg,
@@ -4798,19 +4803,11 @@ def bulletin_dynamique(request):
                 moyenne_generale = round(float(total_points / total_coefficients), 2)
                 bulletin_data['moyenne_generale'] = moyenne_generale
                 
-                # Déterminer la mention
-                if moyenne_generale >= 18:
-                    bulletin_data['mention'] = "Excellent"
-                elif moyenne_generale >= 16:
-                    bulletin_data['mention'] = "Très Bien"
-                elif moyenne_generale >= 14:
-                    bulletin_data['mention'] = "Bien"
-                elif moyenne_generale >= 12:
-                    bulletin_data['mention'] = "Assez Bien"
-                elif moyenne_generale >= 10:
-                    bulletin_data['mention'] = "Passable"
-                else:
-                    bulletin_data['mention'] = "Insuffisant"
+                # Déterminer la mention et l'appréciation via le système intelligent
+                from decimal import Decimal as _Dec
+                moyenne_dec = _Dec(str(moyenne_generale))
+                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                 
                 # Calculer le rang
                 # Récupérer toutes les moyennes de la classe pour cette période
@@ -4870,15 +4867,17 @@ def bulletin_dynamique(request):
                             moy_eleve = float(total_eleve / total_coef_eleve)
                             moyennes_classe.append(moy_eleve)
                     
-                    # Trier et trouver le rang
+                    # Trier et trouver le rang numérique
                     moyennes_classe.sort(reverse=True)
                     try:
-                        rang = moyennes_classe.index(moyenne_generale) + 1
-                        bulletin_data['rang'] = f"{rang}"
+                        rang_num = moyennes_classe.index(moyenne_generale) + 1
+                        # Formater le rang avec accord grammatical et effectif
+                        sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
+                        bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe))
                     except ValueError:
-                        bulletin_data['rang'] = "N/A"
+                        bulletin_data['rang'] = "-"
                 else:
-                    bulletin_data['rang'] = "N/A"
+                    bulletin_data['rang'] = "-"
     
     context = {
         'titre_page': 'Bulletin Dynamique',

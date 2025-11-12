@@ -628,6 +628,15 @@ def ajouter_eleve(request):
                     # Sauvegarder l'élève
                     eleve = form.save(commit=False)
                     eleve.cree_par = request.user
+                    
+                    # Gérer la saisie manuelle du matricule
+                    saisie_manuelle = form.cleaned_data.get('saisie_manuelle_matricule', False)
+                    if saisie_manuelle and form.cleaned_data.get('matricule'):
+                        # Si saisie manuelle, le matricule a déjà été validé dans le formulaire
+                        eleve.matricule = form.cleaned_data['matricule']
+                        # Marquer pour éviter la génération automatique
+                        eleve._skip_matricule_generation = True
+                    
                     eleve.save()
                     
                     # Créer historique et journal en batch (plus rapide)
@@ -756,6 +765,15 @@ def modifier_eleve(request, eleve_id):
             # Passer l'utilisateur actuel pour la génération automatique du matricule
             eleve = form.save(commit=False)
             eleve._current_user = request.user
+            
+            # Gérer la saisie manuelle du matricule (pour la modification)
+            saisie_manuelle = form.cleaned_data.get('saisie_manuelle_matricule', False)
+            if saisie_manuelle and form.cleaned_data.get('matricule'):
+                # Si saisie manuelle, le matricule a déjà été validé dans le formulaire
+                eleve.matricule = form.cleaned_data['matricule']
+                # Marquer pour éviter la génération automatique
+                eleve._skip_matricule_generation = True
+            
             eleve.save()
             print(f"Eleve saved successfully: {eleve}")  # Debug
             

@@ -115,6 +115,13 @@ class ResponsableForm(forms.ModelForm):
 class EleveForm(forms.ModelForm):
     """Formulaire pour créer/modifier un élève"""
     
+    # Champ pour saisie manuelle du matricule
+    saisie_manuelle_matricule = forms.BooleanField(
+        required=False,
+        label="Saisir manuellement le matricule",
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'saisie-manuelle-matricule'})
+    )
+    
     # Champs pour les responsables
     responsable_principal_nouveau = forms.BooleanField(
         required=False,
@@ -139,7 +146,7 @@ class EleveForm(forms.ModelForm):
             'matricule': forms.TextInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Généré automatiquement (ex: PN3-001)',
-                'readonly': 'readonly'
+                'id': 'matricule-input'
             }),
             'prenom': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -215,14 +222,21 @@ class EleveForm(forms.ModelForm):
         except Exception:
             self.fields['classe'].queryset = Classe.objects.all().order_by('ecole__nom', 'niveau', 'nom')
 
-        # Matricule: non requis et lecture seule (généré automatiquement au save())
+        # Matricule: par défaut non requis et lecture seule (généré automatiquement au save())
         if 'matricule' in self.fields:
             self.fields['matricule'].required = False
-            try:
-                self.fields['matricule'].widget.attrs['readonly'] = 'readonly'
-                self.fields['matricule'].widget.attrs['placeholder'] = 'Généré automatiquement (ex: PN3-001)'
-            except Exception:
-                pass
+            # Par défaut, le matricule est en lecture seule
+            if not self.data.get('saisie_manuelle_matricule'):
+                try:
+                    self.fields['matricule'].widget.attrs['readonly'] = 'readonly'
+                    self.fields['matricule'].widget.attrs['placeholder'] = 'Généré automatiquement (ex: PN3-001)'
+                except Exception:
+                    pass
+            else:
+                # Si saisie manuelle activée, rendre le champ éditable et requis
+                self.fields['matricule'].required = True
+                self.fields['matricule'].widget.attrs['placeholder'] = 'Saisir le matricule (ex: PN3-001)'
+                self.fields['matricule'].widget.attrs.pop('readonly', None)
 
         # Rendre responsable_principal optionnel si on crée un nouveau responsable
         # La validation sera gérée dans la vue
@@ -265,21 +279,32 @@ class EleveForm(forms.ModelForm):
         """Convertir le prénom en majuscules"""
         prenom = self.cleaned_data.get('prenom', '')
         return prenom.upper() if prenom else ''
-    
+
     def clean_lieu_naissance(self):
         """Convertir le lieu de naissance en majuscules"""
-        lieu = self.cleaned_data.get('lieu_naissance', '')
-        return lieu.upper() if lieu else ''
-    
+        lieu_naissance = self.cleaned_data.get('lieu_naissance', '')
+        return lieu_naissance.upper() if lieu_naissance else ''
+
     def clean_matricule(self):
-        matricule = self.cleaned_data.get('matricule')
-        if matricule:
-            # Vérifier l'unicité du matricule
+        """Valider le matricule saisi manuellement"""
+        matricule = self.cleaned_data.get('matricule', '')
+        saisie_manuelle = self.data.get('saisie_manuelle_matricule')
+        
+        if saisie_manuelle and matricule:
+            # Vérifier que le matricule n'existe pas déjà (sauf pour l'instance actuelle en modification)
+            qs = Eleve.objects.filter(matricule=matricule)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise forms.ValidationError(f"Le matricule '{matricule}' existe déjà pour un autre élève.")
+        elif matricule and not saisie_manuelle:
+            # Si un matricule existe mais pas de saisie manuelle, vérifier l'unicité quand même
             qs = Eleve.objects.filter(matricule=matricule)
             if self.instance.pk:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise forms.ValidationError("Ce matricule existe déjà.")
+        
         # Autoriser vide: le modèle le générera au save()
         return matricule or ''
     

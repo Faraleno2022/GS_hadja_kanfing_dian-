@@ -366,3 +366,60 @@ class TwilioInboundMessage(models.Model):
 
     def __str__(self):
         return f"{self.channel} {self.from_number} -> {self.to_number}: {self.body[:30] if self.body else ''}"
+
+
+class ConfigurationPaiement(models.Model):
+    """Configuration des frais de scolarité par classe"""
+    from eleves.models import Classe
+    
+    classe = models.OneToOneField(
+        Classe,
+        on_delete=models.CASCADE,
+        related_name='configuration_paiement',
+        verbose_name="Classe"
+    )
+    montant_inscription = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Montant inscription (GNF)"
+    )
+    montant_scolarite = models.DecimalField(
+        max_digits=10,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Montant scolarité annuelle (GNF)"
+    )
+    nombre_tranches = models.PositiveIntegerField(
+        default=3,
+        verbose_name="Nombre de tranches"
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    cree_par = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='configurations_paiement_crees'
+    )
+    
+    class Meta:
+        verbose_name = "Configuration de paiement"
+        verbose_name_plural = "Configurations de paiement"
+        ordering = ['classe__nom']
+    
+    def __str__(self):
+        return f"Config {self.classe.nom} - {self.montant_total} GNF"
+    
+    @property
+    def montant_total(self):
+        """Calcule le montant total (inscription + scolarité)"""
+        return self.montant_inscription + self.montant_scolarite
+    
+    @property
+    def montant_par_tranche(self):
+        """Calcule le montant par tranche de scolarité"""
+        if self.nombre_tranches > 0:
+            return self.montant_scolarite / self.nombre_tranches
+        return self.montant_scolarite

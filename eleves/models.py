@@ -553,7 +553,10 @@ class Eleve(models.Model):
             except Eleve.DoesNotExist:
                 pass
         
-        if (not self.matricule or regenerer_matricule) and getattr(self, 'classe_id', None):
+        # Ne générer le matricule automatiquement que si :
+        # 1. Il n'y a pas de matricule ou on doit le régénérer (changement de classe)
+        # 2. ET qu'on n'a pas demandé de skip la génération (saisie manuelle)
+        if (not self.matricule or regenerer_matricule) and getattr(self, 'classe_id', None) and not getattr(self, '_skip_matricule_generation', False):
             code = _code_classe_from_nom_ou_niveau(self.classe)
             # Fallback de sécurité pour éviter un matricule vide si le code n'est pas résolu
             if not code:

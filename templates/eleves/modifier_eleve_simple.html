@@ -86,7 +86,14 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label class="form-label">Matricule <span class="required">*</span></label>
+                                <div class="form-check mb-2">
+                                    {{ form.saisie_manuelle_matricule }}
+                                    <label class="form-check-label" for="{{ form.saisie_manuelle_matricule.id_for_label }}">
+                                        Modifier manuellement le matricule
+                                    </label>
+                                </div>
                                 {{ form.matricule }}
+                                <div class="form-text" id="matricule-help-text">Le matricule actuel sera conservé.</div>
                                 {% if form.matricule.errors %}
                                     <div class="text-danger small mt-1">{{ form.matricule.errors.0 }}</div>
                                 {% endif %}
@@ -297,6 +304,38 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  // Gestion de la saisie manuelle du matricule
+  const checkboxSaisieManuelle = document.getElementById('saisie-manuelle-matricule');
+  const inputMatricule = document.getElementById('matricule-input');
+  const helpTextMatricule = document.getElementById('matricule-help-text');
+  
+  if (checkboxSaisieManuelle && inputMatricule && helpTextMatricule) {
+      function toggleMatriculeSaisie() {
+          if (checkboxSaisieManuelle.checked) {
+              // Mode saisie manuelle
+              inputMatricule.removeAttribute('readonly');
+              inputMatricule.setAttribute('required', 'required');
+              inputMatricule.placeholder = 'Saisir le nouveau matricule (ex: PN3-001)';
+              inputMatricule.classList.add('bg-white');
+              helpTextMatricule.textContent = 'Saisissez le nouveau matricule manuellement.';
+              console.log('Mode: Modification manuelle du matricule activée');
+          } else {
+              // Mode conservation du matricule actuel
+              inputMatricule.setAttribute('readonly', 'readonly');
+              inputMatricule.removeAttribute('required');
+              inputMatricule.classList.remove('bg-white');
+              helpTextMatricule.textContent = 'Le matricule actuel sera conservé.';
+              console.log('Mode: Conservation du matricule actuel');
+          }
+      }
+      
+      // Écouter les changements de la checkbox
+      checkboxSaisieManuelle.addEventListener('change', toggleMatriculeSaisie);
+      
+      // Initialiser l'état au chargement
+      toggleMatriculeSaisie();
+  }
+  
   const fileInput = document.getElementById('id_photo');
   if (!fileInput) return;
 
