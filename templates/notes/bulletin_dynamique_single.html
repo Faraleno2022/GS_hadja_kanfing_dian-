@@ -268,15 +268,14 @@
     
     <!-- Footer -->
     <div class="footer-section">
-        <p style="margin: 0; font-size: 8px;"><em>Fait à {{ ecole.ville|default:"Kindia" }}, le {{ "now"|date:"d/m/Y" }}</em></p>
         <p style="font-size: 7px; margin: 1px 0;">
             <strong>Période concernée:</strong> {{ bulletin_data.titre_periode }}
         </p>
         <div style="border-top: 1px solid #ddd; margin-top: 2px; padding-top: 2px;">
             <p style="font-size: 6px; margin: 0; color: #666;">
-                © Tous droits réservés | 
-                📞 +224 622613559 | 
-                📧 faraleno16@gmail.com
+                © Tous droits réservés
+                {% if ecole.telephone %}| 📞 {{ ecole.telephone }}{% endif %}
+                {% if ecole.email %}| 📧 {{ ecole.email }}{% endif %}
             </p>
         </div>
     </div>
