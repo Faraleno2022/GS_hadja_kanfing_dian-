@@ -283,7 +283,7 @@
                     <tr>
                         <td class="text-center">{{ forloop.counter }}</td>
                         <td><small><strong>{{ eleve_data.eleve.matricule }}</strong></small></td>
-                        <td><small>{{ eleve_data.eleve.nom }} {{ eleve_data.eleve.prenom }}</small></td>
+                        <td><small>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</small></td>
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}

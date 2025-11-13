@@ -226,7 +226,7 @@
                             {% endif %}
                         </td>
                         <td>{{ eleve_data.eleve.matricule }}</td>
-                        <td><strong>{{ eleve_data.eleve.nom }} {{ eleve_data.eleve.prenom }}</strong></td>
+                        <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
                         <td class="text-center">
                             <span class="badge {% if eleve_data.moyenne >= 16 %}bg-success{% elif eleve_data.moyenne >= 14 %}bg-info{% elif eleve_data.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %} fs-6">
                                 {{ eleve_data.moyenne }}/20

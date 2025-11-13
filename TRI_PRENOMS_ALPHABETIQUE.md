@@ -1,9 +1,10 @@
-# 📝 Tri des Élèves par Prénom Alphabétique
+# 📝 Tri et Affichage des Élèves : Prénom puis Nom
 
 ## ✅ Modification Effectuée le 13/11/2024
 
-### 🎯 Objectif
-Aligner les prénoms des élèves par ordre alphabétique dans toutes les pages de l'application, notamment dans la saisie des notes.
+### 🎯 Objectifs
+1. **Tri** : Aligner les prénoms des élèves par ordre alphabétique dans toutes les pages
+2. **Affichage** : Placer la colonne prénom avant la colonne nom dans tous les templates
 
 ### 🔄 Changements Apportés
 
@@ -19,8 +20,18 @@ Les élèves sont maintenant triés par :
 .order_by('prenom', 'nom')  # Prénom puis nom de famille
 ```
 
-### 📁 Fichier Modifié
+### 📁 Fichiers Modifiés
+
+#### Backend (Python)
 - **`notes/views.py`** : Toutes les requêtes de récupération des élèves
+
+#### Templates (HTML)
+- **`saisie_notes_guineen.html`** : Liste déroulante des élèves
+- **`gerer_eleves.html`** : Tableau de gestion des élèves
+- **`consulter_notes.html`** : Tableau de consultation des notes
+- **`bulletin_guineen.html`** : Sélection et affichage dans le bulletin
+- **`bulletin_dynamique.html`** : Liste déroulante de sélection
+- **`statistiques.html`** : Tableau des statistiques et classement
 
 ### 📊 Pages Affectées
 

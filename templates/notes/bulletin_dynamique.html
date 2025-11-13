@@ -566,7 +566,7 @@
                         <option value="">-- Sélectionner un élève --</option>
                         {% for eleve in eleves %}
                         <option value="{{ eleve.id }}" {% if eleve_selectionne and eleve.id == eleve_selectionne.id %}selected{% endif %}>
-                            {{ eleve.nom }} {{ eleve.prenom }}
+                            {{ eleve.prenom }} {{ eleve.nom }}
                         </option>
                         {% endfor %}
                     </select>

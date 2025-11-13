@@ -412,7 +412,7 @@
                         <option value="">-- Sélectionner --</option>
                         {% for eleve in eleves %}
                         <option value="{{ eleve.id }}" {% if eleve_selectionne and eleve.id == eleve_selectionne.id %}selected{% endif %}>
-                            {{ eleve.nom }} {{ eleve.prenom }} ({{ eleve.matricule }})
+                            {{ eleve.prenom }} {{ eleve.nom }} ({{ eleve.matricule }})
                         </option>
                         {% endfor %}
                     </select>
@@ -478,7 +478,7 @@
                 <table>
                     <tr>
                         <td>Nom et Prénom de l'élève</td>
-                        <td><strong>{{ bulletin_data.eleve.nom }} {{ bulletin_data.eleve.prenom }}</strong></td>
+                        <td><strong>{{ bulletin_data.eleve.prenom }} {{ bulletin_data.eleve.nom }}</strong></td>
                     </tr>
                     <tr>
                         <td>Date et lieu de naissance</td>
