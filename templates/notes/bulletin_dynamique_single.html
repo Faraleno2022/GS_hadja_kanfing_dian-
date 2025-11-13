@@ -1,0 +1,277 @@
+<!-- Bulletin pour un élève (utilisé dans l'export de classe) -->
+<div class="bulletin-container" id="bulletin">
+    <!-- Filigrane -->
+    {% if ecole.logo %}
+    <img src="{{ ecole.logo.url }}" class="watermark" alt="Filigrane">
+    {% endif %}
+    
+    <!-- En-tête -->
+    <div class="header-section">
+        {% if ecole.logo %}
+        <img src="{{ ecole.logo.url }}" class="logo-left" alt="Logo">
+        {% endif %}
+        
+        {% if bulletin_data.eleve.photo %}
+        <img src="{{ bulletin_data.eleve.photo.url }}" class="photo-right" alt="Photo">
+        {% endif %}
+        
+        <!-- Drapeau Guinéen -->
+        <div class="drapeau-guinee">
+            <div class="drapeau-rouge"></div>
+            <div class="drapeau-jaune"></div>
+            <div class="drapeau-vert"></div>
+        </div>
+        
+        <h1>RÉPUBLIQUE DE GUINÉE</h1>
+        <div class="devise-nationale">
+            <span class="devise-rouge">Travail</span>-<span class="devise-jaune">Justice</span>-<span class="devise-vert">Solidarité</span>
+        </div>
+        <p class="ministere-education">MPU-A</p>
+        <p class="nom-ecole">{{ ecole.nom|default:"École" }}</p>
+        <h2>BULLETIN DE NOTES - {{ bulletin_data.titre_periode|upper }}</h2>
+        <p>Année Scolaire {{ annee_scolaire }}</p>
+    </div>
+    
+    <!-- Informations élève -->
+    <div class="info-grid">
+        <div class="info-item">
+            <strong>NOM</strong>
+            {{ bulletin_data.eleve.nom|upper }}
+        </div>
+        <div class="info-item">
+            <strong>PRÉNOM</strong>
+            {{ bulletin_data.eleve.prenom|title }}
+        </div>
+        <div class="info-item">
+            <strong>MATRICULE</strong>
+            {{ bulletin_data.eleve.matricule }}
+        </div>
+        <div class="info-item">
+            <strong>CLASSE</strong>
+            {{ classe_selectionnee.nom }}
+        </div>
+        <div class="info-item">
+            <strong>PÉRIODE</strong>
+            {{ bulletin_data.titre_periode }}
+        </div>
+        <div class="info-item">
+            <strong>EFFECTIF</strong>
+            {{ bulletin_data.effectif }} élèves
+        </div>
+    </div>
+    
+    <!-- Tableau des notes -->
+    <table class="notes-table">
+        <thead>
+            <tr>
+                <th rowspan="2">MATIÈRE</th>
+                <th rowspan="2">COEF</th>
+                {% if system_type == 'mensuel' %}
+                    <th rowspan="2">NOTE</th>
+                {% elif system_type in 'trimestre,semestre' %}
+                    <th colspan="2">NOTES</th>
+                {% elif system_type == 'annuel' %}
+                    <th colspan="2">SEMESTRES</th>
+                {% endif %}
+                <th rowspan="2">MOY</th>
+                <th rowspan="2">PTS</th>
+            </tr>
+            <tr>
+                {% if system_type == 'trimestre' or system_type == 'semestre' %}
+                    <th>Moy. Continue</th>
+                    <th>Composition</th>
+                {% elif system_type == 'annuel' %}
+                    <th>1er Sem</th>
+                    <th>2ème Sem</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for matiere_note in bulletin_data.matieres_notes %}
+            <tr>
+                <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
+                <td>{{ matiere_note.coefficient }}</td>
+                
+                {% if matiere_note.notes %}
+                    {% for note in matiere_note.notes %}
+                        <td>
+                            {% if note.absent %}
+                                <span style="color: red;">ABS</span>
+                            {% elif note.note is not None %}
+                                {{ note.note|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                {% else %}
+                    {% if system_type == 'mensuel' %}
+                        <td>-</td>
+                    {% else %}
+                        <td colspan="2">-</td>
+                    {% endif %}
+                {% endif %}
+                
+                <td><strong>
+                    {% if matiere_note.moyenne %}
+                        {{ matiere_note.moyenne|floatformat:2 }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong></td>
+                <td><strong>
+                    {% if matiere_note.points %}
+                        {{ matiere_note.points|floatformat:2 }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="text-center">Aucune matière disponible</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="2"><strong>TOTAL</strong></td>
+                {% if system_type == 'mensuel' %}
+                    <td></td>
+                {% else %}
+                    <td colspan="2"></td>
+                {% endif %}
+                <td><strong>
+                    {% if bulletin_data.total_coefficients %}
+                        {{ bulletin_data.total_coefficients|floatformat:0 }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong></td>
+                <td><strong>
+                    {% if bulletin_data.total_points %}
+                        {{ bulletin_data.total_points|floatformat:2 }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </strong></td>
+            </tr>
+        </tfoot>
+    </table>
+    
+    <!-- Résultats -->
+    <div class="resultats-section">
+        <div class="resultat-card">
+            <h3>MOYENNE GÉNÉRALE</h3>
+            <div class="value">{{ bulletin_data.moyenne_generale|floatformat:2 }}/20</div>
+        </div>
+        <div class="resultat-card">
+            <h3>RANG</h3>
+            <div class="value">{{ bulletin_data.rang }}</div>
+        </div>
+        <div class="resultat-card">
+            <h3>MENTION</h3>
+            <div class="mention-badge mention-{{ bulletin_data.mention|slugify }}">
+                {{ bulletin_data.mention|upper }}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Appréciation -->
+    <div class="appreciation-section">
+        <h3><i class="fas fa-comment-dots me-2"></i>APPRÉCIATION DU CONSEIL DE CLASSE</h3>
+        <p>{{ bulletin_data.appreciation|default:"Bon travail. Continuez vos efforts." }}</p>
+    </div>
+    
+    <!-- Signatures -->
+    <div class="signatures-section">
+        <div class="signature-box">
+            <div class="title">Professeur Principal</div>
+            <div class="space"></div>
+            <div>Signature</div>
+        </div>
+        <div class="signature-box">
+            <div class="title">Chef d'Établissement</div>
+            <div class="space"></div>
+            <div>Signature et Cachet</div>
+        </div>
+        <div class="signature-box">
+            <div class="title">Parent d'Élève</div>
+            <div class="space"></div>
+            <div>Signature</div>
+        </div>
+    </div>
+    
+    <!-- Bloc Explicatif du Système de Calcul -->
+    <div class="calcul-explanation-section">
+        <h4 style="font-size: 8px; margin: 4px 0 2px 0; padding: 2px; background: #f0f0f0; border-left: 3px solid #0066cc; color: #333;">
+            <i class="fas fa-info-circle" style="margin-right: 3px;"></i>
+            MÉTHODE DE CALCUL DES NOTES - SYSTÈME {{ system_type|upper }}
+        </h4>
+        <div style="font-size: 6.5px; padding: 2px 4px; background: #fafafa; border: 1px solid #ddd; border-radius: 2px;">
+            {% if system_type == 'mensuel' %}
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📊 Calcul Mensuel :</strong> La moyenne est calculée à partir de toutes les évaluations continues du mois.
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📈 Formule :</strong> Moyenne = Somme des notes / Nombre d'évaluations
+                </p>
+            {% elif system_type == 'trimestre' %}
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📊 Calcul Trimestriel :</strong> La moyenne combine les évaluations continues et la composition de fin de trimestre.
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Composition × 2)) / 3
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>⚖️ Pondération :</strong> La composition compte double par rapport aux contrôles continus
+                </p>
+            {% elif system_type == 'semestre' %}
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📊 Calcul Semestriel :</strong> La moyenne combine les évaluations continues et l'examen semestriel.
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Examen × 2)) / 3
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>⚖️ Pondération :</strong> L'examen semestriel compte double par rapport aux contrôles continus
+                </p>
+            {% elif system_type == 'annuel' %}
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📊 Calcul Annuel :</strong> La moyenne annuelle est calculée à partir des moyennes des deux semestres.
+                </p>
+                <p style="margin: 1px 0; color: #555;">
+                    <strong>📈 Formule :</strong> Moyenne = (Moy. 1er Semestre + Moy. 2ème Semestre) / 2
+                </p>
+            {% endif %}
+            <p style="margin: 1px 0; color: #555;">
+                <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+            </p>
+            <p style="margin: 2px 0 1px 0; color: #333; border-top: 1px dashed #ccc; padding-top: 1px;">
+                <strong>📋 Mentions :</strong> 
+                <span style="color: #146c43;">Excellent ≥18.5</span> | 
+                <span style="color: #28a745;">Très bien ≥16.5</span> | 
+                <span style="color: #17a2b8;">Bien ≥14.5</span> | 
+                <span style="color: #ffc107;">Assez bien ≥12.5</span> | 
+                <span style="color: #fd7e14;">Passable ≥10</span> | 
+                <span style="color: #dc3545;">Faible ≥9</span> | 
+                <span style="color: #8b0000;">Insuffisant <9</span>
+            </p>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer-section">
+        <p style="margin: 0; font-size: 8px;"><em>Fait à {{ ecole.ville|default:"Kindia" }}, le {{ "now"|date:"d/m/Y" }}</em></p>
+        <p style="font-size: 7px; margin: 1px 0;">
+            <strong>Période concernée:</strong> {{ bulletin_data.titre_periode }}
+        </p>
+        <div style="border-top: 1px solid #ddd; margin-top: 2px; padding-top: 2px;">
+            <p style="font-size: 6px; margin: 0; color: #666;">
+                © Tous droits réservés | 
+                📞 +224 622613559 | 
+                📧 faraleno16@gmail.com
+            </p>
+        </div>
+    </div>
+</div>

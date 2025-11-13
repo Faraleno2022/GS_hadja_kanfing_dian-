@@ -5193,7 +5193,6 @@ def bulletins_dynamiques_classe_pdf(request):
     from decimal import Decimal
     import tempfile
     import os
-    from PyPDF2 import PdfMerger
     from django.contrib import messages
     from django.shortcuts import redirect
     
@@ -5549,9 +5548,6 @@ def bulletins_dynamiques_classe_pdf(request):
     }
     """
     
-    # Créer un PDF merger
-    merger = PdfMerger()
-    
     # Variables pour le calcul des moyennes de classe
     all_moyennes_classe = []
     
@@ -5689,8 +5685,8 @@ def bulletins_dynamiques_classe_pdf(request):
             prev_rank = idx
             prev_moy = mg
     
-    # Générer les PDFs individuels
-    pdf_files = []
+    # Générer le HTML pour tous les bulletins
+    bulletins_html = []
     
     for eleve in eleves:
         # Recréer les données du bulletin avec le rang
@@ -5822,39 +5818,39 @@ def bulletins_dynamiques_classe_pdf(request):
             'system_type': system_type,
         }
         
-        # Générer le HTML
-        html_string = render_to_string('notes/bulletin_dynamique.html', context)
-        
-        # Créer le PDF temporaire
-        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
-            # Configuration des fonts
-            font_config = FontConfiguration()
-            
-            # Générer le PDF avec WeasyPrint
-            HTML(string=html_string).write_pdf(
-                tmp_file.name,
-                stylesheets=[CSS(string=css_string, font_config=font_config)],
-                font_config=font_config
-            )
-            
-            # Ajouter au merger
-            merger.append(tmp_file.name)
-            pdf_files.append(tmp_file.name)
+        # Générer le HTML pour ce bulletin
+        bulletin_html = render_to_string('notes/bulletin_dynamique_single.html', context)
+        bulletins_html.append(bulletin_html)
+    
+    # Créer un template HTML complet avec tous les bulletins
+    full_html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            {css_string}
+        </style>
+    </head>
+    <body>
+        {''.join(bulletins_html)}
+    </body>
+    </html>
+    '''
     
     # Créer le PDF final
     response = HttpResponse(content_type='application/pdf')
     filename = f"bulletins_{classe_selectionnee.nom}_{titre_periode.replace(' ', '_')}_{system_type}.pdf"
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
-    # Écrire le PDF fusionné dans la réponse
-    merger.write(response)
-    merger.close()
+    # Configuration des fonts
+    font_config = FontConfiguration()
     
-    # Nettoyer les fichiers temporaires
-    for pdf_file in pdf_files:
-        try:
-            os.unlink(pdf_file)
-        except:
-            pass
+    # Générer le PDF avec WeasyPrint
+    HTML(string=full_html).write_pdf(
+        response,
+        stylesheets=[CSS(string=css_string, font_config=font_config)],
+        font_config=font_config
+    )
     
     return response
