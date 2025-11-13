@@ -4745,11 +4745,22 @@ def bulletin_dynamique(request):
                 
                 # Si une période est sélectionnée, récupérer les évaluations
                 if periode and eleve_selectionne:
+                    # Chercher les évaluations de cette matière
+                    # On utilise seulement matiere et periode car matiere est déjà filtré par classe
                     evaluations = Evaluation.objects.filter(
                         matiere=matiere,
-                        matiere__classe=classe_selectionnee,
                         periode=periode
                     ).order_by('date_evaluation')
+                    
+                    # Si pas d'évaluation trouvée, chercher par nom de matière
+                    # (cas où la matière a été recréée avec un nouvel ID)
+                    if not evaluations.exists():
+                        from django.db.models import Q
+                        evaluations = Evaluation.objects.filter(
+                            Q(matiere__nom=matiere.nom) &
+                            Q(matiere__classe=classe_selectionnee) &
+                            Q(periode=periode)
+                        ).order_by('date_evaluation')
                     
                     # Séparer devoirs/contrôles (moyenne continue) et compositions
                     total_devoirs = Decimal('0')
@@ -4853,9 +4864,17 @@ def bulletin_dynamique(request):
                             # Récupérer les évaluations de cette matière pour la période
                             evals = Evaluation.objects.filter(
                                 matiere=matiere,
-                                matiere__classe=classe_selectionnee,
                                 periode=periode
                             )
+                            
+                            # Si pas d'évaluation, chercher par nom (matière recréée)
+                            if not evals.exists():
+                                from django.db.models import Q
+                                evals = Evaluation.objects.filter(
+                                    Q(matiere__nom=matiere.nom) &
+                                    Q(matiere__classe=classe_selectionnee) &
+                                    Q(periode=periode)
+                                )
                             
                             # Séparer devoirs et compositions
                             total_dev = Decimal('0')
