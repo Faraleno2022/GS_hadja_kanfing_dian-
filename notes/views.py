@@ -890,7 +890,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
     y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin de notes — {trimestre}"); y -= 40
     c.setFont('Helvetica', 12)
-    c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )")
+    c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )")
     y -= 16
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}")
     y -= 12
@@ -1052,7 +1052,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     start_page = 3  # 1 page de couverture + 1 page de TOC, puis 1 page par élève
     page_no = start_page
     for e in eleves:
-        c.drawString(margin, y, f"{e.nom} {e.prenom}")
+        c.drawString(margin, y, f"{e.prenom} {e.nom}")
         c.drawRightString(width - margin, y, f"p. {page_no}")
         y -= 14
         page_no += 1
@@ -1077,7 +1077,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
         y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin mensuel — {mois_label}"); y -= 40
         c.setFont('Helvetica', 12)
-        c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
+        c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
         c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
         c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -1202,7 +1202,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     start_page = 3
     page_no = start_page
     for e in eleves:
-        c.drawString(margin, y, f"{e.nom} {e.prenom}")
+        c.drawString(margin, y, f"{e.prenom} {e.nom}")
         c.drawRightString(width - margin, y, f"p. {page_no}")
         y -= 14
         page_no += 1
@@ -1226,7 +1226,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
         y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin semestriel — S{semestre}"); y -= 40
         c.setFont('Helvetica', 12)
-        c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
+        c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
         c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
         c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -1342,7 +1342,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     ][mois] if 1 <= mois <= 12 else f"Mois {mois}"
     y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin mensuel — {mois_label}"); y -= 40
     c.setFont('Helvetica', 12)
-    c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
+    c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -1453,7 +1453,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
     y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin semestriel — S{semestre}"); y -= 40
     c.setFont('Helvetica', 12)
-    c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
+    c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )"); y -= 16
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -1628,7 +1628,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
         y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, f"Bulletin de notes — {trimestre}"); y -= 40
         c.setFont('Helvetica', 12)
-        c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom}  (Matricule: {eleve.matricule or '-'} )")
+        c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom}  (Matricule: {eleve.matricule or '-'} )")
         y -= 16
         c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}")
         y -= 12
@@ -1741,7 +1741,7 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     # Lignes
     from decimal import Decimal as D
     for e in eleves:
-        row = [e.matricule, f"{e.nom} {e.prenom}"]
+        row = [e.matricule, f"{e.prenom} {e.nom}"]
         num = D('0'); den = D('0')
         for ev in evaluations:
             n = notes_map.get((e.id, ev.id))
@@ -1804,7 +1804,7 @@ def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     ws.title = f"Admis_S{semestre}"
     ws.append(["Rang", "Matricule", "Élève", f"Moyenne S{semestre}"])
     for idx, (e, avg) in enumerate(results, start=1):
-        ws.append([idx, e.matricule, f"{e.nom} {e.prenom}", float(avg)])
+        ws.append([idx, e.matricule, f"{e.prenom} {e.nom}", float(avg)])
     for col in range(1, 5):
         ws.column_dimensions[get_column_letter(col)].width = 18 if col != 4 else 14
 
@@ -1888,7 +1888,7 @@ def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
             c.setFont('Helvetica', 11)
         c.drawString(margin, y, str(idx))
         c.drawString(margin + 60, y, e.matricule or '-')
-        c.drawString(margin + 170, y, f"{e.nom} {e.prenom}")
+        c.drawString(margin + 170, y, f"{e.prenom} {e.nom}")
         c.drawRightString(width - margin, y, f"{avg}")
         y -= 14
 
@@ -2009,7 +2009,7 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
     y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, "Bulletin de notes — Annuel"); y -= 40
-    c.setFont('Helvetica', 12); c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom} (Matricule: {eleve.matricule or '-'})"); y -= 16
+    c.setFont('Helvetica', 12); c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom} (Matricule: {eleve.matricule or '-'})"); y -= 16
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -2142,7 +2142,7 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         if getattr(classe, 'ecole', None):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
         y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, "Bulletin de notes — Annuel"); y -= 40
-        c.setFont('Helvetica', 12); c.drawString(margin, y, f"Élève: {eleve.nom} {eleve.prenom} (Matricule: {eleve.matricule or '-'})"); y -= 16
+        c.setFont('Helvetica', 12); c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom} (Matricule: {eleve.matricule or '-'})"); y -= 16
         c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}"); y -= 12
         c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
@@ -2424,7 +2424,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         x = margin
         c.drawString(x, y, str(i + 1))  # Rang
         x += colw[0]
-        c.drawString(x, y, f"{item['eleve'].nom} {item['eleve'].prenom}")  # Nom
+        c.drawString(x, y, f"{item['eleve'].prenom} {item['eleve'].nom}")  # Nom
         x += colw[1]
         c.drawString(x, y, item['eleve'].matricule or '-')  # Matricule
         x += colw[2]

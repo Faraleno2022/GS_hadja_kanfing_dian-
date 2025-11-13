@@ -99,9 +99,15 @@ git pull origin main
 touch ecole_moderne/wsgi.py
 ```
 
+### 📄 Exports PDF et Excel
+
+Les exports respectent également l'ordre prénom-nom :
+- **PDF** : Bulletins, listes de classe, classements
+- **Excel** : Exports de notes, listes d'admis
+
 ### 🎉 Résultat
 
-Tous les élèves sont maintenant affichés par ordre alphabétique de **prénom** dans toute l'application !
+Tous les élèves sont maintenant affichés par ordre alphabétique de **prénom** dans toute l'application, y compris dans les exports !
 
 ---
 
