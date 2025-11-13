@@ -5187,14 +5187,34 @@ def bulletins_dynamiques_classe_pdf(request):
     """Générer tous les bulletins d'une classe en un seul PDF avec système dynamique et filigrane"""
     from django.http import HttpResponse
     from django.template.loader import render_to_string
-    from weasyprint import HTML, CSS
-    from weasyprint.text.fonts import FontConfiguration
     from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
     import tempfile
     import os
+    import sys
     from django.contrib import messages
     from django.shortcuts import redirect
+    
+    # Détection du système et choix du générateur PDF
+    use_weasyprint = True
+    try:
+        from weasyprint import HTML, CSS
+        from weasyprint.text.fonts import FontConfiguration
+    except (ImportError, OSError) as e:
+        # Sur Windows, WeasyPrint peut nécessiter GTK+
+        # Utiliser ReportLab comme alternative
+        use_weasyprint = False
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
+            from reportlab.lib.units import inch, mm
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        except ImportError:
+            messages.error(request, "Aucun générateur PDF disponible. Installez weasyprint ou reportlab.")
+            return redirect('notes:bulletin_dynamique')
     
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
@@ -5877,14 +5897,25 @@ def bulletins_dynamiques_classe_pdf(request):
     filename = f"bulletins_{classe_selectionnee.nom}_{titre_periode.replace(' ', '_')}_{system_type}.pdf"
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
-    # Configuration des fonts
-    font_config = FontConfiguration()
-    
-    # Générer le PDF avec WeasyPrint
-    HTML(string=full_html).write_pdf(
-        response,
-        stylesheets=[CSS(string=css_string, font_config=font_config)],
-        font_config=font_config
-    )
+    if use_weasyprint:
+        # Utiliser WeasyPrint (préféré)
+        # Configuration des fonts
+        font_config = FontConfiguration()
+        
+        # Générer le PDF avec WeasyPrint
+        HTML(string=full_html).write_pdf(
+            response,
+            stylesheets=[CSS(string=css_string, font_config=font_config)],
+            font_config=font_config
+        )
+    else:
+        # Utiliser ReportLab comme alternative (sur Windows sans GTK+)
+        # Note: ReportLab ne supporte pas le HTML/CSS avancé
+        # On va utiliser la fonction existante bulletins_classe_pdf qui utilise déjà ReportLab
+        messages.warning(request, "WeasyPrint non disponible. Utilisation de ReportLab comme alternative. Le rendu peut différer légèrement.")
+        
+        # Rediriger vers la fonction ReportLab existante
+        from . import views
+        return views.bulletins_classe_pdf(request, classe_id, periode)
     
     return response
