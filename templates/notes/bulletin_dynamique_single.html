@@ -1,17 +1,23 @@
 <!-- Bulletin pour un élève (utilisé dans l'export de classe) -->
 <div class="bulletin-container" id="bulletin">
     <!-- Filigrane -->
-    {% if ecole.logo %}
+    {% if logo_base64 %}
+    <img src="data:image/png;base64,{{ logo_base64 }}" class="watermark" alt="Filigrane">
+    {% elif ecole.logo %}
     <img src="{{ ecole.logo.url }}" class="watermark" alt="Filigrane">
     {% endif %}
     
     <!-- En-tête -->
     <div class="header-section">
-        {% if ecole.logo %}
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" class="logo-left" alt="Logo">
+        {% elif ecole.logo %}
         <img src="{{ ecole.logo.url }}" class="logo-left" alt="Logo">
         {% endif %}
         
-        {% if bulletin_data.eleve.photo %}
+        {% if photo_base64 %}
+        <img src="data:image/jpeg;base64,{{ photo_base64 }}" class="photo-right" alt="Photo">
+        {% elif bulletin_data.eleve.photo %}
         <img src="{{ bulletin_data.eleve.photo.url }}" class="photo-right" alt="Photo">
         {% endif %}
         

@@ -5253,39 +5253,45 @@ def bulletins_dynamiques_classe_pdf(request):
     }
     titre_periode = periodes_map.get(periode, periode)
     
-    # Préparer le CSS pour WeasyPrint avec filigrane amélioré
+    # Préparer le CSS pour WeasyPrint avec filigrane amélioré et polices augmentées
     css_string = """
     @page {
         size: A4;
-        margin: 0;
+        margin: 10mm 10mm 10mm 10mm;
     }
     body {
-        font-family: 'Arial', sans-serif;
+        font-family: 'Arial', 'Helvetica', sans-serif;
         margin: 0;
         padding: 0;
+        font-size: 12px;
     }
     .bulletin-container {
         background: white;
-        width: 210mm;
-        min-height: 297mm;
-        padding: 8mm;
+        width: 190mm;
+        height: 277mm;
+        padding: 5mm;
         position: relative;
         page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden;
+        box-sizing: border-box;
     }
     .bulletin-container:last-child {
-        page-break-after: avoid;
+        page-break-after: auto;
     }
     /* Filigrane amélioré */
     .watermark {
-        position: absolute;
+        position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%) rotate(-30deg);
-        opacity: 0.15;  /* Augmenté pour meilleure visibilité */
-        width: 500px;
-        height: 500px;
-        z-index: 0;
+        opacity: 0.08;
+        width: 600px;
+        height: 600px;
+        z-index: -1;
         pointer-events: none;
+        filter: grayscale(100%);
+        mix-blend-mode: multiply;
     }
     .header-section, .info-grid, .notes-table, .resultats-section, 
     .appreciation-section, .signatures-section, .calcul-explanation-section, .footer-section {
@@ -5303,28 +5309,28 @@ def bulletins_dynamiques_classe_pdf(request):
         position: absolute;
         top: 0;
         left: 0;
-        width: 60px;
-        height: 60px;
+        width: 80px;
+        height: 80px;
         object-fit: contain;
     }
     .photo-right {
         position: absolute;
         top: 0;
         right: 0;
-        width: 70px;
-        height: 90px;
+        width: 85px;
+        height: 100px;
         border: 2px solid #333;
         object-fit: cover;
     }
     /* Drapeau guinéen */
     .drapeau-guinee {
         position: absolute;
-        top: 3px;
-        right: 75px;
-        width: 25px;
-        height: 16px;
+        top: 5px;
+        right: 95px;
+        width: 35px;
+        height: 22px;
         display: flex;
-        border: 1px solid #ccc;
+        border: 1px solid #999;
     }
     .drapeau-rouge {
         width: 33.33%;
@@ -5339,15 +5345,15 @@ def bulletins_dynamiques_classe_pdf(request):
         background-color: #009460;
     }
     .header-section h1 {
-        font-size: 14px;
+        font-size: 18px;
         margin: 0;
         font-weight: bold;
     }
     /* Devise nationale */
     .devise-nationale {
-        font-size: 10px;
+        font-size: 14px;
         font-weight: bold;
-        margin: 2px 0;
+        margin: 3px 0;
         letter-spacing: 0.5px;
     }
     .devise-rouge {
@@ -5360,68 +5366,64 @@ def bulletins_dynamiques_classe_pdf(request):
         color: #009460;
     }
     .ministere-education {
-        font-size: 9px;
+        font-size: 13px;
         font-weight: bold;
         color: #333;
-        margin: 2px 0;
+        margin: 3px 0;
     }
     .nom-ecole {
-        font-size: 11px;
+        font-size: 15px;
         font-weight: bold;
         color: #000;
-        margin: 3px 0;
+        margin: 4px 0;
         text-transform: uppercase;
     }
     .header-section h2 {
-        font-size: 12px;
+        font-size: 16px;
         margin: 5px 0;
     }
     .header-section p {
-        font-size: 9px;
-        margin: 2px 0;
+        font-size: 12px;
+        margin: 3px 0;
         color: #666;
     }
     .info-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 5px;
-        margin: 8px 0;
-        font-size: 9px;
+        gap: 8px;
+        margin: 10px 0;
+        font-size: 12px;
     }
     .info-item {
         background: #f9f9f9;
-        padding: 4px 6px;
+        padding: 6px 8px;
         border-radius: 3px;
         border-left: 3px solid #007bff;
     }
     .info-item strong {
         color: #007bff;
         display: block;
-        font-size: 8px;
-        margin-bottom: 2px;
+        font-size: 11px;
+        margin-bottom: 3px;
     }
     .notes-table {
         width: 100%;
         border-collapse: collapse;
-        margin: 8px 0;
-        font-size: 8px;
-    }
-    .notes-table thead {
-        background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
-        color: white;
+        margin: 12px 0;
     }
     .notes-table th {
-        padding: 5px 3px;
+        background: #007bff;
+        color: white;
+        padding: 8px 5px;
+        font-size: 11px;
         text-align: center;
-        font-weight: bold;
-        border: 1px solid #fff;
-        font-size: 7px;
+        border: 1px solid #0056b3;
     }
     .notes-table td {
-        padding: 3px;
+        padding: 6px;
+        font-size: 11px;
         text-align: center;
         border: 1px solid #ddd;
-        font-size: 8px;
     }
     .notes-table tbody tr:nth-child(even) {
         background: #f9f9f9;
@@ -5438,35 +5440,34 @@ def bulletins_dynamiques_classe_pdf(request):
     .resultats-section {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 6px;
-        margin: 6px 0;
+        gap: 10px;
+        margin: 15px 0;
+        text-align: center;
     }
     .resultat-card {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-        color: #1565c0;
-        padding: 5px;
+        background: #f8f9fa;
         border-radius: 5px;
-        text-align: center;
-        border: 1px solid #90caf9;
+        padding: 10px;
+        border: 1px solid #dee2e6;
     }
     .resultat-card h3 {
-        font-size: 9px;
-        margin: 0 0 4px 0;
-        font-weight: bold;
+        font-size: 14px;
+        color: #495057;
+        margin: 0 0 5px 0;
     }
     .resultat-card .value {
-        font-size: 16px;
+        font-size: 20px;
         font-weight: bold;
-        margin: 4px 0;
-        color: #0d47a1;
+        color: #007bff;
     }
     .mention-badge {
         display: inline-block;
-        padding: 3px 10px;
-        border-radius: 15px;
+        padding: 8px 20px;
+        border-radius: 20px;
         font-weight: bold;
-        font-size: 10px;
-        margin-top: 4px;
+        font-size: 16px;
+        margin-top: 5px;
+        text-transform: uppercase;
     }
     .mention-excellent { background: #146c43; color: white; }
     .mention-tres-bien { background: #28a745; color: white; }
@@ -5476,75 +5477,81 @@ def bulletins_dynamiques_classe_pdf(request):
     .mention-faible { background: #e55353; color: white; }
     .mention-insuffisant { background: #dc3545; color: white; }
     .appreciation-section {
-        background: #fff3cd;
-        border-left: 3px solid #ffc107;
-        padding: 5px;
-        margin: 5px 0;
-        border-radius: 3px;
+        background: #f0f7ff;
+        border-left: 4px solid #007bff;
+        padding: 12px;
+        margin: 15px 0;
     }
     .appreciation-section h3 {
-        font-size: 10px;
-        margin: 0 0 4px 0;
-        color: #856404;
+        font-size: 14px;
+        color: #007bff;
+        margin: 0 0 5px 0;
     }
     .appreciation-section p {
-        font-size: 9px;
-        margin: 0;
+        font-size: 13px;
         color: #333;
-        min-height: 35px;
+        margin: 0;
+        font-style: italic;
     }
     .signatures-section {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 5px;
-        margin-top: 5px;
+        gap: 20px;
+        margin: 20px 0;
     }
     .signature-box {
         text-align: center;
-        font-size: 7px;
     }
     .signature-box .title {
+        font-size: 13px;
         font-weight: bold;
-        margin-bottom: 2px;
-        color: #333;
+        margin-bottom: 3px;
     }
     .signature-box .space {
-        height: 30px;
+        height: 40px;
         border-bottom: 1px solid #333;
-        margin: 2px 0;
+        margin: 3px 0;
+    }
+    .signature-box div {
+        font-size: 12px;
+        color: #666;
     }
     .calcul-explanation-section {
-        margin: 5px 0;
+        background: #fafafa;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        font-size: 11px;
     }
     .calcul-explanation-section h4 {
-        font-size: 8px;
-        margin: 4px 0 2px 0;
+        font-size: 10px;
+        margin: 5px 0 2px 0;
         padding: 2px;
         background: #f0f0f0;
         border-left: 3px solid #0066cc;
         color: #333;
     }
     .calcul-explanation-section div {
-        font-size: 6.5px;
+        font-size: 10px;
         padding: 2px 4px;
         background: #fafafa;
         border: 1px solid #ddd;
         border-radius: 2px;
     }
     .calcul-explanation-section p {
-        margin: 1px 0;
+        margin: 2px 0;
         color: #555;
     }
     .footer-section {
-        text-align: center;
-        margin-top: 5px;
-        padding-top: 5px;
+        margin-top: 15px;
+        padding-top: 10px;
         border-top: 1px solid #ddd;
-        font-size: 7px;
+        font-size: 12px;
         color: #666;
     }
     .footer-section p {
-        margin: 1px 0;
+        margin: 2px 0;
     }
     """
     
@@ -5809,6 +5816,31 @@ def bulletins_dynamiques_classe_pdf(request):
             bulletin_data['appreciation'] = 'Aucune note disponible pour cette période.'
             bulletin_data['rang'] = "-"
         
+        # Préparer les images en base64 pour le PDF
+        import base64
+        from django.conf import settings
+        
+        logo_base64 = None
+        photo_base64 = None
+        
+        # Encoder le logo de l'école en base64
+        if ecole.logo:
+            try:
+                logo_path = ecole.logo.path
+                with open(logo_path, 'rb') as img_file:
+                    logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            except:
+                pass
+        
+        # Encoder la photo de l'élève en base64
+        if eleve.photo:
+            try:
+                photo_path = eleve.photo.path
+                with open(photo_path, 'rb') as img_file:
+                    photo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+            except:
+                pass
+        
         # Contexte pour le template
         context = {
             'bulletin_data': bulletin_data,
@@ -5816,6 +5848,8 @@ def bulletins_dynamiques_classe_pdf(request):
             'ecole': ecole,
             'annee_scolaire': classe_selectionnee.annee_scolaire,
             'system_type': system_type,
+            'logo_base64': logo_base64,
+            'photo_base64': photo_base64,
         }
         
         # Générer le HTML pour ce bulletin
