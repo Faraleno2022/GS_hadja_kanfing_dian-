@@ -555,7 +555,7 @@ def saisie_notes_simple(request, evaluation_id):
         return redirect('notes:saisie_notes_simple', evaluation_id=evaluation.id)
     
     # GET: Afficher le formulaire
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     
     # Notes existantes pour cette évaluation
@@ -717,7 +717,7 @@ def evaluation_detail(request, evaluation_id):
         pk=evaluation_id
     )
     # Élèves de la classe
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     # Index des notes
     notes_map = {n.eleve_id: n for n in evaluation.notes.select_related('eleve')}
@@ -980,7 +980,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     """Génère en un seul PDF les bulletins mensuels de tous les élèves d'une classe (Collège/Lycée)."""
     classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -1131,7 +1131,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     """Génère en un seul PDF les bulletins semestriels de tous les élèves d'une classe (Collège/Lycée)."""
     classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -1506,7 +1506,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     # Sécuriser la classe
     classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     # Élèves de la classe (dans le périmètre utilisateur)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
 
     # Précharger matières et évaluations du trimestre
@@ -1717,7 +1717,7 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     # Évaluations du trimestre pour cette matière
     evaluations = list(Evaluation.objects.filter(classe=classe, matiere=matiere, trimestre=trimestre).order_by('date', 'id'))
     # Élèves
-    eleves = Eleve.objects.filter(classe=classe).order_by('nom', 'prenom')
+    eleves = Eleve.objects.filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
 
     # Notes indexées par (eleve_id, evaluation_id)
@@ -1782,7 +1782,7 @@ def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: in
 def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     """Export Excel de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
     classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom', 'prenom'), request.user, 'classe__ecole')
+    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
 
@@ -1819,7 +1819,7 @@ def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
     """Export PDF de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
     classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom', 'prenom'), request.user, 'classe__ecole')
+    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
 
@@ -2218,7 +2218,7 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
     classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Calculer le classement
-    eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
+    eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
     classement = []
     
     for eleve in eleves:
@@ -2304,7 +2304,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que la vue HTML)
-    eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
+    eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
     classement = []
     
     for eleve in eleves:
@@ -2454,7 +2454,7 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que les autres vues)
-    eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
+    eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
     classement = []
     
     for eleve in eleves:
@@ -2577,7 +2577,7 @@ def cartes_scolaires_classe(request, classe_id):
             return redirect('notes:tableau_bord')
     
     # Récupérer tous les élèves de la classe
-    eleves = classe.eleves.filter(statut='ACTIF').order_by('nom', 'prenom')
+    eleves = classe.eleves.filter(statut='ACTIF').order_by('prenom', 'nom')
     
     context = {
         'classe': classe,
@@ -2612,7 +2612,7 @@ def cartes_scolaires_pdf(request, classe_id):
         return redirect('notes:cartes_scolaires_classe', classe_id=classe_id)
     
     # Récupérer les élèves
-    eleves = classe.eleves.filter(statut='ACTIF').order_by('nom', 'prenom')
+    eleves = classe.eleves.filter(statut='ACTIF').order_by('prenom', 'nom')
     
     if not eleves.exists():
         messages.warning(request, "Aucun élève actif dans cette classe.")
@@ -3271,7 +3271,7 @@ def statistiques(request):
         ).first()
         
         if classe_eleve:
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
         else:
             eleves = Eleve.objects.none()
         
@@ -3853,7 +3853,7 @@ def gerer_eleves(request):
         
         # Récupérer les élèves si une classe a été trouvée
         if classe_eleve:
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
     
     # Calculer les statistiques
     total_eleves = len(eleves)
@@ -4007,7 +4007,7 @@ def saisir_notes(request):
                 ).first()
                 
                 if classe_eleve:
-                    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
                 else:
                     # Recherche approximative
                     nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
@@ -4017,7 +4017,7 @@ def saisir_notes(request):
                     )
                     if classes_similaires.count() >= 1:
                         classe_eleve = classes_similaires.first()
-                        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
             except Exception:
                 pass
     
@@ -4125,7 +4125,7 @@ def liste_saisie_pdf(request):
     ).first()
     
     if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
     else:
         eleves = []
     
@@ -4524,7 +4524,7 @@ def consulter_notes(request):
             ).first()
             
             if classe_eleve:
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
             else:
                 eleves = []
             
@@ -4686,12 +4686,12 @@ def bulletin_dynamique(request):
             ).first()
         
         if classe_eleve:
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
         else:
             try:
                 # Recherche approximative
                 pass
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
             except (ClasseEleve.DoesNotExist, ClasseEleve.MultipleObjectsReturned):
                 eleves = []
         
@@ -5004,7 +5004,7 @@ def bulletin_dynamique_pdf(request):
     ).first()
     
     if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
     else:
         eleves = []
     
@@ -5255,7 +5255,7 @@ def bulletins_dynamiques_classe_pdf(request):
     eleves = Eleve.objects.filter(
         classe=classe_eleve, 
         statut='ACTIF'
-    ).order_by('nom', 'prenom')
+    ).order_by('prenom', 'nom')
     
     if not eleves:
         messages.warning(request, "⚠️ Aucun élève actif dans cette classe.")
