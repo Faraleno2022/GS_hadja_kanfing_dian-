@@ -4153,11 +4153,11 @@ def liste_saisie_pdf(request):
     # En-tête du tableau selon le type
     if is_appreciation:
         # Pour les appréciations (Maternelle)
-        data = [['N°', 'Matricule', 'Nom', 'Prénom', 'Appréciation', 'Commentaire', 'Absent']]
+        data = [['N°', 'Matricule', 'Prénom', 'Nom', 'Appréciation', 'Commentaire', 'Absent']]
         col_widths = [1*cm, 3*cm, 4*cm, 4*cm, 4*cm, 5*cm, 2*cm]
     else:
         # Pour les notes (Primaire /10 ou Secondaire /20)
-        data = [[' N°', 'Matricule', 'Nom', 'Prénom', f'Note /{note_sur}', 'Absent', 'Observations']]
+        data = [['N°', 'Matricule', 'Prénom', 'Nom', f'Note /{note_sur}', 'Absent', 'Observations']]
         col_widths = [1*cm, 3*cm, 4*cm, 4*cm, 2*cm, 2*cm, 6*cm]
     
     for idx, eleve in enumerate(eleves, 1):
@@ -4165,8 +4165,8 @@ def liste_saisie_pdf(request):
             data.append([
                 str(idx),
                 eleve.matricule,
-                eleve.nom,
                 eleve.prenom,
+                eleve.nom,
                 '',  # Appréciation à remplir
                 '',  # Commentaire
                 ''   # Absent à cocher
@@ -4175,8 +4175,8 @@ def liste_saisie_pdf(request):
             data.append([
                 str(idx),
                 eleve.matricule,
-                eleve.nom,
                 eleve.prenom,
+                eleve.nom,
                 '',  # Note à remplir
                 '',  # Absent à cocher
                 ''   # Observations

@@ -103,6 +103,7 @@ touch ecole_moderne/wsgi.py
 
 Les exports respectent également l'ordre prénom-nom :
 - **PDF** : Bulletins, listes de classe, classements
+- **PDF Liste de saisie** : Colonnes dans l'ordre N°, Matricule, Prénom, Nom, Note, Absent
 - **Excel** : Exports de notes, listes d'admis
 
 ### 🎉 Résultat
