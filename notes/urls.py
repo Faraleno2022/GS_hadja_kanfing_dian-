@@ -26,6 +26,7 @@ urlpatterns = [
     path('consulter/', views.consulter_notes, name='consulter_notes'),
     path('bulletins/', views.bulletin_dynamique, name='generer_bulletins'),
     path('bulletins/pdf/', views.bulletin_dynamique_pdf, name='bulletin_dynamique_pdf'),
+    path('bulletins/classe/pdf/', views.bulletins_dynamiques_classe_pdf, name='bulletins_dynamiques_classe_pdf'),
     path('bulletin-guineen/', views.bulletin_guineen, name='bulletin_guineen'),
     path('bulletin-dynamique/', views.bulletin_dynamique, name='bulletin_dynamique'),
     path('saisie-notes-guineen/', views.saisie_notes_simple, name='saisie_notes_guineen'),

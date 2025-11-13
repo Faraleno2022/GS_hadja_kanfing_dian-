@@ -5180,3 +5180,681 @@ def sauvegarder_appreciations_maternelle(request):
     """Sauvegarder appréciations maternelle"""
     from django.http import JsonResponse
     return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
+
+
+@login_required
+def bulletins_dynamiques_classe_pdf(request):
+    """Générer tous les bulletins d'une classe en un seul PDF avec système dynamique et filigrane"""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from weasyprint.text.fonts import FontConfiguration
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from decimal import Decimal
+    import tempfile
+    import os
+    from PyPDF2 import PdfMerger
+    from django.contrib import messages
+    from django.shortcuts import redirect
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', '')
+    system_type = request.GET.get('system_type', 'trimestre')
+    
+    # Validation des paramètres
+    if not classe_id or not periode:
+        messages.error(request, "❌ Veuillez sélectionner une classe et une période avant de générer les bulletins PDF.")
+        return redirect('notes:bulletin_dynamique')
+    
+    # Récupérer les informations de l'école et de la classe
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+    matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+    
+    # Récupérer la classe élève correspondante
+    classe_eleve = ClasseEleve.objects.filter(
+        nom=classe_selectionnee.nom,
+        annee_scolaire=classe_selectionnee.annee_scolaire,
+        ecole=classe_selectionnee.ecole
+    ).first()
+    
+    if not classe_eleve:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom__iexact=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole
+        ).first()
+    
+    if not classe_eleve:
+        messages.error(request, "❌ Aucune classe élève correspondante trouvée.")
+        return redirect('notes:bulletin_dynamique')
+    
+    # Récupérer tous les élèves de la classe
+    eleves = Eleve.objects.filter(
+        classe=classe_eleve, 
+        statut='ACTIF'
+    ).order_by('nom', 'prenom')
+    
+    if not eleves:
+        messages.warning(request, "⚠️ Aucun élève actif dans cette classe.")
+        return redirect('notes:bulletin_dynamique')
+    
+    # Déterminer le titre de la période
+    periodes_map = {
+        'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre',
+        'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars',
+        'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
+        'TRIMESTRE_1': '1er Trimestre', 'TRIMESTRE_2': '2ème Trimestre', 
+        'TRIMESTRE_3': '3ème Trimestre',
+        'SEMESTRE_1': '1er Semestre', 'SEMESTRE_2': '2ème Semestre',
+        'ANNUEL': 'Bulletin Annuel'
+    }
+    titre_periode = periodes_map.get(periode, periode)
+    
+    # Préparer le CSS pour WeasyPrint avec filigrane amélioré
+    css_string = """
+    @page {
+        size: A4;
+        margin: 0;
+    }
+    body {
+        font-family: 'Arial', sans-serif;
+        margin: 0;
+        padding: 0;
+    }
+    .bulletin-container {
+        background: white;
+        width: 210mm;
+        min-height: 297mm;
+        padding: 8mm;
+        position: relative;
+        page-break-after: always;
+    }
+    .bulletin-container:last-child {
+        page-break-after: avoid;
+    }
+    /* Filigrane amélioré */
+    .watermark {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        opacity: 0.15;  /* Augmenté pour meilleure visibilité */
+        width: 500px;
+        height: 500px;
+        z-index: 0;
+        pointer-events: none;
+    }
+    .header-section, .info-grid, .notes-table, .resultats-section, 
+    .appreciation-section, .signatures-section, .calcul-explanation-section, .footer-section {
+        position: relative;
+        z-index: 1;
+    }
+    /* Styles du bulletin */
+    .header-section {
+        text-align: center;
+        border-bottom: 3px solid #000;
+        padding-bottom: 8px;
+        margin-bottom: 10px;
+    }
+    .logo-left {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 60px;
+        height: 60px;
+        object-fit: contain;
+    }
+    .photo-right {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 70px;
+        height: 90px;
+        border: 2px solid #333;
+        object-fit: cover;
+    }
+    /* Drapeau guinéen */
+    .drapeau-guinee {
+        position: absolute;
+        top: 3px;
+        right: 75px;
+        width: 25px;
+        height: 16px;
+        display: flex;
+        border: 1px solid #ccc;
+    }
+    .drapeau-rouge {
+        width: 33.33%;
+        background-color: #CE1126;
+    }
+    .drapeau-jaune {
+        width: 33.33%;
+        background-color: #FCD116;
+    }
+    .drapeau-vert {
+        width: 33.33%;
+        background-color: #009460;
+    }
+    .header-section h1 {
+        font-size: 14px;
+        margin: 0;
+        font-weight: bold;
+    }
+    /* Devise nationale */
+    .devise-nationale {
+        font-size: 10px;
+        font-weight: bold;
+        margin: 2px 0;
+        letter-spacing: 0.5px;
+    }
+    .devise-rouge {
+        color: #CE1126;
+    }
+    .devise-jaune {
+        color: #FCD116;
+    }
+    .devise-vert {
+        color: #009460;
+    }
+    .ministere-education {
+        font-size: 9px;
+        font-weight: bold;
+        color: #333;
+        margin: 2px 0;
+    }
+    .nom-ecole {
+        font-size: 11px;
+        font-weight: bold;
+        color: #000;
+        margin: 3px 0;
+        text-transform: uppercase;
+    }
+    .header-section h2 {
+        font-size: 12px;
+        margin: 5px 0;
+    }
+    .header-section p {
+        font-size: 9px;
+        margin: 2px 0;
+        color: #666;
+    }
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        margin: 8px 0;
+        font-size: 9px;
+    }
+    .info-item {
+        background: #f9f9f9;
+        padding: 4px 6px;
+        border-radius: 3px;
+        border-left: 3px solid #007bff;
+    }
+    .info-item strong {
+        color: #007bff;
+        display: block;
+        font-size: 8px;
+        margin-bottom: 2px;
+    }
+    .notes-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 8px;
+    }
+    .notes-table thead {
+        background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+        color: white;
+    }
+    .notes-table th {
+        padding: 5px 3px;
+        text-align: center;
+        font-weight: bold;
+        border: 1px solid #fff;
+        font-size: 7px;
+    }
+    .notes-table td {
+        padding: 3px;
+        text-align: center;
+        border: 1px solid #ddd;
+        font-size: 8px;
+    }
+    .notes-table tbody tr:nth-child(even) {
+        background: #f9f9f9;
+    }
+    .notes-table .matiere-col {
+        text-align: left;
+        padding-left: 6px;
+    }
+    .notes-table tfoot {
+        background: #333;
+        color: white;
+        font-weight: bold;
+    }
+    .resultats-section {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin: 6px 0;
+    }
+    .resultat-card {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        color: #1565c0;
+        padding: 5px;
+        border-radius: 5px;
+        text-align: center;
+        border: 1px solid #90caf9;
+    }
+    .resultat-card h3 {
+        font-size: 9px;
+        margin: 0 0 4px 0;
+        font-weight: bold;
+    }
+    .resultat-card .value {
+        font-size: 16px;
+        font-weight: bold;
+        margin: 4px 0;
+        color: #0d47a1;
+    }
+    .mention-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-weight: bold;
+        font-size: 10px;
+        margin-top: 4px;
+    }
+    .mention-excellent { background: #146c43; color: white; }
+    .mention-tres-bien { background: #28a745; color: white; }
+    .mention-bien { background: #17a2b8; color: white; }
+    .mention-assez-bien { background: #ffc107; color: #000; }
+    .mention-passable { background: #fd7e14; color: white; }
+    .mention-faible { background: #e55353; color: white; }
+    .mention-insuffisant { background: #dc3545; color: white; }
+    .appreciation-section {
+        background: #fff3cd;
+        border-left: 3px solid #ffc107;
+        padding: 5px;
+        margin: 5px 0;
+        border-radius: 3px;
+    }
+    .appreciation-section h3 {
+        font-size: 10px;
+        margin: 0 0 4px 0;
+        color: #856404;
+    }
+    .appreciation-section p {
+        font-size: 9px;
+        margin: 0;
+        color: #333;
+        min-height: 35px;
+    }
+    .signatures-section {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        margin-top: 5px;
+    }
+    .signature-box {
+        text-align: center;
+        font-size: 7px;
+    }
+    .signature-box .title {
+        font-weight: bold;
+        margin-bottom: 2px;
+        color: #333;
+    }
+    .signature-box .space {
+        height: 30px;
+        border-bottom: 1px solid #333;
+        margin: 2px 0;
+    }
+    .calcul-explanation-section {
+        margin: 5px 0;
+    }
+    .calcul-explanation-section h4 {
+        font-size: 8px;
+        margin: 4px 0 2px 0;
+        padding: 2px;
+        background: #f0f0f0;
+        border-left: 3px solid #0066cc;
+        color: #333;
+    }
+    .calcul-explanation-section div {
+        font-size: 6.5px;
+        padding: 2px 4px;
+        background: #fafafa;
+        border: 1px solid #ddd;
+        border-radius: 2px;
+    }
+    .calcul-explanation-section p {
+        margin: 1px 0;
+        color: #555;
+    }
+    .footer-section {
+        text-align: center;
+        margin-top: 5px;
+        padding-top: 5px;
+        border-top: 1px solid #ddd;
+        font-size: 7px;
+        color: #666;
+    }
+    .footer-section p {
+        margin: 1px 0;
+    }
+    """
+    
+    # Créer un PDF merger
+    merger = PdfMerger()
+    
+    # Variables pour le calcul des moyennes de classe
+    all_moyennes_classe = []
+    
+    # Générer le bulletin pour chaque élève
+    for index, eleve in enumerate(eleves, start=1):
+        # Préparer les données du bulletin pour cet élève
+        bulletin_data = {
+            'eleve': eleve,
+            'classe': classe_selectionnee,
+            'periode': periode,
+            'system_type': system_type,
+            'titre_periode': titre_periode,
+            'matieres_notes': [],
+            'moyenne_generale': None,
+            'rang': None,
+            'mention': None,
+            'appreciation': '',
+            'effectif': len(eleves),
+        }
+        
+        # Calculer les notes pour chaque matière
+        total_points = Decimal('0')
+        total_coefficients = Decimal('0')
+        
+        for matiere in matieres:
+            moyenne_continue = None
+            note_composition = None
+            
+            # Récupérer les évaluations
+            evaluations = Evaluation.objects.filter(
+                matiere=matiere,
+                periode=periode
+            ).order_by('date_evaluation')
+            
+            if not evaluations.exists():
+                from django.db.models import Q
+                evaluations = Evaluation.objects.filter(
+                    Q(matiere__nom=matiere.nom) &
+                    Q(matiere__classe=classe_selectionnee) &
+                    Q(periode=periode)
+                ).order_by('date_evaluation')
+            
+            # Calculer moyennes continue et composition
+            total_devoirs = Decimal('0')
+            count_devoirs = 0
+            total_compo = Decimal('0')
+            count_compo = 0
+            
+            for evaluation in evaluations:
+                try:
+                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                    if note_obj.note is not None and not note_obj.absent:
+                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                            total_compo += Decimal(str(note_obj.note))
+                            count_compo += 1
+                        else:
+                            total_devoirs += Decimal(str(note_obj.note))
+                            count_devoirs += 1
+                except NoteEleve.DoesNotExist:
+                    pass
+            
+            if count_devoirs > 0:
+                moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
+            
+            if count_compo > 0:
+                note_composition = round(float(total_compo / count_compo), 2)
+            
+            # Calculer la moyenne de la matière
+            moyenne_matiere = None
+            if system_type == 'mensuel':
+                moyenne_matiere = moyenne_continue
+            elif moyenne_continue is not None and note_composition is not None:
+                moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+            elif note_composition is not None:
+                moyenne_matiere = note_composition
+            elif moyenne_continue is not None:
+                moyenne_matiere = moyenne_continue
+            
+            # Calculer les points
+            points = None
+            if moyenne_matiere is not None:
+                points = round(moyenne_matiere * float(matiere.coefficient), 2)
+                total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
+                total_coefficients += matiere.coefficient
+            
+            # Préparer les notes pour l'affichage
+            notes_matiere = []
+            if system_type in ['trimestre', 'semestre']:
+                notes_matiere = [
+                    {'note': moyenne_continue, 'absent': False},
+                    {'note': note_composition, 'absent': False}
+                ]
+            elif system_type == 'mensuel':
+                notes_matiere = [
+                    {'note': moyenne_continue, 'absent': False}
+                ]
+            
+            bulletin_data['matieres_notes'].append({
+                'matiere': matiere,
+                'notes': notes_matiere,
+                'moyenne': moyenne_matiere,
+                'coefficient': matiere.coefficient,
+                'points': points,
+            })
+        
+        bulletin_data['total_points'] = round(float(total_points), 2) if total_points > 0 else None
+        bulletin_data['total_coefficients'] = float(total_coefficients) if total_coefficients > 0 else None
+        
+        # Calculer la moyenne générale
+        if total_coefficients > 0:
+            moyenne_generale = round(float(total_points / total_coefficients), 2)
+            bulletin_data['moyenne_generale'] = moyenne_generale
+            all_moyennes_classe.append((eleve.id, moyenne_generale))
+            
+            # Déterminer la mention et l'appréciation
+            from decimal import Decimal as _Dec
+            moyenne_dec = _Dec(str(moyenne_generale))
+            bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve.prenom)
+        else:
+            bulletin_data['moyenne_generale'] = 0
+            bulletin_data['mention'] = 'Non évalué'
+            bulletin_data['appreciation'] = 'Aucune note disponible pour cette période.'
+    
+    # Calculer les rangs après avoir calculé toutes les moyennes
+    all_moyennes_classe.sort(key=lambda x: x[1], reverse=True)
+    rang_map = {}
+    prev_moy = None
+    prev_rank = None
+    for idx, (eid, mg) in enumerate(all_moyennes_classe, start=1):
+        if prev_moy is not None and abs(mg - prev_moy) < 0.01:
+            rang_map[eid] = prev_rank
+        else:
+            rang_map[eid] = idx
+            prev_rank = idx
+            prev_moy = mg
+    
+    # Générer les PDFs individuels
+    pdf_files = []
+    
+    for eleve in eleves:
+        # Recréer les données du bulletin avec le rang
+        bulletin_data = {
+            'eleve': eleve,
+            'classe': classe_selectionnee,
+            'periode': periode,
+            'system_type': system_type,
+            'titre_periode': titre_periode,
+            'matieres_notes': [],
+            'moyenne_generale': None,
+            'rang': None,
+            'mention': None,
+            'appreciation': '',
+            'effectif': len(eleves),
+        }
+        
+        # Recalculer les notes (code identique à ci-dessus)
+        total_points = Decimal('0')
+        total_coefficients = Decimal('0')
+        
+        for matiere in matieres:
+            moyenne_continue = None
+            note_composition = None
+            
+            evaluations = Evaluation.objects.filter(
+                matiere=matiere,
+                periode=periode
+            ).order_by('date_evaluation')
+            
+            if not evaluations.exists():
+                from django.db.models import Q
+                evaluations = Evaluation.objects.filter(
+                    Q(matiere__nom=matiere.nom) &
+                    Q(matiere__classe=classe_selectionnee) &
+                    Q(periode=periode)
+                ).order_by('date_evaluation')
+            
+            total_devoirs = Decimal('0')
+            count_devoirs = 0
+            total_compo = Decimal('0')
+            count_compo = 0
+            
+            for evaluation in evaluations:
+                try:
+                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                    if note_obj.note is not None and not note_obj.absent:
+                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                            total_compo += Decimal(str(note_obj.note))
+                            count_compo += 1
+                        else:
+                            total_devoirs += Decimal(str(note_obj.note))
+                            count_devoirs += 1
+                except NoteEleve.DoesNotExist:
+                    pass
+            
+            if count_devoirs > 0:
+                moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
+            
+            if count_compo > 0:
+                note_composition = round(float(total_compo / count_compo), 2)
+            
+            moyenne_matiere = None
+            if system_type == 'mensuel':
+                moyenne_matiere = moyenne_continue
+            elif moyenne_continue is not None and note_composition is not None:
+                moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+            elif note_composition is not None:
+                moyenne_matiere = note_composition
+            elif moyenne_continue is not None:
+                moyenne_matiere = moyenne_continue
+            
+            points = None
+            if moyenne_matiere is not None:
+                points = round(moyenne_matiere * float(matiere.coefficient), 2)
+                total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
+                total_coefficients += matiere.coefficient
+            
+            notes_matiere = []
+            if system_type in ['trimestre', 'semestre']:
+                notes_matiere = [
+                    {'note': moyenne_continue, 'absent': False},
+                    {'note': note_composition, 'absent': False}
+                ]
+            elif system_type == 'mensuel':
+                notes_matiere = [
+                    {'note': moyenne_continue, 'absent': False}
+                ]
+            
+            bulletin_data['matieres_notes'].append({
+                'matiere': matiere,
+                'notes': notes_matiere,
+                'moyenne': moyenne_matiere,
+                'coefficient': matiere.coefficient,
+                'points': points,
+            })
+        
+        bulletin_data['total_points'] = round(float(total_points), 2) if total_points > 0 else None
+        bulletin_data['total_coefficients'] = float(total_coefficients) if total_coefficients > 0 else None
+        
+        if total_coefficients > 0:
+            moyenne_generale = round(float(total_points / total_coefficients), 2)
+            bulletin_data['moyenne_generale'] = moyenne_generale
+            
+            from decimal import Decimal as _Dec
+            moyenne_dec = _Dec(str(moyenne_generale))
+            bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve.prenom)
+            
+            # Ajouter le rang
+            rang_num = rang_map.get(eleve.id)
+            if rang_num:
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(all_moyennes_classe))
+            else:
+                bulletin_data['rang'] = "-"
+        else:
+            bulletin_data['moyenne_generale'] = 0
+            bulletin_data['mention'] = 'Non évalué'
+            bulletin_data['appreciation'] = 'Aucune note disponible pour cette période.'
+            bulletin_data['rang'] = "-"
+        
+        # Contexte pour le template
+        context = {
+            'bulletin_data': bulletin_data,
+            'classe_selectionnee': classe_selectionnee,
+            'ecole': ecole,
+            'annee_scolaire': classe_selectionnee.annee_scolaire,
+            'system_type': system_type,
+        }
+        
+        # Générer le HTML
+        html_string = render_to_string('notes/bulletin_dynamique.html', context)
+        
+        # Créer le PDF temporaire
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_file:
+            # Configuration des fonts
+            font_config = FontConfiguration()
+            
+            # Générer le PDF avec WeasyPrint
+            HTML(string=html_string).write_pdf(
+                tmp_file.name,
+                stylesheets=[CSS(string=css_string, font_config=font_config)],
+                font_config=font_config
+            )
+            
+            # Ajouter au merger
+            merger.append(tmp_file.name)
+            pdf_files.append(tmp_file.name)
+    
+    # Créer le PDF final
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"bulletins_{classe_selectionnee.nom}_{titre_periode.replace(' ', '_')}_{system_type}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    
+    # Écrire le PDF fusionné dans la réponse
+    merger.write(response)
+    merger.close()
+    
+    # Nettoyer les fichiers temporaires
+    for pdf_file in pdf_files:
+        try:
+            os.unlink(pdf_file)
+        except:
+            pass
+    
+    return response

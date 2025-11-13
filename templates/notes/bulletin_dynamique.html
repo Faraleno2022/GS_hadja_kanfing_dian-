@@ -46,6 +46,21 @@
             font-size: 9px !important;
             margin: 1px 0 !important;
         }
+        .devise-nationale {
+            font-size: 10px !important;
+        }
+        .ministere-education {
+            font-size: 9px !important;
+        }
+        .nom-ecole {
+            font-size: 11px !important;
+        }
+        .drapeau-guinee {
+            width: 25px !important;
+            height: 16px !important;
+            top: 3px !important;
+            right: 75px !important;
+        }
         .info-grid {
             margin: 3px 0 !important;
             gap: 3px !important;
@@ -117,8 +132,10 @@
             height: 25px !important;
             margin: 2px 0 !important;
         }
+        /* Conserver le filigrane même à l'impression */
         .watermark {
-            display: none !important;
+            opacity: 0.06 !important;  /* Légèrement réduit pour l'impression */
+            filter: grayscale(100%) !important;
         }
     }
     
@@ -139,17 +156,19 @@
         overflow: visible;
     }
     
-    /* Filigrane */
+    /* Filigrane amélioré */
     .watermark {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%) rotate(-30deg);
-        opacity: 0.03;
-        width: 400px;
-        height: 400px;
+        opacity: 0.08;  /* Augmenté pour meilleure visibilité tout en restant discret */
+        width: 450px;
+        height: 450px;
         z-index: 0;
         pointer-events: none;
+        filter: grayscale(100%);  /* Effet noir et blanc pour le filigrane */
+        mix-blend-mode: multiply;  /* Meilleur mélange avec le fond */
     }
     
     /* En-tête */
@@ -181,11 +200,72 @@
         object-fit: cover;
     }
     
+    /* Drapeau guinéen */
+    .drapeau-guinee {
+        position: absolute;
+        top: 5px;
+        right: 80px;
+        width: 30px;
+        height: 20px;
+        display: flex;
+        border: 1px solid #ccc;
+    }
+    
+    .drapeau-rouge {
+        width: 33.33%;
+        background-color: #CE1126;
+    }
+    
+    .drapeau-jaune {
+        width: 33.33%;
+        background-color: #FCD116;
+    }
+    
+    .drapeau-vert {
+        width: 33.33%;
+        background-color: #009460;
+    }
+    
     .header-section h1 {
         font-size: 16px;
         margin: 0;
         font-weight: bold;
         color: #000;
+    }
+    
+    /* Devise nationale avec couleurs */
+    .devise-nationale {
+        font-size: 11px;
+        font-weight: bold;
+        margin: 2px 0;
+        letter-spacing: 1px;
+    }
+    
+    .devise-rouge {
+        color: #CE1126;
+    }
+    
+    .devise-jaune {
+        color: #FCD116;
+    }
+    
+    .devise-vert {
+        color: #009460;
+    }
+    
+    .ministere-education {
+        font-size: 10px;
+        font-weight: bold;
+        color: #333;
+        margin: 2px 0;
+    }
+    
+    .nom-ecole {
+        font-size: 12px;
+        font-weight: bold;
+        color: #000;
+        margin: 3px 0;
+        text-transform: uppercase;
     }
     
     .header-section h2 {
@@ -409,6 +489,20 @@
         gap: 10px;
         justify-content: center;
     }
+    
+    /* Styles pour le bouton d'export de classe */
+    .btn-export-classe {
+        background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
+        border: none;
+        box-shadow: 0 4px 6px rgba(255, 193, 7, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .btn-export-classe:hover {
+        background: linear-gradient(135deg, #ffb300 0%, #ffa000 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(255, 193, 7, 0.4);
+    }
 </style>
 {% endblock %}
 
@@ -518,16 +612,26 @@
     {% endif %}
 
     <!-- Boutons d'action -->
-    {% if bulletin_data and bulletin_data.eleve %}
+    {% if classe_selectionnee and periode_selectionnee %}
     <div class="text-center mb-3 no-print">
+        {% if bulletin_data and bulletin_data.eleve %}
         <button onclick="window.print()" class="btn btn-primary btn-lg me-2">
             <i class="fas fa-print me-2"></i>Imprimer
         </button>
-        <a href="{% url 'notes:bulletin_dynamique_pdf' %}?classe_id={{ classe_id }}&eleve_id={{ eleve_id }}&periode={{ periode }}&system_type={{ system_type }}" 
-           class="btn btn-success btn-lg" 
+        <a href="{% url 'notes:bulletin_dynamique_pdf' %}?classe_id={{ classe_selectionnee.id }}&eleve_id={{ eleve_selectionne.id }}&periode={{ periode_selectionnee }}&system_type={{ system_type }}" 
+           class="btn btn-success btn-lg me-2" 
            target="_blank"
            title="Ouvrir le bulletin en PDF dans un nouvel onglet">
             <i class="fas fa-file-pdf me-2"></i>Ouvrir PDF
+        </a>
+        {% endif %}
+        
+        <!-- Bouton pour exporter tous les bulletins de la classe -->
+        <a href="{% url 'notes:bulletins_dynamiques_classe_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode_selectionnee }}&system_type={{ system_type }}" 
+           class="btn btn-warning btn-lg btn-export-classe"
+           target="_blank"
+           title="Exporter tous les bulletins de la classe {{ classe_selectionnee.nom }} en un seul PDF avec filigrane">
+            <i class="fas fa-file-download me-2"></i>Exporter tous les bulletins de la classe
         </a>
     </div>
     {% endif %}
@@ -550,9 +654,21 @@
             <img src="{{ bulletin_data.eleve.photo.url }}" class="photo-right" alt="Photo">
             {% endif %}
             
+            <!-- Drapeau Guinéen -->
+            <div class="drapeau-guinee">
+                <div class="drapeau-rouge"></div>
+                <div class="drapeau-jaune"></div>
+                <div class="drapeau-vert"></div>
+            </div>
+            
             <h1>RÉPUBLIQUE DE GUINÉE</h1>
+            <div class="devise-nationale">
+                <span class="devise-rouge">Travail</span>-<span class="devise-jaune">Justice</span>-<span class="devise-vert">Solidarité</span>
+            </div>
+            <p class="ministere-education">MPU-A</p>
+            <p class="nom-ecole">{{ ecole.nom|default:"École" }}</p>
             <h2>BULLETIN DE NOTES - {{ bulletin_data.titre_periode|upper }}</h2>
-            <p>{{ ecole.nom|default:"École" }} - Année Scolaire {{ annee_scolaire }}</p>
+            <p>Année Scolaire {{ annee_scolaire }}</p>
         </div>
         
         <!-- Informations élève -->
@@ -725,11 +841,78 @@
             </div>
         </div>
         
+        <!-- Bloc Explicatif du Système de Calcul -->
+        <div class="calcul-explanation-section">
+            <h4 style="font-size: 9px; margin: 5px 0 3px 0; padding: 3px; background: #f0f0f0; border-left: 3px solid #0066cc; color: #333;">
+                <i class="fas fa-info-circle" style="margin-right: 3px;"></i>
+                MÉTHODE DE CALCUL DES NOTES - SYSTÈME {{ system_type|upper }}
+            </h4>
+            <div style="font-size: 7px; padding: 3px 5px; background: #fafafa; border: 1px solid #ddd; border-radius: 3px;">
+                {% if system_type == 'mensuel' %}
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📊 Calcul Mensuel :</strong> La moyenne est calculée à partir de toutes les évaluations continues du mois (devoirs, contrôles, interrogations).
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📈 Formule :</strong> Moyenne = Somme des notes / Nombre d'évaluations
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient)) / Σ Coefficients
+                    </p>
+                {% elif system_type == 'trimestre' %}
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📊 Calcul Trimestriel :</strong> La moyenne combine les évaluations continues et la composition de fin de trimestre.
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Composition × 2)) / 3
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>⚖️ Pondération :</strong> La composition compte double (coefficient 2) par rapport aux contrôles continus (coefficient 1)
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                    </p>
+                {% elif system_type == 'semestre' %}
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📊 Calcul Semestriel :</strong> La moyenne combine les évaluations continues et l'examen semestriel.
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Examen × 2)) / 3
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>⚖️ Pondération :</strong> L'examen semestriel compte double (coefficient 2) par rapport aux contrôles continus (coefficient 1)
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                    </p>
+                {% elif system_type == 'annuel' %}
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📊 Calcul Annuel :</strong> La moyenne annuelle est calculée à partir des moyennes des deux semestres.
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>📈 Formule :</strong> Moyenne = (Moy. 1er Semestre + Moy. 2ème Semestre) / 2
+                    </p>
+                    <p style="margin: 2px 0; color: #555;">
+                        <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                    </p>
+                {% endif %}
+                <p style="margin: 3px 0 2px 0; color: #333; border-top: 1px dashed #ccc; padding-top: 2px;">
+                    <strong>📋 Mentions :</strong> 
+                    <span style="color: #146c43;">Excellent ≥18.5</span> | 
+                    <span style="color: #28a745;">Très bien ≥16.5</span> | 
+                    <span style="color: #17a2b8;">Bien ≥14.5</span> | 
+                    <span style="color: #ffc107;">Assez bien ≥12.5</span> | 
+                    <span style="color: #fd7e14;">Passable ≥10</span> | 
+                    <span style="color: #dc3545;">Faible ≥9</span> | 
+                    <span style="color: #8b0000;">Insuffisant <9</span>
+                </p>
+            </div>
+        </div>
+        
         <!-- Footer -->
         <div class="footer-section">
             <p style="margin: 0; font-size: 9px;"><em>Fait à {{ ecole.ville|default:"Kindia" }}, le {{ "now"|date:"d/m/Y" }}</em></p>
             <p style="font-size: 7px; margin: 2px 0;">
-                <strong>Mois concernés:</strong> {{ bulletin_data.mois_libelle }}
+                <strong>Période concernée:</strong> {{ bulletin_data.titre_periode }}
             </p>
             <div style="border-top: 1px solid #ddd; margin-top: 3px; padding-top: 3px;">
                 <p style="font-size: 7px; margin: 0; color: #666;">
