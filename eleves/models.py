@@ -622,11 +622,24 @@ class Eleve(models.Model):
                         break
                     next_num += 1
 
+        # Si changement de classe, libérer temporairement le matricule avant réaffectation
+        # pour éviter les conflits UNIQUE
+        matricule_final = None
+        if reaffecter_ancienne_classe and ancienne_classe:
+            matricule_final = self.matricule
+            # Attribuer un matricule temporaire unique pour libérer l'ancien
+            import uuid
+            self.matricule = f"TEMP-{uuid.uuid4().hex[:8]}"
+        
         super().save(*args, **kwargs)
         
         # Réaffectation intelligente des matricules de l'ancienne classe
         if reaffecter_ancienne_classe and ancienne_classe:
             self._reaffecter_matricules_ancienne_classe(ancienne_classe, ancien_matricule)
+            # Restaurer le matricule final de l'élève transféré
+            if matricule_final:
+                self.matricule = matricule_final
+                super().save(update_fields=['matricule'])
         
         # Créer l'historique du changement de classe après la sauvegarde
         if changement_classe_info:
