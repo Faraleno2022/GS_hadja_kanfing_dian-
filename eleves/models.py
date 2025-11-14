@@ -491,23 +491,38 @@ class Eleve(models.Model):
         eleves_avec_numero.sort(key=lambda x: x[0])
         
         # Réaffecter les matricules de manière séquentielle
+        # STRATÉGIE EN 2 PHASES pour éviter les conflits UNIQUE:
+        # Phase 1: Attribuer des matricules temporaires à tous
+        # Phase 2: Attribuer les matricules finaux
         with transaction.atomic():
+            import uuid
             modifications = []
+            matricules_finaux = []
+            
+            # PHASE 1: Attribuer des matricules temporaires uniques
             for nouveau_numero, (ancien_numero, eleve) in enumerate(eleves_avec_numero, start=1):
                 ancien_mat = eleve.matricule
                 nouveau_mat = f"{prefix_ecole}{code_classe}-{nouveau_numero:03d}"
                 
-                # Ne modifier que si le matricule change
+                # Ne traiter que si le matricule doit changer
                 if ancien_mat != nouveau_mat:
-                    eleve.matricule = nouveau_mat
-                    # Sauvegarder sans déclencher la logique de changement de classe
+                    # Attribuer un matricule temporaire pour libérer l'ancien
+                    temp_matricule = f"TEMP-REORG-{uuid.uuid4().hex[:8]}"
+                    eleve.matricule = temp_matricule
                     super(Eleve, eleve).save(update_fields=['matricule'])
                     
-                    modifications.append({
+                    matricules_finaux.append({
                         'eleve': eleve,
                         'ancien': ancien_mat,
-                        'nouveau': nouveau_mat
+                        'nouveau': nouveau_mat,
+                        'temp': temp_matricule
                     })
+            
+            # PHASE 2: Attribuer les matricules finaux (tous les anciens sont libérés)
+            for info in matricules_finaux:
+                info['eleve'].matricule = info['nouveau']
+                super(Eleve, info['eleve']).save(update_fields=['matricule'])
+                modifications.append(info)
             
             # Créer les historiques pour toutes les modifications
             for modif in modifications:
