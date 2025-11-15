@@ -7,6 +7,12 @@ from .bulletin_intelligent import (
 )
 from .export_classement import exporter_classement_classe
 from .export_classement_fixed import exporter_classement_classe_fixed
+from .views_import import (
+    importer_notes,
+    telecharger_template_import,
+    get_matieres_classe,
+    get_evaluations_matiere
+)
 
 app_name = 'notes'
 
@@ -48,4 +54,12 @@ urlpatterns = [
     # Export des classements
     path('exporter-classement/', exporter_classement_classe, name='exporter_classement'),
     path('exporter-classement-fixed/', exporter_classement_classe_fixed, name='exporter_classement_fixed'),
+    
+    # Importation de notes
+    path('importer/', importer_notes, name='importer_notes'),
+    path('template-import/', telecharger_template_import, name='telecharger_template_import'),
+    
+    # API AJAX pour l'importation
+    path('api/matieres-classe/', get_matieres_classe, name='api_matieres_classe'),
+    path('api/evaluations-matiere/', get_evaluations_matiere, name='api_evaluations_matiere'),
 ]

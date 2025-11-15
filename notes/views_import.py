@@ -1,0 +1,266 @@
+"""
+Vues pour l'importation de notes depuis fichiers Excel/CSV
+"""
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.http import HttpResponse
+from django.views.decorators.http import require_http_methods
+from django.db.models import Q
+import pandas as pd
+from io import BytesIO
+
+from .models import ClasseNote, MatiereNote, Evaluation
+from .import_notes import (
+    ImportNotesValidator,
+    ImportNotesProcessor,
+    ImportNotesError,
+    lire_fichier_import,
+    generer_template_excel
+)
+from utilisateurs.permissions import can_manage_notes
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def importer_notes(request):
+    """
+    Vue principale pour importer des notes
+    """
+    if not can_manage_notes(request.user):
+        messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
+        return redirect('notes:liste_classes')
+    
+    # Récupérer les classes, matières et évaluations
+    classes = ClasseNote.objects.filter(actif=True).order_by('nom')
+    
+    # Filtrage par école si nécessaire
+    if not request.user.is_superuser:
+        from utilisateurs.utils import user_school
+        ecole = user_school(request.user)
+        if ecole:
+            classes = classes.filter(ecole=ecole)
+    
+    context = {
+        'classes': classes,
+        'periodes_mensuelles': [
+            ('OCTOBRE', 'Octobre'),
+            ('NOVEMBRE', 'Novembre'),
+            ('DECEMBRE', 'Décembre'),
+            ('JANVIER', 'Janvier'),
+            ('FEVRIER', 'Février'),
+            ('MARS', 'Mars'),
+            ('AVRIL', 'Avril'),
+            ('MAI', 'Mai'),
+        ],
+        'periodes_trimestrielles': [
+            ('TRIMESTRE_1', 'Trimestre 1'),
+            ('TRIMESTRE_2', 'Trimestre 2'),
+            ('TRIMESTRE_3', 'Trimestre 3'),
+        ],
+        'periodes_semestrielles': [
+            ('SEMESTRE_1', 'Semestre 1'),
+            ('SEMESTRE_2', 'Semestre 2'),
+        ],
+        'types_import': [
+            ('MENSUELLE', 'Notes Mensuelles'),
+            ('COMPOSITION', 'Notes de Composition'),
+            ('EVALUATION', 'Notes d\'Évaluation'),
+        ]
+    }
+    
+    if request.method == 'POST':
+        return _traiter_import(request)
+    
+    return render(request, 'notes/importer_notes.html', context)
+
+
+def _traiter_import(request):
+    """Traite l'importation du fichier"""
+    # Récupérer les paramètres
+    classe_id = request.POST.get('classe')
+    matiere_id = request.POST.get('matiere')
+    periode = request.POST.get('periode')
+    annee_scolaire = request.POST.get('annee_scolaire')
+    type_import = request.POST.get('type_import', 'MENSUELLE')
+    evaluation_id = request.POST.get('evaluation')
+    fichier = request.FILES.get('fichier')
+    
+    # Validation des paramètres
+    if not all([classe_id, matiere_id, periode, annee_scolaire]):
+        messages.error(request, "Tous les champs sont obligatoires.")
+        return redirect('notes:importer_notes')
+    
+    if not fichier:
+        messages.error(request, "Veuillez sélectionner un fichier.")
+        return redirect('notes:importer_notes')
+    
+    if type_import == 'EVALUATION' and not evaluation_id:
+        messages.error(request, "Veuillez sélectionner une évaluation.")
+        return redirect('notes:importer_notes')
+    
+    try:
+        # Lire le fichier
+        df = lire_fichier_import(fichier)
+        
+        # Valider le fichier
+        validator = ImportNotesValidator(
+            df, 
+            classe_id=classe_id,
+            matiere_id=matiere_id,
+            evaluation_id=evaluation_id,
+            type_import=type_import
+        )
+        
+        if not validator.valider():
+            # Afficher les erreurs
+            for erreur in validator.erreurs:
+                messages.error(request, erreur)
+            for avertissement in validator.avertissements:
+                messages.warning(request, avertissement)
+            return redirect('notes:importer_notes')
+        
+        # Afficher les avertissements
+        for avertissement in validator.avertissements:
+            messages.warning(request, avertissement)
+        
+        # Importer les notes
+        processor = ImportNotesProcessor(
+            df,
+            classe_id=classe_id,
+            matiere_id=matiere_id,
+            periode=periode,
+            annee_scolaire=annee_scolaire,
+            type_import=type_import,
+            evaluation_id=evaluation_id,
+            user=request.user
+        )
+        
+        stats = processor.importer()
+        
+        # Afficher le résultat
+        messages.success(
+            request,
+            f"Importation réussie! "
+            f"{stats['importees']} note(s) créée(s), "
+            f"{stats['modifiees']} note(s) mise(s) à jour, "
+            f"{stats['absents']} absent(s). "
+            f"{stats['erreurs']} erreur(s)."
+        )
+        
+        return redirect('notes:consulter_notes')
+    
+    except ImportNotesError as e:
+        messages.error(request, f"Erreur d'importation: {e}")
+        return redirect('notes:importer_notes')
+    
+    except Exception as e:
+        messages.error(request, f"Erreur inattendue: {e}")
+        return redirect('notes:importer_notes')
+
+
+@login_required
+def telecharger_template_import(request):
+    """
+    Télécharge un fichier template Excel pour l'importation
+    """
+    classe_id = request.GET.get('classe')
+    matiere_id = request.GET.get('matiere')
+    type_import = request.GET.get('type_import', 'MENSUELLE')
+    
+    if not classe_id or not matiere_id:
+        messages.error(request, "Veuillez sélectionner une classe et une matière.")
+        return redirect('notes:importer_notes')
+    
+    try:
+        # Générer le template
+        df = generer_template_excel(classe_id, matiere_id, type_import)
+        
+        # Créer le fichier Excel en mémoire
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Notes')
+            
+            # Formater le fichier
+            workbook = writer.book
+            worksheet = writer.sheets['Notes']
+            
+            # Largeur des colonnes
+            worksheet.column_dimensions['A'].width = 15  # Matricule
+            worksheet.column_dimensions['B'].width = 15  # Prénom
+            worksheet.column_dimensions['C'].width = 15  # Nom
+            worksheet.column_dimensions['D'].width = 10  # Note
+            worksheet.column_dimensions['E'].width = 10  # Absent
+            
+            # Style de l'en-tête
+            from openpyxl.styles import Font, PatternFill, Alignment
+            header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+            
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center', vertical='center')
+        
+        output.seek(0)
+        
+        # Récupérer les noms pour le fichier
+        classe = ClasseNote.objects.get(id=classe_id)
+        matiere = MatiereNote.objects.get(id=matiere_id)
+        
+        # Préparer la réponse
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"template_notes_{classe.nom}_{matiere.code}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    
+    except Exception as e:
+        messages.error(request, f"Erreur lors de la génération du template: {e}")
+        return redirect('notes:importer_notes')
+
+
+@login_required
+def get_matieres_classe(request):
+    """
+    API pour récupérer les matières d'une classe (AJAX)
+    """
+    classe_id = request.GET.get('classe_id')
+    
+    if not classe_id:
+        return JsonResponse({'error': 'Classe ID manquant'}, status=400)
+    
+    try:
+        matieres = MatiereNote.objects.filter(
+            classe_id=classe_id,
+            actif=True
+        ).values('id', 'nom', 'code')
+        
+        return JsonResponse({'matieres': list(matieres)})
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def get_evaluations_matiere(request):
+    """
+    API pour récupérer les évaluations d'une matière (AJAX)
+    """
+    matiere_id = request.GET.get('matiere_id')
+    
+    if not matiere_id:
+        return JsonResponse({'error': 'Matière ID manquant'}, status=400)
+    
+    try:
+        evaluations = Evaluation.objects.filter(
+            matiere_id=matiere_id
+        ).values('id', 'titre', 'type_evaluation', 'periode', 'date_evaluation')
+        
+        return JsonResponse({'evaluations': list(evaluations)})
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
