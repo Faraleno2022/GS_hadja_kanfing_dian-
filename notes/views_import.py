@@ -4,7 +4,7 @@ Vues pour l'importation de notes depuis fichiers Excel/CSV
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q
 import pandas as pd

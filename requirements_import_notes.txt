@@ -1,0 +1,13 @@
+# Dépendances pour la fonctionnalité d'importation de notes
+# Ajoutées le 15 novembre 2024
+
+# Traitement de données et fichiers Excel/CSV
+pandas==2.0.3
+openpyxl==3.1.2
+
+# Installation:
+# pip install -r requirements_import_notes.txt
+
+# Notes:
+# - pandas: Manipulation de données, lecture/écriture Excel et CSV
+# - openpyxl: Support des fichiers Excel modernes (.xlsx)

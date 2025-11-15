@@ -1,0 +1,26 @@
+============================================
+COMMANDES FINALES POUR RÉPARER LE SITE
+============================================
+
+COPIER-COLLER CES 6 COMMANDES:
+
+ssh myschoolgn@www.myschoolgn.space
+
+cd /home/myschoolgn/GS_hadja_kanfing_dian-
+
+git pull origin main
+
+source /home/myschoolgn/venv/bin/activate
+
+pip install pandas==2.0.3 openpyxl==3.1.2
+
+touch ecole_moderne/wsgi.py
+
+============================================
+FIN - Le site sera accessible en 30 secondes
+============================================
+
+TEST: https://www.myschoolgn.space/
+
+Si erreur après 1 minute:
+sudo systemctl restart uwsgi nginx
