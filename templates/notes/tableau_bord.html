@@ -51,17 +51,17 @@
     .notes-card.primary:hover { background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%); }
     .notes-card.primary .notes-card-icon { color: #007bff; }
     
-    .notes-card.success { border-left: 5px solid #0056b3; }
+    .notes-card.success { border-left: 5px solid #28a745; }
     .notes-card.success:hover { background: linear-gradient(135deg, #e3eaf2 0%, #ffffff 100%); }
-    .notes-card.success .notes-card-icon { color: #0056b3; }
+    .notes-card.success .notes-card-icon { color: #28a745; }
     
-    .notes-card.info { border-left: 5px solid #1e3a5f; }
+    .notes-card.info { border-left: 5px solid #17a2b8; }
     .notes-card.info:hover { background: linear-gradient(135deg, #e8edf3 0%, #ffffff 100%); }
-    .notes-card.info .notes-card-icon { color: #1e3a5f; }
+    .notes-card.info .notes-card-icon { color: #17a2b8; }
     
-    .notes-card.warning { border-left: 5px solid #0d6efd; }
+    .notes-card.warning { border-left: 5px solid #ffc107; }
     .notes-card.warning:hover { background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%); }
-    .notes-card.warning .notes-card-icon { color: #0d6efd; }
+    .notes-card.warning .notes-card-icon { color: #ffc107; }
     
     .notes-card.danger { border-left: 5px solid #003d82; }
     .notes-card.danger:hover { background: linear-gradient(135deg, #e6eef7 0%, #ffffff 100%); }
@@ -70,6 +70,10 @@
     .notes-card.purple { border-left: 5px solid #1a1a2e; }
     .notes-card.purple:hover { background: linear-gradient(135deg, #e8e8ec 0%, #ffffff 100%); }
     .notes-card.purple .notes-card-icon { color: #1a1a2e; }
+    
+    .notes-card.orange { border-left: 5px solid #ff9800; }
+    .notes-card.orange:hover { background: linear-gradient(135deg, #fff3e0 0%, #ffffff 100%); }
+    .notes-card.orange .notes-card-icon { color: #ff9800; }
     
     .page-header {
         background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
@@ -176,6 +180,17 @@
                 <h3 class="notes-card-title">Statistiques</h3>
                 <p class="notes-card-description">
                     Consulter les statistiques et analyses de performance
+                </p>
+            </a>
+        </div>
+
+        <!-- Importer des Notes -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:importer_notes' %}" class="notes-card orange">
+                <i class="fas fa-file-upload notes-card-icon"></i>
+                <h3 class="notes-card-title">Importer des Notes</h3>
+                <p class="notes-card-description">
+                    Importer rapidement des notes depuis Excel ou CSV
                 </p>
             </a>
         </div>
