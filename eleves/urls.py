@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views_import import importer_eleves, telecharger_template_eleves, exporter_eleves_classe
 
 app_name = 'eleves'
 
@@ -51,5 +52,10 @@ urlpatterns = [
     path('ajax/classes-par-ecole/<int:ecole_id>/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     path('ajax/statistiques/', views.ajax_statistiques_eleves, name='ajax_statistiques_eleves'),
     path('ajax/rechercher-responsable-telephone/', views.ajax_rechercher_responsable_telephone, name='ajax_rechercher_responsable_telephone'),
+    
+    # Import/Export d'élèves
+    path('importer/', importer_eleves, name='importer_eleves'),
+    path('template-eleves/', telecharger_template_eleves, name='telecharger_template_eleves'),
+    path('exporter/classe/<int:classe_id>/', exporter_eleves_classe, name='exporter_eleves_classe'),
 ]
 
