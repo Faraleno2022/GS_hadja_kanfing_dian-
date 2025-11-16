@@ -34,10 +34,14 @@ def importer_eleves(request):
         messages.error(request, "Vous n'avez pas la permission d'importer des élèves.")
         return redirect('eleves:liste_eleves')
     
-    # Récupérer les classes
-    classes = Classe.objects.filter(
-        annee_scolaire=datetime.now().strftime("%Y") + "-" + str(datetime.now().year + 1)
-    ).order_by('nom')
+    # Déterminer l'année scolaire à utiliser : on prend la plus récente existante
+    annee_courante = Classe.objects.order_by('-annee_scolaire').values_list('annee_scolaire', flat=True).first()
+
+    # Récupérer les classes pour cette année scolaire
+    classes = Classe.objects.all()
+    if annee_courante:
+        classes = classes.filter(annee_scolaire=annee_courante)
+    classes = classes.order_by('nom')
     
     # Filtrage par école si nécessaire
     if not request.user.is_superuser:
@@ -48,7 +52,7 @@ def importer_eleves(request):
     
     context = {
         'classes': classes,
-        'annee_courante': datetime.now().strftime("%Y") + "-" + str(datetime.now().year + 1)
+        'annee_courante': annee_courante,
     }
     
     if request.method == 'POST':
