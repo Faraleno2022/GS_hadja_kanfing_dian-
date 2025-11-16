@@ -431,8 +431,108 @@ class Eleve(models.Model):
         return today.year - self.date_naissance.year - ((today.month, today.day) < (self.date_naissance.month, self.date_naissance.day))
 
     def _reaffecter_matricules_ancienne_classe(self, ancienne_classe, ancien_matricule):
-        """Désactivée pour éviter les conflits UNIQUE"""
-        pass
+        """
+        Réaffecte intelligemment les matricules de l'ancienne classe pour combler le "trou"
+        laissé par l'élève qui a changé de classe.
+        
+        Algorithme:
+        1. Récupère tous les élèves de l'ancienne classe (sauf celui qui part)
+        2. Extrait le code de classe et le préfixe d'école de l'ancien matricule
+        3. Trie les élèves par leur numéro de matricule actuel
+        4. Réaffecte les matricules de manière séquentielle (001, 002, 003, etc.)
+        5. Crée un historique pour chaque modification de matricule
+        """
+        import re
+        from django.db import transaction
+        
+        # Récupérer tous les élèves de l'ancienne classe (sauf celui qui part)
+        eleves_ancienne_classe = Eleve.objects.filter(
+            classe=ancienne_classe
+        ).exclude(pk=self.pk).order_by('id')
+        
+        if not eleves_ancienne_classe.exists():
+            return  # Aucun élève à réaffecter
+        
+        # Extraire le code de classe et le préfixe de l'ancien matricule
+        # Format attendu: [PREFIXE/]CODE-NNN
+        code_classe = _code_classe_from_nom_ou_niveau(ancienne_classe)
+        if not code_classe:
+            return  # Impossible de déterminer le code
+        
+        # Détecter le préfixe d'école (ex: "AL-FUR/")
+        prefix_ecole = ""
+        if ancien_matricule:
+            match_prefix = re.match(rf"^(.*?/)?{re.escape(code_classe)}-\d+$", ancien_matricule)
+            if match_prefix and match_prefix.group(1):
+                prefix_ecole = match_prefix.group(1)
+        
+        # Si pas de préfixe détecté, essayer avec le préfixe de l'école
+        if not prefix_ecole:
+            ec_prefix = getattr(ancienne_classe.ecole, 'code_prefixe', None) or ""
+            ec_prefix = _normalize_code_prefixe(ec_prefix)
+            if ec_prefix:
+                prefix_ecole = ec_prefix
+        
+        # Récupérer et trier les élèves par leur numéro de matricule actuel
+        eleves_avec_numero = []
+        motif = rf"^(?:.*?/)?{re.escape(code_classe)}-(\d+)$"
+        
+        for eleve in eleves_ancienne_classe:
+            if eleve.matricule:
+                match = re.match(motif, eleve.matricule)
+                if match:
+                    try:
+                        numero = int(match.group(1))
+                        eleves_avec_numero.append((numero, eleve))
+                    except (ValueError, IndexError):
+                        pass
+        
+        # Trier par numéro de matricule
+        eleves_avec_numero.sort(key=lambda x: x[0])
+        
+        # Réaffecter les matricules de manière séquentielle
+        # STRATÉGIE EN 2 PHASES pour éviter les conflits UNIQUE:
+        # Phase 1: Attribuer des matricules temporaires à tous
+        # Phase 2: Attribuer les matricules finaux
+        with transaction.atomic():
+            import uuid
+            modifications = []
+            matricules_finaux = []
+            
+            # PHASE 1: Attribuer des matricules temporaires uniques
+            for nouveau_numero, (ancien_numero, eleve) in enumerate(eleves_avec_numero, start=1):
+                ancien_mat = eleve.matricule
+                nouveau_mat = f"{prefix_ecole}{code_classe}-{nouveau_numero:03d}"
+                
+                # Ne traiter que si le matricule doit changer
+                if ancien_mat != nouveau_mat:
+                    # Attribuer un matricule temporaire pour libérer l'ancien
+                    temp_matricule = f"TEMP-REORG-{uuid.uuid4().hex[:8]}"
+                    eleve.matricule = temp_matricule
+                    super(Eleve, eleve).save(update_fields=['matricule'])
+                    
+                    matricules_finaux.append({
+                        'eleve': eleve,
+                        'ancien': ancien_mat,
+                        'nouveau': nouveau_mat,
+                        'temp': temp_matricule
+                    })
+            
+            # PHASE 2: Attribuer les matricules finaux (tous les anciens sont libérés)
+            for info in matricules_finaux:
+                info['eleve'].matricule = info['nouveau']
+                super(Eleve, info['eleve']).save(update_fields=['matricule'])
+                modifications.append(info)
+            
+            # Créer les historiques pour toutes les modifications
+            for modif in modifications:
+                HistoriqueEleve.objects.create(
+                    eleve=modif['eleve'],
+                    action='MODIFICATION',
+                    description=f"Réaffectation automatique du matricule suite au départ d'un élève. Ancien: {modif['ancien']}, Nouveau: {modif['nouveau']}",
+                    utilisateur=getattr(self, '_current_user', None)
+                )
+
     def save(self, *args, **kwargs):
         """Génère automatiquement le matricule au format CODE-### si absent.
         - CODE déterminé par la classe via `_code_classe_from_nom_ou_niveau`
@@ -550,7 +650,7 @@ class Eleve(models.Model):
         
         # Réaffectation intelligente des matricules de l'ancienne classe
         if reaffecter_ancienne_classe and ancienne_classe:
-            #self._reaffecter_matricules_ancienne_classe(ancienne_classe, ancien_matricule)
+            self._reaffecter_matricules_ancienne_classe(ancienne_classe, ancien_matricule)
             # Restaurer le matricule final de l'élève transféré
             if matricule_final:
                 self.matricule = matricule_final
