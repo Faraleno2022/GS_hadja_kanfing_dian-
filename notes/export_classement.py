@@ -802,16 +802,16 @@ def exporter_classement_classe_pdf(request):
     c.setFillColorRGB(0.2, 0.2, 0.2)
     type_periode_text = ""
     if type_note == 'mensuelle':
-        type_periode_text = f"Notes Mensuelles - {periode if periode else ''}"
+        type_periode_text = f"{periode} - Notes Mensuelles" if periode else "Notes Mensuelles"
     elif type_note == 'composition':
         if periode and 'TRIMESTRE' in periode.upper():
-            type_periode_text = f"Composition Trimestrielle - {periode}"
+            type_periode_text = f"{periode} - Composition Trimestrielle"
         elif periode and 'SEMESTRE' in periode.upper():
-            type_periode_text = f"Composition Semestrielle - {periode}"
+            type_periode_text = f"{periode} - Composition Semestrielle"
         else:
-            type_periode_text = f"Composition - {periode if periode else ''}"
+            type_periode_text = f"{periode} - Composition" if periode else "Composition"
     elif type_note == 'evaluation':
-        type_periode_text = f"Évaluations - {periode if periode else ''}"
+        type_periode_text = f"{periode} - Évaluations" if periode else "Évaluations"
     else:
         type_periode_text = periode if periode else type_note
     
