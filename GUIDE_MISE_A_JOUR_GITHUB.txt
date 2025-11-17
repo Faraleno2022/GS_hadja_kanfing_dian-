@@ -1,0 +1,147 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    GUIDE DE MISE À JOUR GITHUB
+                         17 Novembre 2024
+═══════════════════════════════════════════════════════════════════════════════
+
+MÉTHODE 1 : AUTOMATIQUE (RECOMMANDÉE)
+══════════════════════════════════════
+
+Sur Windows, double-cliquer sur :
+   📁 git_push_export_pdf.bat
+
+Le script va automatiquement :
+  ✅ Ajouter tous les fichiers modifiés
+  ✅ Créer un commit avec le message approprié
+  ✅ Pousser vers GitHub
+
+Sur Linux/Mac, dans le terminal :
+   bash git_push_export_pdf.sh
+
+MÉTHODE 2 : MANUELLE
+════════════════════
+
+Ouvrir PowerShell ou Git Bash dans le dossier du projet, puis :
+
+1️⃣  AJOUTER LES FICHIERS
+────────────────────────
+git add notes/export_classement.py
+git add notes/urls.py
+git add templates/notes/consulter_notes.html
+git add EXPORT_CLASSEMENT_PDF_17_NOV_2024.md
+git add RESUME_EXPORT_PDF_CLASSEMENT.txt
+git add EXPORT_PDF_SIMPLE.txt
+git add FIX_EXPORT_CLASSEMENT_17_NOV_2024.md
+git add RESUME_FIX_EXPORT_CLASSEMENT.txt
+git add test_export_classement_pdf.py
+
+2️⃣  VÉRIFIER LES FICHIERS AJOUTÉS
+──────────────────────────────────
+git status
+
+3️⃣  CRÉER LE COMMIT
+───────────────────
+git commit -F COMMIT_MESSAGE_EXPORT_PDF.txt
+
+Ou avec un message personnalisé :
+git commit -m "Feature: Export PDF des classements avec en-tête et filigrane"
+
+4️⃣  POUSSER VERS GITHUB
+───────────────────────
+git push origin main
+
+Si vous avez une autre branche (ex: master) :
+git push origin master
+
+FICHIERS MODIFIÉS/CRÉÉS
+════════════════════════
+
+Fonctionnalité principale :
+  ✅ notes/export_classement.py (+440 lignes - Génération PDF)
+  ✅ notes/urls.py (Nouvelle route PDF)
+  ✅ templates/notes/consulter_notes.html (Menu enrichi)
+
+Documentation :
+  ✅ EXPORT_CLASSEMENT_PDF_17_NOV_2024.md (Guide complet)
+  ✅ RESUME_EXPORT_PDF_CLASSEMENT.txt (Résumé)
+  ✅ EXPORT_PDF_SIMPLE.txt (Guide simple)
+  ✅ FIX_EXPORT_CLASSEMENT_17_NOV_2024.md (Correction classement)
+  ✅ RESUME_FIX_EXPORT_CLASSEMENT.txt
+  ✅ SOLUTION_RAPIDE_EXPORT_CLASSEMENT.txt
+
+Scripts de test :
+  ✅ test_export_classement_pdf.py (Test export PDF)
+  ✅ test_export_classement_diagnostic.py
+  ✅ test_export_classement_fixed.py
+  ✅ test_export_simple.py
+  ✅ verifier_correction_complete.py
+
+EN CAS D'ERREUR
+═══════════════
+
+❌ "Permission denied" ou "Access denied"
+   → Vérifier que vous êtes bien connecté à GitHub
+   → Configurer vos identifiants :
+     git config --global user.name "Votre Nom"
+     git config --global user.email "votre@email.com"
+
+❌ "Failed to push"
+   → Vérifier votre connexion internet
+   → Essayer : git pull origin main
+     Puis : git push origin main
+
+❌ "Conflict" ou conflit
+   → Sauvegarder vos fichiers modifiés
+   → Faire : git stash
+   → Puis : git pull origin main
+   → Puis : git stash pop
+   → Résoudre les conflits si nécessaire
+   → Recommencer le commit et push
+
+❌ "Nothing to commit"
+   → Normal si tout est déjà à jour
+   → Les fichiers sont déjà sur GitHub
+
+VÉRIFIER LA MISE À JOUR
+════════════════════════
+
+Après le push :
+
+1. Aller sur GitHub.com
+2. Ouvrir votre repository
+3. Vérifier que les fichiers sont présents :
+   ✅ notes/export_classement.py modifié
+   ✅ Documentation créée
+   ✅ Nouveau commit visible
+
+4. Cliquer sur le dernier commit pour voir les changements
+
+RÉSUMÉ DES CHANGEMENTS
+══════════════════════
+
+📄 EXPORT PDF DES CLASSEMENTS :
+   • En-tête officiel guinéen complet
+   • Logo de l'école (haut et filigrane)
+   • Classement avec rangs formatés (1er/1ère)
+   • Code couleur des moyennes
+   • Médailles pour le podium
+   • Statistiques complètes
+   • Pagination automatique
+
+🔧 CORRECTION EXPORT CLASSEMENT :
+   • Recherche intelligente de classe élève
+   • Récupération multi-système des notes
+   • Affichage amélioré (Absent/Pas de notes/Non saisi)
+   • Statistiques enrichies
+
+COMMANDE RAPIDE
+═══════════════
+
+Pour tout faire en une seule ligne (Windows PowerShell) :
+.\git_push_export_pdf.bat
+
+Pour tout faire en une seule ligne (Linux/Mac) :
+bash git_push_export_pdf.sh
+
+═══════════════════════════════════════════════════════════════════════════════
+              ✅ Suivez ces instructions pour mettre à jour GitHub
+═══════════════════════════════════════════════════════════════════════════════
