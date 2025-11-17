@@ -640,20 +640,17 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     
     line_y = y - 22
     # Adresse supprimée sur demande de l'utilisateur
-    if telephone or email:
-        contacts = []
-        if telephone:
-            contacts.append(f"Tél: {telephone}")
-        if email:
-            contacts.append(f"Email: {email}")
-        c.drawCentredString(center_x, line_y, "  |  ".join(contacts))
+    # Afficher téléphone et email sur des lignes séparées pour éviter le débordement
+    if telephone:
+        c.drawCentredString(center_x, line_y, f"Tél: {telephone}")
+        line_y -= 12
+    if email:
+        c.drawCentredString(center_x, line_y, f"Email: {email}")
+        line_y -= 12
     
     c.setFillGray(0.0)
     
-    # Dessiner le cadre
-    c.setLineWidth(1)
-    c.setStrokeColor(colors.black)
-    c.roundRect(margin, y - box_height, page_width - 2*margin, box_height, 4, stroke=1, fill=0)
+    # Cadre supprimé sur demande de l'utilisateur
     
     y = y - box_height - 8
     return y
@@ -798,7 +795,31 @@ def exporter_classement_classe_pdf(request):
     y -= 15
     c.setFont('Helvetica-Bold', 16)
     c.drawCentredString(page_width/2, y, titre_export)
-    y -= 10
+    y -= 15
+    
+    # Type de période (composition, mensuelle, etc.)
+    c.setFont('Helvetica', 11)
+    c.setFillColorRGB(0.2, 0.2, 0.2)
+    type_periode_text = ""
+    if type_note == 'mensuelle':
+        type_periode_text = f"Notes Mensuelles - {periode if periode else ''}"
+    elif type_note == 'composition':
+        if periode and 'TRIMESTRE' in periode.upper():
+            type_periode_text = f"Composition Trimestrielle - {periode}"
+        elif periode and 'SEMESTRE' in periode.upper():
+            type_periode_text = f"Composition Semestrielle - {periode}"
+        else:
+            type_periode_text = f"Composition - {periode if periode else ''}"
+    elif type_note == 'evaluation':
+        type_periode_text = f"Évaluations - {periode if periode else ''}"
+    else:
+        type_periode_text = periode if periode else type_note
+    
+    if type_periode_text:
+        c.drawCentredString(page_width/2, y, type_periode_text)
+        y -= 12
+    
+    c.setFillColorRGB(0, 0, 0)  # Retour au noir
     
     # Date d'export
     c.setFont('Helvetica-Oblique', 9)

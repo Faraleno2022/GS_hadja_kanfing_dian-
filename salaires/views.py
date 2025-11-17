@@ -1077,11 +1077,12 @@ def fiche_paie_pdf(request, etat_id):
             if adr:
                 p.drawCentredString(width/2, yinfo, f"Adresse: {adr}")
                 yinfo -= 12
-            line2 = ""
-            if tel: line2 += f"Tél: {tel}  "
-            if email: line2 += f"Email: {email}"
-            if line2:
-                p.drawCentredString(width/2, yinfo, line2.strip())
+            # Afficher téléphone et email sur des lignes séparées
+            if tel:
+                p.drawCentredString(width/2, yinfo, f"Tél: {tel}")
+                yinfo -= 12
+            if email:
+                p.drawCentredString(width/2, yinfo, f"Email: {email}")
                 yinfo -= 12
             if dirc:
                 p.drawCentredString(width/2, yinfo, f"Directeur: {dirc}")
