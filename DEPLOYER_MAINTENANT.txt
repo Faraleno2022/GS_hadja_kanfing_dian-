@@ -1,0 +1,37 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                    🚨 ACTION URGENTE REQUISE 🚨                      ║
+║                                                                      ║
+║  Erreur sur le serveur: evaluations_qs n'est pas défini            ║
+║  URL affectée: /notes/bulletins/classe/pdf/                         ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📋 COMMANDES À EXÉCUTER SUR LE SERVEUR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  Connectez-vous au serveur:
+   
+   ssh myschoolgn@www.myschoolgn.space
+
+
+2️⃣  Déployez le correctif (UNE SEULE COMMANDE):
+
+   cd /home/myschoolgn/GS_hadja_kanfing_dian- && git fetch origin && git reset --hard origin/main && find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null && find . -type f -name "*.pyc" -delete 2>/dev/null && touch ecole_moderne/wsgi.py && echo "✅ Déploiement terminé!"
+
+
+3️⃣  Vérifiez que ça fonctionne:
+   
+   Accédez à: https://www.myschoolgn.space/notes/consulter/
+   Cliquez sur "Exporter Bulletins Classe (PDF)"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 RÉSULTAT ATTENDU
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Génération des bulletins PDF de classe sans erreur
+✅ Affichage correct des informations de contact (Tél et Email séparés)
+✅ Tous les documents PDF mis à jour
+
+
+📅 Date: 17 novembre 2025
+🔢 Version: de66fdb (dernière)
