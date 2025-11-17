@@ -1,5 +1,5 @@
 """
-Module pour exporter les classements par classe
+Module pour exporter les classements par classe (Excel et PDF)
 """
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
@@ -9,6 +9,13 @@ from datetime import datetime
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+import os
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
 from eleves.models import Eleve, Classe as ClasseEleve
@@ -59,19 +66,76 @@ def exporter_classement_classe(request):
     # Récupérer la classe
     classe_note = get_object_or_404(ClasseNote, pk=classe_id)
     
-    # Récupérer la classe élève correspondante
+    # Récupérer la classe élève correspondante avec recherche flexible
     try:
+        # Essai 1: Correspondance exacte
         classe_eleve = ClasseEleve.objects.filter(
             nom=classe_note.nom,
             annee_scolaire=classe_note.annee_scolaire,
             ecole=classe_note.ecole
         ).first()
         
+        # Essai 2: Correspondance insensible à la casse
         if not classe_eleve:
-            return HttpResponse("Classe élève non trouvée", status=404)
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe_note.nom,
+                annee_scolaire=classe_note.annee_scolaire,
+                ecole=classe_note.ecole
+            ).first()
+        
+        # Essai 3: Recherche par mots-clés (ex: "12ème Série scientifique" → "12" + "SCIENCES")
+        if not classe_eleve:
+            # Extraire le niveau (ex: "12")
+            import re
+            match = re.search(r'(\d+)', classe_note.nom)
+            if match:
+                niveau_num = match.group(1)
+                
+                # Chercher d'abord avec l'école
+                classes_possibles = ClasseEleve.objects.filter(
+                    nom__icontains=niveau_num,
+                    annee_scolaire=classe_note.annee_scolaire,
+                    ecole=classe_note.ecole
+                )
+                
+                # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
+                if not classes_possibles.exists():
+                    classes_possibles = ClasseEleve.objects.filter(
+                        nom__icontains=niveau_num,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                
+                classe_eleve = classes_possibles.first()
+                
+                # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
+                if classe_eleve and classes_possibles.count() > 1:
+                    # Chercher des mots-clés spécifiques dans le nom de la classe
+                    if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
+                        for c in classes_possibles:
+                            if 'SCIENCE' in c.nom.upper():
+                                classe_eleve = c
+                                break
+                    elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
+                        for c in classes_possibles:
+                            if 'LETTRE' in c.nom.upper():
+                                classe_eleve = c
+                                break
+        
+        if not classe_eleve:
+            return HttpResponse(
+                f"Classe élève non trouvée pour '{classe_note.nom}' ({classe_note.annee_scolaire}). "
+                f"Vérifiez que les noms de classes correspondent entre le système de notes et le système d'élèves.",
+                status=404
+            )
         
         # Récupérer les élèves actifs
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        
+        if not eleves.exists():
+            return HttpResponse(
+                f"Aucun élève actif trouvé dans la classe '{classe_eleve.nom}'",
+                status=404
+            )
     except Exception as e:
         return HttpResponse(f"Erreur lors de la récupération des élèves: {str(e)}", status=500)
     
@@ -184,7 +248,13 @@ def exporter_classement_classe(request):
             else:
                 moyenne_cell.fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
         else:
-            moyenne_cell.value = "Non saisi" if not eleve_data.get('absent') else "Absent"
+            # Afficher clairement pourquoi pas de moyenne
+            if eleve_data.get('absent'):
+                moyenne_cell.value = "Absent"
+            elif eleve_data.get('pas_de_notes'):
+                moyenne_cell.value = "Pas de notes"
+            else:
+                moyenne_cell.value = "Non saisi"
             moyenne_cell.font = Font(italic=True, color="999999")
         
         moyenne_cell.alignment = Alignment(horizontal='center', vertical='center')
@@ -200,9 +270,11 @@ def exporter_classement_classe(request):
     ws.column_dimensions['D'].width = 15
     
     # Statistiques
-    eleves_avec_moyenne = [e for e in classement_data if e['moyenne'] is not None]
-    if eleves_avec_moyenne:
-        stats_row = len(classement_data) + 6
+    eleves_avec_moyenne = [e for e in classement_data if e.get('moyenne') is not None]
+    eleves_sans_notes = [e for e in classement_data if e.get('moyenne') is None]
+    
+    if eleves_avec_moyenne or eleves_sans_notes:
+        stats_row = row_num + 2
         
         ws.merge_cells(f'A{stats_row}:D{stats_row}')
         stats_title = ws[f'A{stats_row}']
@@ -210,18 +282,23 @@ def exporter_classement_classe(request):
         stats_title.font = Font(bold=True, size=12)
         stats_title.alignment = Alignment(horizontal='center')
         
-        moyennes = [e['moyenne'] for e in eleves_avec_moyenne]
-        moyenne_classe = sum(moyennes) / len(moyennes)
-        note_max = max(moyennes)
-        note_min = min(moyennes)
-        
         stats_data = [
-            ('Nombre d\'élèves:', len(classement_data)),
+            ('Nombre total d\'élèves:', len(classement_data)),
             ('Élèves avec notes:', len(eleves_avec_moyenne)),
-            ('Moyenne de classe:', f"{moyenne_classe:.2f}"),
-            ('Note maximale:', f"{note_max:.2f}"),
-            ('Note minimale:', f"{note_min:.2f}"),
+            ('Élèves sans notes:', len(eleves_sans_notes)),
         ]
+        
+        if eleves_avec_moyenne:
+            moyennes = [e['moyenne'] for e in eleves_avec_moyenne]
+            moyenne_classe = sum(moyennes) / len(moyennes)
+            note_max = max(moyennes)
+            note_min = min(moyennes)
+            
+            stats_data.extend([
+                ('Moyenne de classe:', f"{moyenne_classe:.2f}"),
+                ('Note maximale:', f"{note_max:.2f}"),
+                ('Note minimale:', f"{note_min:.2f}"),
+            ])
         
         for i, (label, value) in enumerate(stats_data, stats_row + 1):
             label_cell = ws.cell(row=i, column=2)
@@ -232,6 +309,15 @@ def exporter_classement_classe(request):
             value_cell = ws.cell(row=i, column=3)
             value_cell.value = value
             value_cell.alignment = Alignment(horizontal='left')
+    
+    # Avertissement si des élèves n'ont pas de notes
+    if eleves_sans_notes:
+        warning_row = ws.max_row + 2
+        ws.merge_cells(f'A{warning_row}:D{warning_row}')
+        warning_cell = ws[f'A{warning_row}']
+        warning_cell.value = f" ATTENTION: {len(eleves_sans_notes)} élève(s) n'ont pas de notes pour cette période"
+        warning_cell.font = Font(color="FF0000", bold=True)
+        warning_cell.alignment = Alignment(horizontal='center')
     
     # Préparer la réponse HTTP
     response = HttpResponse(
@@ -253,39 +339,75 @@ def _generer_classement_matiere(eleves, classe_note, matiere_id, type_note, peri
     for eleve in eleves:
         note_value = None
         absent = False
+        pas_de_notes = True
         
-        # Récupérer la note selon le type
-        if type_note == 'mensuelle' and periode:
-            try:
-                note_obj = NoteMensuelle.objects.get(
-                    eleve=eleve,
-                    matiere=matiere,
-                    mois=periode,
-                    annee_scolaire=classe_note.annee_scolaire
-                )
-                note_value = float(note_obj.note) if note_obj.note else None
-                absent = note_obj.absent
-            except NoteMensuelle.DoesNotExist:
-                pass
+        # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
+        from .models import Evaluation, NoteEleve
+        evaluations = Evaluation.objects.filter(matiere=matiere)
+        if periode:
+            evaluations = evaluations.filter(periode=periode)
         
-        elif type_note == 'composition' and periode:
-            try:
-                note_obj = CompositionNote.objects.get(
-                    eleve=eleve,
-                    matiere=matiere,
-                    periode=periode,
-                    annee_scolaire=classe_note.annee_scolaire
-                )
-                note_value = float(note_obj.note) if note_obj.note else None
-                absent = note_obj.absent
-            except CompositionNote.DoesNotExist:
-                pass
+        if evaluations.exists():
+            # Calculer la moyenne pondérée des évaluations pour cette matière
+            total_pondere = Decimal('0')
+            total_coef_eval = Decimal('0')
+            notes_trouvees = False
+            toutes_absentes = True
+            
+            for evaluation in evaluations:
+                try:
+                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                    if note_obj.absent:
+                        toutes_absentes = True
+                    if note_obj.note is not None and not note_obj.absent:
+                        coef_eval = Decimal(str(evaluation.coefficient or 1))
+                        total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                        total_coef_eval += coef_eval
+                        notes_trouvees = True
+                        toutes_absentes = False
+                except NoteEleve.DoesNotExist:
+                    pass
+            
+            if total_coef_eval > 0:
+                note_value = float(total_pondere / total_coef_eval)
+                absent = toutes_absentes and not notes_trouvees
+                pas_de_notes = False
+        
+        # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
+        if note_value is None and pas_de_notes:
+            # Essayer NoteMensuelle si période est un mois
+            if periode:
+                try:
+                    note_obj = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=periode,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                    note_value = float(note_obj.note) if note_obj.note else None
+                    absent = note_obj.absent
+                    pas_de_notes = False
+                except NoteMensuelle.DoesNotExist:
+                    # Essayer CompositionNote
+                    try:
+                        note_obj = CompositionNote.objects.get(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                        note_value = float(note_obj.note) if note_obj.note else None
+                        absent = note_obj.absent
+                        pas_de_notes = False
+                    except CompositionNote.DoesNotExist:
+                        pas_de_notes = True
         
         classement_data.append({
             'matricule': eleve.matricule or 'N/A',
             'nom_complet': f"{eleve.nom} {eleve.prenom}",
             'moyenne': note_value,
             'absent': absent,
+            'pas_de_notes': pas_de_notes,
             'sexe': eleve.sexe  # Ajouter le sexe pour l'accord grammatical
         })
     
@@ -307,13 +429,44 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
     for eleve in eleves:
         total_notes = Decimal('0')
         total_coefficients = Decimal('0')
+        nb_notes_trouvees = 0
+        toutes_absentes = True
         
         for matiere in matieres:
             note_value = None
             coefficient = matiere.coefficient or Decimal('1')
             
-            # Récupérer la note selon le type
-            if type_note == 'mensuelle' and periode:
+            # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
+            from .models import Evaluation, NoteEleve
+            evaluations = Evaluation.objects.filter(matiere=matiere)
+            if periode:
+                evaluations = evaluations.filter(periode=periode)
+            
+            if evaluations.exists():
+                # Calculer la moyenne pondérée des évaluations pour cette matière
+                total_pondere = Decimal('0')
+                total_coef_eval = Decimal('0')
+                notes_trouvees = False
+                
+                for evaluation in evaluations:
+                    try:
+                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                        if note_obj.note is not None and not note_obj.absent:
+                            coef_eval = Decimal(str(evaluation.coefficient or 1))
+                            total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                            total_coef_eval += coef_eval
+                            notes_trouvees = True
+                            nb_notes_trouvees += 1
+                    except NoteEleve.DoesNotExist:
+                        pass
+                
+                if total_coef_eval > 0:
+                    note_value = total_pondere / total_coef_eval
+                    toutes_absentes = False
+            
+            # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
+            if note_value is None and periode:
+                # Essayer NoteMensuelle
                 try:
                     note_obj = NoteMensuelle.objects.get(
                         eleve=eleve,
@@ -323,21 +476,23 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                     )
                     if not note_obj.absent and note_obj.note:
                         note_value = note_obj.note
+                        toutes_absentes = False
+                        nb_notes_trouvees += 1
                 except NoteMensuelle.DoesNotExist:
-                    pass
-            
-            elif type_note == 'composition' and periode:
-                try:
-                    note_obj = CompositionNote.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        periode=periode,
-                        annee_scolaire=classe_note.annee_scolaire
-                    )
-                    if not note_obj.absent and note_obj.note:
-                        note_value = note_obj.note
-                except CompositionNote.DoesNotExist:
-                    pass
+                    # Essayer CompositionNote
+                    try:
+                        note_obj = CompositionNote.objects.get(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                        if not note_obj.absent and note_obj.note:
+                            note_value = note_obj.note
+                            toutes_absentes = False
+                            nb_notes_trouvees += 1
+                    except CompositionNote.DoesNotExist:
+                        pass
             
             if note_value is not None:
                 total_notes += note_value * coefficient
@@ -351,6 +506,8 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
                 'moyenne': round(moyenne_generale, 2),
                 'absent': False,
+                'pas_de_notes': False,
+                'nb_notes': nb_notes_trouvees,
                 'sexe': eleve.sexe  # Ajouter le sexe pour l'accord grammatical
             })
         else:
@@ -358,7 +515,9 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 'matricule': eleve.matricule or 'N/A',
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
                 'moyenne': None,
-                'absent': False,
+                'absent': toutes_absentes and nb_notes_trouvees == 0,
+                'pas_de_notes': nb_notes_trouvees == 0,
+                'nb_notes': 0,
                 'sexe': eleve.sexe  # Ajouter le sexe pour l'accord grammatical
             })
     
@@ -396,3 +555,443 @@ def _calculer_rangs(classement_data):
     
     # Reconstruire la liste triée
     return eleves_avec_notes + eleves_sans_notes
+
+
+# =============================================================================
+# EXPORT PDF
+# =============================================================================
+
+def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
+    """Dessine un en-tête officiel pour le classement"""
+    y = y_start
+    center_x = page_width / 2
+    
+    # En-tête national
+    c.setFont('Helvetica-Bold', 16)
+    c.drawCentredString(center_x, y, "République de Guinée")
+    y -= 10
+    
+    # Devise avec couleurs
+    c.setFont('Helvetica-Oblique', 9)
+    parts = [
+        ("Travail", colors.red),
+        (" - ", colors.black),
+        ("Justice", colors.yellow),
+        (" - ", colors.black),
+        ("Solidarité", colors.green),
+    ]
+    total_w = sum(pdfmetrics.stringWidth(t, 'Helvetica-Oblique', 9) for t, _ in parts)
+    start_x = center_x - (total_w / 2)
+    x = start_x
+    for text, col in parts:
+        c.setFillColor(col)
+        c.drawString(x, y, text)
+        x += pdfmetrics.stringWidth(text, 'Helvetica-Oblique', 9)
+    c.setFillColor(colors.black)
+    y -= 10
+    
+    # Ministère
+    c.setFont('Helvetica', 9)
+    c.drawCentredString(center_x, y, "Ministère de l'Enseignement Pré-Universitaire et de l'Alphabétisation")
+    y -= 10
+    
+    # IRE, DPE, DESEE
+    c.setFont('Helvetica-Bold', 9)
+    ire = getattr(ecole, 'ire', None) or ''
+    dpe = getattr(ecole, 'dpe', None) or ''
+    desee = getattr(ecole, 'desee', None) or ''
+    if ire:
+        c.drawCentredString(center_x, y, f"IRE: {ire}")
+        y -= 10
+    if dpe:
+        c.drawCentredString(center_x, y, f"DPE: {dpe}")
+        y -= 10
+    if desee:
+        c.drawCentredString(center_x, y, f"DESEE: {desee}")
+        y -= 12
+    
+    # Cadre avec informations de l'école
+    frame_top = y
+    box_height = 50
+    
+    # Logo (gauche) si disponible
+    logo_path = None
+    try:
+        if hasattr(ecole, 'logo') and getattr(ecole.logo, 'path', None) and os.path.exists(ecole.logo.path):
+            logo_path = ecole.logo.path
+    except Exception:
+        logo_path = None
+    if logo_path:
+        try:
+            c.drawImage(logo_path, margin + 5, y - 48, width=40, height=40, preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+    
+    # Nom de l'école
+    school_name = (getattr(ecole, 'nom', '') or 'ÉCOLE').upper()
+    c.setFont('Helvetica-Bold', 14)
+    c.drawCentredString(center_x, y - 8, school_name)
+    
+    # Contacts
+    c.setFont('Helvetica', 8)
+    c.setFillGray(0.3)
+    adresse = getattr(ecole, 'adresse', None) or ''
+    telephone = getattr(ecole, 'telephone', None) or ''
+    email = getattr(ecole, 'email', None) or ''
+    
+    line_y = y - 22
+    if adresse:
+        c.drawCentredString(center_x, line_y, f"Adresse: {adresse}")
+        line_y -= 10
+    if telephone or email:
+        contacts = []
+        if telephone:
+            contacts.append(f"Tél: {telephone}")
+        if email:
+            contacts.append(f"Email: {email}")
+        c.drawCentredString(center_x, line_y, "  |  ".join(contacts))
+    
+    c.setFillGray(0.0)
+    
+    # Dessiner le cadre
+    c.setLineWidth(1)
+    c.setStrokeColor(colors.black)
+    c.roundRect(margin, y - box_height, page_width - 2*margin, box_height, 4, stroke=1, fill=0)
+    
+    y = y - box_height - 8
+    return y
+
+
+def _draw_watermark(c, ecole, page_width, page_height):
+    """Dessine le logo en filigrane au centre de la page"""
+    logo_path = None
+    try:
+        if hasattr(ecole, 'logo') and getattr(ecole.logo, 'path', None) and os.path.exists(ecole.logo.path):
+            logo_path = ecole.logo.path
+    except Exception:
+        logo_path = None
+    
+    if logo_path:
+        try:
+            # Logo en filigrane au centre
+            watermark_size = 300
+            x = (page_width - watermark_size) / 2
+            y = (page_height - watermark_size) / 2
+            
+            c.saveState()
+            c.setFillAlpha(0.08)  # Transparence
+            c.drawImage(logo_path, x, y, width=watermark_size, height=watermark_size, 
+                       preserveAspectRatio=True, mask='auto')
+            c.restoreState()
+        except Exception:
+            pass
+
+
+@login_required
+def exporter_classement_classe_pdf(request):
+    """
+    Exporter le classement d'une classe en PDF avec en-tête officiel, logo et filigrane
+    """
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    matiere_id = request.GET.get('matiere_id')
+    type_note = request.GET.get('type_note', 'mensuelle')
+    periode = request.GET.get('periode', '')
+    
+    if not classe_id:
+        return HttpResponse("Classe non spécifiée", status=400)
+    
+    # Récupérer la classe
+    classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+    
+    # Récupérer la classe élève correspondante avec recherche flexible
+    try:
+        # Essai 1: Correspondance exacte
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire,
+            ecole=classe_note.ecole
+        ).first()
+        
+        # Essai 2: Correspondance insensible à la casse
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe_note.nom,
+                annee_scolaire=classe_note.annee_scolaire,
+                ecole=classe_note.ecole
+            ).first()
+        
+        # Essai 3: Recherche par mots-clés
+        if not classe_eleve:
+            import re
+            match = re.search(r'(\d+)', classe_note.nom)
+            if match:
+                niveau_num = match.group(1)
+                
+                # Chercher d'abord avec l'école
+                classes_possibles = ClasseEleve.objects.filter(
+                    nom__icontains=niveau_num,
+                    annee_scolaire=classe_note.annee_scolaire,
+                    ecole=classe_note.ecole
+                )
+                
+                # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
+                if not classes_possibles.exists():
+                    classes_possibles = ClasseEleve.objects.filter(
+                        nom__icontains=niveau_num,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                
+                classe_eleve = classes_possibles.first()
+                
+                # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
+                if classe_eleve and classes_possibles.count() > 1:
+                    if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
+                        for c in classes_possibles:
+                            if 'SCIENCE' in c.nom.upper():
+                                classe_eleve = c
+                                break
+                    elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
+                        for c in classes_possibles:
+                            if 'LETTRE' in c.nom.upper():
+                                classe_eleve = c
+                                break
+        
+        if not classe_eleve:
+            return HttpResponse(
+                f"Classe élève non trouvée pour '{classe_note.nom}' ({classe_note.annee_scolaire}).",
+                status=404
+            )
+        
+        # Récupérer les élèves actifs
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        
+        if not eleves.exists():
+            return HttpResponse(
+                f"Aucun élève actif trouvé dans la classe '{classe_eleve.nom}'",
+                status=404
+            )
+    except Exception as e:
+        return HttpResponse(f"Erreur lors de la récupération des élèves: {str(e)}", status=500)
+    
+    # Préparer les données de classement
+    if matiere_id:
+        classement_data, titre_export = _generer_classement_matiere(
+            eleves, classe_note, matiere_id, type_note, periode
+        )
+    else:
+        classement_data, titre_export = _generer_classement_general(
+            eleves, classe_note, type_note, periode
+        )
+    
+    # Créer le PDF
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    page_width, page_height = A4
+    margin = 2*cm
+    
+    # Filigrane
+    _draw_watermark(c, classe_note.ecole, page_width, page_height)
+    
+    # En-tête
+    y = page_height - 1.5*cm
+    y = _draw_school_header_classement(c, classe_note.ecole, y_start=y, margin=margin, page_width=page_width)
+    
+    # Titre du document
+    y -= 15
+    c.setFont('Helvetica-Bold', 16)
+    c.drawCentredString(page_width/2, y, titre_export)
+    y -= 10
+    
+    # Date d'export
+    c.setFont('Helvetica-Oblique', 9)
+    c.drawCentredString(page_width/2, y, f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    y -= 20
+    
+    # En-têtes du tableau
+    col_widths = [2*cm, 3*cm, 8*cm, 3*cm]  # Rang, Matricule, Nom, Moyenne
+    col_x = [margin]
+    for w in col_widths[:-1]:
+        col_x.append(col_x[-1] + w)
+    
+    # Fond gris pour les en-têtes
+    c.setFillColorRGB(0.2, 0.3, 0.4)
+    c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
+    
+    # Texte des en-têtes
+    c.setFillColorRGB(1, 1, 1)
+    c.setFont('Helvetica-Bold', 10)
+    headers = ['Rang', 'Matricule', 'Nom Complet', 'Moyenne /20']
+    for i, header in enumerate(headers):
+        c.drawString(col_x[i] + 0.2*cm, y - 10, header)
+    
+    c.setFillColorRGB(0, 0, 0)
+    y -= 20
+    
+    # Données
+    c.setFont('Helvetica', 9)
+    line_height = 14
+    max_lines_per_page = 35
+    line_count = 0
+    
+    for eleve_data in classement_data:
+        # Nouvelle page si nécessaire
+        if line_count >= max_lines_per_page:
+            c.showPage()
+            
+            # Redessiner le filigrane et l'en-tête sur la nouvelle page
+            _draw_watermark(c, classe_note.ecole, page_width, page_height)
+            y = page_height - 1.5*cm
+            y = _draw_school_header_classement(c, classe_note.ecole, y_start=y, margin=margin, page_width=page_width)
+            y -= 20
+            
+            # Redessiner les en-têtes
+            c.setFillColorRGB(0.2, 0.3, 0.4)
+            c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont('Helvetica-Bold', 10)
+            for i, header in enumerate(headers):
+                c.drawString(col_x[i] + 0.2*cm, y - 10, header)
+            c.setFillColorRGB(0, 0, 0)
+            y -= 20
+            c.setFont('Helvetica', 9)
+            line_count = 0
+        
+        # Fond alterné pour faciliter la lecture
+        if line_count % 2 == 0:
+            c.setFillColorRGB(0.95, 0.95, 0.95)
+            c.rect(margin, y - line_height + 2, sum(col_widths), line_height, fill=1, stroke=0)
+            c.setFillColorRGB(0, 0, 0)
+        
+        # Rang avec accord grammatical
+        rang_value = eleve_data.get('rang', '-')
+        sexe = eleve_data.get('sexe', 'M')
+        
+        if rang_value == 1:
+            rang_str = "1ère" if sexe == 'F' else "1er"
+            # Médaille or
+            c.setFillColorRGB(1, 0.84, 0)
+            c.setFont('Helvetica-Bold', 10)
+        elif rang_value == 2:
+            rang_str = f"{rang_value}ème"
+            # Médaille argent
+            c.setFillColorRGB(0.75, 0.75, 0.75)
+            c.setFont('Helvetica-Bold', 10)
+        elif rang_value == 3:
+            rang_str = f"{rang_value}ème"
+            # Médaille bronze
+            c.setFillColorRGB(0.8, 0.5, 0.2)
+            c.setFont('Helvetica-Bold', 10)
+        elif rang_value and rang_value != '-':
+            rang_str = f"{rang_value}ème"
+            c.setFont('Helvetica', 9)
+        else:
+            rang_str = "-"
+            c.setFont('Helvetica', 9)
+        
+        c.drawString(col_x[0] + 0.2*cm, y - 10, rang_str)
+        
+        # Retour à la couleur normale
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont('Helvetica', 9)
+        
+        # Matricule
+        matricule = eleve_data.get('matricule', 'N/A')
+        c.drawString(col_x[1] + 0.2*cm, y - 10, matricule)
+        
+        # Nom complet (tronqué si trop long)
+        nom_complet = eleve_data.get('nom_complet', '')
+        if len(nom_complet) > 35:
+            nom_complet = nom_complet[:32] + "..."
+        c.drawString(col_x[2] + 0.2*cm, y - 10, nom_complet)
+        
+        # Moyenne avec couleur selon performance
+        moyenne = eleve_data.get('moyenne')
+        if moyenne is not None:
+            c.setFont('Helvetica-Bold', 9)
+            if moyenne >= 16:
+                c.setFillColorRGB(0, 0.6, 0)  # Vert
+            elif moyenne >= 14:
+                c.setFillColorRGB(0, 0.5, 0.8)  # Bleu
+            elif moyenne >= 10:
+                c.setFillColorRGB(0.8, 0.6, 0)  # Orange
+            else:
+                c.setFillColorRGB(0.8, 0, 0)  # Rouge
+            c.drawString(col_x[3] + 0.2*cm, y - 10, f"{moyenne:.2f}")
+            c.setFillColorRGB(0, 0, 0)
+        else:
+            c.setFont('Helvetica-Oblique', 8)
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            if eleve_data.get('absent'):
+                c.drawString(col_x[3] + 0.2*cm, y - 10, "Absent")
+            elif eleve_data.get('pas_de_notes'):
+                c.drawString(col_x[3] + 0.2*cm, y - 10, "Pas de notes")
+            else:
+                c.drawString(col_x[3] + 0.2*cm, y - 10, "Non saisi")
+            c.setFillColorRGB(0, 0, 0)
+        
+        c.setFont('Helvetica', 9)
+        
+        # Ligne de séparation
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(margin, y - line_height + 2, margin + sum(col_widths), y - line_height + 2)
+        
+        y -= line_height
+        line_count += 1
+    
+    # Statistiques
+    y -= 10
+    if y < 5*cm:  # Nouvelle page si pas assez de place
+        c.showPage()
+        _draw_watermark(c, classe_note.ecole, page_width, page_height)
+        y = page_height - 3*cm
+    
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(margin, y, "STATISTIQUES")
+    y -= 15
+    
+    c.setFont('Helvetica', 9)
+    eleves_avec_moyenne = [e for e in classement_data if e.get('moyenne') is not None]
+    eleves_sans_notes = [e for e in classement_data if e.get('moyenne') is None]
+    
+    stats = [
+        f"Nombre total d'élèves: {len(classement_data)}",
+        f"Élèves avec notes: {len(eleves_avec_moyenne)}",
+        f"Élèves sans notes: {len(eleves_sans_notes)}",
+    ]
+    
+    if eleves_avec_moyenne:
+        moyennes = [e['moyenne'] for e in eleves_avec_moyenne]
+        moyenne_classe = sum(moyennes) / len(moyennes)
+        note_max = max(moyennes)
+        note_min = min(moyennes)
+        
+        stats.extend([
+            f"Moyenne de classe: {moyenne_classe:.2f}/20",
+            f"Note maximale: {note_max:.2f}/20",
+            f"Note minimale: {note_min:.2f}/20",
+        ])
+    
+    for stat in stats:
+        c.drawString(margin + 1*cm, y, f"• {stat}")
+        y -= 12
+    
+    # Avertissement si élèves sans notes
+    if eleves_sans_notes:
+        y -= 10
+        c.setFillColorRGB(0.8, 0, 0)
+        c.setFont('Helvetica-Bold', 10)
+        c.drawString(margin, y, f"⚠ ATTENTION: {len(eleves_sans_notes)} élève(s) n'ont pas de notes pour cette période")
+        c.setFillColorRGB(0, 0, 0)
+    
+    # Finaliser
+    c.save()
+    
+    # Préparer la réponse
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    filename = f"Classement_{classe_note.nom}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response

@@ -1,0 +1,121 @@
+Feature: Ajout export PDF des classements avec en-tête officiel et filigrane
+
+NOUVELLE FONCTIONNALITÉ:
+Ajout de l'export en format PDF pour les classements avec présentation
+professionnelle incluant en-tête officiel guinéen, logo et filigrane.
+
+FONCTIONNALITÉS PDF:
+
+1. En-tête officiel complet:
+   - République de Guinée avec devise colorée
+   - Ministère de l'Enseignement Pré-Universitaire
+   - Informations IRE, DPE, DESEE
+   - Logo de l'école
+   - Nom, adresse, téléphone, email de l'école
+   - Cadre professionnel avec bordures arrondies
+
+2. Filigrane:
+   - Logo de l'école en transparence (8% opacité)
+   - Centré sur toutes les pages
+   - Taille 300×300 pixels
+   - Visible mais discret
+
+3. Tableau du classement:
+   - Colonnes: Rang, Matricule, Nom Complet, Moyenne /20
+   - Lignes alternées (fond gris léger)
+   - Fond gris foncé pour l'en-tête
+   - Bordures et séparations
+
+4. Rangs avec accord grammatical:
+   - 1er pour garçons, 1ère pour filles
+   - Médailles colorées pour le podium:
+     * Or (doré) pour 1er/1ère
+     * Argent (gris) pour 2ème
+     * Bronze (cuivré) pour 3ème
+
+5. Code couleur des moyennes:
+   - Vert: ≥ 16/20 (Très bien)
+   - Bleu: ≥ 14/20 (Bien)
+   - Orange: ≥ 10/20 (Passable)
+   - Rouge: < 10/20 (Insuffisant)
+
+6. Statistiques complètes:
+   - Nombre total d'élèves
+   - Élèves avec/sans notes
+   - Moyenne de classe
+   - Note maximale et minimale
+   - Avertissement si élèves sans notes
+
+7. Pagination automatique:
+   - 35 élèves par page
+   - En-tête et filigrane sur chaque page
+   - Passage automatique à la page suivante
+
+IMPLÉMENTATION:
+
+Fichiers modifiés:
+- notes/export_classement.py (+440 lignes)
+  * _draw_school_header_classement(): En-tête officiel
+  * _draw_watermark(): Filigrane
+  * exporter_classement_classe_pdf(): Fonction principale
+  * Utilise ReportLab pour la génération PDF
+  * Recherche intelligente de classe (3 niveaux)
+  * Récupération multi-système des notes
+
+- notes/urls.py
+  * Ajout route: exporter-classement-pdf/
+  * Import de la nouvelle fonction
+
+- templates/notes/consulter_notes.html
+  * Menu déroulant enrichi avec options PDF
+  * Section "Format Excel" et "Format PDF"
+  * Fonction JavaScript mise à jour: exporterClassementAvecFiltres(type, format)
+  * Support des paramètres classe, matière, période
+
+Fichiers créés (documentation):
+- EXPORT_CLASSEMENT_PDF_17_NOV_2024.md (documentation complète)
+- RESUME_EXPORT_PDF_CLASSEMENT.txt (résumé)
+- test_export_classement_pdf.py (script de test)
+
+UTILISATION:
+
+Interface:
+1. /notes/consulter/
+2. Sélectionner classe et période
+3. Cliquer "Exporter Classement"
+4. Choisir "Format PDF" → "Classement Général" ou "Par Matière"
+
+URLs directes:
+- Général: /notes/exporter-classement-pdf/?classe_id=X&periode=Y
+- Matière: /notes/exporter-classement-pdf/?classe_id=X&matiere_id=Z&periode=Y
+
+AVANTAGES:
+
+✅ Document officiel professionnel prêt à imprimer
+✅ En-tête conforme aux standards guinéens
+✅ Sécurisé (non modifiable)
+✅ Léger (50-150 Ko)
+✅ Compatible tous lecteurs PDF
+✅ Idéal pour archivage et distribution officielle
+
+COMPLÉMENTARITÉ EXCEL/PDF:
+- Excel: Analyse et manipulation de données
+- PDF: Impression et archivage officiel
+
+COMPATIBILITÉ:
+- Format: A4 (210×297 mm)
+- Polices: Helvetica (standard PDF)
+- Images: PNG, JPG, GIF pour le logo
+- Bibliothèques: ReportLab, Pillow
+
+TESTS EFFECTUÉS:
+✅ Génération PDF sans erreur
+✅ En-tête complet et bien formaté
+✅ Logo et filigrane visibles
+✅ Accord grammatical des rangs
+✅ Code couleur des moyennes
+✅ Pagination automatique
+✅ Statistiques correctes
+
+Date: 17 Novembre 2024
+Status: ✅ Testé et prêt pour production

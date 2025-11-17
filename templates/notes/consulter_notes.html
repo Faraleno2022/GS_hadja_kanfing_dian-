@@ -218,11 +218,19 @@
                         <i class="fas fa-trophy me-1"></i>Exporter Classement
                     </button>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general'); return false;">
+                        <li class="dropdown-header"><i class="fas fa-file-excel me-1"></i>Format Excel</li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general', 'excel'); return false;">
                             <i class="fas fa-star me-2"></i>Classement Général
                         </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere', 'excel'); return false;">
+                            <i class="fas fa-book me-2"></i>Par Matière (filtrée)
+                        </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere'); return false;">
+                        <li class="dropdown-header"><i class="fas fa-file-pdf me-1"></i>Format PDF</li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general', 'pdf'); return false;">
+                            <i class="fas fa-star me-2"></i>Classement Général
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere', 'pdf'); return false;">
                             <i class="fas fa-book me-2"></i>Par Matière (filtrée)
                         </a></li>
                     </ul>
@@ -559,7 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Fonction pour exporter le classement
-function exporterClassementAvecFiltres(typeClassement) {
+function exporterClassementAvecFiltres(typeClassement, format = 'excel') {
     const classeId = document.getElementById('classe_id')?.value;
     
     if (!classeId) {
@@ -572,8 +580,16 @@ function exporterClassementAvecFiltres(typeClassement) {
     const periode = document.getElementById('filtrePeriode')?.value || '';
     const typeNote = document.getElementById('filtreType')?.value || 'mensuelle';
     
+    // Choisir l'URL selon le format
+    let baseUrl;
+    if (format === 'pdf') {
+        baseUrl = "{% url 'notes:exporter_classement_pdf' %}";
+    } else {
+        baseUrl = "{% url 'notes:exporter_classement' %}";
+    }
+    
     // Construire l'URL d'export
-    let url = "{% url 'notes:exporter_classement' %}?classe_id=" + classeId;
+    let url = baseUrl + "?classe_id=" + classeId;
     
     if (typeClassement === 'matiere' && matiereId) {
         url += "&matiere_id=" + matiereId;

@@ -5,7 +5,7 @@ from .bulletin_intelligent import (
     bulletin_intelligent_pdf,
     bulletin_intelligent_excel
 )
-from .export_classement import exporter_classement_classe
+from .export_classement import exporter_classement_classe, exporter_classement_classe_pdf
 from .export_classement_fixed import exporter_classement_classe_fixed
 from .views_import import (
     importer_notes,
@@ -53,6 +53,7 @@ urlpatterns = [
     
     # Export des classements
     path('exporter-classement/', exporter_classement_classe, name='exporter_classement'),
+    path('exporter-classement-pdf/', exporter_classement_classe_pdf, name='exporter_classement_pdf'),
     path('exporter-classement-fixed/', exporter_classement_classe_fixed, name='exporter_classement_fixed'),
     
     # Importation de notes
