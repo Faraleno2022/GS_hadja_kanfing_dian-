@@ -3899,6 +3899,7 @@ def saisir_notes(request):
     
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
+    periode_classement = request.GET.get('periode', '')
     matiere_id = request.GET.get('matiere_id')
     type_note = request.GET.get('type_note', '')
     periode = request.GET.get('periode', '')
@@ -4536,7 +4537,10 @@ def consulter_notes(request):
                 
                 for matiere in matieres:
                     # Récupérer toutes les évaluations de cette matière
-                    evaluations = Evaluation.objects.filter(matiere=matiere).order_by('periode', 'date_evaluation')
+                    evaluations_qs = Evaluation.objects.filter(matiere=matiere)
+                    if periode_classement:
+                        evaluations_qs = evaluations_qs.filter(periode=periode_classement)
+                    evaluations = evaluations_qs.order_by('periode', 'date_evaluation')
                     
                     notes_matiere = {
                         'evaluations': [],
@@ -4602,18 +4606,23 @@ def consulter_notes(request):
     # Trier les élèves avec moyenne par moyenne décroissante
     eleves_avec_moyenne.sort(key=lambda x: x['moyenne_generale'], reverse=True)
     
-    # Attribuer les rangs (gestion des ex-aequo)
+    # Attribuer les rangs (gestion des ex-aequo) avec format intelligent
+    from .calculs_intelligent import formater_rang_intelligent
+    total_eleves_avec_moyenne = len(eleves_avec_moyenne)
     prev_moyenne = None
-    prev_rang = None
+    prev_rang_num = None
     for idx, eleve_data in enumerate(eleves_avec_moyenne, start=1):
         moyenne = eleve_data['moyenne_generale']
         if prev_moyenne is not None and abs(moyenne - prev_moyenne) < 0.01:
-            # Ex-aequo : même rang que le précédent
-            eleve_data['rang'] = prev_rang
+            # Ex-aequo : même rang numérique que le précédent
+            rang_num = prev_rang_num
         else:
-            eleve_data['rang'] = idx
-            prev_rang = idx
+            rang_num = idx
+            prev_rang_num = idx
         prev_moyenne = moyenne
+
+        sexe = getattr(eleve_data['eleve'], 'sexe', 'M') or 'M'
+        eleve_data['rang'] = formater_rang_intelligent(rang_num, sexe, total_eleves_avec_moyenne)
     
     # Les élèves sans moyenne ont le rang '-'
     for eleve_data in eleves_sans_moyenne:
@@ -4635,6 +4644,7 @@ def consulter_notes(request):
         'classe_selectionnee': classe_selectionnee,
         'matieres': matieres,
         'periodes_disponibles': periodes_disponibles,
+        'periode_classement': periode_classement,
         'eleves_toutes_notes': eleves_toutes_notes,
         'evaluations_par_matiere': evaluations_par_matiere,
         'niveau_enseignement': niveau_enseignement,

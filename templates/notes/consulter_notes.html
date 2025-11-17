@@ -112,7 +112,7 @@
         <form method="get" id="filterForm">
             <div class="row">
                 <!-- Classe -->
-                <div class="col-md-12 mb-3">
+                <div class="col-md-6 mb-3">
                     <label for="classe_id" class="form-label">
                         <i class="fas fa-school me-1"></i>Classe *
                     </label>
@@ -123,6 +123,35 @@
                                 {{ classe.nom }} - {{ classe.annee_scolaire }}
                             </option>
                         {% endfor %}
+                    </select>
+                </div>
+                <!-- Période de classement -->
+                <div class="col-md-6 mb-3">
+                    <label for="periode" class="form-label">
+                        <i class="fas fa-calendar-alt me-1"></i>Période de classement
+                    </label>
+                    <select name="periode" id="periode" class="form-select" onchange="this.form.submit()">
+                        <option value="">Toutes les périodes (année complète)</option>
+                        <optgroup label="Mois">
+                            <option value="OCTOBRE" {% if periode_classement == 'OCTOBRE' %}selected{% endif %}>Octobre</option>
+                            <option value="NOVEMBRE" {% if periode_classement == 'NOVEMBRE' %}selected{% endif %}>Novembre</option>
+                            <option value="DECEMBRE" {% if periode_classement == 'DECEMBRE' %}selected{% endif %}>Décembre</option>
+                            <option value="JANVIER" {% if periode_classement == 'JANVIER' %}selected{% endif %}>Janvier</option>
+                            <option value="FEVRIER" {% if periode_classement == 'FEVRIER' %}selected{% endif %}>Février</option>
+                            <option value="MARS" {% if periode_classement == 'MARS' %}selected{% endif %}>Mars</option>
+                            <option value="AVRIL" {% if periode_classement == 'AVRIL' %}selected{% endif %}>Avril</option>
+                            <option value="MAI" {% if periode_classement == 'MAI' %}selected{% endif %}>Mai</option>
+                            <option value="JUIN" {% if periode_classement == 'JUIN' %}selected{% endif %}>Juin</option>
+                        </optgroup>
+                        <optgroup label="Trimestres">
+                            <option value="TRIMESTRE_1" {% if periode_classement == 'TRIMESTRE_1' %}selected{% endif %}>1er Trimestre</option>
+                            <option value="TRIMESTRE_2" {% if periode_classement == 'TRIMESTRE_2' %}selected{% endif %}>2ème Trimestre</option>
+                            <option value="TRIMESTRE_3" {% if periode_classement == 'TRIMESTRE_3' %}selected{% endif %}>3ème Trimestre</option>
+                        </optgroup>
+                        <optgroup label="Semestres">
+                            <option value="SEMESTRE_1" {% if periode_classement == 'SEMESTRE_1' %}selected{% endif %}>1er Semestre</option>
+                            <option value="SEMESTRE_2" {% if periode_classement == 'SEMESTRE_2' %}selected{% endif %}>2ème Semestre</option>
+                        </optgroup>
                     </select>
                 </div>
             </div>
@@ -264,6 +293,8 @@
                         <th rowspan="2" class="align-middle">N°</th>
                         <th rowspan="2" class="align-middle">Matricule</th>
                         <th rowspan="2" class="align-middle">Nom Complet</th>
+                        <th rowspan="2" class="align-middle">Rang</th>
+                        <th rowspan="2" class="align-middle">Moyenne /20</th>
                         {% for matiere in matieres %}
                         <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
                             {{ matiere.nom }} (Coef: {{ matiere.coefficient }})
@@ -287,6 +318,20 @@
                         <td class="text-center">{{ forloop.counter }}</td>
                         <td><small><strong>{{ eleve_data.eleve.matricule }}</strong></small></td>
                         <td><small>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</small></td>
+                        <td class="text-center">
+                            {% if eleve_data.rang %}
+                                {{ eleve_data.rang }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if eleve_data.moyenne_generale is not None %}
+                                <strong class="text-primary">{{ eleve_data.moyenne_generale }}</strong>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}
