@@ -36,7 +36,6 @@ from .calculs_intelligent import (
 #     monthly_avg,
 # )
 
-
 # Groupes de niveaux pour l'affichage
 PRIMAIRE = {
     'PRIMAIRE_1', 'PRIMAIRE_2', 'PRIMAIRE_3', 'PRIMAIRE_4', 'PRIMAIRE_5', 'PRIMAIRE_6'
@@ -47,7 +46,6 @@ COLLEGE = {
 LYCEE = {
     'LYCEE_11', 'LYCEE_12', 'TERMINALE'
 }
-
 
 def _draw_school_header(c, ecole, *, y_start, margin, page_width):
     """Dessine un en-tête officiel (centré) avec logo, nom en MAJUSCULES, coordonnées et encadré.
@@ -218,7 +216,6 @@ def tableau_bord(request):
     }
     return render(request, 'notes/tableau_bord.html', context)
 
-
 @admin_required
 def creer_classe(request, niveau):
     """Créer une classe pour un niveau donné dans l'école de l'utilisateur."""
@@ -237,7 +234,6 @@ def creer_classe(request, niveau):
         form = ClasseNotesForm(niveau_initial=niveau)
     return render(request, 'notes/classe_form.html', {'form': form, 'niveau': niveau})
 
-
 @admin_required
 def supprimer_classe(request, classe_id):
     """Supprimer une classe si elle appartient à l'école de l'utilisateur et qu'elle est vide."""
@@ -254,7 +250,6 @@ def supprimer_classe(request, classe_id):
         'message': "Confirmez-vous la suppression de cette classe ? (Cette action est irréversible)",
         'action_url': reverse('notes:supprimer_classe', args=[classe.id])
     })
-
 
 @can_manage_notes
 def matieres_classe(request, classe_id):
@@ -291,7 +286,6 @@ def matieres_classe(request, classe_id):
         'matieres': matieres,
     })
 
-
 @admin_required
 def creer_matiere(request, classe_id):
     """Créer une matière pour une classe donnée."""
@@ -312,7 +306,6 @@ def creer_matiere(request, classe_id):
         form = MatiereClasseForm()
     return render(request, 'notes/matiere_form.html', {'form': form, 'classe': classe})
 
-
 @admin_required
 def supprimer_matiere(request, pk):
     """Supprimer une matière de classe."""
@@ -327,7 +320,6 @@ def supprimer_matiere(request, pk):
         'message': "Confirmez-vous la suppression de cette matière ?",
         'action_url': reverse('notes:supprimer_matiere', args=[matiere.id])
     })
-
 
 @admin_required
 def creer_evaluation(request, classe_id, matiere_id):
@@ -353,7 +345,6 @@ def creer_evaluation(request, classe_id, matiere_id):
         'classe': classe,
         'matiere': matiere,
     })
-
 
 @can_manage_notes
 def saisie_notes(request, evaluation_id):
@@ -447,7 +438,6 @@ def saisie_notes(request, evaluation_id):
         'notes_existantes_json': notes_existantes_json,
     })
 
-
 @can_manage_notes
 def saisie_notes_individuelle(request, evaluation_id: int):
     """Affiche la saisie individuelle des notes pour une évaluation donnée."""
@@ -490,7 +480,6 @@ def saisie_notes_individuelle(request, evaluation_id: int):
         'eleves': eleves_context,
         'notes_saisies': notes_saisies,
     })
-
 
 @can_manage_notes
 def saisie_notes_simple(request, evaluation_id):
@@ -567,7 +556,6 @@ def saisie_notes_simple(request, evaluation_id):
         'notes_existantes': notes_existantes,
     })
 
-
 @require_POST
 @can_manage_notes
 def ajax_sauvegarder_note(request):
@@ -610,7 +598,6 @@ def ajax_sauvegarder_note(request):
 
     total_notes = Note.objects.filter(evaluation=evaluation).count()
     return JsonResponse({'success': True, 'created': created, 'total_notes': total_notes})
-
 
 @require_POST
 @can_manage_notes
@@ -664,7 +651,6 @@ def ajax_sauvegarder_notes_masse(request):
     total_notes = Note.objects.filter(evaluation=evaluation).count()
     return JsonResponse({'success': True, 'saved_count': saved, 'total_notes': total_notes})
 
-
 @require_POST
 @can_manage_notes
 def ajax_supprimer_note(request):
@@ -692,7 +678,6 @@ def ajax_supprimer_note(request):
     total_notes = Note.objects.filter(evaluation=evaluation).count()
     return JsonResponse({'success': True, 'total_notes': total_notes})
 
-
 @can_manage_notes
 def evaluations_matiere(request, classe_id, matiere_id):
     """Liste des évaluations d'une matière pour une classe, avec accès rapide à la saisie et à l'affichage des notes."""
@@ -707,7 +692,6 @@ def evaluations_matiere(request, classe_id, matiere_id):
         'matiere': matiere,
         'evaluations': evaluations,
     })
-
 
 @can_manage_notes
 def evaluation_detail(request, evaluation_id):
@@ -734,7 +718,6 @@ def evaluation_detail(request, evaluation_id):
         'evaluation': evaluation,
         'rows': rows,
     })
-
 
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
@@ -972,10 +955,6 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c.showPage(); c.save()
     return response
 
-
- 
-
-
 @admin_required
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     """Génère en un seul PDF les bulletins mensuels de tous les élèves d'une classe (Collège/Lycée)."""
@@ -1125,7 +1104,6 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
         c.showPage()
     c.save();
     return response
-
 
 @admin_required
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
@@ -1388,7 +1366,6 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     c.showPage(); c.save()
     return response
 
-
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int = 1):
@@ -1498,7 +1475,6 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
 
     c.showPage(); c.save()
     return response
-
 
 @admin_required
 def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
@@ -1705,7 +1681,6 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     c.save()
     return response
 
-
 @admin_required
 def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str = "T1"):
     """Export Excel des notes d'une classe pour une matière et un trimestre.
@@ -1767,7 +1742,6 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     wb.save(response)
     return response
 
-
 def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: int) -> Decimal | None:
     s_num = Decimal('0'); s_den = Decimal('0')
     for mat in matieres:
@@ -1776,7 +1750,6 @@ def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: in
             s_num += m * Decimal(mat.coefficient or 1)
             s_den += Decimal(mat.coefficient or 1)
     return (s_num / s_den).quantize(Decimal('0.01')) if s_den > 0 else None
-
 
 @admin_required
 def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
@@ -1813,7 +1786,6 @@ def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
-
 
 @admin_required
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
@@ -1902,7 +1874,6 @@ def _collect_evals_all_trimestres(classe, matieres):
     for mat in matieres:
         evals_by_matiere[mat.id] = list(Evaluation.objects.filter(classe=classe, matiere=mat, trimestre__in=["T1", "T2", "T3"]).order_by('date', 'id'))
     return evals_by_matiere
-
 
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
@@ -2063,7 +2034,6 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     c.setFont('Helvetica-Oblique', 10); c.setFillColor(colors.darkgrey); c.drawString(margin, margin/2, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     c.showPage(); c.save(); return response
 
-
 @admin_required
 def bulletins_annuels_classe_pdf(request, classe_id: int):
     """Bulletins annuels (T1+T2+T3) pour tous les élèves d'une classe en un seul PDF."""
@@ -2210,7 +2180,6 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
 
     c.save(); return response
 
-
 @login_required
 @require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
 def classement_classe(request, classe_id: int, trimestre: str = "T1"):
@@ -2296,7 +2265,6 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
     }
     
     return render(request, 'notes/classement_classe.html', context)
-
 
 @admin_required
 def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
@@ -2443,7 +2411,6 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     c.save()
     return response
 
-
 @admin_required
 def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     """Export Excel du classement d'une classe."""
@@ -2562,7 +2529,6 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     wb.save(response)
     return response
 
-
 @login_required
 @require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
 def cartes_scolaires_classe(request, classe_id):
@@ -2586,7 +2552,6 @@ def cartes_scolaires_classe(request, classe_id):
     }
     
     return render(request, 'notes/cartes_scolaires.html', context)
-
 
 @login_required
 @require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
@@ -2883,7 +2848,6 @@ def cartes_scolaires_pdf(request, classe_id):
     response.write(pdf)
     
     return response
-
 
 @login_required
 def carte_eleve_pdf(request, matricule):
@@ -3215,7 +3179,6 @@ def carte_eleve_pdf(request, matricule):
     
     return response
 
-
 @login_required
 def statistiques(request):
     """Statistiques globales de l'école"""
@@ -3299,7 +3262,7 @@ def statistiques(request):
                         total_compo = Decimal('0')
                         count_compo = 0
                         
-                        for evaluation in evaluations:
+                        for evaluation in evaluations_qs:
                             try:
                                 note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                                 if note_obj.note is not None and not note_obj.absent:
@@ -3454,7 +3417,6 @@ def statistiques(request):
     
     return render(request, 'notes/statistiques.html', context)
 
-
 @login_required
 def gerer_classes(request):
     """Gérer les classes - Liste et ajout"""
@@ -3496,7 +3458,6 @@ def gerer_classes(request):
     
     return render(request, 'notes/gerer_classes.html', context)
 
-
 @login_required
 def modifier_classe(request, classe_id):
     """Modifier une classe"""
@@ -3536,7 +3497,6 @@ def modifier_classe(request, classe_id):
     }
     
     return render(request, 'notes/modifier_classe.html', context)
-
 
 @login_required
 def supprimer_classe(request, classe_id):
@@ -3578,7 +3538,6 @@ def supprimer_classe(request, classe_id):
     
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
-
 
 @login_required
 def gerer_matieres(request):
@@ -3631,7 +3590,6 @@ def gerer_matieres(request):
     
     return render(request, 'notes/gerer_matieres.html', context)
 
-
 @login_required
 def modifier_matiere(request, matiere_id):
     """Modifier une matière"""
@@ -3673,7 +3631,6 @@ def modifier_matiere(request, matiere_id):
     }
     
     return render(request, 'notes/modifier_matiere.html', context)
-
 
 @login_required
 def supprimer_matiere(request, matiere_id):
@@ -3720,7 +3677,6 @@ def supprimer_matiere(request, matiere_id):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
-
 @login_required
 def charger_matieres_defaut(request, classe_id):
     """Charger les matières par défaut pour une classe"""
@@ -3753,19 +3709,16 @@ def charger_matieres_defaut(request, classe_id):
     
     return redirect('notes:gerer_matieres')
 
-
 @login_required
 def gerer_evaluations(request):
     """Gérer les évaluations"""
     return render(request, 'notes/gerer_evaluations.html', {'titre_page': 'Gestion des Évaluations'})
-
 
 @login_required
 def creer_evaluation(request):
     """Créer une évaluation"""
     messages.info(request, 'Fonction en cours de développement')
     return redirect('notes:gerer_evaluations')
-
 
 @login_required
 def gerer_eleves(request):
@@ -3881,7 +3834,6 @@ def gerer_eleves(request):
     }
     
     return render(request, 'notes/gerer_eleves.html', context)
-
 
 @login_required
 def saisir_notes(request):
@@ -4080,7 +4032,6 @@ def saisir_notes(request):
     
     return render(request, 'notes/saisir_notes.html', context)
 
-
 @login_required
 def liste_saisie_pdf(request):
     """Générer un PDF de la liste de saisie des notes"""
@@ -4210,7 +4161,6 @@ def liste_saisie_pdf(request):
     response['Content-Disposition'] = f'inline; filename="liste_saisie_{classe.nom}_{matiere.code}.pdf"'
     
     return response
-
 
 @login_required
 def sauvegarder_notes(request):
@@ -4401,7 +4351,6 @@ def sauvegarder_notes(request):
         logger.error(f"Erreur lors de la sauvegarde des notes: {str(e)}")
         return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
 
-
 @login_required
 def supprimer_notes(request):
     """Supprimer les notes d'une évaluation ou d'une période spécifique"""
@@ -4463,7 +4412,6 @@ def supprimer_notes(request):
     except Exception as e:
         logger.error(f"Erreur lors de la suppression des notes: {str(e)}")
         return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
-
 
 @login_required
 def consulter_notes(request):
@@ -4539,9 +4487,8 @@ def consulter_notes(request):
                 for matiere in matieres:
                     # Récupérer toutes les évaluations de cette matière
                     evaluations_qs = Evaluation.objects.filter(matiere=matiere)
-#                     if periode_classement:
+                    if periode_classement:
                         evaluations_qs = evaluations_qs.filter(periode=periode_classement)
-                    evaluations = evaluations_qs.order_by('periode', 'date_evaluation')
                     
                     notes_matiere = {
                         'evaluations': [],
@@ -4553,7 +4500,7 @@ def consulter_notes(request):
                     total_pondere = Decimal('0')
                     total_coef_eval = Decimal('0')
                     
-                    for evaluation in evaluations:
+                    for evaluation in evaluations_qs:
                         try:
                             note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                             notes_matiere['evaluations'].append(evaluation)
@@ -4654,12 +4601,10 @@ def consulter_notes(request):
     
     return render(request, 'notes/consulter_notes.html', context)
 
-
 @login_required
 def bulletin_guineen(request):
     """Bulletin guinéen"""
     return render(request, 'notes/bulletin_guineen.html', {'titre_page': 'Bulletin Guinéen'})
-
 
 @login_required
 def bulletin_dynamique(request):
@@ -4823,7 +4768,7 @@ def bulletin_dynamique(request):
                     total_compo = Decimal('0')
                     count_compo = 0
                     
-                    for evaluation in evaluations:
+                    for evaluation in evaluations_qs:
                         try:
                             note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
                             if note_obj.note is not None and not note_obj.absent:
@@ -5016,7 +4961,6 @@ def bulletin_dynamique(request):
     
     return render(request, 'notes/bulletin_dynamique.html', context)
 
-
 @login_required
 def bulletin_dynamique_pdf(request):
     """Générer le bulletin dynamique en PDF"""
@@ -5105,7 +5049,7 @@ def bulletin_dynamique_pdf(request):
         total_compo = Decimal('0')
         count_compo = 0
         
-        for evaluation in evaluations:
+        for evaluation in evaluations_qs:
             try:
                 note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
                 if note_obj.note is not None and not note_obj.absent:
@@ -5216,12 +5160,10 @@ def bulletin_dynamique_pdf(request):
         # En cas d'erreur, retourner un message d'erreur
         return HttpResponse(f"Erreur lors de la génération du PDF: {str(e)}<br><br><a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a>", status=500)
 
-
 @login_required
 def saisie_notes_simple(request):
     """Saisie notes simple"""
     return render(request, 'notes/saisie_notes_simple.html', {'titre_page': 'Saisie Notes Simple'})
-
 
 @login_required
 def sauvegarder_notes_guineen(request):
@@ -5229,13 +5171,11 @@ def sauvegarder_notes_guineen(request):
     from django.http import JsonResponse
     return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
 
-
 @login_required
 def sauvegarder_appreciations_maternelle(request):
     """Sauvegarder appréciations maternelle"""
     from django.http import JsonResponse
     return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
-
 
 @login_required
 def bulletins_dynamiques_classe_pdf(request):
@@ -5678,7 +5618,7 @@ def bulletins_dynamiques_classe_pdf(request):
             total_compo = Decimal('0')
             count_compo = 0
             
-            for evaluation in evaluations:
+            for evaluation in evaluations_qs:
                 try:
                     note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                     if note_obj.note is not None and not note_obj.absent:
@@ -5812,7 +5752,7 @@ def bulletins_dynamiques_classe_pdf(request):
             total_compo = Decimal('0')
             count_compo = 0
             
-            for evaluation in evaluations:
+            for evaluation in evaluations_qs:
                 try:
                     note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                     if note_obj.note is not None and not note_obj.absent:
