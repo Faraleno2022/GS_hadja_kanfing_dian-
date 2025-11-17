@@ -4538,7 +4538,7 @@ def consulter_notes(request):
                 for matiere in matieres:
                     # Récupérer toutes les évaluations de cette matière
                     evaluations_qs = Evaluation.objects.filter(matiere=matiere)
-                    if periode_classement:
+#                     if periode_classement:
                         evaluations_qs = evaluations_qs.filter(periode=periode_classement)
                     evaluations = evaluations_qs.order_by('periode', 'date_evaluation')
                     
@@ -4637,6 +4637,7 @@ def consulter_notes(request):
         evaluations_par_matiere[matiere.id] = Evaluation.objects.filter(
             matiere=matiere
         ).order_by('periode', 'date_evaluation')
+    periode_classement = periodes_disponibles[0] if periodes_disponibles else None
     
     context = {
         'titre_page': 'Consultation des Notes',
