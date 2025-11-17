@@ -632,17 +632,14 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     c.setFont('Helvetica-Bold', 14)
     c.drawCentredString(center_x, y - 8, school_name)
     
-    # Contacts
+    # Contacts (sans l'adresse)
     c.setFont('Helvetica', 8)
     c.setFillGray(0.3)
-    adresse = getattr(ecole, 'adresse', None) or ''
     telephone = getattr(ecole, 'telephone', None) or ''
     email = getattr(ecole, 'email', None) or ''
     
     line_y = y - 22
-    if adresse:
-        c.drawCentredString(center_x, line_y, f"Adresse: {adresse}")
-        line_y -= 10
+    # Adresse supprimée sur demande de l'utilisateur
     if telephone or email:
         contacts = []
         if telephone:
