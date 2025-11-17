@@ -4531,6 +4531,8 @@ def consulter_notes(request):
             # Pour chaque élève, récupérer toutes ses notes pour toutes les matières
             for eleve in eleves:
                 notes_par_matiere = {}
+                somme_moy_coef = Decimal('0')
+                somme_coef = Decimal('0')
                 
                 for matiere in matieres:
                     # Récupérer toutes les évaluations de cette matière
@@ -4542,8 +4544,9 @@ def consulter_notes(request):
                         'moyenne': None
                     }
                     
-                    total = Decimal('0')
-                    count = 0
+                    # Calculer la moyenne pondérée par coefficient d'évaluation
+                    total_pondere = Decimal('0')
+                    total_coef_eval = Decimal('0')
                     
                     for evaluation in evaluations:
                         try:
@@ -4554,9 +4557,10 @@ def consulter_notes(request):
                                 'note': note_obj.note,
                                 'absent': note_obj.absent,
                             })
-                            if note_obj.note is not None:
-                                total += Decimal(str(note_obj.note))
-                                count += 1
+                            if note_obj.note is not None and not note_obj.absent:
+                                coef_eval = Decimal(str(evaluation.coefficient or 1))
+                                total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                                total_coef_eval += coef_eval
                         except NoteEleve.DoesNotExist:
                             notes_matiere['evaluations'].append(evaluation)
                             notes_matiere['notes'].append({
@@ -4565,19 +4569,58 @@ def consulter_notes(request):
                                 'absent': False,
                             })
                     
-                    # Calculer la moyenne de la matière
-                    if count > 0:
-                        notes_matiere['moyenne'] = round(float(total / count), 2)
+                    # Calculer la moyenne pondérée de la matière
+                    if total_coef_eval > 0:
+                        moyenne_matiere = total_pondere / total_coef_eval
+                        notes_matiere['moyenne'] = round(float(moyenne_matiere), 2)
+                        
+                        # Ajouter à la moyenne générale pondérée par coefficient de matière
+                        coef_matiere = Decimal(str(matiere.coefficient or 1))
+                        somme_moy_coef += moyenne_matiere * coef_matiere
+                        somme_coef += coef_matiere
                     
                     notes_par_matiere[matiere.id] = notes_matiere
+                
+                # Calculer la moyenne générale
+                moyenne_generale = None
+                if somme_coef > 0:
+                    moyenne_generale = round(float(somme_moy_coef / somme_coef), 2)
                 
                 eleves_toutes_notes.append({
                     'eleve': eleve,
                     'notes_par_matiere': notes_par_matiere,
+                    'moyenne_generale': moyenne_generale,
                 })
                 
         except ClasseEleve.DoesNotExist:
             pass
+    
+    # Calculer le classement (trier par moyenne générale décroissante)
+    eleves_avec_moyenne = [e for e in eleves_toutes_notes if e['moyenne_generale'] is not None]
+    eleves_sans_moyenne = [e for e in eleves_toutes_notes if e['moyenne_generale'] is None]
+    
+    # Trier les élèves avec moyenne par moyenne décroissante
+    eleves_avec_moyenne.sort(key=lambda x: x['moyenne_generale'], reverse=True)
+    
+    # Attribuer les rangs (gestion des ex-aequo)
+    prev_moyenne = None
+    prev_rang = None
+    for idx, eleve_data in enumerate(eleves_avec_moyenne, start=1):
+        moyenne = eleve_data['moyenne_generale']
+        if prev_moyenne is not None and abs(moyenne - prev_moyenne) < 0.01:
+            # Ex-aequo : même rang que le précédent
+            eleve_data['rang'] = prev_rang
+        else:
+            eleve_data['rang'] = idx
+            prev_rang = idx
+        prev_moyenne = moyenne
+    
+    # Les élèves sans moyenne ont le rang '-'
+    for eleve_data in eleves_sans_moyenne:
+        eleve_data['rang'] = '-'
+    
+    # Reconstruire la liste avec classement (avec moyenne d'abord, puis sans)
+    eleves_toutes_notes = eleves_avec_moyenne + eleves_sans_moyenne
     
     # Récupérer toutes les évaluations pour les en-têtes
     evaluations_par_matiere = {}

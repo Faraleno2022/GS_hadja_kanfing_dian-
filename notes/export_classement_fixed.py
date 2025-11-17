@@ -10,7 +10,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
+from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, NoteEleve, Evaluation
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
@@ -283,34 +283,66 @@ def _generer_classement_matiere_fixed(eleves, classe_note, matiere_id, type_note
         absent = False
         pas_de_notes = True
         
-        # Récupérer la note selon le type
-        if type_note == 'mensuelle' and periode:
-            try:
-                note_obj = NoteMensuelle.objects.get(
-                    eleve=eleve,
-                    matiere=matiere,
-                    mois=periode,
-                    annee_scolaire=classe_note.annee_scolaire
-                )
-                note_value = float(note_obj.note) if note_obj.note else None
-                absent = note_obj.absent
-                pas_de_notes = False
-            except NoteMensuelle.DoesNotExist:
-                pas_de_notes = True
+        # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
+        evaluations = Evaluation.objects.filter(matiere=matiere)
+        if periode:
+            evaluations = evaluations.filter(periode=periode)
         
-        elif type_note == 'composition' and periode:
-            try:
-                note_obj = CompositionNote.objects.get(
-                    eleve=eleve,
-                    matiere=matiere,
-                    periode=periode,
-                    annee_scolaire=classe_note.annee_scolaire
-                )
-                note_value = float(note_obj.note) if note_obj.note else None
-                absent = note_obj.absent
+        if evaluations.exists():
+            # Calculer la moyenne pondérée des évaluations pour cette matière
+            total_pondere = Decimal('0')
+            total_coef_eval = Decimal('0')
+            notes_trouvees = False
+            toutes_absentes = True
+            
+            for evaluation in evaluations:
+                try:
+                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                    if note_obj.absent:
+                        toutes_absentes = True
+                    if note_obj.note is not None and not note_obj.absent:
+                        coef_eval = Decimal(str(evaluation.coefficient or 1))
+                        total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                        total_coef_eval += coef_eval
+                        notes_trouvees = True
+                        toutes_absentes = False
+                except NoteEleve.DoesNotExist:
+                    pass
+            
+            if total_coef_eval > 0:
+                note_value = float(total_pondere / total_coef_eval)
+                absent = toutes_absentes and not notes_trouvees
                 pas_de_notes = False
-            except CompositionNote.DoesNotExist:
-                pas_de_notes = True
+        
+        # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
+        if note_value is None and pas_de_notes:
+            if type_note == 'mensuelle' and periode:
+                try:
+                    note_obj = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=periode,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                    note_value = float(note_obj.note) if note_obj.note else None
+                    absent = note_obj.absent
+                    pas_de_notes = False
+                except NoteMensuelle.DoesNotExist:
+                    pas_de_notes = True
+            
+            elif type_note == 'composition' and periode:
+                try:
+                    note_obj = CompositionNote.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        periode=periode,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                    note_value = float(note_obj.note) if note_obj.note else None
+                    absent = note_obj.absent
+                    pas_de_notes = False
+                except CompositionNote.DoesNotExist:
+                    pas_de_notes = True
         
         classement_data.append({
             'matricule': eleve.matricule or 'N/A',
@@ -349,36 +381,64 @@ def _generer_classement_general_fixed(eleves, classe_note, type_note, periode):
             note_value = None
             coefficient = matiere.coefficient or Decimal('1')
             
-            # Récupérer la note selon le type
-            if type_note == 'mensuelle' and periode:
-                try:
-                    note_obj = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=periode,
-                        annee_scolaire=classe_note.annee_scolaire
-                    )
-                    if not note_obj.absent and note_obj.note:
-                        note_value = note_obj.note
-                        toutes_absentes = False
-                        nb_notes_trouvees += 1
-                except NoteMensuelle.DoesNotExist:
-                    pass
+            # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
+            evaluations = Evaluation.objects.filter(matiere=matiere)
+            if periode:
+                evaluations = evaluations.filter(periode=periode)
             
-            elif type_note == 'composition' and periode:
-                try:
-                    note_obj = CompositionNote.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        periode=periode,
-                        annee_scolaire=classe_note.annee_scolaire
-                    )
-                    if not note_obj.absent and note_obj.note:
-                        note_value = note_obj.note
-                        toutes_absentes = False
-                        nb_notes_trouvees += 1
-                except CompositionNote.DoesNotExist:
-                    pass
+            if evaluations.exists():
+                # Calculer la moyenne pondérée des évaluations pour cette matière
+                total_pondere = Decimal('0')
+                total_coef_eval = Decimal('0')
+                notes_trouvees = False
+                
+                for evaluation in evaluations:
+                    try:
+                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                        if note_obj.note is not None and not note_obj.absent:
+                            coef_eval = Decimal(str(evaluation.coefficient or 1))
+                            total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                            total_coef_eval += coef_eval
+                            notes_trouvees = True
+                            nb_notes_trouvees += 1
+                    except NoteEleve.DoesNotExist:
+                        pass
+                
+                if total_coef_eval > 0:
+                    note_value = total_pondere / total_coef_eval
+                    toutes_absentes = False
+            
+            # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
+            if note_value is None:
+                if type_note == 'mensuelle' and periode:
+                    try:
+                        note_obj = NoteMensuelle.objects.get(
+                            eleve=eleve,
+                            matiere=matiere,
+                            mois=periode,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                        if not note_obj.absent and note_obj.note:
+                            note_value = note_obj.note
+                            toutes_absentes = False
+                            nb_notes_trouvees += 1
+                    except NoteMensuelle.DoesNotExist:
+                        pass
+                
+                elif type_note == 'composition' and periode:
+                    try:
+                        note_obj = CompositionNote.objects.get(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                        if not note_obj.absent and note_obj.note:
+                            note_value = note_obj.note
+                            toutes_absentes = False
+                            nb_notes_trouvees += 1
+                    except CompositionNote.DoesNotExist:
+                        pass
             
             if note_value is not None:
                 total_notes += note_value * coefficient
