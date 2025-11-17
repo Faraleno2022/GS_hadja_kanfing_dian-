@@ -158,14 +158,13 @@ def _draw_school_header(c, ecole, *, y_start, margin, page_width):
         # keep inside box: reduce available width a bit
         avail_w = page_width - 2*margin - 20
         line_y = draw_wrapped_centered(f"Adresse: {adresse}", line_y, avail_w)
-    contacts = []
+    # Afficher téléphone et email sur des lignes séparées pour éviter le débordement
     if telephone:
-        contacts.append(f"Tél: {telephone}")
-    if email:
-        contacts.append(f"Email: {email}")
-    if contacts:
         avail_w = page_width - 2*margin - 20
-        line_y = draw_wrapped_centered("  |  ".join(contacts), line_y, avail_w)
+        line_y = draw_wrapped_centered(f"Tél: {telephone}", line_y, avail_w)
+    if email:
+        avail_w = page_width - 2*margin - 20
+        line_y = draw_wrapped_centered(f"Email: {email}", line_y, avail_w)
     if directeur:
         c.drawCentredString(center_x, line_y, f"Directeur: {directeur}")
     # Rétablir la couleur par défaut

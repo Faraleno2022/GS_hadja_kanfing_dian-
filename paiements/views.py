@@ -2357,13 +2357,12 @@ def generer_recu_pdf(request, paiement_id:int):
                 if adr:
                     c.drawString(info_x, y_info, f"Adresse: {adr}")
                     y_info -= 12
-                line2 = ""
+                # Afficher téléphone et email sur des lignes séparées
                 if tel:
-                    line2 += f"Tél: {tel}  "
+                    c.drawString(info_x, y_info, f"Tél: {tel}")
+                    y_info -= 12
                 if email:
-                    line2 += f"Email: {email}"
-                if line2:
-                    c.drawString(info_x, y_info, line2.strip())
+                    c.drawString(info_x, y_info, f"Email: {email}")
                     y_info -= 12
                 if dirc:
                     c.drawString(info_x, y_info, f"Directeur: {dirc}")
@@ -2395,13 +2394,12 @@ def generer_recu_pdf(request, paiement_id:int):
                 if adr:
                     c.drawString(left, top, f"Adresse: {adr}")
                     top -= 12
-                line2 = ""
+                # Afficher téléphone et email sur des lignes séparées
                 if tel:
-                    line2 += f"Tél: {tel}  "
+                    c.drawString(left, top, f"Tél: {tel}")
+                    top -= 12
                 if email:
-                    line2 += f"Email: {email}"
-                if line2:
-                    c.drawString(left, top, line2.strip())
+                    c.drawString(left, top, f"Email: {email}")
                     top -= 12
                 if dirc:
                     c.drawString(left, top, f"Directeur: {dirc}")
@@ -2432,13 +2430,12 @@ def generer_recu_pdf(request, paiement_id:int):
             if adr:
                 c.drawString(left, top, f"Adresse: {adr}")
                 top -= 12
-            line2 = ""
+            # Afficher téléphone et email sur des lignes séparées
             if tel:
-                line2 += f"Tél: {tel}  "
+                c.drawString(left, top, f"Tél: {tel}")
+                top -= 12
             if email:
-                line2 += f"Email: {email}"
-            if line2:
-                c.drawString(left, top, line2.strip())
+                c.drawString(left, top, f"Email: {email}")
                 top -= 12
             if dirc:
                 c.drawString(left, top, f"Directeur: {dirc}")
@@ -2469,13 +2466,12 @@ def generer_recu_pdf(request, paiement_id:int):
         if adr:
             c.drawString(left, top, f"Adresse: {adr}")
             top -= 12
-        line2 = ""
+        # Afficher téléphone et email sur des lignes séparées
         if tel:
-            line2 += f"Tél: {tel}  "
+            c.drawString(left, top, f"Tél: {tel}")
+            top -= 12
         if email:
-            line2 += f"Email: {email}"
-        if line2:
-            c.drawString(left, top, line2.strip())
+            c.drawString(left, top, f"Email: {email}")
             top -= 12
         if dirc:
             c.drawString(left, top, f"Directeur: {dirc}")

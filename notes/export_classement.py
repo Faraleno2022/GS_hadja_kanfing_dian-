@@ -640,13 +640,13 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     
     line_y = y - 22
     # Adresse supprimée sur demande de l'utilisateur
-    if telephone or email:
-        contacts = []
-        if telephone:
-            contacts.append(f"Tél: {telephone}")
-        if email:
-            contacts.append(f"Email: {email}")
-        c.drawCentredString(center_x, line_y, "  |  ".join(contacts))
+    # Afficher téléphone et email sur des lignes séparées pour éviter le débordement
+    if telephone:
+        c.drawCentredString(center_x, line_y, f"Tél: {telephone}")
+        line_y -= 12
+    if email:
+        c.drawCentredString(center_x, line_y, f"Email: {email}")
+        line_y -= 12
     
     c.setFillGray(0.0)
     
