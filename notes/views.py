@@ -4482,6 +4482,7 @@ def consulter_notes(request):
     
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
+    periode_classement = request.GET.get('periode', '')
     
     classe_selectionnee = None
     matieres = []
