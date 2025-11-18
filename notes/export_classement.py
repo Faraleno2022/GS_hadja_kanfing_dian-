@@ -451,14 +451,19 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 for evaluation in evaluations:
                     try:
                         note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                        if note_obj.note is not None and not note_obj.absent:
-                            coef_eval = Decimal(str(evaluation.coefficient or 1))
+                        coef_eval = Decimal(str(evaluation.coefficient or 1))
+                        if note_obj.absent or note_obj.note is None:
+                            # Absence = 0
+                            total_pondere += Decimal('0') * coef_eval
+                        else:
                             total_pondere += Decimal(str(note_obj.note)) * coef_eval
-                            total_coef_eval += coef_eval
                             notes_trouvees = True
                             nb_notes_trouvees += 1
+                        total_coef_eval += coef_eval
                     except NoteEleve.DoesNotExist:
-                        pass
+                        coef_eval = Decimal(str(evaluation.coefficient or 1))
+                        total_pondere += Decimal('0') * coef_eval
+                        total_coef_eval += coef_eval
                 
                 if total_coef_eval > 0:
                     note_value = total_pondere / total_coef_eval
@@ -494,9 +499,11 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                     except CompositionNote.DoesNotExist:
                         pass
             
-            if note_value is not None:
-                total_notes += note_value * coefficient
-                total_coefficients += coefficient
+            # Toujours ajouter la matière à la moyenne générale (même si absence = 0)
+            if note_value is None:
+                note_value = Decimal('0')
+            total_notes += note_value * coefficient
+            total_coefficients += coefficient
         
         # Calculer la moyenne générale
         if total_coefficients > 0:
