@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 
 def calculer_moyenne_devoirs(notes: List[Decimal]) -> Optional[Decimal]:
     """
-    Calcule la moyenne des devoirs (exclut les absents/None)
+    Calcule la moyenne des devoirs (compte les absents comme 0)
     
     Args:
         notes: Liste des notes des devoirs
@@ -15,12 +15,13 @@ def calculer_moyenne_devoirs(notes: List[Decimal]) -> Optional[Decimal]:
     Returns:
         Moyenne arrondie à 2 décimales ou None si aucune note
     """
-    notes_valides = [n for n in notes if n is not None]
-    
-    if not notes_valides:
+    if not notes:
         return None
     
-    moyenne = sum(notes_valides) / len(notes_valides)
+    # Convertir les None (absents) en 0
+    notes_avec_absents = [n if n is not None else Decimal('0') for n in notes]
+    
+    moyenne = sum(notes_avec_absents) / len(notes_avec_absents)
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
@@ -65,7 +66,7 @@ def calculer_moyenne_periode(moyenne_cours: Optional[Decimal],
 
 def calculer_moyenne_annuelle(moyennes_periodes: List[Decimal]) -> Optional[Decimal]:
     """
-    Calcule la moyenne annuelle d'une matière
+    Calcule la moyenne annuelle d'une matière (compte les périodes manquantes comme 0)
     
     Args:
         moyennes_periodes: Liste des moyennes de chaque période
@@ -73,12 +74,13 @@ def calculer_moyenne_annuelle(moyennes_periodes: List[Decimal]) -> Optional[Deci
     Returns:
         Moyenne annuelle ou None
     """
-    moyennes_valides = [m for m in moyennes_periodes if m is not None]
-    
-    if not moyennes_valides:
+    if not moyennes_periodes:
         return None
     
-    moyenne = sum(moyennes_valides) / len(moyennes_valides)
+    # Convertir les None (périodes manquantes) en 0
+    moyennes_avec_absents = [m if m is not None else Decimal('0') for m in moyennes_periodes]
+    
+    moyenne = sum(moyennes_avec_absents) / len(moyennes_avec_absents)
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
