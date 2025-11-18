@@ -35,6 +35,7 @@ class Profil(models.Model):
     peut_ajouter_paiements = models.BooleanField(default=True, verbose_name="Peut ajouter des paiements")
     peut_ajouter_depenses = models.BooleanField(default=True, verbose_name="Peut ajouter des dépenses")
     peut_ajouter_enseignants = models.BooleanField(default=True, verbose_name="Peut ajouter des enseignants")
+    peut_importer_eleves = models.BooleanField(default=False, verbose_name="Peut importer des élèves")
     peut_modifier_paiements = models.BooleanField(default=True, verbose_name="Peut modifier les paiements")
     peut_modifier_depenses = models.BooleanField(default=True, verbose_name="Peut modifier les dépenses")
     peut_supprimer_paiements = models.BooleanField(default=False, verbose_name="Peut supprimer les paiements")

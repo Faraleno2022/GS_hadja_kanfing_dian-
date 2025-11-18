@@ -30,7 +30,14 @@ def importer_eleves(request):
     Vue principale pour importer des élèves
     """
     # Vérifier les permissions
-    if not request.user.is_staff and not request.user.groups.filter(name__in=['Administrateurs', 'Directeurs']).exists():
+    peut_importer = (
+        request.user.is_staff or 
+        request.user.is_superuser or
+        request.user.groups.filter(name__in=['Administrateurs', 'Directeurs']).exists() or
+        (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves)
+    )
+    
+    if not peut_importer:
         messages.error(request, "Vous n'avez pas la permission d'importer des élèves.")
         return redirect('eleves:liste_eleves')
     

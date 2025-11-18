@@ -1,0 +1,156 @@
+═══════════════════════════════════════════════════════════════════════════════
+        ✅ MODIFICATION TERMINÉE - Adresse supprimée du PDF
+                      17 Novembre 2024 - 08:55
+═══════════════════════════════════════════════════════════════════════════════
+
+MODIFICATION EFFECTUÉE :
+════════════════════════
+
+✅ L'adresse de l'école a été supprimée du PDF du classement
+✅ Modification poussée sur GitHub
+✅ Prêt pour le déploiement
+
+COMMIT GITHUB :
+═══════════════
+
+ID      : 1a2e141
+Message : Fix: Suppression de l'adresse dans le PDF du classement
+Branch  : main → origin/main
+Fichiers: 3 fichiers modifiés
+Lignes  : +195 / -5
+
+AVANT LA MODIFICATION :
+═══════════════════════
+
+Le PDF affichait :
+┌──────────────────────────────────────────────────┐
+│ [LOGO] GROUPE SCOLAIRE HADJA KANFING DIAN        │
+│        Adresse: RÉPUBLIQUE DE GUINÉE             │
+│        VILLE DE CONAKRY                          │
+│        COMMUNE DE SONFONIA                       │
+│        QUARTIER: SONFONIA CENTRE II...           │
+│        Tél: +224 XXX | Email: xxx@xxx           │
+└──────────────────────────────────────────────────┘
+
+⚠️  L'adresse prenait trop de place et était difficile à lire
+
+APRÈS LA MODIFICATION :
+═══════════════════════
+
+Le PDF affiche maintenant :
+┌──────────────────────────────────────────────────┐
+│ [LOGO] GROUPE SCOLAIRE HADJA KANFING DIAN        │
+│        Tél: +224 XXX | Email: xxx@xxx           │
+│                                                  │
+└──────────────────────────────────────────────────┘
+
+✅ Plus épuré et professionnel
+✅ Information de contact conservée
+
+INFORMATIONS CONSERVÉES :
+═════════════════════════
+
+Dans l'en-tête du PDF, on voit toujours :
+✅ République de Guinée (en haut)
+✅ Devise colorée (Travail - Justice - Solidarité)
+✅ Ministère de l'Enseignement
+✅ IRE, DPE, DESEE
+✅ Logo de l'école (haut gauche)
+✅ Nom de l'école en MAJUSCULES
+✅ Téléphone
+✅ Email
+✅ Logo en filigrane (fond transparent)
+
+❌ Adresse (supprimée)
+
+FICHIERS MODIFIÉS :
+═══════════════════
+
+1. notes/export_classement.py
+   - Ligne 635-649 : Suppression de l'affichage de l'adresse
+   - Conservation du téléphone et email
+
+2. NOTE_SUPPRESSION_ADRESSE_PDF.txt (créé)
+   - Documentation de la modification
+
+3. test_pdf_sans_adresse.py (créé)
+   - Script de test pour vérifier le changement
+
+POUR DÉPLOYER EN PRODUCTION :
+══════════════════════════════
+
+Connectez-vous au serveur et exécutez :
+
+ssh myschoolgn@www.myschoolgn.space
+cd /home/myschoolgn/GS_hadja_kanfing_dian-
+git pull origin main
+touch ecole_moderne/wsgi.py
+
+Puis testez :
+https://www.myschoolgn.space/notes/consulter/
+→ Exporter un classement en PDF
+→ Vérifier que l'adresse n'apparaît plus
+
+POUR TESTER EN LOCAL :
+═══════════════════════
+
+python test_pdf_sans_adresse.py
+
+Cela génère : test_pdf_sans_adresse.pdf
+→ Ouvrir et vérifier que l'adresse n'apparaît pas
+
+VÉRIFICATION SUR GITHUB :
+═════════════════════════
+
+1. Aller sur : https://github.com/Faraleno2022/GS_hadja_kanfing_dian-
+2. Voir le dernier commit : 1a2e141
+3. Cliquer dessus pour voir les modifications
+4. notes/export_classement.py : lignes supprimées marquées en rouge
+
+AVANTAGES DE CETTE MODIFICATION :
+══════════════════════════════════
+
+✅ PDF plus épuré et professionnel
+✅ En-tête moins chargé
+✅ Adresse longue supprimée (RÉPUBLIQUE DE GUINÉE■■VILLE...)
+✅ Plus de place pour le tableau du classement
+✅ Informations essentielles conservées (tél, email)
+✅ Document plus facile à lire
+✅ Impression plus claire
+
+SI BESOIN DE REMETTRE L'ADRESSE :
+══════════════════════════════════
+
+Modifier notes/export_classement.py, ligne 638-642 :
+
+Ajouter ces lignes :
+    adresse = getattr(ecole, 'adresse', None) or ''
+    if adresse:
+        c.drawCentredString(center_x, line_y, f"Adresse: {adresse}")
+        line_y -= 10
+
+Puis :
+    git add notes/export_classement.py
+    git commit -m "Restore: Remise de l'adresse dans le PDF"
+    git push origin main
+
+PROCHAINES ÉTAPES :
+═══════════════════
+
+1. ✅ Modification faite → TERMINÉ
+2. ✅ GitHub mis à jour → TERMINÉ
+3. ⏳ Déployer en production → À FAIRE
+4. ⏳ Tester en production → À FAIRE
+
+COMMANDE RAPIDE POUR DÉPLOYER :
+════════════════════════════════
+
+ssh myschoolgn@www.myschoolgn.space "cd /home/myschoolgn/GS_hadja_kanfing_dian- && git pull origin main && touch ecole_moderne/wsgi.py"
+
+═══════════════════════════════════════════════════════════════════════════════
+     🎉 MODIFICATION TERMINÉE ET SUR GITHUB - Prêt pour production 🎉
+═══════════════════════════════════════════════════════════════════════════════
+
+Résumé : L'adresse longue et complexe a été supprimée du PDF du classement.
+         Seuls le téléphone et l'email restent affichés dans l'en-tête.
+         Le PDF est maintenant plus épuré et professionnel.
