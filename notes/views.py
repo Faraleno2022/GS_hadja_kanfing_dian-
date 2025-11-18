@@ -3261,7 +3261,7 @@ def statistiques(request):
                         total_compo = Decimal('0')
                         count_compo = 0
                         
-                        for evaluation in evaluations_qs:
+                        for evaluation in evaluations:
                             try:
                                 note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                                 if note_obj.note is not None and not note_obj.absent:
@@ -4485,9 +4485,9 @@ def consulter_notes(request):
                 
                 for matiere in matieres:
                     # Récupérer toutes les évaluations de cette matière
-                    evaluations_qs = Evaluation.objects.filter(matiere=matiere)
+                    evaluations = Evaluation.objects.filter(matiere=matiere)
                     if periode_classement:
-                        evaluations_qs = evaluations_qs.filter(periode=periode_classement)
+                        evaluations = evaluations.filter(periode=periode_classement)
                     
                     notes_matiere = {
                         'evaluations': [],
@@ -4499,7 +4499,7 @@ def consulter_notes(request):
                     total_pondere = Decimal('0')
                     total_coef_eval = Decimal('0')
                     
-                    for evaluation in evaluations_qs:
+                    for evaluation in evaluations:
                         try:
                             note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                             notes_matiere['evaluations'].append(evaluation)
@@ -4767,7 +4767,7 @@ def bulletin_dynamique(request):
                     total_compo = Decimal('0')
                     count_compo = 0
                     
-                    for evaluation in evaluations_qs:
+                    for evaluation in evaluations:
                         try:
                             note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
                             if note_obj.note is not None and not note_obj.absent:
@@ -5048,7 +5048,7 @@ def bulletin_dynamique_pdf(request):
         total_compo = Decimal('0')
         count_compo = 0
         
-        for evaluation in evaluations_qs:
+        for evaluation in evaluations:
             try:
                 note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
                 if note_obj.note is not None and not note_obj.absent:
@@ -5617,7 +5617,7 @@ def bulletins_dynamiques_classe_pdf(request):
             total_compo = Decimal('0')
             count_compo = 0
             
-            for evaluation in evaluations_qs:
+            for evaluation in evaluations:
                 try:
                     note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                     if note_obj.note is not None and not note_obj.absent:
@@ -5751,7 +5751,7 @@ def bulletins_dynamiques_classe_pdf(request):
             total_compo = Decimal('0')
             count_compo = 0
             
-            for evaluation in evaluations_qs:
+            for evaluation in evaluations:
                 try:
                     note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
                     if note_obj.note is not None and not note_obj.absent:
