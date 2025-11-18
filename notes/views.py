@@ -2212,9 +2212,14 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
                     'coef_matiere': matiere.coefficient,
                     'notes_ponderees': []  # (note, coef_eval)
                 }
-            # Stocker la note avec son coefficient d'évaluation
-            if note_obj.note is not None:
-                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            # Stocker la note avec son coefficient d'évaluation (absence = 0)
+            coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            if note_obj.absent or note_obj.note is None:
+                # Absence = 0
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal('0'), coef_eval)
+                )
+            else:
                 matieres_notes[matiere.id]['notes_ponderees'].append(
                     (Decimal(note_obj.note), coef_eval)
                 )
@@ -2297,9 +2302,14 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
                     'coef_matiere': matiere.coefficient,
                     'notes_ponderees': []  # (note, coef_eval)
                 }
-            # Stocker la note avec son coefficient d'évaluation
-            if note_obj.note is not None:
-                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            # Stocker la note avec son coefficient d'évaluation (absence = 0)
+            coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            if note_obj.absent or note_obj.note is None:
+                # Absence = 0
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal('0'), coef_eval)
+                )
+            else:
                 matieres_notes[matiere.id]['notes_ponderees'].append(
                     (Decimal(note_obj.note), coef_eval)
                 )
@@ -2446,9 +2456,14 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
                     'coef_matiere': matiere.coefficient,
                     'notes_ponderees': []  # (note, coef_eval)
                 }
-            # Stocker la note avec son coefficient d'évaluation
-            if note_obj.note is not None:
-                coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            # Stocker la note avec son coefficient d'évaluation (absence = 0)
+            coef_eval = Decimal(note_obj.evaluation.coefficient or 1)
+            if note_obj.absent or note_obj.note is None:
+                # Absence = 0
+                matieres_notes[matiere.id]['notes_ponderees'].append(
+                    (Decimal('0'), coef_eval)
+                )
+            else:
                 matieres_notes[matiere.id]['notes_ponderees'].append(
                     (Decimal(note_obj.note), coef_eval)
                 )
@@ -4508,10 +4523,14 @@ def consulter_notes(request):
                                 'note': note_obj.note,
                                 'absent': note_obj.absent,
                             })
-                            if note_obj.note is not None and not note_obj.absent:
-                                coef_eval = Decimal(str(evaluation.coefficient or 1))
+                            # Compter les absences comme 0
+                            coef_eval = Decimal(str(evaluation.coefficient or 1))
+                            if note_obj.absent or note_obj.note is None:
+                                # Absence = 0
+                                total_pondere += Decimal('0') * coef_eval
+                            else:
                                 total_pondere += Decimal(str(note_obj.note)) * coef_eval
-                                total_coef_eval += coef_eval
+                            total_coef_eval += coef_eval
                         except NoteEleve.DoesNotExist:
                             notes_matiere['evaluations'].append(evaluation)
                             notes_matiere['notes'].append({
@@ -4519,6 +4538,10 @@ def consulter_notes(request):
                                 'note': None,
                                 'absent': False,
                             })
+                            # Pas de note = 0
+                            coef_eval = Decimal(str(evaluation.coefficient or 1))
+                            total_pondere += Decimal('0') * coef_eval
+                            total_coef_eval += coef_eval
                     
                     # Calculer la moyenne pondérée de la matière
                     if total_coef_eval > 0:
