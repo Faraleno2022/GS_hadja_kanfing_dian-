@@ -1,0 +1,69 @@
+================================================================================
+GUIDE RAPIDE - PERMISSION D'IMPORTATION D'ÉLÈVES POUR LES COMPTABLES
+================================================================================
+
+📋 RÉSUMÉ
+---------
+Les comptables peuvent maintenant importer des élèves depuis des fichiers Excel/CSV
+s'ils ont la permission "Peut importer des élèves" activée.
+
+🚀 ÉTAPES DE DÉPLOIEMENT
+------------------------
+
+1. CRÉER LA MIGRATION
+   $ python manage.py makemigrations utilisateurs
+
+2. APPLIQUER LA MIGRATION
+   $ python manage.py migrate utilisateurs
+
+3. ACTIVER LA PERMISSION POUR LES COMPTABLES
+
+   Option A : Tous les comptables
+   $ python activer_import_eleves_comptables.py
+
+   Option B : Un comptable spécifique
+   $ python activer_import_eleves_comptables.py username_comptable
+
+✅ VÉRIFICATION
+---------------
+
+Exécuter les tests :
+$ python test_permission_import_eleves.py
+
+Afficher l'état des permissions :
+$ python activer_import_eleves_comptables.py
+
+🔐 SÉCURITÉ
+-----------
+✓ Permission granulaire par utilisateur
+✓ Filtrage automatique par école
+✓ Validation complète des données
+✓ Traçabilité dans le journal d'activité
+
+📊 QUI PEUT IMPORTER ?
+---------------------
+✅ Administrateurs (automatique)
+✅ Directeurs (automatique)
+✅ Comptables (si permission activée)
+❌ Secrétaires
+❌ Enseignants
+❌ Surveillants
+
+🔗 FICHIERS MODIFIÉS
+--------------------
+✏️  utilisateurs/models.py
+✏️  eleves/views_import.py
+✨ activer_import_eleves_comptables.py (nouveau)
+✨ test_permission_import_eleves.py (nouveau)
+
+💡 NOTES
+-------
+- La permission par défaut est FALSE pour les nouveaux comptables
+- Peut être modifiée dans l'interface d'administration Django
+- Le script peut être exécuté plusieurs fois sans risque
+
+📞 SUPPORT
+----------
+Pour plus d'informations, voir : PERMISSION_IMPORT_ELEVES_COMPTABLES.md
+
+================================================================================
