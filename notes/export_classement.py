@@ -551,10 +551,11 @@ def _calculer_rangs(classement_data):
     rang = 1
     for i, eleve_note in enumerate(eleves_avec_notes):
         if i > 0 and eleve_note['moyenne'] == eleves_avec_notes[i-1]['moyenne']:
+            # Ex-aequo : même rang que le précédent
             eleve_note['rang'] = eleves_avec_notes[i-1]['rang']
         else:
-            eleve_note['rang'] = rang
-        rang += 1
+            # Nouveau rang : utiliser la position (i+1)
+            eleve_note['rang'] = i + 1
     
     # Marquer les élèves sans notes
     for eleve_note in eleves_sans_notes:
