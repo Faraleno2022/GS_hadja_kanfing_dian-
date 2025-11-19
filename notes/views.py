@@ -5895,15 +5895,20 @@ def bulletins_dynamiques_classe_pdf(request):
     # Calculer les rangs après avoir calculé toutes les moyennes
     all_moyennes_classe.sort(key=lambda x: x[1], reverse=True)
     rang_map = {}
+    rang_actuel = 1
     prev_moy = None
-    prev_rank = None
+    
     for idx, (eid, mg) in enumerate(all_moyennes_classe, start=1):
+        # Déterminer le rang de cet élève
         if prev_moy is not None and abs(mg - prev_moy) < 0.01:
-            rang_map[eid] = prev_rank
+            # Ex-aequo : garde le même rang que le précédent
+            pass  # rang_actuel ne change pas
         else:
-            rang_map[eid] = idx
-            prev_rank = idx
-            prev_moy = mg
+            # Nouveau rang : utilise la position réelle
+            rang_actuel = idx
+        
+        rang_map[eid] = rang_actuel
+        prev_moy = mg
     
     # Générer le HTML pour tous les bulletins
     bulletins_html = []
