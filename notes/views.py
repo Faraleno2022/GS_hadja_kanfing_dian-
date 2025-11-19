@@ -1252,6 +1252,100 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     c.save();
     return response
 
+def course_month_avg(eleve, matiere, annee_scolaire, mois):
+    """Calcule la moyenne des devoirs pour un mois donné"""
+    from django.db.models import Q
+    
+    periode_str = {
+        1: 'JANVIER', 2: 'FEVRIER', 3: 'MARS', 4: 'AVRIL',
+        5: 'MAI', 6: 'JUIN', 7: 'JUILLET', 8: 'AOUT',
+        9: 'SEPTEMBRE', 10: 'OCTOBRE', 11: 'NOVEMBRE', 12: 'DECEMBRE'
+    }.get(mois, 'OCTOBRE')
+    
+    # Récupérer les évaluations de type DEVOIR pour ce mois
+    evals = Evaluation.objects.filter(
+        matiere=matiere,
+        periode=periode_str,
+        type_evaluation__in=['DEVOIR', 'CONTROLE', 'INTERROGATION']
+    )
+    
+    total = Decimal('0')
+    count = 0
+    
+    for ev in evals:
+        try:
+            n = NoteEleve.objects.get(eleve=eleve, evaluation=ev)
+            if n.absent or n.note is None:
+                total += Decimal('0')  # Absence = 0
+                count += 1
+            else:
+                total += Decimal(str(n.note))
+                count += 1
+        except NoteEleve.DoesNotExist:
+            total += Decimal('0')  # Pas de note = 0
+            count += 1
+    
+    return (total / count).quantize(Decimal('0.01')) if count > 0 else None
+
+def compo_month_avg(eleve, matiere, annee_scolaire, mois):
+    """Calcule la moyenne de composition pour un mois donné"""
+    from django.db.models import Q
+    
+    periode_str = {
+        1: 'JANVIER', 2: 'FEVRIER', 3: 'MARS', 4: 'AVRIL',
+        5: 'MAI', 6: 'JUIN', 7: 'JUILLET', 8: 'AOUT',
+        9: 'SEPTEMBRE', 10: 'OCTOBRE', 11: 'NOVEMBRE', 12: 'DECEMBRE'
+    }.get(mois, 'OCTOBRE')
+    
+    # Récupérer les évaluations de type COMPOSITION pour ce mois
+    evals = Evaluation.objects.filter(
+        matiere=matiere,
+        periode=periode_str,
+        type_evaluation__in=['COMPOSITION', 'EXAMEN']
+    )
+    
+    total = Decimal('0')
+    count = 0
+    
+    for ev in evals:
+        try:
+            n = NoteEleve.objects.get(eleve=eleve, evaluation=ev)
+            if n.absent or n.note is None:
+                total += Decimal('0')  # Absence = 0
+                count += 1
+            else:
+                total += Decimal(str(n.note))
+                count += 1
+        except NoteEleve.DoesNotExist:
+            total += Decimal('0')  # Pas de note = 0
+            count += 1
+    
+    return (total / count).quantize(Decimal('0.01')) if count > 0 else None
+
+def monthly_avg(eleve, matiere, annee_scolaire, mois, mode='weighted'):
+    """Calcule la moyenne mensuelle (pondérée ou simple)"""
+    moy_cours = course_month_avg(eleve, matiere, annee_scolaire, mois)
+    moy_compo = compo_month_avg(eleve, matiere, annee_scolaire, mois)
+    
+    if mode == 'weighted':
+        # Formule pondérée : (moy_cours + 2 * moy_compo) / 3
+        if moy_cours is not None and moy_compo is not None:
+            return ((moy_cours + moy_compo * 2) / 3).quantize(Decimal('0.01'))
+        elif moy_compo is not None:
+            return moy_compo
+        elif moy_cours is not None:
+            return moy_cours
+    else:
+        # Moyenne simple
+        if moy_cours is not None and moy_compo is not None:
+            return ((moy_cours + moy_compo) / 2).quantize(Decimal('0.01'))
+        elif moy_compo is not None:
+            return moy_compo
+        elif moy_cours is not None:
+            return moy_cours
+    
+    return None
+
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
@@ -1284,6 +1378,58 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
         })
 
     moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
+
+    # Calcul du rang de l'élève dans la classe
+    rang_str = "-"
+    total_eleves = 0
+    if moyenne_generale is not None:
+        # Récupérer tous les élèves de la classe
+        eleves_classe = Eleve.objects.filter(classe=classe).select_related('classe')
+        moyennes_classe = []
+        
+        for e in eleves_classe:
+            somme_e = Decimal('0')
+            somme_coef_e = Decimal('0')
+            
+            for mat in matieres:
+                # Utiliser monthly_avg pour calculer la moyenne mensuelle
+                moy_mois_e = monthly_avg(e, mat, annee_scolaire, mois, mode='weighted')
+                if moy_mois_e is not None:
+                    somme_e += moy_mois_e * Decimal(mat.coefficient or 1)
+                    somme_coef_e += Decimal(mat.coefficient or 1)
+            
+            if somme_coef_e > 0:
+                moy_gen_e = (somme_e / somme_coef_e).quantize(Decimal('0.01'))
+                moyennes_classe.append((e.id, moy_gen_e))
+        
+        # Trier par moyenne décroissante
+        moyennes_classe.sort(key=lambda x: x[1], reverse=True)
+        total_eleves = len(moyennes_classe)
+        
+        # Trouver le rang avec gestion des ex-aequo
+        rang_num = None
+        prev_moy = None
+        prev_rang = None
+        
+        for idx, (eid, moy) in enumerate(moyennes_classe, start=1):
+            if prev_moy is not None and abs(moy - prev_moy) < Decimal('0.01'):
+                # Ex-aequo
+                if eid == eleve.id:
+                    rang_num = prev_rang
+                    break
+            else:
+                # Nouveau rang
+                if eid == eleve.id:
+                    rang_num = idx
+                    break
+                prev_rang = idx
+            prev_moy = moy
+        
+        # Formater le rang avec accord grammatical
+        if rang_num:
+            from .calculs_intelligent import formater_rang_intelligent
+            sexe = getattr(eleve, 'sexe', 'M') or 'M'
+            rang_str = formater_rang_intelligent(rang_num, sexe, total_eleves)
 
     # PDF
     try:
@@ -1354,9 +1500,13 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     # Séparateur
     y -= 6; c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
-    # Moyenne générale
+    # Moyenne générale et rang
     c.setFont('Helvetica-Bold', 13)
     c.drawString(margin, y, f"Moyenne générale mensuelle: {moyenne_generale if moyenne_generale is not None else '-'} / 20"); y -= 18
+    c.drawString(margin, y, f"Rang: {rang_str}"); y -= 18
+    if total_eleves > 0:
+        c.setFont('Helvetica', 11)
+        c.drawString(margin, y, f"Effectif: {total_eleves} élèves"); y -= 18
 
     # Pied
     c.setFont('Helvetica-Oblique', 10); c.setFillColor(colors.darkgrey)
