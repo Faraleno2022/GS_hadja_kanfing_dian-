@@ -1408,21 +1408,23 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
         
         # Trouver le rang avec gestion des ex-aequo
         rang_num = None
+        rang_actuel = 1
         prev_moy = None
-        prev_rang = None
         
         for idx, (eid, moy) in enumerate(moyennes_classe, start=1):
+            # Déterminer le rang de cet élève
             if prev_moy is not None and abs(moy - prev_moy) < Decimal('0.01'):
-                # Ex-aequo
-                if eid == eleve.id:
-                    rang_num = prev_rang
-                    break
+                # Ex-aequo : garde le même rang que le précédent
+                pass  # rang_actuel ne change pas
             else:
-                # Nouveau rang
-                if eid == eleve.id:
-                    rang_num = idx
-                    break
-                prev_rang = idx
+                # Nouveau rang : utilise la position réelle
+                rang_actuel = idx
+            
+            # Vérifier si c'est notre élève
+            if eid == eleve.id:
+                rang_num = rang_actuel
+                break
+            
             prev_moy = moy
         
         # Formater le rang avec accord grammatical
