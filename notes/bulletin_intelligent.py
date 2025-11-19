@@ -95,15 +95,22 @@ class CalculateurBulletinIntelligent:
         # Récupérer les notes mensuelles
         notes_mensuelles = {}
         for mois in mois_periode:
-            notes_mois = NoteEleve.objects.filter(
+            notes_mois_qs = NoteEleve.objects.filter(
                 eleve=self.eleve,
                 evaluation__matiere=matiere,
                 evaluation__periode=mois,
                 evaluation__type_eval='DEVOIR'
-            ).values_list('note', flat=True)
-            
+            )
+
+            notes_mois = []
+            for note_obj in notes_mois_qs:
+                if note_obj.absent or note_obj.note is None:
+                    notes_mois.append(Decimal('0'))
+                else:
+                    notes_mois.append(Decimal(str(note_obj.note)))
+
             if notes_mois:
-                notes_mensuelles[mois.lower()] = [Decimal(str(n)) for n in notes_mois if n]
+                notes_mensuelles[mois.lower()] = notes_mois
         
         # Récupérer la composition
         composition = None
@@ -114,8 +121,11 @@ class CalculateurBulletinIntelligent:
             evaluation__type_eval='COMPOSITION'
         ).first()
         
-        if compo_obj and compo_obj.note:
-            composition = Decimal(str(compo_obj.note))
+        if compo_obj:
+            if compo_obj.absent or compo_obj.note is None:
+                composition = Decimal('0')
+            else:
+                composition = Decimal(str(compo_obj.note))
         
         # Calculer selon le niveau
         if self.niveau == 'PRIMAIRE':
