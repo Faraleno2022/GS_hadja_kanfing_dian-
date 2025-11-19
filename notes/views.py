@@ -5301,6 +5301,80 @@ def bulletin_dynamique_pdf(request):
         moyenne_generale = total_points / total_coefficients
         bulletin_data['moyenne_generale'] = float(moyenne_generale)
         
+        # Calculer le rang de l'élève
+        if eleves:
+            all_moyennes = []
+            for e in eleves:
+                e_total_points = Decimal('0')
+                e_total_coef = Decimal('0')
+                
+                for matiere in matieres:
+                    evals = Evaluation.objects.filter(
+                        matiere=matiere,
+                        matiere__classe=classe_selectionnee,
+                        periode=periode
+                    )
+                    
+                    e_total_dev = Decimal('0')
+                    e_count_dev = 0
+                    e_total_compo = Decimal('0')
+                    e_count_compo = 0
+                    
+                    for ev in evals:
+                        try:
+                            n = NoteEleve.objects.get(eleve=e, evaluation=ev)
+                            if n.note is not None and not n.absent:
+                                if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                    e_total_compo += Decimal(str(n.note))
+                                    e_count_compo += 1
+                                else:
+                                    e_total_dev += Decimal(str(n.note))
+                                    e_count_dev += 1
+                        except NoteEleve.DoesNotExist:
+                            pass
+                    
+                    e_moy_dev = e_total_dev / e_count_dev if e_count_dev > 0 else None
+                    e_note_compo = e_total_compo / e_count_compo if e_count_compo > 0 else None
+                    
+                    if system_type == 'mensuel':
+                        e_moy_mat = e_moy_dev
+                    elif e_moy_dev is not None and e_note_compo is not None:
+                        e_moy_mat = (e_moy_dev + e_note_compo * 2) / 3
+                    elif e_note_compo is not None:
+                        e_moy_mat = e_note_compo
+                    elif e_moy_dev is not None:
+                        e_moy_mat = e_moy_dev
+                    else:
+                        e_moy_mat = None
+                    
+                    if e_moy_mat is not None:
+                        e_total_points += e_moy_mat * matiere.coefficient
+                        e_total_coef += matiere.coefficient
+                
+                if e_total_coef > 0:
+                    e_moyenne = e_total_points / e_total_coef
+                    all_moyennes.append((e.id, float(e_moyenne)))
+            
+            # Trier et calculer le rang avec gestion des ex-aequo
+            all_moyennes.sort(key=lambda x: x[1], reverse=True)
+            rang_actuel = 1
+            prev_moy = None
+            
+            for idx, (eid, moy) in enumerate(all_moyennes, start=1):
+                if prev_moy is not None and abs(moy - prev_moy) < 0.01:
+                    pass  # Ex-aequo
+                else:
+                    rang_actuel = idx
+                
+                if eid == eleve_selectionne.id:
+                    # Formater le rang avec accord grammatical
+                    from .calculs_intelligent import formater_rang_intelligent
+                    sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
+                    bulletin_data['rang'] = formater_rang_intelligent(rang_actuel, sexe, len(all_moyennes))
+                    break
+                
+                prev_moy = moy
+        
         # Déterminer la mention
         if moyenne_generale >= 16:
             bulletin_data['mention'] = "Très Bien"
