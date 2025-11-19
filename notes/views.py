@@ -754,10 +754,12 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             den = Decimal('0')
             for ev in evals:
                 n = notes_by_eval.get(ev.id)
-                if n is None or n.note is None:
-                    continue
                 c = Decimal(ev.coefficient or 1)
-                num += Decimal(n.note) * c
+                if n is None or n.note is None:
+                    # Absence ou note manquante = 0
+                    num += Decimal('0') * c
+                else:
+                    num += Decimal(n.note) * c
                 den += c
             moy_mat = (num / den).quantize(Decimal('0.01')) if den > 0 else None
 
@@ -802,10 +804,12 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             num = Decimal('0'); den = Decimal('0')
             for ev in evals:
                 nn = notes_by_eval_e.get(ev.id)
-                if not nn or nn.note is None:
-                    continue
                 cc = Decimal(ev.coefficient or 1)
-                num += Decimal(nn.note) * cc
+                if not nn or nn.note is None:
+                    # Absence ou note manquante = 0
+                    num += Decimal('0') * cc
+                else:
+                    num += Decimal(nn.note) * cc
                 den += cc
             if den > 0:
                 moy_mat_e = (num / den)
@@ -817,14 +821,30 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             mg = None
         if mg is not None:
             moyennes_generales.append((e.id, mg))
-    # Trier desc (meilleure note première), calcul rang de l'élève
+    # Trier desc (meilleure note première), calcul rang de l'élève avec gestion des ex-aequo
     moyennes_generales.sort(key=lambda t: t[1], reverse=True)
     rang = None
     total_eleves_ayant_moyenne = len(moyennes_generales)
+    
+    # Calculer le rang avec gestion des ex-aequo
+    rang_actuel = 1
+    prev_moy = None
+    
     for idx, (eid, mg) in enumerate(moyennes_generales, start=1):
+        # Déterminer le rang de cet élève
+        if prev_moy is not None and abs(mg - prev_moy) < Decimal('0.01'):
+            # Ex-aequo : garde le même rang que le précédent
+            pass  # rang_actuel ne change pas
+        else:
+            # Nouveau rang : utilise la position réelle
+            rang_actuel = idx
+        
+        # Vérifier si c'est notre élève
         if eid == eleve.id:
-            rang = idx
+            rang = rang_actuel
             break
+        
+        prev_moy = mg
 
     # Mention selon barème simple (modifiable)
     def mention_for(avg: Decimal | None) -> str:
@@ -929,7 +949,11 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     y -= 16
     c.setFont('Helvetica', 12)
     if rang is not None:
-        c.drawString(margin, y, f"Rang: {rang} / {total_eleves_ayant_moyenne}")
+        # Format intelligent du rang avec accord grammatical
+        from .calculs_intelligent import formater_rang_intelligent
+        sexe = getattr(eleve, 'sexe', 'M') or 'M'
+        rang_str = formater_rang_intelligent(rang, sexe, total_eleves_ayant_moyenne)
+        c.drawString(margin, y, f"Rang: {rang_str}")
         y -= 14
     if mention:
         c.drawString(margin, y, f"Mention: {mention}")
