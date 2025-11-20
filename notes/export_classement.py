@@ -509,23 +509,29 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
         if total_coefficients > 0:
             moyenne_generale = float(total_notes / total_coefficients)
             classement_data.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
                 'matricule': eleve.matricule or 'N/A',
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
                 'moyenne': round(moyenne_generale, 2),
                 'absent': False,
                 'pas_de_notes': False,
                 'nb_notes': nb_notes_trouvees,
-                'sexe': eleve.sexe  # Ajouter le sexe pour l'accord grammatical
+                'sexe': eleve.sexe
             })
         else:
             classement_data.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
                 'matricule': eleve.matricule or 'N/A',
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
                 'moyenne': None,
                 'absent': toutes_absentes and nb_notes_trouvees == 0,
                 'pas_de_notes': nb_notes_trouvees == 0,
                 'nb_notes': 0,
-                'sexe': eleve.sexe  # Ajouter le sexe pour l'accord grammatical
+                'sexe': eleve.sexe
             })
     
     # Trier et attribuer les rangs
@@ -539,27 +545,51 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
 
 
 def _calculer_rangs(classement_data):
-    """Calculer les rangs avec gestion des ex-aequo"""
+    """Calculer les rangs avec gestion des ex-aequo en utilisant calculer_rang_intelligent"""
+    from .calculs_intelligent import calculer_rang_intelligent
+    from decimal import Decimal
+    
     # Séparer élèves avec et sans notes
     eleves_avec_notes = [e for e in classement_data if e['moyenne'] is not None]
     eleves_sans_notes = [e for e in classement_data if e['moyenne'] is None]
     
-    # Trier par moyenne décroissante
-    eleves_avec_notes.sort(key=lambda x: x['moyenne'], reverse=True)
-    
-    # Attribuer les rangs avec gestion des ex-aequo
-    rang = 1
-    for i, eleve_note in enumerate(eleves_avec_notes):
-        if i > 0 and eleve_note['moyenne'] == eleves_avec_notes[i-1]['moyenne']:
-            # Ex-aequo : même rang que le précédent
-            eleve_note['rang'] = eleves_avec_notes[i-1]['rang']
-        else:
-            # Nouveau rang : utiliser la position (i+1)
-            eleve_note['rang'] = i + 1
+    if eleves_avec_notes:
+        # Préparer les données pour calculer_rang_intelligent
+        moyennes_pour_rang = []
+        for e in eleves_avec_notes:
+            moyennes_pour_rang.append({
+                'eleve_id': e.get('eleve_id'),
+                'prenom': e.get('prenom', ''),
+                'nom': e.get('nom', ''),
+                'sexe': e.get('sexe', 'M'),
+                'moyenne': Decimal(str(e['moyenne'])) if e['moyenne'] is not None else Decimal('0')
+            })
+        
+        # Calculer les rangs avec calculer_rang_intelligent
+        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+        
+        # Créer un dictionnaire eleve_id -> rang
+        rangs_dict = {}
+        for r in resultats_rangs:
+            rangs_dict[r['eleve_id']] = {
+                'rang': r.get('rang'),
+                'rang_num': r.get('rang_num')
+            }
+        
+        # Appliquer les rangs aux données
+        for e in eleves_avec_notes:
+            eleve_id = e.get('eleve_id')
+            if eleve_id in rangs_dict:
+                e['rang'] = rangs_dict[eleve_id]['rang']
+                e['rang_num'] = rangs_dict[eleve_id]['rang_num']
+        
+        # Trier par rang_num
+        eleves_avec_notes.sort(key=lambda x: x.get('rang_num', 999))
     
     # Marquer les élèves sans notes
     for eleve_note in eleves_sans_notes:
         eleve_note['rang'] = '-'
+        eleve_note['rang_num'] = None
     
     # Reconstruire la liste triée
     return eleves_avec_notes + eleves_sans_notes

@@ -821,30 +821,33 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             mg = None
         if mg is not None:
             moyennes_generales.append((e.id, mg))
-    # Trier desc (meilleure note première), calcul rang de l'élève avec gestion des ex-aequo
-    moyennes_generales.sort(key=lambda t: t[1], reverse=True)
+    # Calculer les rangs avec calculer_rang_intelligent
+    from .calculs_intelligent import calculer_rang_intelligent
+    
     rang = None
     total_eleves_ayant_moyenne = len(moyennes_generales)
     
-    # Calculer le rang avec gestion des ex-aequo
-    rang_actuel = 1
-    prev_moy = None
-    
-    for idx, (eid, mg) in enumerate(moyennes_generales, start=1):
-        # Déterminer le rang de cet élève
-        if prev_moy is not None and abs(mg - prev_moy) < Decimal('0.01'):
-            # Ex-aequo : garde le même rang que le précédent
-            pass  # rang_actuel ne change pas
-        else:
-            # Nouveau rang : utilise la position réelle
-            rang_actuel = idx
+    if moyennes_generales:
+        # Préparer les données pour calculer_rang_intelligent
+        moyennes_pour_rang = []
+        for eid, mg in moyennes_generales:
+            e_obj = eleves.get(id=eid)
+            moyennes_pour_rang.append({
+                'eleve_id': eid,
+                'prenom': e_obj.prenom,
+                'nom': e_obj.nom,
+                'sexe': getattr(e_obj, 'sexe', 'M'),
+                'moyenne': mg
+            })
         
-        # Vérifier si c'est notre élève
-        if eid == eleve.id:
-            rang = rang_actuel
-            break
+        # Calculer les rangs
+        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
         
-        prev_moy = mg
+        # Trouver le rang de notre élève
+        for r in resultats_rangs:
+            if r['eleve_id'] == eleve.id:
+                rang = r.get('rang_num')
+                break
 
     # Mention selon barème simple (modifiable)
     def mention_for(avg: Decimal | None) -> str:
@@ -1426,36 +1429,33 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
                 moy_gen_e = (somme_e / somme_coef_e).quantize(Decimal('0.01'))
                 moyennes_classe.append((e.id, moy_gen_e))
         
-        # Trier par moyenne décroissante
-        moyennes_classe.sort(key=lambda x: x[1], reverse=True)
+        # Calculer les rangs avec calculer_rang_intelligent
+        from .calculs_intelligent import calculer_rang_intelligent
+        
         total_eleves = len(moyennes_classe)
+        rang_str = "-"
         
-        # Trouver le rang avec gestion des ex-aequo
-        rang_num = None
-        rang_actuel = 1
-        prev_moy = None
-        
-        for idx, (eid, moy) in enumerate(moyennes_classe, start=1):
-            # Déterminer le rang de cet élève
-            if prev_moy is not None and abs(moy - prev_moy) < Decimal('0.01'):
-                # Ex-aequo : garde le même rang que le précédent
-                pass  # rang_actuel ne change pas
-            else:
-                # Nouveau rang : utilise la position réelle
-                rang_actuel = idx
+        if moyennes_classe:
+            # Préparer les données pour calculer_rang_intelligent
+            moyennes_pour_rang = []
+            for eid, moy in moyennes_classe:
+                e_obj = eleves_classe.get(id=eid)
+                moyennes_pour_rang.append({
+                    'eleve_id': eid,
+                    'prenom': e_obj.prenom,
+                    'nom': e_obj.nom,
+                    'sexe': getattr(e_obj, 'sexe', 'M'),
+                    'moyenne': moy
+                })
             
-            # Vérifier si c'est notre élève
-            if eid == eleve.id:
-                rang_num = rang_actuel
-                break
+            # Calculer les rangs
+            resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
             
-            prev_moy = moy
-        
-        # Formater le rang avec accord grammatical
-        if rang_num:
-            from .calculs_intelligent import formater_rang_intelligent
-            sexe = getattr(eleve, 'sexe', 'M') or 'M'
-            rang_str = formater_rang_intelligent(rang_num, sexe, total_eleves)
+            # Trouver le rang de notre élève
+            for r in resultats_rangs:
+                if r['eleve_id'] == eleve.id:
+                    rang_str = r.get('rang', '-')
+                    break
 
     # PDF
     try:
@@ -5083,15 +5083,21 @@ def bulletin_dynamique(request):
                             for ev in evals:
                                 try:
                                     n = NoteEleve.objects.get(eleve=eleve_classe, evaluation=ev)
-                                    if n.note is not None and not n.absent:
-                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                            total_comp += Decimal(str(n.note))
-                                            count_comp += 1
-                                        else:
-                                            total_dev += Decimal(str(n.note))
-                                            count_dev += 1
+                                    # Traiter les absences comme 0 (harmonisation avec le classement)
+                                    note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
+                                    
+                                    if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                        total_comp += note_value
+                                        count_comp += 1
+                                    else:
+                                        total_dev += note_value
+                                        count_dev += 1
                                 except NoteEleve.DoesNotExist:
-                                    pass
+                                    # Pas de note = 0
+                                    if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                        count_comp += 1
+                                    else:
+                                        count_dev += 1
                             
                             # Calculer la moyenne de la matière
                             moy_cont = total_dev / count_dev if count_dev > 0 else None
@@ -5250,15 +5256,21 @@ def bulletin_dynamique_pdf(request):
         for evaluation in evaluations:
             try:
                 note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
-                if note_obj.note is not None and not note_obj.absent:
-                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                        total_compo += Decimal(str(note_obj.note))
-                        count_compo += 1
-                    else:
-                        total_devoirs += Decimal(str(note_obj.note))
-                        count_devoirs += 1
+                # Traiter les absences comme 0 (harmonisation avec le classement)
+                note_value = Decimal(str(note_obj.note)) if note_obj.note is not None and not note_obj.absent else Decimal('0')
+                
+                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                    total_compo += note_value
+                    count_compo += 1
+                else:
+                    total_devoirs += note_value
+                    count_devoirs += 1
             except NoteEleve.DoesNotExist:
-                pass
+                # Si pas de note du tout, compter comme 0
+                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                    count_compo += 1
+                else:
+                    count_devoirs += 1
         
         moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
         note_composition = total_compo / count_compo if count_compo > 0 else None
@@ -5323,15 +5335,21 @@ def bulletin_dynamique_pdf(request):
                     for ev in evals:
                         try:
                             n = NoteEleve.objects.get(eleve=e, evaluation=ev)
-                            if n.note is not None and not n.absent:
-                                if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                    e_total_compo += Decimal(str(n.note))
-                                    e_count_compo += 1
-                                else:
-                                    e_total_dev += Decimal(str(n.note))
-                                    e_count_dev += 1
+                            # Traiter les absences comme 0 (harmonisation avec le classement)
+                            note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
+                            
+                            if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                e_total_compo += note_value
+                                e_count_compo += 1
+                            else:
+                                e_total_dev += note_value
+                                e_count_dev += 1
                         except NoteEleve.DoesNotExist:
-                            pass
+                            # Si pas de note du tout, compter comme 0
+                            if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                e_count_compo += 1
+                            else:
+                                e_count_dev += 1
                     
                     e_moy_dev = e_total_dev / e_count_dev if e_count_dev > 0 else None
                     e_note_compo = e_total_compo / e_count_compo if e_count_compo > 0 else None
@@ -5968,23 +5986,31 @@ def bulletins_dynamiques_classe_pdf(request):
             bulletin_data['mention'] = 'Non évalué'
             bulletin_data['appreciation'] = 'Aucune note disponible pour cette période.'
     
-    # Calculer les rangs après avoir calculé toutes les moyennes
-    all_moyennes_classe.sort(key=lambda x: x[1], reverse=True)
-    rang_map = {}
-    rang_actuel = 1
-    prev_moy = None
+    # Calculer les rangs avec calculer_rang_intelligent
+    from .calculs_intelligent import calculer_rang_intelligent
+    from decimal import Decimal as _Dec
     
-    for idx, (eid, mg) in enumerate(all_moyennes_classe, start=1):
-        # Déterminer le rang de cet élève
-        if prev_moy is not None and abs(mg - prev_moy) < 0.01:
-            # Ex-aequo : garde le même rang que le précédent
-            pass  # rang_actuel ne change pas
-        else:
-            # Nouveau rang : utilise la position réelle
-            rang_actuel = idx
+    rang_map = {}
+    
+    if all_moyennes_classe:
+        # Préparer les données pour calculer_rang_intelligent
+        moyennes_pour_rang = []
+        for eid, mg in all_moyennes_classe:
+            e_obj = eleves.get(id=eid)
+            moyennes_pour_rang.append({
+                'eleve_id': eid,
+                'prenom': e_obj.prenom,
+                'nom': e_obj.nom,
+                'sexe': getattr(e_obj, 'sexe', 'M'),
+                'moyenne': _Dec(str(mg))
+            })
         
-        rang_map[eid] = rang_actuel
-        prev_moy = mg
+        # Calculer les rangs
+        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+        
+        # Créer le dictionnaire de rangs
+        for r in resultats_rangs:
+            rang_map[r['eleve_id']] = r.get('rang')
     
     # Générer le HTML pour tous les bulletins
     bulletins_html = []
