@@ -575,15 +575,8 @@ def _calculer_rangs(classement_data):
         # Créer un dictionnaire eleve_id -> rang
         rangs_dict = {}
         for r in resultats_rangs:
-            # Extraire seulement le rang sans le total (ex: "10ème/18" → "10ème")
-            rang_complet = r.get('rang')
-            if '/' in str(rang_complet):
-                rang_sans_total = rang_complet.split('/')[0]
-            else:
-                rang_sans_total = rang_complet
-            
             rangs_dict[r['eleve_id']] = {
-                'rang': rang_sans_total,
+                'rang': r.get('rang'),  # Déjà formaté sans le total par calculer_rang_intelligent
                 'rang_num': r.get('rang_num')
             }
         

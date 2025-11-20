@@ -233,7 +233,7 @@ def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = No
     else:
         rang_str = f"{rang}ème"
     
-    # Ajouter le total si disponible
+    # Ajouter le total si disponible (sans "ème" sur le total)
     if total_eleves:
         return f"{rang_str}/{total_eleves}"
     else:
@@ -278,9 +278,11 @@ def calculer_rang_intelligent(moyennes_eleves: List[Dict]) -> List[Dict]:
         
         rang_actuel += 1
         
-        # Formater le rang avec accord grammatical
+        # Formater le rang avec accord grammatical (sans le total)
         sexe = eleve.get('sexe', 'M')
-        eleve['rang'] = formater_rang_intelligent(eleve['rang_num'], sexe, total_eleves)
+        eleve['rang'] = formater_rang_intelligent(eleve['rang_num'], sexe)
+        # Stocker aussi le total pour les vues qui en ont besoin
+        eleve['total_eleves'] = total_eleves
         
         # Ajouter mention et appréciation intelligentes
         eleve['mention'] = obtenir_mention_intelligente(eleve['moyenne'])
