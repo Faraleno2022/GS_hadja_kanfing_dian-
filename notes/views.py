@@ -4753,9 +4753,9 @@ def consulter_notes(request):
     
     # Calculer les rangs avec la fonction centralisée
     # Note: Pour consulter_notes, on utilise la première période disponible
-    if periodes_disponibles and classe_note:
-        periode_pour_rang = periodes_disponibles[0]
-        rangs_dict = calculer_rangs_classe_periode(classe_note, periode_pour_rang)
+    if periodes_disponibles and classe_selectionnee:
+        periode_pour_rang = periodes_disponibles[0][0]  # Prendre le code de la période (ex: 'OCTOBRE')
+        rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_rang)
         
         # Attribuer les rangs aux élèves
         for eleve_data in eleves_toutes_notes:
@@ -5375,7 +5375,7 @@ def bulletin_dynamique_pdf(request):
             # Utiliser la fonction centralisée pour garantir cohérence avec le classement
             from .utils_rangs import get_rang_eleve
             
-            rang_info = get_rang_eleve(classe_note, periode, eleve_selectionne.id)
+            rang_info = get_rang_eleve(classe_selectionnee, periode, eleve_selectionne.id)
             if rang_info:
                 bulletin_data['rang'] = rang_info['rang']
             else:
@@ -5994,7 +5994,7 @@ def bulletins_dynamiques_classe_pdf(request):
         # Utiliser la fonction centralisée pour garantir cohérence avec le classement
         from .utils_rangs import calculer_rangs_classe_periode
         
-        rangs_dict = calculer_rangs_classe_periode(classe_note, periode)
+        rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode)
         
         # Créer le dictionnaire de rangs (déjà formaté sans le total)
         for eleve_id, info in rangs_dict.items():
