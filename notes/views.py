@@ -1830,8 +1830,11 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         # Rang + Mention
         rg = rang_map.get(eleve.id)
         if rg is not None:
+            from .calculs_intelligent import formater_rang_intelligent
+            sexe = getattr(eleve, 'sexe', 'M') or 'M'
+            rang_str = formater_rang_intelligent(rg, sexe, total_eleves_ayant_moyenne)
             c.setFont('Helvetica', 12)
-            c.drawString(margin, y, f"Rang: {rg} / {total_eleves_ayant_moyenne}")
+            c.drawString(margin, y, f"Rang: {rang_str}")
             y -= 14
         men = mention_for(moyenne_generale)
         if men:
@@ -4768,7 +4771,8 @@ def consulter_notes(request):
         prev_moyenne = moyenne
 
         sexe = getattr(eleve_data['eleve'], 'sexe', 'M') or 'M'
-        eleve_data['rang'] = formater_rang_intelligent(rang_num, sexe, total_eleves_avec_moyenne)
+        # Afficher seulement le rang sans le total (ex: "10ème" au lieu de "10ème/18")
+        eleve_data['rang'] = formater_rang_intelligent(rang_num, sexe)
     
     # Les élèves sans moyenne ont le rang '-'
     for eleve_data in eleves_sans_moyenne:
