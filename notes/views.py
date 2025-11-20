@@ -5788,9 +5788,10 @@ def bulletins_dynamiques_classe_pdf(request):
     }
     .signatures-section {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 20px;
+        grid-template-columns: 1fr 1fr;
+        gap: 60px;
         margin: 20px 0;
+        padding: 0 40px;
     }
     .signature-box {
         text-align: center;
