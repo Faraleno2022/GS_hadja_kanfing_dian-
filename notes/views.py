@@ -4748,38 +4748,33 @@ def consulter_notes(request):
         except ClasseEleve.DoesNotExist:
             pass
     
-    # Calculer le classement (trier par moyenne générale décroissante)
-    eleves_avec_moyenne = [e for e in eleves_toutes_notes if e['moyenne_generale'] is not None]
-    eleves_sans_moyenne = [e for e in eleves_toutes_notes if e['moyenne_generale'] is None]
+    # Utiliser la fonction centralisée pour garantir cohérence totale avec les bulletins
+    from .utils_rangs import calculer_rangs_classe_periode
     
-    # Trier les élèves avec moyenne par moyenne décroissante
-    eleves_avec_moyenne.sort(key=lambda x: x['moyenne_generale'], reverse=True)
+    # Calculer les rangs avec la fonction centralisée
+    # Note: Pour consulter_notes, on utilise la première période disponible
+    if periodes_disponibles and classe_note:
+        periode_pour_rang = periodes_disponibles[0]
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode_pour_rang)
+        
+        # Attribuer les rangs aux élèves
+        for eleve_data in eleves_toutes_notes:
+            eleve_id = eleve_data['eleve'].id
+            rang_info = rangs_dict.get(eleve_id)
+            if rang_info:
+                eleve_data['rang'] = rang_info['rang']
+            else:
+                eleve_data['rang'] = '-'
+    else:
+        # Pas de période disponible, pas de rang
+        for eleve_data in eleves_toutes_notes:
+            eleve_data['rang'] = '-'
     
-    # Attribuer les rangs (gestion des ex-aequo) avec format intelligent
-    from .calculs_intelligent import formater_rang_intelligent
-    total_eleves_avec_moyenne = len(eleves_avec_moyenne)
-    prev_moyenne = None
-    prev_rang_num = None
-    for idx, eleve_data in enumerate(eleves_avec_moyenne, start=1):
-        moyenne = eleve_data['moyenne_generale']
-        if prev_moyenne is not None and abs(moyenne - prev_moyenne) < 0.01:
-            # Ex-aequo : même rang numérique que le précédent
-            rang_num = prev_rang_num
-        else:
-            rang_num = idx
-            prev_rang_num = idx
-        prev_moyenne = moyenne
-
-        sexe = getattr(eleve_data['eleve'], 'sexe', 'M') or 'M'
-        # Afficher seulement le rang sans le total (ex: "10ème" au lieu de "10ème/18")
-        eleve_data['rang'] = formater_rang_intelligent(rang_num, sexe)
-    
-    # Les élèves sans moyenne ont le rang '-'
-    for eleve_data in eleves_sans_moyenne:
-        eleve_data['rang'] = '-'
-    
-    # Reconstruire la liste avec classement (avec moyenne d'abord, puis sans)
-    eleves_toutes_notes = eleves_avec_moyenne + eleves_sans_moyenne
+    # Trier par rang pour l'affichage (élèves avec rang d'abord)
+    eleves_avec_rang = [e for e in eleves_toutes_notes if e['rang'] != '-']
+    eleves_sans_rang = [e for e in eleves_toutes_notes if e['rang'] == '-']
+    eleves_avec_rang.sort(key=lambda x: x['moyenne_generale'], reverse=True)
+    eleves_toutes_notes = eleves_avec_rang + eleves_sans_rang
     
     # Récupérer toutes les évaluations pour les en-têtes
     evaluations_par_matiere = {}
@@ -5377,27 +5372,14 @@ def bulletin_dynamique_pdf(request):
                     e_moyenne = e_total_points / e_total_coef
                     all_moyennes.append((e.id, float(e_moyenne)))
             
-            # Calculer les rangs avec calculer_rang_intelligent
-            from .calculs_intelligent import calculer_rang_intelligent
+            # Utiliser la fonction centralisée pour garantir cohérence avec le classement
+            from .utils_rangs import get_rang_eleve
             
-            moyennes_pour_rang = []
-            for eid, moy in all_moyennes:
-                e_obj = eleves.get(id=eid)
-                moyennes_pour_rang.append({
-                    'eleve_id': eid,
-                    'prenom': e_obj.prenom,
-                    'nom': e_obj.nom,
-                    'sexe': getattr(e_obj, 'sexe', 'M'),
-                    'moyenne': Decimal(str(moy))
-                })
-            
-            resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
-            
-            # Trouver le rang de notre élève (déjà formaté sans le total)
-            for r in resultats_rangs:
-                if r['eleve_id'] == eleve_selectionne.id:
-                    bulletin_data['rang'] = r.get('rang')
-                    break
+            rang_info = get_rang_eleve(classe_note, periode, eleve_selectionne.id)
+            if rang_info:
+                bulletin_data['rang'] = rang_info['rang']
+            else:
+                bulletin_data['rang'] = '-'
         
         # Déterminer la mention
         if moyenne_generale >= 16:
@@ -6009,12 +5991,14 @@ def bulletins_dynamiques_classe_pdf(request):
                 'moyenne': _Dec(str(mg))
             })
         
-        # Calculer les rangs
-        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+        # Utiliser la fonction centralisée pour garantir cohérence avec le classement
+        from .utils_rangs import calculer_rangs_classe_periode
+        
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode)
         
         # Créer le dictionnaire de rangs (déjà formaté sans le total)
-        for r in resultats_rangs:
-            rang_map[r['eleve_id']] = r.get('rang')
+        for eleve_id, info in rangs_dict.items():
+            rang_map[eleve_id] = info['rang']
     
     # Générer le HTML pour tous les bulletins
     bulletins_html = []
