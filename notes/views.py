@@ -6136,11 +6136,10 @@ def bulletins_dynamiques_classe_pdf(request):
             bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve.prenom)
             
-            # Ajouter le rang
-            rang_num = rang_map.get(eleve.id)
-            if rang_num:
-                sexe = getattr(eleve, 'sexe', 'M') or 'M'
-                bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(all_moyennes_classe))
+            # Ajouter le rang (déjà formaté dans rang_map)
+            rang_str = rang_map.get(eleve.id)
+            if rang_str:
+                bulletin_data['rang'] = rang_str
             else:
                 bulletin_data['rang'] = "-"
         else:
