@@ -5355,25 +5355,27 @@ def bulletin_dynamique_pdf(request):
                     e_moyenne = e_total_points / e_total_coef
                     all_moyennes.append((e.id, float(e_moyenne)))
             
-            # Trier et calculer le rang avec gestion des ex-aequo
-            all_moyennes.sort(key=lambda x: x[1], reverse=True)
-            rang_actuel = 1
-            prev_moy = None
+            # Calculer les rangs avec calculer_rang_intelligent
+            from .calculs_intelligent import calculer_rang_intelligent
             
-            for idx, (eid, moy) in enumerate(all_moyennes, start=1):
-                if prev_moy is not None and abs(moy - prev_moy) < 0.01:
-                    pass  # Ex-aequo
-                else:
-                    rang_actuel = idx
-                
-                if eid == eleve_selectionne.id:
-                    # Formater le rang avec accord grammatical
-                    from .calculs_intelligent import formater_rang_intelligent
-                    sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
-                    bulletin_data['rang'] = formater_rang_intelligent(rang_actuel, sexe, len(all_moyennes))
+            moyennes_pour_rang = []
+            for eid, moy in all_moyennes:
+                e_obj = eleves.get(id=eid)
+                moyennes_pour_rang.append({
+                    'eleve_id': eid,
+                    'prenom': e_obj.prenom,
+                    'nom': e_obj.nom,
+                    'sexe': getattr(e_obj, 'sexe', 'M'),
+                    'moyenne': Decimal(str(moy))
+                })
+            
+            resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+            
+            # Trouver le rang de notre élève
+            for r in resultats_rangs:
+                if r['eleve_id'] == eleve_selectionne.id:
+                    bulletin_data['rang'] = r.get('rang')
                     break
-                
-                prev_moy = moy
         
         # Déterminer la mention
         if moyenne_generale >= 16:
