@@ -5396,7 +5396,12 @@ def bulletin_dynamique_pdf(request):
             # Trouver le rang de notre élève
             for r in resultats_rangs:
                 if r['eleve_id'] == eleve_selectionne.id:
-                    bulletin_data['rang'] = r.get('rang')
+                    # Extraire seulement le rang sans le total (ex: "9ème/18" → "9ème")
+                    rang_complet = r.get('rang')
+                    if '/' in str(rang_complet):
+                        bulletin_data['rang'] = rang_complet.split('/')[0]
+                    else:
+                        bulletin_data['rang'] = rang_complet
                     break
         
         # Déterminer la mention
