@@ -26,7 +26,7 @@ def formater_rang(rang, sexe):
     Formate le rang avec l'accord grammatical selon le sexe
     
     Args:
-        rang: Le numéro de rang (int ou str)
+        rang: Le numéro de rang (int ou str) ou rang déjà formaté (ex: "10ème/18")
         sexe: 'M' pour masculin, 'F' pour féminin
     
     Returns:
@@ -34,6 +34,10 @@ def formater_rang(rang, sexe):
     """
     if rang == '-' or rang is None:
         return '-'
+    
+    # Si le rang est déjà formaté (contient "/"), le retourner tel quel
+    if isinstance(rang, str) and '/' in rang:
+        return rang
     
     rang_num = int(rang)
     
