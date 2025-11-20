@@ -37,14 +37,14 @@
 ### Après
 
 ```
-┌─────────────────┬─────────────────────────────┐
-│                 │                             │
-│ Directeur       │  Censeur de l'établissement│
-│ Général         │                             │
-│                 │                             │
-│ Signature       │  Signature                  │
-│                 │                             │
-└─────────────────┴─────────────────────────────┘
+┌─────────────────────────────┬─────────────────┐
+│                             │                 │
+│ Censeur de l'établissement  │ Directeur       │
+│                             │ Général         │
+│                             │                 │
+│ Signature                   │ Signature       │
+│                             │                 │
+└─────────────────────────────┴─────────────────┘
 ```
 
 ---
@@ -55,16 +55,16 @@
 
 ```html
 <div class="signatures-section">
-    <!-- NOUVEAU : Directeur Général (à gauche) -->
+    <!-- EXISTANT : Censeur (à gauche) -->
     <div class="signature-box">
-        <div class="title">Directeur Général</div>
+        <div class="title">Censeur de l'établissement</div>
         <div class="space"></div>
         <div>Signature</div>
     </div>
     
-    <!-- EXISTANT : Censeur (à droite) -->
+    <!-- NOUVEAU : Directeur Général (à droite) -->
     <div class="signature-box">
-        <div class="title">Censeur de l'établissement</div>
+        <div class="title">Directeur Général</div>
         <div class="space"></div>
         <div>Signature</div>
     </div>
@@ -103,13 +103,13 @@ Le CSS existant gère automatiquement l'affichage côte à côte :
 │  [Notes et moyennes]                                    │
 │  [Appréciation]                                         │
 │                                                          │
-│  ┌──────────────────┐      ┌──────────────────────┐   │
-│  │ Directeur Général│      │ Censeur de           │   │
-│  │                  │      │ l'établissement      │   │
-│  │                  │      │                      │   │
-│  │                  │      │                      │   │
-│  │   Signature      │      │    Signature         │   │
-│  └──────────────────┘      └──────────────────────┘   │
+│  ┌──────────────────────┐      ┌──────────────────┐   │
+│  │ Censeur de           │      │ Directeur Général│   │
+│  │ l'établissement      │      │                  │   │
+│  │                      │      │                  │   │
+│  │                      │      │                  │   │
+│  │    Signature         │      │   Signature      │   │
+│  └──────────────────────┘      └──────────────────┘   │
 │                                                          │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -145,8 +145,8 @@ touch ecole_moderne/wsgi.py
 
 1. Générer un bulletin : `/notes/bulletins/classe/pdf/`
 2. Vérifier que les 2 signatures apparaissent :
-   - ✅ Directeur Général (à gauche)
-   - ✅ Censeur de l'établissement (à droite)
+   - ✅ Censeur de l'établissement (à gauche)
+   - ✅ Directeur Général (à droite)
 
 ---
 
@@ -155,8 +155,8 @@ touch ecole_moderne/wsgi.py
 ### Ordre des Signatures
 
 Les signatures sont affichées dans cet ordre (de gauche à droite) :
-1. **Directeur Général** (nouvelle)
-2. **Censeur de l'établissement** (existante)
+1. **Censeur de l'établissement** (existante)
+2. **Directeur Général** (nouvelle)
 
 ### Compatibilité
 
@@ -183,8 +183,8 @@ AVANT :
 
 APRÈS :
 - 2 signatures côte à côte
-  • Directeur Général (gauche)
-  • Censeur de l'établissement (droite)
+  • Censeur de l'établissement (gauche)
+  • Directeur Général (droite)
 ```
 
 ---
@@ -204,12 +204,12 @@ APRÈS :
 
 Sur chaque bulletin, on doit voir :
 ```
-┌─────────────────┬─────────────────────────────┐
-│ Directeur       │  Censeur de l'établissement│
-│ Général         │                             │
-│                 │                             │
-│ Signature       │  Signature                  │
-└─────────────────┴─────────────────────────────┘
+┌─────────────────────────────┬─────────────────┐
+│ Censeur de l'établissement  │ Directeur       │
+│                             │ Général         │
+│                             │                 │
+│ Signature                   │ Signature       │
+└─────────────────────────────┴─────────────────┘
 ```
 
 ---
@@ -230,8 +230,8 @@ Sur chaque bulletin, on doit voir :
 **Modification réussie !**
 
 Les bulletins affichent maintenant :
-- ✅ Signature du Directeur Général (à gauche)
-- ✅ Signature du Censeur (à droite)
+- ✅ Signature du Censeur (à gauche)
+- ✅ Signature du Directeur Général (à droite)
 - ✅ Présentation professionnelle
 - ✅ Conforme aux standards
 
@@ -239,6 +239,9 @@ Les bulletins affichent maintenant :
 
 ---
 
-**Commit** : `0f4c749`  
+**Commits** : 
+- `0f4c749` : Ajout initial des 2 signatures
+- `3d69fc7` : Inversion de l'ordre (Censeur puis Directeur)
+
 **Date** : 20 Novembre 2024  
 **Statut** : ✅ DÉPLOYÉ SUR GITHUB
