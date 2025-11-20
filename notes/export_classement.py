@@ -923,30 +923,29 @@ def exporter_classement_classe_pdf(request):
             c.rect(margin, y - line_height + 2, sum(col_widths), line_height, fill=1, stroke=0)
             c.setFillColorRGB(0, 0, 0)
         
-        # Rang avec accord grammatical
+        # Rang avec accord grammatical (déjà formaté par calculer_rang_intelligent)
         rang_value = eleve_data.get('rang', '-')
-        sexe = eleve_data.get('sexe', 'M')
+        rang_num = eleve_data.get('rang_num', None)
         
-        if rang_value == 1:
-            rang_str = "1ère" if sexe == 'F' else "1er"
+        # Utiliser le rang déjà formaté (ex: "1er/18", "10ème/18")
+        rang_str = rang_value if isinstance(rang_value, str) else str(rang_value)
+        
+        # Appliquer les couleurs selon le rang numérique
+        if rang_num == 1:
             # Médaille or
             c.setFillColorRGB(1, 0.84, 0)
             c.setFont('Helvetica-Bold', 10)
-        elif rang_value == 2:
-            rang_str = f"{rang_value}ème"
+        elif rang_num == 2:
             # Médaille argent
             c.setFillColorRGB(0.75, 0.75, 0.75)
             c.setFont('Helvetica-Bold', 10)
-        elif rang_value == 3:
-            rang_str = f"{rang_value}ème"
+        elif rang_num == 3:
             # Médaille bronze
             c.setFillColorRGB(0.8, 0.5, 0.2)
             c.setFont('Helvetica-Bold', 10)
-        elif rang_value and rang_value != '-':
-            rang_str = f"{rang_value}ème"
+        elif rang_str and rang_str != '-':
             c.setFont('Helvetica', 9)
         else:
-            rang_str = "-"
             c.setFont('Helvetica', 9)
         
         c.drawString(col_x[0] + 0.2*cm, y - 10, rang_str)
