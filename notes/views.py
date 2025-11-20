@@ -6017,9 +6017,13 @@ def bulletins_dynamiques_classe_pdf(request):
         # Calculer les rangs
         resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
         
-        # Créer le dictionnaire de rangs
+        # Créer le dictionnaire de rangs (extraire seulement le rang sans le total)
         for r in resultats_rangs:
-            rang_map[r['eleve_id']] = r.get('rang')
+            rang_complet = r.get('rang')
+            if '/' in str(rang_complet):
+                rang_map[r['eleve_id']] = rang_complet.split('/')[0]
+            else:
+                rang_map[r['eleve_id']] = rang_complet
     
     # Générer le HTML pour tous les bulletins
     bulletins_html = []
