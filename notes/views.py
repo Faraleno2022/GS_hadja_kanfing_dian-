@@ -763,9 +763,11 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
                 den += c
             moy_mat = (num / den).quantize(Decimal('0.01')) if den > 0 else None
 
-        if moy_mat is not None:
-            somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
-            somme_coef_matieres += Decimal(mat.coefficient or 1)
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+        if moy_mat is None:
+            moy_mat = Decimal('0')
+        somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
+        somme_coef_matieres += Decimal(mat.coefficient or 1)
 
         lignes.append({
             'matiere': mat.nom,
@@ -1756,9 +1758,11 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
                     num += Decimal(n.note) * cc
                     den += cc
                 moy_mat = (num / den).quantize(Decimal('0.01')) if den > 0 else None
-            if moy_mat is not None:
-                somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
-                somme_coef_matieres += Decimal(mat.coefficient or 1)
+            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+            if moy_mat is None:
+                moy_mat = Decimal('0')
+            somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
+            somme_coef_matieres += Decimal(mat.coefficient or 1)
             lignes.append({
                 'matiere': mat.nom,
                 'coef_matiere': mat.coefficient,
@@ -2078,9 +2082,11 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
             num += Decimal(n.note) * cc
             den += cc
         moy_mat = (num/den).quantize(Decimal('0.01')) if den > 0 else None
-        if moy_mat is not None:
-            somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
-            somme_coef_matieres += Decimal(mat.coefficient or 1)
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+        if moy_mat is None:
+            moy_mat = Decimal('0')
+        somme_moyennes_coef += moy_mat * Decimal(mat.coefficient or 1)
+        somme_coef_matieres += Decimal(mat.coefficient or 1)
         lignes.append({'matiere': mat.nom, 'coef_matiere': mat.coefficient, 'moyenne': moy_mat})
     moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
 
@@ -5304,9 +5310,13 @@ def bulletin_dynamique_pdf(request):
         else:
             moyenne_matiere = None
         
-        if moyenne_matiere is not None:
-            total_points += moyenne_matiere * matiere.coefficient
-            total_coefficients += matiere.coefficient
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (même sans notes = 0)
+        if moyenne_matiere is None:
+            moyenne_matiere = Decimal('0')
+        
+        # Toujours ajouter au total (cohérence avec le classement)
+        total_points += moyenne_matiere * matiere.coefficient
+        total_coefficients += matiere.coefficient
         
         # Préparer les notes pour l'affichage
         notes_matiere = [
