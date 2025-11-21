@@ -7,6 +7,36 @@ from typing import Dict, List, Tuple, Optional
 from .models import Evaluation, NoteEleve, MatiereNote, NoteMensuelle, CompositionNote
 
 
+def detecter_niveau_scolaire(classe_nom):
+    """
+    Détecte le niveau scolaire à partir du nom de la classe
+    
+    Returns:
+        str: 'MATERNELLE', 'PRIMAIRE', 'COLLEGE', 'LYCEE'
+    """
+    nom_upper = str(classe_nom).upper()
+    
+    # Maternelle et garderie
+    if any(x in nom_upper for x in ['MATERNELLE', 'GARDERIE', 'PETITE SECTION', 'MOYENNE SECTION', 'GRANDE SECTION', 'CRÈCHE']):
+        return 'MATERNELLE'
+    
+    # Primaire (1ère à 6ème année ou CP, CE1, CE2, CM1, CM2)
+    if any(x in nom_upper for x in ['1ÈRE ANNÉE', '2ÈME ANNÉE', '3ÈME ANNÉE', '4ÈME ANNÉE', '5ÈME ANNÉE', '6ÈME ANNÉE',
+                                     'CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2']):
+        return 'PRIMAIRE'
+    
+    # Collège (7ème à 10ème année)
+    if any(x in nom_upper for x in ['7ÈME', '8ÈME', '9ÈME', '10ÈME']):
+        return 'COLLEGE'
+    
+    # Lycée (11ème à Terminale)
+    if any(x in nom_upper for x in ['11ÈME', '12ÈME', 'TERMINALE']):
+        return 'LYCEE'
+    
+    # Par défaut, considérer comme collège
+    return 'COLLEGE'
+
+
 def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     """
     Calcule la moyenne d'un élève pour une matière donnée
@@ -104,7 +134,28 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
             - total_points: float
             - total_coefficients: float
             - details_matieres: list de dict (une par matière)
+            - niveau: niveau scolaire détecté
+            - appreciations_only: bool (True pour maternelle/garderie)
     """
+    # Détecter le niveau scolaire
+    niveau = 'COLLEGE'  # Par défaut
+    if matieres.exists():
+        classe = matieres.first().classe
+        niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
+    
+    # MATERNELLE/GARDERIE: Pas de notes, seulement des appréciations
+    if niveau == 'MATERNELLE':
+        return {
+            'moyenne_generale': None,
+            'total_points': 0,
+            'total_coefficients': 0,
+            'details_matieres': [],
+            'niveau': niveau,
+            'appreciations_only': True,
+            'appreciation': 'Suivi pédagogique qualitatif - Pas de notes numériques',
+            'mention': 'Suivi continu'
+        }
+    
     total_points = Decimal('0')
     total_coefficients = Decimal('0')
     details_matieres = []
@@ -118,12 +169,18 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
         if moyenne_matiere is None:
             moyenne_matiere = 0.0
         
-        # Calculer les points (toujours, même si 0)
-        points = round(moyenne_matiere * float(matiere.coefficient), 2)
+        # PRIMAIRE: Pas de coefficients (tous égaux à 1)
+        if niveau == 'PRIMAIRE':
+            coefficient = Decimal('1')
+        else:
+            coefficient = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
+        
+        # Calculer les points
+        points = round(moyenne_matiere * float(coefficient), 2)
         
         # Ajouter au total (toutes les matières comptent)
-        total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
-        total_coefficients += matiere.coefficient
+        total_points += Decimal(str(moyenne_matiere)) * coefficient
+        total_coefficients += coefficient
         
         details_matieres.append({
             'matiere': matiere,
@@ -131,7 +188,7 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
             'note_composition': result['note_composition'],
             'moyenne': moyenne_matiere if result['moyenne_matiere'] is not None else None,  # Garder None pour affichage
             'moyenne_calculee': moyenne_matiere,  # Valeur utilisée dans le calcul (0 si None)
-            'coefficient': matiere.coefficient,
+            'coefficient': coefficient if niveau != 'PRIMAIRE' else 1,
             'points': points,
         })
     
@@ -149,6 +206,8 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
         'total_points': round(float(total_points), 2) if total_points > 0 else 0,
         'total_coefficients': float(total_coefficients),
         'details_matieres': details_matieres,
+        'niveau': niveau,
+        'appreciations_only': False
     }
 
 
