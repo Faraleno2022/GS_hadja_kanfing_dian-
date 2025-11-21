@@ -32,16 +32,19 @@ except ImportError:
 
 from eleves.models import Eleve, Classe
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve
+# Import du module centralisé pour garantir la cohérence
+from .calculs_moyennes import (
+    calculer_moyenne_generale_eleve,
+    calculer_classement_classe,
+    obtenir_mention_intelligente,
+    obtenir_appreciation_intelligente,
+    formater_rang_intelligent
+)
 from .calculs import (
     calculer_moyenne_devoirs,
     calculer_moyenne_periode,
-    calculer_moyenne_annuelle,
-    calculer_moyenne_generale,
     calculer_moyenne_cours_mensuels,
-    obtenir_mention,
-    obtenir_appreciation,
-    calculer_rang,
-    formater_rang_intelligent
+    calculer_rang
 )
 from .classifier import classify
 from utilisateurs.utils import filter_by_user_school, user_school
@@ -152,29 +155,22 @@ class CalculateurBulletinIntelligent:
         }
     
     def generer_bulletin(self):
-        """Génère le bulletin complet pour la période"""
+        """Génère le bulletin complet pour la période en utilisant le module centralisé"""
         # Récupérer toutes les matières
-        matieres = MatiereNote.objects.filter(classe=self.classe_note)
+        matieres = MatiereNote.objects.filter(classe=self.classe_note, actif=True)
         
-        # Calculer les notes par matière
-        resultats_matieres = []
-        notes_pour_generale = {}
-        
-        for matiere in matieres:
-            resultat = self.calculer_notes_matiere(matiere)
-            resultats_matieres.append(resultat)
-            
-            if resultat['moyenne'] is not None:
-                notes_pour_generale[matiere.nom] = {
-                    'moyenne': resultat['moyenne'],
-                    'coefficient': resultat['coefficient']
-                }
-        
-        # Calculer la moyenne générale
-        moyenne_generale = calculer_moyenne_generale(
-            notes_pour_generale,
-            niveau=self.niveau
+        # UTILISER LE MODULE CENTRALISÉ (SOURCE UNIQUE)
+        system_type = 'trimestre' if 'TRIMESTRE' in self.periode else 'semestre' if 'SEMESTRE' in self.periode else 'mensuel'
+        result_centralized = calculer_moyenne_generale_eleve(
+            self.eleve, 
+            matieres, 
+            self.periode, 
+            system_type
         )
+        
+        # Extraire les données du calcul centralisé
+        moyenne_generale = result_centralized['moyenne_generale']
+        resultats_matieres = result_centralized['details_matieres']
         
         # Calculer le rang (optionnel - nécessite tous les élèves)
         rang = self._calculer_rang_eleve(moyenne_generale)
@@ -188,8 +184,8 @@ class CalculateurBulletinIntelligent:
             'section': self.section,
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
-            'mention': obtenir_mention(moyenne_generale) if moyenne_generale else None,
-            'appreciation': obtenir_appreciation(moyenne_generale, self.eleve.prenom) if moyenne_generale else None,
+            'mention': obtenir_mention_intelligente(moyenne_generale) if moyenne_generale else None,
+            'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom) if moyenne_generale else None,
             'rang': rang,
             'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
         }

@@ -5214,6 +5214,7 @@ def bulletin_dynamique_pdf(request):
     # Réutiliser la logique de bulletin_dynamique pour obtenir les données
     from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
+    from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
@@ -5260,166 +5261,56 @@ def bulletin_dynamique_pdf(request):
         'mois_libelle': titre_periode,
     }
     
-    # Calculer les notes pour chaque matière
-    total_points = Decimal('0')
-    total_coefficients = Decimal('0')
+    # UTILISER LE MODULE CENTRALISÉ (SOURCE UNIQUE)
+    result_centralized = calculer_moyenne_generale_eleve(eleve_selectionne, matieres, periode, system_type)
     
-    for matiere in matieres:
-        evaluations = Evaluation.objects.filter(
-            matiere=matiere,
-            matiere__classe=classe_selectionnee,
-            periode=periode
-        ).order_by('date_evaluation')
-        
-        total_devoirs = Decimal('0')
-        count_devoirs = 0
-        total_compo = Decimal('0')
-        count_compo = 0
-        
-        for evaluation in evaluations:
-            try:
-                note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
-                # Traiter les absences comme 0 (harmonisation avec le classement)
-                note_value = Decimal(str(note_obj.note)) if note_obj.note is not None and not note_obj.absent else Decimal('0')
-                
-                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                    total_compo += note_value
-                    count_compo += 1
-                else:
-                    total_devoirs += note_value
-                    count_devoirs += 1
-            except NoteEleve.DoesNotExist:
-                # Si pas de note du tout, compter comme 0
-                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                    count_compo += 1
-                else:
-                    count_devoirs += 1
-        
-        moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
-        note_composition = total_compo / count_compo if count_compo > 0 else None
-        
-        # Calculer la moyenne de la matière
-        if system_type == 'mensuel':
-            moyenne_matiere = moyenne_continue
-        elif moyenne_continue is not None and note_composition is not None:
-            moyenne_matiere = (moyenne_continue + note_composition * 2) / 3
-        elif note_composition is not None:
-            moyenne_matiere = note_composition
-        elif moyenne_continue is not None:
-            moyenne_matiere = moyenne_continue
-        else:
-            moyenne_matiere = None
-        
-        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (même sans notes = 0)
-        if moyenne_matiere is None:
-            moyenne_matiere = Decimal('0')
-        
-        # Toujours ajouter au total (cohérence avec le classement)
-        total_points += moyenne_matiere * matiere.coefficient
-        total_coefficients += matiere.coefficient
-        
-        # Préparer les notes pour l'affichage
-        notes_matiere = [
-            {'note': moyenne_continue, 'absent': False},
-            {'note': note_composition, 'absent': False}
-        ]
-        
+    # Extraire les données du calcul centralisé
+    bulletin_data['moyenne_generale'] = result_centralized['moyenne_generale']
+    bulletin_data['total_points'] = result_centralized['total_points']
+    bulletin_data['total_coefficients'] = result_centralized['total_coefficients']
+    
+    # Préparer les données des matières depuis le module centralisé
+    for detail in result_centralized['details_matieres']:
         bulletin_data['matieres_notes'].append({
-            'matiere': matiere,
-            'notes': notes_matiere,
-            'moyenne_continue': moyenne_continue,
-            'note_composition': note_composition,
-            'moyenne': float(moyenne_matiere) if moyenne_matiere else None,
-            'coefficient': matiere.coefficient,
-            'points': float(moyenne_matiere * matiere.coefficient) if moyenne_matiere else None,
-            'total': float(moyenne_matiere * matiere.coefficient) if moyenne_matiere else None,
+            'matiere': detail['matiere'],
+            'notes': [
+                {'note': detail['moyenne_continue'], 'absent': False},
+                {'note': detail['note_composition'], 'absent': False}
+            ],
+            'moyenne_continue': detail['moyenne_continue'],
+            'note_composition': detail['note_composition'],
+            'moyenne': detail['moyenne'],
+            'coefficient': detail['coefficient'],
+            'points': detail['points'],
+            'total': detail['points'],
         })
     
-    # Calculer la moyenne générale
-    if total_coefficients > 0:
-        moyenne_generale = total_points / total_coefficients
-        bulletin_data['moyenne_generale'] = float(moyenne_generale)
+    # Les valeurs sont déjà extraites du module centralisé
+    total_points = Decimal(str(result_centralized['total_points'])) if result_centralized['total_points'] else Decimal('0')
+    total_coefficients = Decimal(str(result_centralized['total_coefficients'])) if result_centralized['total_coefficients'] else Decimal('0')
+    
+    # Calculer le rang en utilisant le module centralisé pour tous les élèves
+    if eleves and bulletin_data['moyenne_generale'] is not None:
+        # Calculer le classement avec le module centralisé (SOURCE UNIQUE)
+        classement_complet = calculer_classement_classe(eleves, matieres, periode, system_type)
         
-        # Calculer le rang de l'élève
-        if eleves:
-            all_moyennes = []
-            for e in eleves:
-                e_total_points = Decimal('0')
-                e_total_coef = Decimal('0')
-                
-                for matiere in matieres:
-                    evals = Evaluation.objects.filter(
-                        matiere=matiere,
-                        matiere__classe=classe_selectionnee,
-                        periode=periode
-                    )
-                    
-                    e_total_dev = Decimal('0')
-                    e_count_dev = 0
-                    e_total_compo = Decimal('0')
-                    e_count_compo = 0
-                    
-                    for ev in evals:
-                        try:
-                            n = NoteEleve.objects.get(eleve=e, evaluation=ev)
-                            # Traiter les absences comme 0 (harmonisation avec le classement)
-                            note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
-                            
-                            if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                e_total_compo += note_value
-                                e_count_compo += 1
-                            else:
-                                e_total_dev += note_value
-                                e_count_dev += 1
-                        except NoteEleve.DoesNotExist:
-                            # Si pas de note du tout, compter comme 0
-                            if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                e_count_compo += 1
-                            else:
-                                e_count_dev += 1
-                    
-                    e_moy_dev = e_total_dev / e_count_dev if e_count_dev > 0 else None
-                    e_note_compo = e_total_compo / e_count_compo if e_count_compo > 0 else None
-                    
-                    if system_type == 'mensuel':
-                        e_moy_mat = e_moy_dev
-                    elif e_moy_dev is not None and e_note_compo is not None:
-                        e_moy_mat = (e_moy_dev + e_note_compo * 2) / 3
-                    elif e_note_compo is not None:
-                        e_moy_mat = e_note_compo
-                    elif e_moy_dev is not None:
-                        e_moy_mat = e_moy_dev
-                    else:
-                        e_moy_mat = None
-                    
-                    if e_moy_mat is not None:
-                        e_total_points += e_moy_mat * matiere.coefficient
-                        e_total_coef += matiere.coefficient
-                
-                if e_total_coef > 0:
-                    e_moyenne = e_total_points / e_total_coef
-                    all_moyennes.append((e.id, float(e_moyenne)))
-            
-            # Utiliser la fonction centralisée pour garantir cohérence avec le classement
-            from .utils_rangs import get_rang_eleve
-            
-            rang_info = get_rang_eleve(classe_selectionnee, periode, eleve_selectionne.id)
-            if rang_info:
-                bulletin_data['rang'] = rang_info['rang']
-            else:
-                bulletin_data['rang'] = '-'
+        # Récupérer le rang de l'élève depuis le classement centralisé
+        rang_map = classement_complet.get('rang_map', {})
+        rang_num = rang_map.get(eleve_selectionne.id)
         
-        # Déterminer la mention
-        if moyenne_generale >= 16:
-            bulletin_data['mention'] = "Très Bien"
-        elif moyenne_generale >= 14:
-            bulletin_data['mention'] = "Bien"
-        elif moyenne_generale >= 12:
-            bulletin_data['mention'] = "Assez Bien"
-        elif moyenne_generale >= 10:
-            bulletin_data['mention'] = "Passable"
+        if rang_num:
+            # Formater le rang avec accord grammatical
+            from .calculs_moyennes import formater_rang_intelligent
+            sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
+            bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, classement_complet['total_eleves'])
         else:
-            bulletin_data['mention'] = "Insuffisant"
+            bulletin_data['rang'] = '-'
+    
+    # Déterminer la mention avec le module centralisé
+    if bulletin_data['moyenne_generale'] is not None:
+        from .calculs_moyennes import obtenir_mention_intelligente, obtenir_appreciation_intelligente
+        bulletin_data['mention'] = obtenir_mention_intelligente(bulletin_data['moyenne_generale'])
+        bulletin_data['appreciation'] = obtenir_appreciation_intelligente(bulletin_data['moyenne_generale'], eleve_selectionne.prenom)
     
     # Préparer le contexte pour le template
     context = {
