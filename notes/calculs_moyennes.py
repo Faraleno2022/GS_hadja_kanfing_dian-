@@ -50,7 +50,8 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                     total_devoirs += Decimal(str(note_obj.note))
                     count_devoirs += 1
         except NoteEleve.DoesNotExist:
-            pass
+            # Note n'existe pas, continuer sans erreur
+            continue
     
     if count_devoirs > 0:
         moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
@@ -69,10 +70,14 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     elif moyenne_continue is not None:
         moyenne_matiere = moyenne_continue
     
-    # Calculer les points
+    # Calculer les points (avec validation du coefficient)
     points = None
     if moyenne_matiere is not None:
-        coefficient = float(matiere.coefficient) if matiere.coefficient else 1.0
+        # Validation et conversion sécurisée du coefficient
+        try:
+            coefficient = float(matiere.coefficient) if matiere.coefficient and matiere.coefficient > 0 else 1.0
+        except (TypeError, ValueError):
+            coefficient = 1.0
         points = round(moyenne_matiere * coefficient, 2)
     
     return {
@@ -130,10 +135,14 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
             'points': points,
         })
     
-    # Calculer la moyenne générale
+    # Calculer la moyenne générale (avec protection contre division par zéro)
     moyenne_generale = None
-    if total_coefficients > 0:
-        moyenne_generale = round(float(total_points / total_coefficients), 2)
+    if total_coefficients and total_coefficients > 0:
+        try:
+            moyenne_generale = round(float(total_points / total_coefficients), 2)
+        except (ZeroDivisionError, ValueError, TypeError) as e:
+            # En cas d'erreur de calcul, retourner None
+            moyenne_generale = None
     
     return {
         'moyenne_generale': moyenne_generale,
