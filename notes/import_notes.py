@@ -276,19 +276,37 @@ def generer_template_excel(classe_id, matiere_id, type_import='MENSUELLE'):
         from eleves.models import Classe as ClasseEleve
         
         # Trouver la classe d'élèves correspondante
+        # Essayer plusieurs méthodes de correspondance
+        classe_eleve = None
+        
+        # Méthode 1: Correspondance exacte
         classe_eleve = ClasseEleve.objects.filter(
-            nom__icontains=classe.nom,
+            nom__iexact=classe.nom,
             annee_scolaire=classe.annee_scolaire
         ).first()
         
+        # Méthode 2: Correspondance partielle (contient)
         if not classe_eleve:
-            # Si pas de correspondance, créer un template vide
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__icontains=classe.nom.split()[0],  # Premier mot du nom
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+        
+        # Méthode 3: Chercher par nom de classe sans année
+        if not classe_eleve:
+            nom_simple = classe.nom.replace('ÈME', '').replace('ème', '').strip()
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__icontains=nom_simple
+            ).first()
+        
+        if not classe_eleve:
+            # Si pas de correspondance, créer un template avec message d'erreur
             data = {
-                'Matricule': ['EXEMPLE-001', 'EXEMPLE-002'],
-                'Prénom': ['Jean', 'Marie'],
-                'Nom': ['DUPONT', 'MARTIN'],
-                'Note': [15.5, 17.0],
-                'Absent': ['NON', 'NON']
+                'Matricule': [f'ERREUR: Aucun élève trouvé pour la classe "{classe.nom}"'],
+                'Prénom': ['Vérifiez que les élèves sont bien affectés à cette classe'],
+                'Nom': ['Ou contactez l\'administrateur'],
+                'Note': [''],
+                'Absent': ['NON']
             }
         else:
             # Récupérer les élèves
