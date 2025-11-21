@@ -279,25 +279,52 @@ def generer_template_excel(classe_id, matiere_id, type_import='MENSUELLE'):
         # Essayer plusieurs méthodes de correspondance
         classe_eleve = None
         
-        # Méthode 1: Correspondance exacte
+        # Méthode 1: Correspondance exacte avec année scolaire
         classe_eleve = ClasseEleve.objects.filter(
             nom__iexact=classe.nom,
             annee_scolaire=classe.annee_scolaire
         ).first()
         
-        # Méthode 2: Correspondance partielle (contient)
+        # Méthode 2: Correspondance exacte sans année scolaire
         if not classe_eleve:
             classe_eleve = ClasseEleve.objects.filter(
-                nom__icontains=classe.nom.split()[0],  # Premier mot du nom
-                annee_scolaire=classe.annee_scolaire
+                nom__iexact=classe.nom
             ).first()
         
-        # Méthode 3: Chercher par nom de classe sans année
+        # Méthode 3: Correspondance avec normalisation (ignorer casse et accents)
         if not classe_eleve:
-            nom_simple = classe.nom.replace('ÈME', '').replace('ème', '').strip()
+            # Normaliser le nom: enlever accents, mettre en minuscules
+            nom_normalise = classe.nom.lower().replace('è', 'e').replace('é', 'e').replace('ê', 'e')
+            toutes_classes = ClasseEleve.objects.all()
+            for c in toutes_classes:
+                nom_c_normalise = c.nom.lower().replace('è', 'e').replace('é', 'e').replace('ê', 'e')
+                if nom_normalise == nom_c_normalise:
+                    classe_eleve = c
+                    break
+        
+        # Méthode 3b: Correspondance partielle (contient premier mot)
+        if not classe_eleve:
+            premier_mot = classe.nom.split()[0] if classe.nom.split() else classe.nom
             classe_eleve = ClasseEleve.objects.filter(
-                nom__icontains=nom_simple
+                nom__icontains=premier_mot
             ).first()
+        
+        # Méthode 4: Chercher par nom simplifié (sans ÈME/ème/ANNÉE)
+        if not classe_eleve:
+            nom_simple = classe.nom.replace('ÈME', '').replace('ème', '').replace('ANNÉE', '').replace('Année', '').strip()
+            if nom_simple:
+                classe_eleve = ClasseEleve.objects.filter(
+                    nom__icontains=nom_simple
+                ).first()
+        
+        # Méthode 5: Chercher dans toutes les classes (dernière chance)
+        if not classe_eleve:
+            # Récupérer toutes les classes et chercher la meilleure correspondance
+            toutes_classes = ClasseEleve.objects.all()
+            for c in toutes_classes:
+                if classe.nom.lower() in c.nom.lower() or c.nom.lower() in classe.nom.lower():
+                    classe_eleve = c
+                    break
         
         if not classe_eleve:
             # Si pas de correspondance, créer un template avec message d'erreur
