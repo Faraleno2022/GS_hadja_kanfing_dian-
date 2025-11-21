@@ -107,17 +107,27 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
     for matiere in matieres:
         result = calculer_moyenne_matiere(eleve, matiere, periode, system_type)
         
-        if result['moyenne_matiere'] is not None:
-            total_points += Decimal(str(result['moyenne_matiere'])) * matiere.coefficient
-            total_coefficients += matiere.coefficient
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent
+        # Si pas de notes = 0 (comme une absence)
+        moyenne_matiere = result['moyenne_matiere']
+        if moyenne_matiere is None:
+            moyenne_matiere = 0.0
+        
+        # Calculer les points (toujours, même si 0)
+        points = round(moyenne_matiere * float(matiere.coefficient), 2)
+        
+        # Ajouter au total (toutes les matières comptent)
+        total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
+        total_coefficients += matiere.coefficient
         
         details_matieres.append({
             'matiere': matiere,
             'moyenne_continue': result['moyenne_continue'],
             'note_composition': result['note_composition'],
-            'moyenne': result['moyenne_matiere'],
+            'moyenne': moyenne_matiere if result['moyenne_matiere'] is not None else None,  # Garder None pour affichage
+            'moyenne_calculee': moyenne_matiere,  # Valeur utilisée dans le calcul (0 si None)
             'coefficient': matiere.coefficient,
-            'points': result['points'],
+            'points': points,
         })
     
     # Calculer la moyenne générale
