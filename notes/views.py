@@ -5043,107 +5043,125 @@ def bulletin_dynamique(request):
                 moyenne_generale = round(float(total_points / total_coefficients), 2)
                 bulletin_data['moyenne_generale'] = moyenne_generale
                 
-                # Déterminer la mention et l'appréciation via le système intelligent
-                from decimal import Decimal as _Dec
-                moyenne_dec = _Dec(str(moyenne_generale))
-                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
-                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+                # Essayer d'abord de récupérer depuis le Classement (plus précis)
+                from .models import Classement
+                classement = Classement.objects.filter(
+                    eleve=eleve_selectionne,
+                    classe=classe_selectionnee,
+                    periode=periode,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                ).first()
                 
-                # Calculer le rang
-                # Récupérer toutes les moyennes de la classe pour cette période
-                if periode:
-                    moyennes_classe_pairs = []  # (eleve_id, moyenne_float)
-                    for eleve_classe in eleves:
-                        total_eleve = Decimal('0')
-                        total_coef_eleve = Decimal('0')
-                        
-                        for matiere in matieres:
-                            # Récupérer les évaluations de cette matière pour la période
-                            evals = Evaluation.objects.filter(
-                                matiere=matiere,
-                                periode=periode
-                            )
+                if classement:
+                    # Utiliser les données du classement (plus précis)
+                    bulletin_data['moyenne_generale'] = float(classement.moyenne_generale)
+                    bulletin_data['mention'] = classement.mention
+                    bulletin_data['appreciation'] = classement.appreciation
+                    bulletin_data['rang'] = classement.rang_formate
+                    bulletin_data['total_points'] = float(classement.total_points)
+                    bulletin_data['total_coefficients'] = float(classement.total_coefficients)
+                else:
+                    # Sinon, calculer à la volée (fallback)
+                    from decimal import Decimal as _Dec
+                    moyenne_dec = _Dec(str(moyenne_generale))
+                    bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                    bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+                    
+                    # Calculer le rang
+                    # Récupérer toutes les moyennes de la classe pour cette période
+                    if periode:
+                        moyennes_classe_pairs = []  # (eleve_id, moyenne_float)
+                        for eleve_classe in eleves:
+                            total_eleve = Decimal('0')
+                            total_coef_eleve = Decimal('0')
                             
-                            # Si pas d'évaluation, chercher par nom (matière recréée)
-                            if not evals.exists():
-                                from django.db.models import Q
+                            for matiere in matieres:
+                                # Récupérer les évaluations de cette matière pour la période
                                 evals = Evaluation.objects.filter(
-                                    Q(matiere__nom=matiere.nom) &
-                                    Q(matiere__classe=classe_selectionnee) &
-                                    Q(periode=periode)
+                                    matiere=matiere,
+                                    periode=periode
                                 )
+                                
+                                # Si pas d'évaluation, chercher par nom (matière recréée)
+                                if not evals.exists():
+                                    from django.db.models import Q
+                                    evals = Evaluation.objects.filter(
+                                        Q(matiere__nom=matiere.nom) &
+                                        Q(matiere__classe=classe_selectionnee) &
+                                        Q(periode=periode)
+                                    )
+                                
+                                # Séparer devoirs et compositions
+                                total_dev = Decimal('0')
+                                count_dev = 0
+                                total_comp = Decimal('0')
+                                count_comp = 0
+                                
+                                for ev in evals:
+                                    try:
+                                        n = NoteEleve.objects.get(eleve=eleve_classe, evaluation=ev)
+                                        # Traiter les absences comme 0 (harmonisation avec le classement)
+                                        note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
+                                        
+                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                            total_comp += note_value
+                                            count_comp += 1
+                                        else:
+                                            total_dev += note_value
+                                            count_dev += 1
+                                    except NoteEleve.DoesNotExist:
+                                        # Pas de note = 0
+                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                            count_comp += 1
+                                        else:
+                                            count_dev += 1
+                                
+                                # Calculer la moyenne de la matière
+                                moy_cont = total_dev / count_dev if count_dev > 0 else None
+                                moy_comp = total_comp / count_comp if count_comp > 0 else None
+                                moy_mat = None
+                                
+                                if system_type == 'mensuel':
+                                    moy_mat = moy_cont
+                                elif moy_cont is not None and moy_comp is not None:
+                                    moy_mat = (moy_cont + moy_comp * 2) / 3
+                                elif moy_comp is not None:
+                                    moy_mat = moy_comp
+                                elif moy_cont is not None:
+                                    moy_mat = moy_cont
+                                
+                                # Si l'élève a une moyenne dans cette matière
+                                if moy_mat is not None:
+                                    total_eleve += moy_mat * matiere.coefficient
+                                    total_coef_eleve += matiere.coefficient
                             
-                            # Séparer devoirs et compositions
-                            total_dev = Decimal('0')
-                            count_dev = 0
-                            total_comp = Decimal('0')
-                            count_comp = 0
-                            
-                            for ev in evals:
-                                try:
-                                    n = NoteEleve.objects.get(eleve=eleve_classe, evaluation=ev)
-                                    # Traiter les absences comme 0 (harmonisation avec le classement)
-                                    note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
-                                    
-                                    if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                        total_comp += note_value
-                                        count_comp += 1
-                                    else:
-                                        total_dev += note_value
-                                        count_dev += 1
-                                except NoteEleve.DoesNotExist:
-                                    # Pas de note = 0
-                                    if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                        count_comp += 1
-                                    else:
-                                        count_dev += 1
-                            
-                            # Calculer la moyenne de la matière
-                            moy_cont = total_dev / count_dev if count_dev > 0 else None
-                            moy_comp = total_comp / count_comp if count_comp > 0 else None
-                            moy_mat = None
-                            
-                            if system_type == 'mensuel':
-                                moy_mat = moy_cont
-                            elif moy_cont is not None and moy_comp is not None:
-                                moy_mat = (moy_cont + moy_comp * 2) / 3
-                            elif moy_comp is not None:
-                                moy_mat = moy_comp
-                            elif moy_cont is not None:
-                                moy_mat = moy_cont
-                            
-                            # Si l'élève a une moyenne dans cette matière
-                            if moy_mat is not None:
-                                total_eleve += moy_mat * matiere.coefficient
-                                total_coef_eleve += matiere.coefficient
+                            if total_coef_eleve > 0:
+                                moy_eleve = float(total_eleve / total_coef_eleve)
+                                moyennes_classe_pairs.append((eleve_classe.id, moy_eleve))
                         
-                        if total_coef_eleve > 0:
-                            moy_eleve = float(total_eleve / total_coef_eleve)
-                            moyennes_classe_pairs.append((eleve_classe.id, moy_eleve))
-                    
-                    # Trier et attribuer les rangs avec gestion des ex-aequo
-                    moyennes_classe_pairs.sort(key=lambda p: p[1], reverse=True)
-                    rang_map = {}
-                    prev_moy = None
-                    prev_rank = None
-                    for idx, (eid, mg) in enumerate(moyennes_classe_pairs, start=1):
-                        if prev_moy is not None and abs(mg - prev_moy) < 0.01:
-                            # ex-aequo: même rang que le précédent
-                            rang_map[eid] = prev_rank
-                        else:
-                            rang_map[eid] = idx
-                            prev_rank = idx
-                            prev_moy = mg
+                        # Trier et attribuer les rangs avec gestion des ex-aequo
+                        moyennes_classe_pairs.sort(key=lambda p: p[1], reverse=True)
+                        rang_map = {}
+                        prev_moy = None
+                        prev_rank = None
+                        for idx, (eid, mg) in enumerate(moyennes_classe_pairs, start=1):
+                            if prev_moy is not None and abs(mg - prev_moy) < 0.01:
+                                # ex-aequo: même rang que le précédent
+                                rang_map[eid] = prev_rank
+                            else:
+                                rang_map[eid] = idx
+                                prev_rank = idx
+                                prev_moy = mg
 
-                    rang_num = rang_map.get(eleve_selectionne.id)
-                    
-                    if rang_num is not None:
-                        sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
-                        bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe_pairs))
+                        rang_num = rang_map.get(eleve_selectionne.id)
+                        
+                        if rang_num is not None:
+                            sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
+                            bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe_pairs))
+                        else:
+                            bulletin_data['rang'] = "-"
                     else:
                         bulletin_data['rang'] = "-"
-                else:
-                    bulletin_data['rang'] = "-"
     
     context = {
         'titre_page': 'Bulletin Dynamique',

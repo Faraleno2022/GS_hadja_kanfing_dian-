@@ -322,3 +322,44 @@ class ThemeBulletin(models.Model):
         if self.par_defaut:
             ThemeBulletin.objects.filter(ecole=self.ecole, par_defaut=True).exclude(id=self.id).update(par_defaut=False)
         super().save(*args, **kwargs)
+
+
+class Classement(models.Model):
+    """Stocke les moyennes et rangs calculés pour garantir la cohérence"""
+    eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='classements')
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='classements')
+    
+    # Période
+    periode = models.CharField(max_length=50, verbose_name="Période")  # TRIMESTRE_1, SEMESTRE_1, NOVEMBRE, etc.
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    
+    # Moyennes calculées
+    moyenne_generale = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Moyenne générale")
+    total_points = models.DecimalField(max_digits=8, decimal_places=2, verbose_name="Total points")
+    total_coefficients = models.DecimalField(max_digits=6, decimal_places=2, verbose_name="Total coefficients")
+    
+    # Rang
+    rang = models.PositiveIntegerField(verbose_name="Rang")
+    rang_formate = models.CharField(max_length=20, verbose_name="Rang formaté")  # "1er/31", "2ème/31", etc.
+    effectif = models.PositiveIntegerField(verbose_name="Effectif de la classe")
+    
+    # Mention et appréciation
+    mention = models.CharField(max_length=50, blank=True, verbose_name="Mention")
+    appreciation = models.TextField(blank=True, verbose_name="Appréciation")
+    
+    # Métadonnées
+    date_calcul = models.DateTimeField(auto_now=True, verbose_name="Date du calcul")
+    calcule_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Classement"
+        verbose_name_plural = "Classements"
+        ordering = ['classe', 'periode', 'rang']
+        unique_together = ['eleve', 'classe', 'periode', 'annee_scolaire']
+        indexes = [
+            models.Index(fields=['classe', 'periode', 'annee_scolaire']),
+            models.Index(fields=['eleve', 'periode']),
+        ]
+    
+    def __str__(self):
+        return f"{self.eleve} - {self.periode} - {self.rang_formate}"
