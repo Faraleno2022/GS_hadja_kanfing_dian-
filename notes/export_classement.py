@@ -18,7 +18,8 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
-from eleves.models import Eleve, Classe as ClasseEleve
+from eleves.models import Eleve, Classe
+from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
 
 
 def formater_rang(rang, sexe):
@@ -426,102 +427,42 @@ def _generer_classement_matiere(eleves, classe_note, matiere_id, type_note, peri
 
 
 def _generer_classement_general(eleves, classe_note, type_note, periode):
-    """Générer le classement général (moyenne de toutes les matières)"""
+    """Générer le classement général en utilisant le module centralisé"""
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+    
+    # UTILISER LE MODULE CENTRALISÉ pour garantir la cohérence
+    # Déterminer le system_type selon la période
+    if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+        system_type = 'mensuel'
+    elif periode and 'TRIMESTRE' in periode:
+        system_type = 'trimestre'
+    elif periode and 'SEMESTRE' in periode:
+        system_type = 'semestre'
+    else:
+        system_type = 'annuel'
+    
+    # Calculer avec le module centralisé (SOURCE UNIQUE)
+    classement_complet = calculer_classement_classe(eleves, matieres, periode, system_type)
+    
+    # Extraire les données du classement centralisé
     classement_data = []
     
     for eleve in eleves:
-        total_notes = Decimal('0')
-        total_coefficients = Decimal('0')
-        nb_notes_trouvees = 0
-        toutes_absentes = True
+        # Récupérer les détails depuis le calcul centralisé
+        details_eleve = classement_complet.get('details_par_eleve', {}).get(eleve.id)
         
-        for matiere in matieres:
-            note_value = None
-            coefficient = matiere.coefficient or Decimal('1')
-            
-            # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
-            from .models import Evaluation, NoteEleve
-            evaluations = Evaluation.objects.filter(matiere=matiere)
-            if periode:
-                evaluations = evaluations.filter(periode=periode)
-            
-            if evaluations.exists():
-                # Calculer la moyenne pondérée des évaluations pour cette matière
-                total_pondere = Decimal('0')
-                total_coef_eval = Decimal('0')
-                notes_trouvees = False
-                
-                for evaluation in evaluations:
-                    try:
-                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                        coef_eval = Decimal(str(evaluation.coefficient or 1))
-                        if note_obj.absent or note_obj.note is None:
-                            # Absence = 0
-                            total_pondere += Decimal('0') * coef_eval
-                        else:
-                            total_pondere += Decimal(str(note_obj.note)) * coef_eval
-                            notes_trouvees = True
-                            nb_notes_trouvees += 1
-                        total_coef_eval += coef_eval
-                    except NoteEleve.DoesNotExist:
-                        coef_eval = Decimal(str(evaluation.coefficient or 1))
-                        total_pondere += Decimal('0') * coef_eval
-                        total_coef_eval += coef_eval
-                
-                if total_coef_eval > 0:
-                    note_value = total_pondere / total_coef_eval
-                    toutes_absentes = False
-            
-            # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
-            if note_value is None and periode:
-                # Essayer NoteMensuelle
-                try:
-                    note_obj = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=periode,
-                        annee_scolaire=classe_note.annee_scolaire
-                    )
-                    if not note_obj.absent and note_obj.note:
-                        note_value = note_obj.note
-                        toutes_absentes = False
-                        nb_notes_trouvees += 1
-                except NoteMensuelle.DoesNotExist:
-                    # Essayer CompositionNote
-                    try:
-                        note_obj = CompositionNote.objects.get(
-                            eleve=eleve,
-                            matiere=matiere,
-                            periode=periode,
-                            annee_scolaire=classe_note.annee_scolaire
-                        )
-                        if not note_obj.absent and note_obj.note:
-                            note_value = note_obj.note
-                            toutes_absentes = False
-                            nb_notes_trouvees += 1
-                    except CompositionNote.DoesNotExist:
-                        pass
-            
-            # Toujours ajouter la matière à la moyenne générale (même si absence = 0)
-            if note_value is None:
-                note_value = Decimal('0')
-            total_notes += note_value * coefficient
-            total_coefficients += coefficient
-        
-        # Calculer la moyenne générale
-        if total_coefficients > 0:
-            moyenne_generale = float(total_notes / total_coefficients)
+        if details_eleve:
+            # Utiliser les données du module centralisé (SOURCE UNIQUE)
+            moyenne_generale = details_eleve.get('moyenne_generale')
             classement_data.append({
                 'eleve_id': eleve.id,
                 'prenom': eleve.prenom,
                 'nom': eleve.nom,
                 'matricule': eleve.matricule or 'N/A',
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
-                'moyenne': round(moyenne_generale, 2),
+                'moyenne': round(moyenne_generale, 2) if moyenne_generale else None,
                 'absent': False,
                 'pas_de_notes': False,
-                'nb_notes': nb_notes_trouvees,
                 'sexe': eleve.sexe
             })
         else:
@@ -532,9 +473,8 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 'matricule': eleve.matricule or 'N/A',
                 'nom_complet': f"{eleve.nom} {eleve.prenom}",
                 'moyenne': None,
-                'absent': toutes_absentes and nb_notes_trouvees == 0,
-                'pas_de_notes': nb_notes_trouvees == 0,
-                'nb_notes': 0,
+                'absent': False,
+                'pas_de_notes': True,
                 'sexe': eleve.sexe
             })
     
