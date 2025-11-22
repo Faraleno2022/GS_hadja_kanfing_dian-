@@ -5353,37 +5353,121 @@ def bulletin_dynamique_pdf(request):
         bulletin_data['mention'] = obtenir_mention_intelligente(bulletin_data['moyenne_generale'])
         bulletin_data['appreciation'] = obtenir_appreciation_intelligente(bulletin_data['moyenne_generale'], eleve_selectionne.prenom)
     
-    # Préparer le contexte pour le template
+    # Préparer les images en base64 (même logique que pour l'export de classe)
+    import base64
+    logo_base64 = None
+    photo_base64 = None
+    
+    if ecole and getattr(ecole, 'logo', None):
+        try:
+            logo_path = ecole.logo.path
+            with open(logo_path, 'rb') as img_file:
+                logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+        except Exception:
+            pass
+    
+    if getattr(eleve_selectionne, 'photo', None):
+        try:
+            photo_path = eleve_selectionne.photo.path
+            with open(photo_path, 'rb') as img_file:
+                photo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
+        except Exception:
+            pass
+
+    # CSS identique à celui utilisé pour bulletins_dynamiques_classe_pdf
+    css_string = """
+    @page {
+        size: A4;
+        margin: 10mm 10mm 10mm 10mm;
+    }
+    body {
+        font-family: 'Arial', 'Helvetica', sans-serif;
+        margin: 0;
+        padding: 0;
+        font-size: 12px;
+    }
+    .bulletin-container {
+        background: white;
+        width: 190mm;
+        height: 277mm;
+        padding: 5mm;
+        position: relative;
+        page-break-after: always;
+        page-break-inside: avoid;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+    .bulletin-container:last-child {
+        page-break-after: auto;
+    }
+    /* Filigrane amélioré */
+    .watermark {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-30deg);
+        opacity: 0.08;
+        width: 600px;
+        height: 600px;
+        z-index: -1;
+        pointer-events: none;
+        filter: grayscale(100%);
+        mix-blend-mode: multiply;
+    }
+    .header-section, .info-grid, .notes-table, .resultats-section,
+    .appreciation-section, .signatures-section, .calcul-explanation-section, .footer-section {
+        position: relative;
+        z-index: 1;
+    }
+    """
+
+    # Contexte pour le template "single" (même que pour l'export de classe)
     context = {
         'bulletin_data': bulletin_data,
         'classe_selectionnee': classe_selectionnee,
         'ecole': ecole,
         'annee_scolaire': classe_selectionnee.annee_scolaire,
-        'for_pdf': True,  # Indicateur pour le template
+        'system_type': system_type,
+        'logo_base64': logo_base64,
+        'photo_base64': photo_base64,
     }
-    
-    # Rendre le template HTML
-    html_string = render_to_string('notes/bulletin_dynamique.html', context, request=request)
-    
-    # Générer le PDF avec WeasyPrint
+
+    # Générer le HTML complet avec le même fragment que pour l'export de classe
+    bulletin_html = render_to_string('notes/bulletin_dynamique_single.html', context)
+    full_html = f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            {css_string}
+        </style>
+    </head>
+    <body>
+        {bulletin_html}
+    </body>
+    </html>
+    '''
+
+    # Générer le PDF avec WeasyPrint (même moteur que pour l'export de classe)
     try:
         from weasyprint import HTML, CSS
         from weasyprint.text.fonts import FontConfiguration
-        
+
         font_config = FontConfiguration()
-        html = HTML(string=html_string, base_url=request.build_absolute_uri())
-        
-        # Créer le PDF
-        pdf_file = html.write_pdf(font_config=font_config)
-        
-        # Préparer la réponse
-        response = HttpResponse(pdf_file, content_type='application/pdf')
+
+        response = HttpResponse(content_type='application/pdf')
         filename = f"bulletin_{eleve_selectionne.nom}_{eleve_selectionne.prenom}_{periode}.pdf"
-        # Utiliser 'inline' au lieu de 'attachment' pour ouvrir dans le navigateur
         response['Content-Disposition'] = f'inline; filename="{filename}"'
-        
+
+        HTML(string=full_html).write_pdf(
+            response,
+            stylesheets=[CSS(string=css_string, font_config=font_config)],
+            font_config=font_config
+        )
+
         return response
-        
+
     except ImportError:
         # Si WeasyPrint n'est pas installé, retourner le HTML avec un message
         return HttpResponse(
@@ -5396,7 +5480,11 @@ def bulletin_dynamique_pdf(request):
         )
     except Exception as e:
         # En cas d'erreur, retourner un message d'erreur
-        return HttpResponse(f"Erreur lors de la génération du PDF: {str(e)}<br><br><a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a>", status=500)
+        return HttpResponse(
+            f"Erreur lors de la génération du PDF: {str(e)}<br><br>"
+            f"<a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a>",
+            status=500
+        )
 
 @login_required
 def saisie_notes_simple(request):
