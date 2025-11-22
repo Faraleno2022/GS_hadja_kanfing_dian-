@@ -13,6 +13,7 @@ from .views_import import (
     get_matieres_classe,
     get_evaluations_matiere
 )
+from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 
 app_name = 'notes'
 
@@ -63,4 +64,8 @@ urlpatterns = [
     # API AJAX pour l'importation
     path('api/matieres-classe/', get_matieres_classe, name='api_matieres_classe'),
     path('api/evaluations-matiere/', get_evaluations_matiere, name='api_evaluations_matiere'),
+    
+    # WhatsApp Bulletin
+    path('bulletin/whatsapp/envoyer/', envoyer_bulletin_whatsapp, name='envoyer_bulletin_whatsapp'),
+    path('bulletin/whatsapp/apercu/', apercu_message_whatsapp, name='apercu_message_whatsapp'),
 ]

@@ -504,6 +504,29 @@
         transform: translateY(-2px);
         box-shadow: 0 6px 12px rgba(255, 193, 7, 0.4);
     }
+    
+    /* Styles pour le bouton WhatsApp */
+    .btn-whatsapp {
+        background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+        border: none;
+        color: white;
+        box-shadow: 0 4px 6px rgba(37, 211, 102, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .btn-whatsapp:hover {
+        background: linear-gradient(135deg, #128C7E 0%, #075E54 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(37, 211, 102, 0.4);
+        color: white;
+    }
+    
+    .btn-whatsapp:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
 </style>
 {% endblock %}
 
@@ -625,6 +648,13 @@
            title="Ouvrir le bulletin en PDF dans un nouvel onglet">
             <i class="fas fa-file-pdf me-2"></i>Ouvrir PDF
         </a>
+        
+        <!-- Bouton WhatsApp -->
+        <button class="btn btn-lg me-2 btn-whatsapp" 
+                onclick="envoyerBulletinWhatsApp()"
+                title="Envoyer le bulletin par WhatsApp au parent">
+            <i class="fab fa-whatsapp me-2"></i>Envoyer par WhatsApp
+        </button>
         {% endif %}
         
         <!-- Bouton pour exporter tous les bulletins de la classe -->
@@ -639,7 +669,12 @@
 
     <!-- Bulletin -->
     {% if bulletin_data %}
-    <div class="bulletin-container" id="bulletin">
+    <div class="bulletin-container" id="bulletin"
+         data-eleve-id="{{ eleve_selectionne.id }}"
+         data-classe-id="{{ classe_selectionnee.id }}"
+         data-periode="{{ periode_selectionnee }}"
+         data-system-type="{{ system_type }}"
+         data-eleve-nom="{{ bulletin_data.eleve.prenom }} {{ bulletin_data.eleve.nom }}">
         <!-- Filigrane -->
         {% if ecole.logo %}
         <img src="{{ ecole.logo.url }}" class="watermark" alt="Filigrane">
@@ -922,4 +957,220 @@
     {% endif %}
 </div>
 
+<!-- Modal WhatsApp -->
+<div class="modal fade" id="whatsappModal" tabindex="-1" aria-labelledby="whatsappModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="whatsappModalLabel">
+                    <i class="fab fa-whatsapp me-2 text-success"></i>Envoyer le bulletin par WhatsApp
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="whatsappContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                        <p class="mt-2">Préparation du message...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-whatsapp" id="btnConfirmerEnvoi" disabled>
+                    <i class="fab fa-whatsapp me-2"></i>Confirmer l'envoi
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let whatsappModal;
+let currentBulletinData = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
+    
+    // Récupérer les données du bulletin depuis les attributs data
+    const bulletinContainer = document.getElementById('bulletin');
+    if (bulletinContainer) {
+        currentBulletinData = {
+            eleve_id: bulletinContainer.dataset.eleveId,
+            classe_id: bulletinContainer.dataset.classeId,
+            periode: bulletinContainer.dataset.periode,
+            system_type: bulletinContainer.dataset.systemType,
+            eleve_nom: bulletinContainer.dataset.eleveNom
+        };
+    }
+});
+
+function envoyerBulletinWhatsApp() {
+    if (!currentBulletinData.eleve_id) {
+        alert('Erreur: Données du bulletin manquantes');
+        return;
+    }
+    
+    // Afficher la modal
+    whatsappModal.show();
+    
+    // Charger l'aperçu du message
+    chargerApercuWhatsApp();
+}
+
+function chargerApercuWhatsApp() {
+    const content = document.getElementById('whatsappContent');
+    const btnConfirmer = document.getElementById('btnConfirmerEnvoi');
+    
+    // Réinitialiser
+    btnConfirmer.disabled = true;
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p class="mt-2">Préparation du message...</p>
+        </div>
+    `;
+    
+    // Appel AJAX pour l'aperçu
+    fetch(`{% url 'notes:apercu_message_whatsapp' %}?eleve_id=${currentBulletinData.eleve_id}&periode=${currentBulletinData.periode}&system_type=${currentBulletinData.system_type}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                afficherApercuWhatsApp(data);
+                btnConfirmer.disabled = false;
+            } else {
+                afficherErreurWhatsApp(data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            afficherErreurWhatsApp('Erreur de connexion');
+        });
+}
+
+function afficherApercuWhatsApp(data) {
+    const content = document.getElementById('whatsappContent');
+    
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="fas fa-user me-2"></i>Informations</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <p><strong>Élève:</strong> ${data.eleve_nom}</p>
+                        <p><strong>Téléphone:</strong> ${data.telephone || 'Non renseigné'}</p>
+                        <p class="mb-0"><strong>Période:</strong> ${currentBulletinData.periode}</p>
+                    </div>
+                </div>
+                
+                ${!data.telephone ? `
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Attention:</strong> Aucun numéro WhatsApp trouvé pour cet élève.
+                    L'envoi ne pourra pas être effectué.
+                </div>
+                ` : ''}
+            </div>
+            
+            <div class="col-md-6">
+                <h6><i class="fab fa-whatsapp me-2"></i>Aperçu du message</h6>
+                <div class="card">
+                    <div class="card-body" style="background: #e7ffdb; font-family: 'Segoe UI', sans-serif;">
+                        <div style="white-space: pre-line; font-size: 14px;">${data.message}</div>
+                        <hr>
+                        <small class="text-muted">
+                            <i class="fas fa-file-pdf me-1"></i>
+                            bulletin_${currentBulletinData.eleve_nom.replace(' ', '_')}_${currentBulletinData.periode}.pdf
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Désactiver le bouton si pas de téléphone
+    if (!data.telephone) {
+        document.getElementById('btnConfirmerEnvoi').disabled = true;
+    }
+}
+
+function afficherErreurWhatsApp(erreur) {
+    const content = document.getElementById('whatsappContent');
+    
+    content.innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            <strong>Erreur:</strong> ${erreur}
+        </div>
+    `;
+}
+
+// Gestionnaire pour le bouton de confirmation
+document.getElementById('btnConfirmerEnvoi').addEventListener('click', function() {
+    const btn = this;
+    const originalText = btn.innerHTML;
+    
+    // Désactiver le bouton et afficher le loading
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Envoi en cours...';
+    
+    // Préparer les données
+    const formData = new FormData();
+    formData.append('eleve_id', currentBulletinData.eleve_id);
+    formData.append('classe_id', currentBulletinData.classe_id);
+    formData.append('periode', currentBulletinData.periode);
+    formData.append('system_type', currentBulletinData.system_type);
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    
+    // Envoi AJAX
+    fetch('{% url "notes:envoyer_bulletin_whatsapp" %}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Succès
+            whatsappModal.hide();
+            
+            // Afficher un message de succès
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fas fa-check-circle me-2"></i>
+                <strong>Bulletin envoyé avec succès !</strong><br>
+                Le bulletin a été envoyé par WhatsApp au numéro ${data.telephone}.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insérer l'alerte en haut de la page
+            const container = document.querySelector('.container-fluid');
+            container.insertBefore(alertDiv, container.firstChild);
+            
+            // Faire défiler vers le haut
+            window.scrollTo(0, 0);
+            
+        } else {
+            // Erreur
+            alert('Erreur lors de l\'envoi: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert('Erreur de connexion lors de l\'envoi');
+    })
+    .finally(() => {
+        // Restaurer le bouton
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+});
+</script>
 {% endblock %}
