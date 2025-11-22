@@ -1,8 +1,14 @@
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.urls import reverse
+from django.http import HttpResponse, JsonResponse
+from django.db.models import Q, Avg, Count, Sum
+from django.core.paginator import Paginator
+from django.utils import timezone
+from django.template.loader import render_to_string
+from django.db import IntegrityError
+from decimal import Decimal
+import json
 from eleves.models import Classe
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
@@ -3641,9 +3647,23 @@ def gerer_classes(request):
             if ecole:
                 classe.ecole = ecole
             classe.cree_par = request.user
-            classe.save()
-            messages.success(request, f'✅ Classe "{classe.nom}" créée avec succès!')
-            return redirect('notes:gerer_classes')
+            
+            # Vérifier si la classe existe déjà
+            classe_existante = ClasseNote.objects.filter(
+                ecole=classe.ecole,
+                nom=classe.nom,
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+            
+            if classe_existante:
+                messages.error(request, f'❌ La classe "{classe.nom}" existe déjà pour l\'année scolaire {classe.annee_scolaire}.')
+            else:
+                try:
+                    classe.save()
+                    messages.success(request, f'✅ Classe "{classe.nom}" créée avec succès!')
+                    return redirect('notes:gerer_classes')
+                except IntegrityError:
+                    messages.error(request, f'❌ Erreur: La classe "{classe.nom}" existe déjà pour cette année scolaire.')
         else:
             messages.error(request, '❌ Veuillez corriger les erreurs dans le formulaire.')
     
