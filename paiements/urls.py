@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
+from . import views_rappels
 
 app_name = 'paiements'
 
@@ -65,6 +66,16 @@ urlpatterns = [
     path('remise/<int:paiement_id>/annuler/', views.annuler_remise_paiement, name='annuler_remise_paiement'),
     path('remise/<int:paiement_id>/annuler/<int:remise_id>/', views.annuler_remise_paiement, name='annuler_remise_paiement_unique'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
+    
+    # Système de rappels de paiement
+    path('rappels/', views_rappels.gerer_rappels, name='gerer_rappels'),
+    path('rappels/creer-automatiques/', views_rappels.creer_rappels_automatiques, name='creer_rappels_automatiques'),
+    path('rappels/creer/<int:eleve_id>/', views_rappels.creer_rappel_individuel, name='creer_rappel_individuel'),
+    path('rappels/eleves-retard/', views_rappels.eleves_en_retard, name='eleves_en_retard'),
+    path('rappels/apercu-message/<int:eleve_id>/', views_rappels.apercu_message_rappel, name='apercu_message_rappel'),
+    path('rappels/<int:relance_id>/marquer-envoye/', views_rappels.marquer_rappel_envoye, name='marquer_rappel_envoye'),
+    path('rappels/statistiques/', views_rappels.statistiques_rappels, name='statistiques_rappels'),
+    path('rappels/supprimer/<int:relance_id>/', views_rappels.supprimer_rappel, name='supprimer_rappel'),
 ]
 
 
