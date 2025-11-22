@@ -18,7 +18,7 @@ from django.utils import timezone
 from decimal import Decimal
 
 from eleves.models import Eleve, Classe as ClasseEleve
-from .models import MatiereNote, Note, Evaluation
+from .models import MatiereNote, Evaluation
 from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
 from paiements.models import Relance
 
