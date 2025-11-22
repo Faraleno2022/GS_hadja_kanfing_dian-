@@ -3788,10 +3788,17 @@ def gerer_matieres(request):
             matiere.classe = classe_selectionnee
             matiere.cree_par = request.user
             
-            # Pour Maternelle et Primaire, coefficient = 1.0 par défaut si non spécifié
-            if classe_selectionnee.niveau_enseignement in ['MATERNELLE', 'PRIMAIRE']:
-                if not matiere.coefficient or matiere.coefficient == 0:
-                    matiere.coefficient = 1.0
+            # Gestion des coefficients selon le niveau
+            from .calculs_moyennes import detecter_niveau_scolaire
+            niveau = detecter_niveau_scolaire(classe_selectionnee.nom)
+            
+            if niveau == 'MATERNELLE':
+                # MATERNELLE: Pas de coefficient (pas de notes numériques)
+                matiere.coefficient = None
+            elif niveau == 'PRIMAIRE':
+                # PRIMAIRE: Coefficient = 1.0 (pas de pondération)
+                matiere.coefficient = 1.0
+            # COLLEGE/LYCEE: Garder le coefficient saisi par l'utilisateur
             
             matiere.save()
             messages.success(request, f'✅ Matière "{matiere.nom}" ajoutée avec succès!')
@@ -3799,10 +3806,17 @@ def gerer_matieres(request):
         else:
             messages.error(request, '❌ Veuillez corriger les erreurs dans le formulaire.')
     
+    # Détecter le niveau de la classe sélectionnée pour le template
+    niveau_classe = None
+    if classe_selectionnee:
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_classe = detecter_niveau_scolaire(classe_selectionnee.nom)
+    
     context = {
         'titre_page': 'Gestion des Matières',
         'classes': classes,
         'classe_selectionnee': classe_selectionnee,
+        'niveau_classe': niveau_classe,
         'matieres': matieres,
         'form': form,
     }
@@ -3827,10 +3841,17 @@ def modifier_matiere(request, matiere_id):
         if form.is_valid():
             instance = form.save(commit=False)
             
-            # Pour Maternelle et Primaire, coefficient = 1.0 par défaut si non spécifié
-            if matiere.classe.niveau_enseignement in ['MATERNELLE', 'PRIMAIRE'] or 'PRIMAIRE' in matiere.classe.niveau:
-                if not instance.coefficient or instance.coefficient == 0:
-                    instance.coefficient = 1.0
+            # Gestion des coefficients selon le niveau
+            from .calculs_moyennes import detecter_niveau_scolaire
+            niveau = detecter_niveau_scolaire(matiere.classe.nom)
+            
+            if niveau == 'MATERNELLE':
+                # MATERNELLE: Pas de coefficient (pas de notes numériques)
+                instance.coefficient = None
+            elif niveau == 'PRIMAIRE':
+                # PRIMAIRE: Coefficient = 1.0 (pas de pondération)
+                instance.coefficient = 1.0
+            # COLLEGE/LYCEE: Garder le coefficient saisi par l'utilisateur
             
             instance.save()
             messages.success(request, f'✅ Matière "{matiere.nom}" modifiée avec succès!')

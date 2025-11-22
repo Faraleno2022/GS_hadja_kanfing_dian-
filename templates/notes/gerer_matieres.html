@@ -199,7 +199,7 @@
                         {% endif %}
                     </div>
                     
-                    {% if classe_selectionnee.niveau_enseignement != 'MATERNELLE' and classe_selectionnee.niveau_enseignement != 'PRIMAIRE' and 'PRIMAIRE' not in classe_selectionnee.niveau %}
+                    {% if niveau_classe == 'COLLEGE' or niveau_classe == 'LYCEE' %}
                     <div class="col-md-2 mb-3">
                         <label for="{{ form.coefficient.id_for_label }}" class="form-label">
                             <i class="fas fa-calculator me-1"></i>Coefficient *
@@ -208,6 +208,22 @@
                         {% if form.coefficient.errors %}
                             <div class="text-danger small mt-1">{{ form.coefficient.errors }}</div>
                         {% endif %}
+                    </div>
+                    {% elif niveau_classe == 'PRIMAIRE' %}
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-calculator me-1"></i>Coefficient
+                        </label>
+                        <input type="text" class="form-control" value="1.0" readonly>
+                        <small class="text-muted">Fixe pour le primaire</small>
+                    </div>
+                    {% elif niveau_classe == 'MATERNELLE' %}
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-info-circle me-1"></i>Coefficient
+                        </label>
+                        <input type="text" class="form-control" value="N/A" readonly>
+                        <small class="text-muted">Pas de notes numériques</small>
                     </div>
                     {% endif %}
                     
@@ -253,7 +269,7 @@
                         <tr>
                             <th>Nom</th>
                             <th>Code</th>
-                            {% if classe_selectionnee.niveau_enseignement != 'MATERNELLE' and classe_selectionnee.niveau_enseignement != 'PRIMAIRE' and 'PRIMAIRE' not in classe_selectionnee.niveau %}
+                            {% if niveau_classe != 'MATERNELLE' %}
                             <th>Coefficient</th>
                             {% endif %}
                             <th>Statut</th>
@@ -268,11 +284,17 @@
                             <td>
                                 <span class="badge bg-secondary">{{ matiere.code }}</span>
                             </td>
-                            {% if classe_selectionnee.niveau_enseignement != 'MATERNELLE' and classe_selectionnee.niveau_enseignement != 'PRIMAIRE' and 'PRIMAIRE' not in classe_selectionnee.niveau %}
+                            {% if niveau_classe != 'MATERNELLE' %}
                             <td>
-                                <span class="badge bg-info">
-                                    <i class="fas fa-calculator me-1"></i>{{ matiere.coefficient }}
-                                </span>
+                                {% if niveau_classe == 'PRIMAIRE' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-calculator me-1"></i>1.0
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-calculator me-1"></i>{{ matiere.coefficient }}
+                                    </span>
+                                {% endif %}
                             </td>
                             {% endif %}
                             <td>
