@@ -55,3 +55,17 @@ htmlcov/
 # SQLite sidecar files
 *.sqlite3-shm
 *.sqlite3-wal
+
+# Fichiers temporaires
+0.6
+1
+9
+=2.9.0
+
+# Fichiers de cache Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Bases de données temporaires
+*.db.bak
