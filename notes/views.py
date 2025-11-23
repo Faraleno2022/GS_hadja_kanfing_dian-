@@ -9,7 +9,7 @@ from django.template.loader import render_to_string
 from django.db import IntegrityError
 from decimal import Decimal
 import json
-from eleves.models import Classe
+from eleves.models import Classe as ClasseEleve
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
@@ -199,7 +199,7 @@ def tableau_bord(request):
     """Tableau de bord des notes: liste les classes par groupe de niveaux.
     Filtré par l'école de l'utilisateur (sauf admin).
     """
-    classes_qs = filter_by_user_school(Classe.objects.all().order_by('niveau', 'nom'), request.user, 'ecole')
+    classes_qs = filter_by_user_school(ClasseEleve.objects.all().order_by('niveau', 'nom'), request.user, 'ecole')
 
     def group_classes(qs):
         primaire, college, lycee = [], [], []
@@ -242,7 +242,7 @@ def creer_classe(request, niveau):
 @admin_required
 def supprimer_classe(request, classe_id):
     """Supprimer une classe si elle appartient à l'école de l'utilisateur et qu'elle est vide."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     if request.method == 'POST':
         if hasattr(classe, 'eleves') and classe.eleves.exists():
             messages.error(request, "Impossible de supprimer une classe qui contient des élèves.")
@@ -267,7 +267,7 @@ def matieres_classe(request, classe_id):
     
     if classe is None:
         classe = get_object_or_404(
-            filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), 
+            filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), 
             pk=classe_id
         )
         cache.set(classe_cache_key, classe, 300)  # 5 minutes
@@ -294,7 +294,7 @@ def matieres_classe(request, classe_id):
 @admin_required
 def creer_matiere(request, classe_id):
     """Créer une matière pour une classe donnée."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     if request.method == 'POST':
         form = MatiereClasseForm(request.POST)
         if form.is_valid():
@@ -329,7 +329,7 @@ def supprimer_matiere(request, pk):
 @admin_required
 def creer_evaluation(request, classe_id, matiere_id):
     """Créer une évaluation pour une classe/matière donnée."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     matiere = get_object_or_404(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole), pk=matiere_id)
     if request.method == 'POST':
         form = EvaluationForm(request.POST)
@@ -686,7 +686,7 @@ def ajax_supprimer_note(request):
 @can_manage_notes
 def evaluations_matiere(request, classe_id, matiere_id):
     """Liste des évaluations d'une matière pour une classe, avec accès rapide à la saisie et à l'affichage des notes."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     matiere = get_object_or_404(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole), pk=matiere_id)
     evaluations = (
         Evaluation.objects.filter(classe=classe, matiere=matiere)
@@ -731,20 +731,53 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     Calcule la moyenne par matière (pondérée par coefficient d'évaluation) et la moyenne générale (pondérée par coefficient de matière).
     """
     # Sécuriser l'accès à la classe / élève
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Matières définies pour la classe
-    matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
+    # Note: MatiereNote est lié à ClasseNote, pas ClasseEleve
+    # Nous devons trouver la ClasseNote correspondante
+    from notes.models import ClasseNote
+    
+    # Mapping spécial pour certaines classes (ClasseEleve ID → ClasseNote ID)
+    mapping_inverse = {
+        8: 59,   # ClasseEleve '11ème série littéraire' → ClasseNote '11ème Série littéraire'
+        56: 61,  # ClasseEleve '12ÈME ANNÉE' → ClasseNote '12ème Année'
+    }
+    
+    try:
+        # Essayer le mapping spécial d'abord
+        if classe.id in mapping_inverse:
+            classe_note = ClasseNote.objects.filter(id=mapping_inverse[classe.id]).first()
+        else:
+            # Sinon chercher par nom
+            classe_note = ClasseNote.objects.filter(
+                nom=classe.nom,
+                annee_scolaire=classe.annee_scolaire,
+                ecole=classe.ecole
+            ).first()
+        
+        if classe_note:
+            matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+        else:
+            matieres = []
+    except Exception:
+        matieres = []
 
     # Récupérer les évaluations de la classe/matière pour le trimestre
+    # Note: Evaluation est lié à matiere (pas classe), utilise periode (pas trimestre)
+    # Conversion trimestre format court vers format long
+    trimestre_mapping = {'T1': 'TRIMESTRE_1', 'T2': 'TRIMESTRE_2', 'T3': 'TRIMESTRE_3', 'S1': 'SEMESTRE_1', 'S2': 'SEMESTRE_2'}
+    periode_longue = trimestre_mapping.get(trimestre, trimestre)
+    
     evals_by_matiere = {}
     for mat in matieres:
-        evals = Evaluation.objects.filter(classe=classe, matiere=mat, trimestre=trimestre).order_by('date', 'id')
+        evals = Evaluation.objects.filter(matiere=mat, periode=periode_longue).order_by('date_evaluation', 'id')
         evals_by_matiere[mat.id] = list(evals)
 
     # Récupérer les notes de l'élève pour ces évaluations
-    notes_by_eval = {n.evaluation_id: n for n in Note.objects.filter(eleve=eleve, evaluation__classe=classe, evaluation__trimestre=trimestre).select_related('evaluation', 'evaluation__matiere')}
+    # Filtrer par matières de la période (evaluation__classe n'existe pas)
+    notes_by_eval = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=eleve, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode=periode_longue).select_related('evaluation', 'evaluation__matiere')}
 
     # Calculs des moyennes par matière
     lignes = []
@@ -804,7 +837,8 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     eleves_classe = Eleve.objects.filter(classe=classe).only('id')
     moyennes_generales = []  # list of (eleve_id, moyenne_generale)
     for e in eleves_classe:
-        notes_by_eval_e = {n.evaluation_id: n for n in Note.objects.filter(eleve=e, evaluation__classe=classe, evaluation__trimestre=trimestre)}
+        # Filtrer par matières de la période (evaluation__classe n'existe pas)
+        notes_by_eval_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode=periode_longue)}
         s_num = Decimal('0'); s_den = Decimal('0')
         for mat in matieres:
             evals = evals_by_matiere.get(mat.id, [])
@@ -992,7 +1026,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
 @admin_required
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     """Génère en un seul PDF les bulletins mensuels de tous les élèves d'une classe (Collège/Lycée)."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
@@ -1142,7 +1176,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
 @admin_required
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     """Génère en un seul PDF les bulletins semestriels de tous les élèves d'une classe (Collège/Lycée)."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
@@ -1388,7 +1422,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     Colonnes: Matière, Coef., Moy. cours (mois), Moy. compo (mois), Moy. mensuelle (pondérée 2:1 si compo présente).
     """
     # Sécuriser classe/élève
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Matières actives
@@ -1556,7 +1590,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     Règle de pondération: ((Moy. composition * 2) + Moy. cours) / 3.
     """
     # Sécuriser classe/élève
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Matières actives
@@ -1663,16 +1697,44 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
 def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Génère en un seul PDF les bulletins de tous les élèves d'une classe pour un trimestre."""
     # Sécuriser la classe
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     # Élèves de la classe (dans le périmètre utilisateur)
     eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
 
     # Précharger matières et évaluations du trimestre
-    matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
+    # Note: MatiereNote est lié à ClasseNote, pas ClasseEleve
+    # Nous devons trouver la ClasseNote correspondante
+    from notes.models import ClasseNote
+    try:
+        # Essayer de trouver la ClasseNote correspondante
+        classe_note = ClasseNote.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
+        
+        if classe_note:
+            matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
+        else:
+            matieres = []
+    except Exception:
+        matieres = []
+    # Conversion trimestre format court (T1, T2, T3) vers format long (TRIMESTRE_1, etc.)
+    trimestre_mapping = {
+        'T1': 'TRIMESTRE_1',
+        'T2': 'TRIMESTRE_2',
+        'T3': 'TRIMESTRE_3',
+        'S1': 'SEMESTRE_1',
+        'S2': 'SEMESTRE_2'
+    }
+    periode_longue = trimestre_mapping.get(trimestre, trimestre)
+    
     evals_by_matiere = {}
     for mat in matieres:
-        evals_by_matiere[mat.id] = list(Evaluation.objects.filter(classe=classe, matiere=mat, trimestre=trimestre).order_by('date', 'id'))
+        # Evaluation est lié à matiere, pas directement à classe
+        # et utilise periode, pas trimestre
+        evals_by_matiere[mat.id] = list(Evaluation.objects.filter(matiere=mat, periode=periode_longue).order_by('date_evaluation', 'id'))
 
     # Init PDF
     try:
@@ -1696,7 +1758,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         evals = evals_by_matiere.get(mat.id, [])
         total_num = Decimal('0'); total_den = Decimal('0')
         for ev in evals:
-            for n in Note.objects.filter(evaluation=ev).only('note'):
+            for n in NoteEleve.objects.filter(evaluation=ev).only('note'):
                 if n.note is None:
                     continue
                 cc = Decimal(ev.coefficient or 1)
@@ -1707,7 +1769,8 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     # Pré-calcul des moyennes générales par élève (pour classement/rang)
     moyenne_generale_map: dict[int, Decimal] = {}
     for e in eleves:
-        notes_by_eval_e = {n.evaluation_id: n for n in Note.objects.filter(eleve=e, evaluation__classe=classe, evaluation__trimestre=trimestre)}
+        # Filtrer les notes par matières de la période (pas par evaluation__classe qui n'existe pas)
+        notes_by_eval_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode=periode_longue)}
         s_num = Decimal('0'); s_den = Decimal('0')
         for mat in matieres:
             evals = evals_by_matiere.get(mat.id, [])
@@ -1746,7 +1809,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
 
     def draw_bulletin_for_student(eleve):
         # Calcul des moyennes pour l'élève
-        notes_by_eval = {n.evaluation_id: n for n in Note.objects.filter(eleve=eleve, evaluation__classe=classe, evaluation__trimestre=trimestre).select_related('evaluation', 'evaluation__matiere')}
+        notes_by_eval = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=eleve, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode=periode_longue).select_related('evaluation', 'evaluation__matiere')}
         lignes = []
         somme_moyennes_coef = Decimal('0')
         somme_coef_matieres = Decimal('0')
@@ -1874,7 +1937,7 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     """Export Excel des notes d'une classe pour une matière et un trimestre.
     Colonnes: Matricule, Élève, [colonnes de chaque évaluation], Moyenne matière.
     """
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     matiere = get_object_or_404(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole), pk=matiere_id)
 
     # Évaluations du trimestre pour cette matière
@@ -1942,7 +2005,7 @@ def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: in
 @admin_required
 def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     """Export Excel de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -1978,7 +2041,7 @@ def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
 @admin_required
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
     """Export PDF de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -2067,16 +2130,44 @@ def _collect_evals_all_trimestres(classe, matieres):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     """Bulletin annuel PDF (T1+T2+T3 cumulés) avec moyennes par matière, moyenne générale, rang, mention, signatures."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
-    matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
+    # Trouver la ClasseNote correspondante pour MatiereNote
+    from notes.models import ClasseNote
+    
+    # Mapping spécial pour certaines classes (ClasseEleve ID → ClasseNote ID)
+    mapping_inverse = {
+        8: 59,   # ClasseEleve '11ème série littéraire' → ClasseNote '11ème Série littéraire'
+        56: 61,  # ClasseEleve '12ÈME ANNÉE' → ClasseNote '12ème Année'
+    }
+    
+    try:
+        # Essayer le mapping spécial d'abord
+        if classe.id in mapping_inverse:
+            classe_note = ClasseNote.objects.filter(id=mapping_inverse[classe.id]).first()
+        else:
+            # Sinon chercher par nom
+            classe_note = ClasseNote.objects.filter(
+                nom=classe.nom,
+                annee_scolaire=classe.annee_scolaire,
+                ecole=classe.ecole
+            ).first()
+        
+        if classe_note:
+            matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
+        else:
+            matieres = []
+    except Exception:
+        matieres = []
+    
     evals_by_matiere = _collect_evals_all_trimestres(classe, matieres)
 
     # Calculs élève
     lignes = []
     somme_moyennes_coef = Decimal('0'); somme_coef_matieres = Decimal('0')
-    notes_by_eval = {n.evaluation_id: n for n in Note.objects.filter(eleve=eleve, evaluation__classe=classe, evaluation__trimestre__in=["T1","T2","T3"])}
+    # Filtrer les notes par matières et par toutes les périodes trimestrielles
+    notes_by_eval = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=eleve, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode__in=['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'])}
     for mat in matieres:
         evals = evals_by_matiere.get(mat.id, [])
         num = Decimal('0'); den = Decimal('0')
@@ -2114,7 +2205,8 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe), request.user, 'classe__ecole')
     moyenne_generale_map: dict[int, Decimal] = {}
     for e in eleves:
-        notes_e = {n.evaluation_id: n for n in Note.objects.filter(eleve=e, evaluation__classe=classe, evaluation__trimestre__in=["T1","T2","T3"])}
+        # Filtrer les notes par matières et par toutes les périodes trimestrielles
+        notes_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode__in=['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'])}
         s_num = Decimal('0'); s_den = Decimal('0')
         for mat in matieres:
             evals = evals_by_matiere.get(mat.id, [])
@@ -2227,7 +2319,7 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
 @admin_required
 def bulletins_annuels_classe_pdf(request, classe_id: int):
     """Bulletins annuels (T1+T2+T3) pour tous les élèves d'une classe en un seul PDF."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom','prenom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
     evals_by_matiere = _collect_evals_all_trimestres(classe, matieres)
@@ -2263,7 +2355,8 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
     # Classement annuel
     moyenne_generale_map: dict[int, Decimal] = {}
     for e in eleves:
-        notes_e = {n.evaluation_id: n for n in Note.objects.filter(eleve=e, evaluation__classe=classe, evaluation__trimestre__in=["T1","T2","T3"])}
+        # Filtrer les notes par matières et par toutes les périodes trimestrielles
+        notes_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode__in=['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'])}
         s_num = Decimal('0'); s_den = Decimal('0')
         for mat in matieres:
             evals = evals_by_matiere.get(mat.id, [])
@@ -2317,7 +2410,8 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         # Lignes
         lignes = []
         somme_moy_coef = Decimal('0'); somme_coef = Decimal('0')
-        notes_by_eval = {n.evaluation_id: n for n in Note.objects.filter(eleve=eleve, evaluation__classe=classe, evaluation__trimestre__in=["T1","T2","T3"])}
+        # Filtrer les notes par matières et par toutes les périodes trimestrielles
+        notes_by_eval = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=eleve, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode__in=['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'])}
         for mat in matieres:
             evals = evals_by_matiere.get(mat.id, [])
             num = Decimal('0'); den = Decimal('0')
@@ -2371,10 +2465,10 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
     c.save(); return response
 
 @login_required
-@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
+@require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
 def classement_classe(request, classe_id: int, trimestre: str = "T1"):
     """Affiche le classement des élèves d'une classe pour un trimestre donné."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Calculer le classement
     eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
@@ -2464,7 +2558,7 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
 @admin_required
 def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Export PDF du classement d'une classe."""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que la vue HTML)
     eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
@@ -2618,7 +2712,7 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     from openpyxl.styles import Font, Alignment, PatternFill
     from django.http import HttpResponse
     
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que les autres vues)
     eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
@@ -2735,10 +2829,10 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     return response
 
 @login_required
-@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
+@require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
 def cartes_scolaires_classe(request, classe_id):
     """Interface pour générer les cartes scolaires d'une classe"""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Filtrage par école pour non-admin
     if not request.user.is_superuser:
@@ -2759,10 +2853,10 @@ def cartes_scolaires_classe(request, classe_id):
     return render(request, 'notes/cartes_scolaires.html', context)
 
 @login_required
-@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
+@require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
 def cartes_scolaires_pdf(request, classe_id):
     """Génère les cartes scolaires PDF pour une classe"""
-    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Filtrage par école pour non-admin
     if not request.user.is_superuser:
@@ -3387,7 +3481,7 @@ def carte_eleve_pdf(request, matricule):
 @login_required
 def statistiques(request):
     """Statistiques globales de l'école"""
-    from eleves.models import Eleve, Classe as ClasseEleve, Ecole
+    from eleves.models import Ecole
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else Ecole.objects.first()
@@ -3487,7 +3581,8 @@ def statistiques(request):
                         
                         moyenne_matiere = None
                         if moyenne_continue is not None and note_composition is not None:
-                            moyenne_matiere = (moyenne_continue + note_composition * 2) / 3
+                            # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                            moyenne_matiere = (moyenne_continue + note_composition) / 2
                         elif note_composition is not None:
                             moyenne_matiere = note_composition
                         elif moyenne_continue is not None:
@@ -3963,7 +4058,6 @@ def creer_evaluation(request):
 @login_required
 def gerer_eleves(request):
     """Gérer les élèves - Consultation par classe"""
-    from eleves.models import Eleve, Classe as ClasseEleve
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
@@ -4078,7 +4172,6 @@ def gerer_eleves(request):
 @login_required
 def saisir_notes(request):
     """Saisir les notes"""
-    from eleves.models import Eleve, Classe as ClasseEleve
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
@@ -4192,12 +4285,23 @@ def saisir_notes(request):
             
             # Récupérer les élèves
             try:
-                # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
-                classe_eleve = ClasseEleve.objects.filter(
-                    nom=classe_selectionnee.nom,
-                    annee_scolaire=classe_selectionnee.annee_scolaire,
-                    ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
-                ).first()
+                # Mapping spécial pour les classes avec noms différents (même que consulter_notes)
+                mapping_classes = {
+                    61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+                    59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+                }
+                
+                if classe_selectionnee.id in mapping_classes:
+                    classe_eleve = ClasseEleve.objects.filter(
+                        id=mapping_classes[classe_selectionnee.id]
+                    ).first()
+                else:
+                    # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
+                    classe_eleve = ClasseEleve.objects.filter(
+                        nom=classe_selectionnee.nom,
+                        annee_scolaire=classe_selectionnee.annee_scolaire,
+                        ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+                    ).first()
                 
                 if classe_eleve:
                     eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
@@ -4282,7 +4386,6 @@ def liste_saisie_pdf(request):
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
-    from eleves.models import Eleve, Classe as ClasseEleve
     import io
     
     # Récupérer les paramètres
@@ -4309,12 +4412,22 @@ def liste_saisie_pdf(request):
     else:
         note_sur = 20
     
-    # Récupérer les élèves
-    classe_eleve = ClasseEleve.objects.filter(
-        nom=classe.nom,
-        annee_scolaire=classe.annee_scolaire,
-        ecole=classe.ecole
-    ).first()
+    # Récupérer les élèves avec mapping spécial (même logique que saisir_notes et consulter_notes)
+    mapping_classes = {
+        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+    }
+    
+    if classe.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(
+            id=mapping_classes[classe.id]
+        ).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
     
     if classe_eleve:
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
@@ -4656,7 +4769,6 @@ def supprimer_notes(request):
 @login_required
 def consulter_notes(request):
     """Consulter les notes - Vue complète par classe"""
-    from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
     
     user_profil = getattr(request.user, 'profil', None)
@@ -4706,12 +4818,23 @@ def consulter_notes(request):
         
         # Récupérer les élèves
         try:
-            # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
-            classe_eleve = ClasseEleve.objects.filter(
-                nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire,
-                ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
-            ).first()
+            # Mapping spécial pour les classes avec noms différents
+            mapping_classes = {
+                61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+                59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+            }
+            
+            if classe_selectionnee.id in mapping_classes:
+                classe_eleve = ClasseEleve.objects.filter(
+                    id=mapping_classes[classe_selectionnee.id]
+                ).first()
+            else:
+                # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
+                classe_eleve = ClasseEleve.objects.filter(
+                    nom=classe_selectionnee.nom,
+                    annee_scolaire=classe_selectionnee.annee_scolaire,
+                    ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+                ).first()
             
             if classe_eleve:
                 eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
@@ -4799,9 +4922,18 @@ def consulter_notes(request):
     from .utils_rangs import calculer_rangs_classe_periode
     
     # Calculer les rangs avec la fonction centralisée
-    # Note: Pour consulter_notes, on utilise la première période disponible
+    # Utiliser la période sélectionnée ou OCTOBRE par défaut
     if periodes_disponibles and classe_selectionnee:
-        periode_pour_rang = periodes_disponibles[0][0]  # Prendre le code de la période (ex: 'OCTOBRE')
+        if periode_classement:
+            periode_pour_rang = periode_classement  # Utiliser la période sélectionnée
+        else:
+            # Utiliser OCTOBRE par défaut (période la plus courante)
+            periode_pour_rang = 'OCTOBRE'
+            # Si OCTOBRE n'est pas disponible, prendre la première période
+            periodes_codes = [p[0] for p in periodes_disponibles]
+            if 'OCTOBRE' not in periodes_codes:
+                periode_pour_rang = periodes_disponibles[0][0]
+        
         rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_rang)
         
         # Attribuer les rangs aux élèves
@@ -4853,7 +4985,6 @@ def bulletin_guineen(request):
 @login_required
 def bulletin_dynamique(request):
     """Bulletin dynamique - Génération de bulletins personnalisés"""
-    from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
     
     user_profil = getattr(request.user, 'profil', None)
@@ -4983,67 +5114,80 @@ def bulletin_dynamique(request):
             total_coefficients = Decimal('0')
             
             for matiere in matieres:
-                # Séparation des évaluations par type (système guinéen)
+                # Initialiser les variables
                 moyenne_continue = None
                 note_composition = None
+                moyennes_mensuelles = []
                 
-                # Si une période est sélectionnée, récupérer les évaluations
+                # Si une période est sélectionnée, récupérer les données
                 if periode and eleve_selectionne:
-                    # Chercher les évaluations de cette matière
-                    # On utilise seulement matiere et periode car matiere est déjà filtré par classe
-                    evaluations = Evaluation.objects.filter(
-                        matiere=matiere,
-                        periode=periode
-                    ).order_by('date_evaluation')
-                    
-                    # Si pas d'évaluation trouvée, chercher par nom de matière
-                    # (cas où la matière a été recréée avec un nouvel ID)
-                    if not evaluations.exists():
-                        from django.db.models import Q
+                    if system_type in ['trimestre', 'semestre']:
+                        # NOUVEAU: Utiliser les moyennes mensuelles détaillées
+                        from .utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+                        
+                        data_matiere = calculer_bulletin_avec_details_mensuels(
+                            eleve_selectionne, matiere, system_type, periode
+                        )
+                        
+                        moyenne_continue = data_matiere['moyenne_continue']
+                        note_composition = data_matiere['note_composition']
+                        moyennes_mensuelles = data_matiere['moyennes_mensuelles']
+                        
+                    else:
+                        # ANCIEN: Système mensuel ou autres - garder l'ancien calcul
+                        # Chercher les évaluations de cette matière
                         evaluations = Evaluation.objects.filter(
-                            Q(matiere__nom=matiere.nom) &
-                            Q(matiere__classe=classe_selectionnee) &
-                            Q(periode=periode)
+                            matiere=matiere,
+                            periode=periode
                         ).order_by('date_evaluation')
-                    
-                    # Séparer devoirs/contrôles (moyenne continue) et compositions
-                    total_devoirs = Decimal('0')
-                    count_devoirs = 0
-                    total_compo = Decimal('0')
-                    count_compo = 0
-                    
-                    for evaluation in evaluations:
-                        try:
-                            note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
-                            if note_obj.note is not None and not note_obj.absent:
-                                # Déterminer le type d'évaluation
-                                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                    total_compo += Decimal(str(note_obj.note))
-                                    count_compo += 1
-                                else:
-                                    # DEVOIR, CONTROLE, INTERROGATION
-                                    total_devoirs += Decimal(str(note_obj.note))
-                                    count_devoirs += 1
-                        except NoteEleve.DoesNotExist:
-                            pass
-                    
-                    # Calculer les moyennes
-                    if count_devoirs > 0:
-                        moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-                    
-                    if count_compo > 0:
-                        note_composition = round(float(total_compo / count_compo), 2)
+                        
+                        # Si pas d'évaluation trouvée, chercher par nom de matière
+                        if not evaluations.exists():
+                            from django.db.models import Q
+                            evaluations = Evaluation.objects.filter(
+                                Q(matiere__nom=matiere.nom) &
+                                Q(matiere__classe=classe_selectionnee) &
+                                Q(periode=periode)
+                            ).order_by('date_evaluation')
+                        
+                        # Séparer devoirs/contrôles (moyenne continue) et compositions
+                        total_devoirs = Decimal('0')
+                        count_devoirs = 0
+                        total_compo = Decimal('0')
+                        count_compo = 0
+                        
+                        for evaluation in evaluations:
+                            try:
+                                note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
+                                if note_obj.note is not None and not note_obj.absent:
+                                    # Déterminer le type d'évaluation
+                                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                        total_compo += Decimal(str(note_obj.note))
+                                        count_compo += 1
+                                    else:
+                                        # DEVOIR, CONTROLE, INTERROGATION
+                                        total_devoirs += Decimal(str(note_obj.note))
+                                        count_devoirs += 1
+                            except NoteEleve.DoesNotExist:
+                                pass
+                        
+                        # Calculer les moyennes
+                        if count_devoirs > 0:
+                            moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
+                        
+                        if count_compo > 0:
+                            note_composition = round(float(total_compo / count_compo), 2)
                 
                 # Calculer la moyenne de la matière selon le système guinéen
-                # Si trimestre/semestre: moyenne = (moyenne_continue + composition*2) / 3
+                # Si trimestre/semestre: moyenne = (moyenne_continue + composition) / 2 (poids égal)
                 # Si mensuel: moyenne = moyenne_continue uniquement (pas de composition)
                 moyenne_matiere = None
                 
                 if system_type == 'mensuel':
                     moyenne_matiere = moyenne_continue
                 elif moyenne_continue is not None and note_composition is not None:
-                    # Pondération 1:2 (continue:composition)
-                    moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+                    # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                    moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
                 elif note_composition is not None:
                     # Seulement la composition
                     moyenne_matiere = note_composition
@@ -5061,18 +5205,42 @@ def bulletin_dynamique(request):
                 # Préparer les notes pour l'affichage
                 notes_matiere = []
                 if system_type in ['trimestre', 'semestre']:
-                    notes_matiere = [
-                        {'note': moyenne_continue, 'absent': False},
-                        {'note': note_composition, 'absent': False}
-                    ]
+                    # NOUVEAU: Inclure les moyennes mensuelles détaillées
+                    if moyennes_mensuelles:
+                        # Ajouter les moyennes mensuelles
+                        for moy_mens in moyennes_mensuelles:
+                            notes_matiere.append({
+                                'note': moy_mens['moyenne'],
+                                'absent': moy_mens['absent'],
+                                'libelle': moy_mens['libelle'],
+                                'type': 'mensuelle'
+                            })
+                    
+                    # Ajouter la moyenne continue calculée
+                    notes_matiere.append({
+                        'note': moyenne_continue,
+                        'absent': False,
+                        'libelle': 'Moy. Continue',
+                        'type': 'continue'
+                    })
+                    
+                    # Ajouter la composition
+                    notes_matiere.append({
+                        'note': note_composition,
+                        'absent': False,
+                        'libelle': 'Composition',
+                        'type': 'composition'
+                    })
+                    
                 elif system_type == 'mensuel':
                     notes_matiere = [
-                        {'note': moyenne_continue, 'absent': False}
+                        {'note': moyenne_continue, 'absent': False, 'libelle': 'Moyenne', 'type': 'mensuelle'}
                     ]
                 
                 bulletin_data['matieres_notes'].append({
                     'matiere': matiere,
                     'notes': notes_matiere,
+                    'moyennes_mensuelles': moyennes_mensuelles,  # NOUVEAU: Détails mensuels
                     'moyenne_continue': moyenne_continue,
                     'note_composition': note_composition,
                     'moyenne': moyenne_matiere,
@@ -5234,10 +5402,31 @@ def bulletin_dynamique_pdf(request):
     """Générer le bulletin dynamique en PDF"""
     from django.http import HttpResponse
     from django.template.loader import render_to_string
-    from weasyprint import HTML, CSS
-    from weasyprint.text.fonts import FontConfiguration
+    from django.contrib import messages
+    from django.shortcuts import redirect
     import tempfile
     import os
+    
+    # Détection du système et choix du générateur PDF
+    use_weasyprint = True
+    try:
+        from weasyprint import HTML, CSS
+        from weasyprint.text.fonts import FontConfiguration
+    except (ImportError, OSError) as e:
+        # Sur Windows, WeasyPrint peut nécessiter GTK+
+        # Utiliser ReportLab comme alternative
+        use_weasyprint = False
+        try:
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
+            from reportlab.lib.units import inch, mm
+            from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        except ImportError:
+            messages.error(request, "Aucun générateur PDF disponible. Installez weasyprint ou reportlab.")
+            return redirect('notes:bulletin_dynamique')
     
     # Récupérer les mêmes paramètres que bulletin_dynamique
     classe_id = request.GET.get('classe_id')
@@ -5247,13 +5436,15 @@ def bulletin_dynamique_pdf(request):
     
     # Validation des paramètres
     if not classe_id or not eleve_id or not periode:
-        from django.contrib import messages
-        from django.shortcuts import redirect
         messages.error(request, "❌ Veuillez sélectionner une classe, un élève et une période avant de générer le bulletin PDF.")
         return redirect('notes:bulletin_dynamique')
     
+    # Si WeasyPrint n'est pas disponible, rediriger vers l'alternative
+    if not use_weasyprint:
+        messages.warning(request, "⚠️ WeasyPrint non disponible sur ce système. Utilisez l'export de bulletins de classe à la place.")
+        return redirect(f'/notes/bulletins/classe/pdf/?classe_id={classe_id}&periode={periode}&system_type={system_type}')
+    
     # Réutiliser la logique de bulletin_dynamique pour obtenir les données
-    from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
     from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
     
@@ -5264,12 +5455,22 @@ def bulletin_dynamique_pdf(request):
     eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
     matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
     
-    # Récupérer les élèves pour calculer le rang
-    classe_eleve = ClasseEleve.objects.filter(
-        nom=classe_selectionnee.nom,
-        annee_scolaire=classe_selectionnee.annee_scolaire,
-        ecole=classe_selectionnee.ecole
-    ).first()
+    # Récupérer les élèves pour calculer le rang avec mapping spécial
+    mapping_classes = {
+        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+    }
+    
+    if classe_selectionnee.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(
+            id=mapping_classes[classe_selectionnee.id]
+        ).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole
+        ).first()
     
     if classe_eleve:
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
@@ -5310,14 +5511,59 @@ def bulletin_dynamique_pdf(request):
     bulletin_data['total_points'] = result_centralized['total_points']
     bulletin_data['total_coefficients'] = result_centralized['total_coefficients']
     
-    # Préparer les données des matières depuis le module centralisé
+    # Préparer les données des matières avec moyennes mensuelles détaillées
     for detail in result_centralized['details_matieres']:
+        matiere = detail['matiere']
+        
+        # NOUVEAU: Récupérer les moyennes mensuelles détaillées pour trimestre/semestre
+        moyennes_mensuelles = []
+        if system_type in ['trimestre', 'semestre']:
+            from .utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+            
+            data_matiere = calculer_bulletin_avec_details_mensuels(
+                eleve_selectionne, matiere, system_type, periode
+            )
+            moyennes_mensuelles = data_matiere['moyennes_mensuelles']
+        
+        # Préparer les notes pour l'affichage
+        notes_matiere = []
+        if system_type in ['trimestre', 'semestre']:
+            # NOUVEAU: Inclure les moyennes mensuelles détaillées
+            if moyennes_mensuelles:
+                # Ajouter les moyennes mensuelles
+                for moy_mens in moyennes_mensuelles:
+                    notes_matiere.append({
+                        'note': moy_mens['moyenne'],
+                        'absent': moy_mens['absent'],
+                        'libelle': moy_mens['libelle'],
+                        'type': 'mensuelle'
+                    })
+            
+            # Ajouter la moyenne continue calculée
+            notes_matiere.append({
+                'note': detail['moyenne_continue'],
+                'absent': False,
+                'libelle': 'Moy. Continue',
+                'type': 'continue'
+            })
+            
+            # Ajouter la composition
+            notes_matiere.append({
+                'note': detail['note_composition'],
+                'absent': False,
+                'libelle': 'Composition',
+                'type': 'composition'
+            })
+            
+        elif system_type == 'mensuel':
+            notes_matiere = [
+                {'note': detail['moyenne_continue'], 'absent': False, 'libelle': 'Moyenne', 'type': 'mensuelle'}
+            ]
+        
         bulletin_data['matieres_notes'].append({
-            'matiere': detail['matiere'],
-            'notes': [
-                {'note': detail['moyenne_continue'], 'absent': False},
-                {'note': detail['note_composition'], 'absent': False}
-            ],
+            'matiere': matiere,
+            'notes': notes_matiere,
+            'moyennes_mensuelles': moyennes_mensuelles,  # NOUVEAU: Détails mensuels
             'moyenne_continue': detail['moyenne_continue'],
             'note_composition': detail['note_composition'],
             'moyenne': detail['moyenne'],
@@ -5508,7 +5754,6 @@ def bulletins_dynamiques_classe_pdf(request):
     """Générer tous les bulletins d'une classe en un seul PDF avec système dynamique et filigrane"""
     from django.http import HttpResponse
     from django.template.loader import render_to_string
-    from eleves.models import Eleve, Classe as ClasseEleve
     from decimal import Decimal
     import tempfile
     import os
@@ -5547,29 +5792,55 @@ def bulletins_dynamiques_classe_pdf(request):
         messages.error(request, "❌ Veuillez sélectionner une classe et une période avant de générer les bulletins PDF.")
         return redirect('notes:bulletin_dynamique')
     
+    # Convertir classe_id en entier
+    try:
+        classe_id = int(classe_id)
+    except (ValueError, TypeError):
+        messages.error(request, f"❌ ID de classe invalide: {classe_id}")
+        return redirect('notes:bulletin_dynamique')
+    
     # Récupérer les informations de l'école et de la classe
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
     
-    classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+    # Filtrage par école pour la sécurité (sauf pour les admins)
+    if not request.user.is_superuser:
+        from utilisateurs.utils import filter_by_user_school
+        classe_selectionnee = get_object_or_404(
+            filter_by_user_school(ClasseNote.objects.all(), request.user, 'ecole'), 
+            pk=classe_id
+        )
+    else:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+    
     matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
     
-    # Récupérer la classe élève correspondante
-    classe_eleve = ClasseEleve.objects.filter(
-        nom=classe_selectionnee.nom,
-        annee_scolaire=classe_selectionnee.annee_scolaire,
-        ecole=classe_selectionnee.ecole
-    ).first()
+    # Récupérer la classe élève correspondante avec mapping spécial
+    mapping_classes = {
+        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+    }
     
-    if not classe_eleve:
+    if classe_selectionnee.id in mapping_classes:
         classe_eleve = ClasseEleve.objects.filter(
-            nom__iexact=classe_selectionnee.nom,
+            id=mapping_classes[classe_selectionnee.id]
+        ).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_selectionnee.nom,
             annee_scolaire=classe_selectionnee.annee_scolaire,
             ecole=classe_selectionnee.ecole
         ).first()
+        
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=classe_selectionnee.ecole
+            ).first()
     
     if not classe_eleve:
-        messages.error(request, "❌ Aucune classe élève correspondante trouvée.")
+        messages.error(request, f"❌ Aucune classe élève correspondante trouvée pour ClasseNote ID {classe_selectionnee.id} ({classe_selectionnee.nom}).")
         return redirect('notes:bulletin_dynamique')
     
     # Récupérer tous les élèves de la classe
@@ -5969,7 +6240,8 @@ def bulletins_dynamiques_classe_pdf(request):
             if system_type == 'mensuel':
                 moyenne_matiere = moyenne_continue
             elif moyenne_continue is not None and note_composition is not None:
-                moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+                # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
             elif note_composition is not None:
                 moyenne_matiere = note_composition
             elif moyenne_continue is not None:
@@ -6117,7 +6389,8 @@ def bulletins_dynamiques_classe_pdf(request):
             if system_type == 'mensuel':
                 moyenne_matiere = moyenne_continue
             elif moyenne_continue is not None and note_composition is not None:
-                moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+                # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
             elif note_composition is not None:
                 moyenne_matiere = note_composition
             elif moyenne_continue is not None:
@@ -6180,7 +6453,7 @@ def bulletins_dynamiques_classe_pdf(request):
         photo_base64 = None
         
         # Encoder le logo de l'école en base64
-        if ecole.logo:
+        if ecole and ecole.logo:
             try:
                 logo_path = ecole.logo.path
                 with open(logo_path, 'rb') as img_file:
@@ -6250,8 +6523,26 @@ def bulletins_dynamiques_classe_pdf(request):
         # On va utiliser la fonction existante bulletins_classe_pdf qui utilise déjà ReportLab
         messages.warning(request, "WeasyPrint non disponible. Utilisation de ReportLab comme alternative. Le rendu peut différer légèrement.")
         
-        # Rediriger vers la fonction ReportLab existante
-        from . import views
-        return views.bulletins_classe_pdf(request, classe_id, periode)
+        # Pour les périodes mensuelles, utiliser une approche différente
+        # car bulletins_classe_pdf ne supporte que les trimestres/semestres
+        if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            # Pour les périodes mensuelles, rediriger vers la consultation
+            messages.info(request, f"⚠️ Les bulletins PDF pour les périodes mensuelles ne sont pas encore disponibles. Utilisez la consultation des notes.")
+            return redirect(f'/notes/consulter/?classe_id={classe_id}&periode={periode}')
+        else:
+            # Convertir la période en format trimestre pour la fonction existante
+            periode_mapping = {
+                'TRIMESTRE_1': 'T1',
+                'TRIMESTRE_2': 'T2', 
+                'TRIMESTRE_3': 'T3',
+                'SEMESTRE_1': 'S1',
+                'SEMESTRE_2': 'S2'
+            }
+            trimestre = periode_mapping.get(periode, 'T1')  # Par défaut T1
+            
+            from . import views
+            # Utiliser l'ID de ClasseEleve, pas ClasseNote
+            classe_eleve_id = classe_eleve.id if classe_eleve else classe_id
+            return views.bulletins_classe_pdf(request, int(classe_eleve_id), trimestre)
     
     return response

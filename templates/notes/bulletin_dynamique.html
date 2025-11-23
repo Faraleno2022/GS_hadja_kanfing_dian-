@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Bulletin Dynamique{% endblock %}
+{% block title %}Bulletin de Notes{% endblock %}
 
 {% block extra_css %}
 <style>
     @page {
         size: A4;
-        margin: 0;
+        margin: 8mm 6mm 15mm 6mm;
     }
     
     @media print {
@@ -20,34 +20,69 @@
         .bulletin-container { 
             box-shadow: none !important;
             margin: 0 !important;
-            padding: 6mm 8mm !important;
+            padding: 3mm 2mm 8mm 2mm !important;
             page-break-after: avoid !important;
             page-break-inside: avoid !important;
             min-height: auto !important;
-            max-height: 297mm !important;
+            max-height: 270mm !important;
             height: auto !important;
             overflow: visible !important;
             width: 210mm !important;
+            font-size: 8px !important;
         }
         .header-section {
-            padding-bottom: 3px !important;
-            margin-bottom: 3px !important;
-            border-bottom-width: 2px !important;
+            padding-bottom: 2px !important;
+            margin-bottom: 2px !important;
+            border-bottom-width: 1px !important;
         }
         .header-section h1 {
-            font-size: 14px !important;
+            font-size: 12px !important;
             margin: 0 !important;
         }
         .header-section h2 {
-            font-size: 12px !important;
-            margin: 3px 0 !important;
+            font-size: 10px !important;
+            margin: 2px 0 !important;
         }
         .header-section p {
-            font-size: 9px !important;
+            font-size: 8px !important;
             margin: 1px 0 !important;
         }
+        
+        /* Optimisation pour une seule page */
+        .notes-table {
+            font-size: 7px !important;
+            margin: 2px 0 !important;
+        }
+        .notes-table th, .notes-table td {
+            padding: 1px 2px !important;
+            line-height: 1.1 !important;
+        }
+        .info-grid {
+            font-size: 7px !important;
+            margin: 2px 0 !important;
+        }
+        .resultats-section {
+            margin: 3px 0 !important;
+        }
+        .resultat-card {
+            font-size: 8px !important;
+            padding: 2px !important;
+        }
+        .appreciation-section {
+            font-size: 7px !important;
+            margin: 2px 0 !important;
+        }
+        .signatures-section {
+            font-size: 7px !important;
+            margin: 2px 0 !important;
+        }
+        .calcul-explanation-section {
+            font-size: 6px !important;
+            margin: 2px 0 !important;
+        }
+        
         .devise-nationale {
-            font-size: 10px !important;
+            font-size: 8px !important;
         }
         .ministere-education {
             font-size: 9px !important;
@@ -639,15 +674,11 @@
     {% if classe_selectionnee and periode_selectionnee %}
     <div class="text-center mb-3 no-print">
         {% if bulletin_data and bulletin_data.eleve %}
-        <button onclick="window.print()" class="btn btn-primary btn-lg me-2">
-            <i class="fas fa-print me-2"></i>Imprimer
+        <!-- Bouton unique pour télécharger et ouvrir le PDF -->
+        <button onclick="telechargerEtOuvrirPDF()" class="btn btn-danger btn-lg me-2" 
+                title="Télécharger et ouvrir le bulletin en PDF">
+            <i class="fas fa-file-download me-2"></i>Télécharger le Bulletin PDF
         </button>
-        <a href="{% url 'notes:bulletin_dynamique_pdf' %}?classe_id={{ classe_selectionnee.id }}&eleve_id={{ eleve_selectionne.id }}&periode={{ periode_selectionnee }}&system_type={{ system_type }}" 
-           class="btn btn-success btn-lg me-2" 
-           target="_blank"
-           title="Ouvrir le bulletin en PDF dans un nouvel onglet">
-            <i class="fas fa-file-pdf me-2"></i>Ouvrir PDF
-        </a>
         
         <!-- Bouton WhatsApp -->
         <button class="btn btn-lg me-2 btn-whatsapp" 
@@ -702,7 +733,7 @@
                 <span class="devise-rouge">Travail</span>-<span class="devise-jaune">Justice</span>-<span class="devise-vert">Solidarité</span>
             </div>
             <p class="ministere-education">MPU-A</p>
-            <p class="nom-ecole">{{ ecole.nom|default:"École" }}</p>
+            <p class="nom-ecole">{{ ecole.nom|upper|default:"ÉCOLE MODERNE" }}</p>
             <h2>BULLETIN DE NOTES - {{ bulletin_data.titre_periode|upper }}</h2>
             <p>Année Scolaire {{ annee_scolaire }}</p>
         </div>
@@ -743,8 +774,12 @@
                     <th rowspan="2">COEF</th>
                     {% if system_type == 'mensuel' %}
                         <th rowspan="2">NOTE</th>
-                    {% elif system_type in 'trimestre,semestre' %}
-                        <th colspan="2">NOTES</th>
+                    {% elif system_type == 'trimestre' %}
+                        <!-- NOUVEAU: Affichage dynamique des mois du trimestre -->
+                        <th colspan="5">DÉTAILS TRIMESTRIEL</th>
+                    {% elif system_type == 'semestre' %}
+                        <!-- NOUVEAU: Affichage dynamique des mois du semestre -->
+                        <th colspan="7">DÉTAILS SEMESTRIEL</th>
                     {% elif system_type == 'annuel' %}
                         <th colspan="2">SEMESTRES</th>
                     {% endif %}
@@ -752,9 +787,26 @@
                     <th rowspan="2">PTS</th>
                 </tr>
                 <tr>
-                    {% if system_type == 'trimestre' or system_type == 'semestre' %}
-                        <th>Moy. Continue</th>
-                        <th>Composition</th>
+                    {% if system_type == 'trimestre' %}
+                        <!-- Colonnes pour trimestre: 3 mois + moyenne continue + composition -->
+                        {% if periode == 'TRIMESTRE_1' %}
+                            <th>Oct.</th><th>Nov.</th><th>Déc.</th>
+                        {% elif periode == 'TRIMESTRE_2' %}
+                            <th>Jan.</th><th>Fév.</th><th>Mars</th>
+                        {% elif periode == 'TRIMESTRE_3' %}
+                            <th>Avr.</th><th>Mai</th><th>Juin</th>
+                        {% endif %}
+                        <th>Moy. Cont.</th>
+                        <th>Compo</th>
+                    {% elif system_type == 'semestre' %}
+                        <!-- Colonnes pour semestre: 5 mois + moyenne continue + composition -->
+                        {% if periode == 'SEMESTRE_1' %}
+                            <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th><th>Fév.</th>
+                        {% elif periode == 'SEMESTRE_2' %}
+                            <th>Mars</th><th>Avr.</th><th>Mai</th><th>Juin</th><th>Juil.</th>
+                        {% endif %}
+                        <th>Moy. Cont.</th>
+                        <th>Compo</th>
                     {% elif system_type == 'annuel' %}
                         <th>1er Sem</th>
                         <th>2ème Sem</th>
@@ -767,44 +819,84 @@
                     <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
                     <td>{{ matiere_note.coefficient }}</td>
                     
-                    {% if matiere_note.notes %}
-                        {% for note in matiere_note.notes %}
-                            <td>
-                                {% if note.absent %}
-                                    <span style="color: red;">ABS</span>
-                                {% elif note.note is not None %}
-                                    {{ note.note|floatformat:2 }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
-                        {% endfor %}
-                    {% else %}
-                        {% if system_type == 'mensuel' %}
-                            <td>-</td>
+                    {% if system_type == 'mensuel' %}
+                        <!-- Affichage mensuel classique -->
+                        <td>
+                            {% if matiere_note.moyenne_continue %}
+                                {{ matiere_note.moyenne_continue|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    {% elif system_type in 'trimestre,semestre' %}
+                        <!-- NOUVEAU: Affichage détaillé des moyennes mensuelles -->
+                        {% if matiere_note.moyennes_mensuelles %}
+                            {% for moy_mens in matiere_note.moyennes_mensuelles %}
+                                <td>
+                                    {% if moy_mens.absent %}
+                                        <span style="color: red; font-weight: bold;">ABS</span>
+                                    {% elif moy_mens.moyenne is not None %}
+                                        <span style="color: #2c5aa0; font-weight: bold;">{{ moy_mens.moyenne|floatformat:2 }}</span>
+                                    {% else %}
+                                        <span style="color: #999;">-</span>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
                         {% else %}
-                            <td colspan="2">-</td>
+                            <!-- Si pas de détails mensuels, afficher des colonnes vides -->
+                            {% if system_type == 'trimestre' %}
+                                <td>-</td><td>-</td><td>-</td>
+                            {% elif system_type == 'semestre' %}
+                                <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                            {% endif %}
                         {% endif %}
+                        
+                        <!-- Moyenne continue calculée -->
+                        <td style="background: #e8f4fd; font-weight: bold;">
+                            {% if matiere_note.moyenne_continue %}
+                                {{ matiere_note.moyenne_continue|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        
+                        <!-- Composition -->
+                        <td style="background: #fff3cd; font-weight: bold;">
+                            {% if matiere_note.note_composition %}
+                                {{ matiere_note.note_composition|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    {% elif system_type == 'annuel' %}
+                        <!-- Affichage annuel (semestres) -->
+                        <td colspan="2">Données annuelles</td>
                     {% endif %}
                     
-                    <td><strong>
+                    <td style="background: #d4edda; font-weight: bold; color: #155724;">
                         {% if matiere_note.moyenne %}
                             {{ matiere_note.moyenne|floatformat:2 }}
                         {% else %}
                             -
                         {% endif %}
-                    </strong></td>
-                    <td><strong>
+                    </td>
+                    <td style="background: #f8d7da; font-weight: bold; color: #721c24;">
                         {% if matiere_note.points %}
                             {{ matiere_note.points|floatformat:2 }}
                         {% else %}
                             -
                         {% endif %}
-                    </strong></td>
+                    </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="7" class="text-center">Aucune matière disponible</td>
+                    {% if system_type == 'trimestre' %}
+                        <td colspan="8" class="text-center">Aucune matière disponible</td>
+                    {% elif system_type == 'semestre' %}
+                        <td colspan="10" class="text-center">Aucune matière disponible</td>
+                    {% else %}
+                        <td colspan="6" class="text-center">Aucune matière disponible</td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -813,17 +905,23 @@
                     <td colspan="2"><strong>TOTAL</strong></td>
                     {% if system_type == 'mensuel' %}
                         <td></td>
+                    {% elif system_type == 'trimestre' %}
+                        <!-- 3 mois + moyenne continue + composition = 5 colonnes -->
+                        <td colspan="5"></td>
+                    {% elif system_type == 'semestre' %}
+                        <!-- 5 mois + moyenne continue + composition = 7 colonnes -->
+                        <td colspan="7"></td>
                     {% else %}
                         <td colspan="2"></td>
                     {% endif %}
-                    <td><strong>
+                    <td style="background: #d4edda; font-weight: bold; color: #155724;"><strong>
                         {% if bulletin_data.total_coefficients %}
                             {{ bulletin_data.total_coefficients|floatformat:0 }}
                         {% else %}
                             -
                         {% endif %}
                     </strong></td>
-                    <td><strong>
+                    <td style="background: #f8d7da; font-weight: bold; color: #721c24;"><strong>
                         {% if bulletin_data.total_points %}
                             {{ bulletin_data.total_points|floatformat:2 }}
                         {% else %}
@@ -833,6 +931,25 @@
                 </tr>
             </tfoot>
         </table>
+        
+        <!-- NOUVEAU: Légende pour les bulletins trimestriels et semestriels -->
+        {% if system_type in 'trimestre,semestre' and bulletin_data.eleve %}
+        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; margin: 10px 0; font-size: 9px;">
+            <div style="font-weight: bold; margin-bottom: 4px; color: #495057;">📊 LÉGENDE DU TABLEAU :</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px;">
+                <div><span style="color: #2c5aa0; font-weight: bold;">■</span> Notes mensuelles</div>
+                <div><span style="background: #e8f4fd; padding: 1px 3px;">■</span> Moyenne continue</div>
+                <div><span style="background: #fff3cd; padding: 1px 3px;">■</span> Composition</div>
+                <div><span style="background: #d4edda; padding: 1px 3px;">■</span> Moyenne finale</div>
+                <div><span style="background: #f8d7da; padding: 1px 3px;">■</span> Points</div>
+                <div><span style="color: red; font-weight: bold;">ABS</span> = Absent</div>
+            </div>
+            <div style="margin-top: 4px; font-style: italic; color: #6c757d;">
+                💡 La moyenne continue est calculée à partir des notes mensuelles disponibles. 
+                La moyenne finale = (Moyenne continue + Composition) ÷ 2
+            </div>
+        </div>
+        {% endif %}
         
         <!-- Résultats -->
         <div class="resultats-section">
@@ -894,10 +1011,10 @@
                         <strong>📊 Calcul Trimestriel :</strong> La moyenne combine les évaluations continues et la composition de fin de trimestre.
                     </p>
                     <p style="margin: 2px 0; color: #555;">
-                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Composition × 2)) / 3
+                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + Composition) / 2
                     </p>
                     <p style="margin: 2px 0; color: #555;">
-                        <strong>⚖️ Pondération :</strong> La composition compte double (coefficient 2) par rapport aux contrôles continus (coefficient 1)
+                        <strong>⚖️ Pondération :</strong> La composition et les contrôles continus ont le même poids (50% chacun)
                     </p>
                     <p style="margin: 2px 0; color: #555;">
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
@@ -907,10 +1024,10 @@
                         <strong>📊 Calcul Semestriel :</strong> La moyenne combine les évaluations continues et l'examen semestriel.
                     </p>
                     <p style="margin: 2px 0; color: #555;">
-                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + (Examen × 2)) / 3
+                        <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + Examen) / 2
                     </p>
                     <p style="margin: 2px 0; color: #555;">
-                        <strong>⚖️ Pondération :</strong> L'examen semestriel compte double (coefficient 2) par rapport aux contrôles continus (coefficient 1)
+                        <strong>⚖️ Pondération :</strong> L'examen semestriel et les contrôles continus ont le même poids (50% chacun)
                     </p>
                     <p style="margin: 2px 0; color: #555;">
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
@@ -939,19 +1056,11 @@
             </div>
         </div>
         
-        <!-- Footer -->
-        <div class="footer-section">
-            <p style="font-size: 7px; margin: 2px 0;">
-                <strong>Période concernée:</strong> {{ bulletin_data.titre_periode }}
+        <!-- Footer personnalisé -->
+        <div class="footer-section" style="border-top: 1px solid #ddd; margin-top: 5px; padding-top: 3px; font-size: 7px; text-align: center;">
+            <p style="margin: 0; color: #666;">
+                © 2025 Myschool. Tous droits réservés. +224 622613559 faraleno16@gmail.com
             </p>
-            <div style="border-top: 1px solid #ddd; margin-top: 3px; padding-top: 3px;">
-                <p style="font-size: 7px; margin: 0; color: #666;">
-                    © Tous droits réservés | 
-                    <a href="/" style="color: #666; text-decoration: none;">Accueil</a>
-                    {% if ecole.telephone %}| 📞 {{ ecole.telephone }}{% endif %}
-                    {% if ecole.email %}| 📧 {{ ecole.email }}{% endif %}
-                </p>
-            </div>
         </div>
     </div>
     {% endif %}
@@ -1009,6 +1118,37 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 });
+
+/**
+ * Fonction pour télécharger et ouvrir le bulletin PDF
+ * Ouvre le PDF dans un nouvel onglet pour visualisation immédiate
+ */
+function telechargerEtOuvrirPDF() {
+    if (!currentBulletinData.eleve_id) {
+        alert('Erreur: Données du bulletin manquantes');
+        return;
+    }
+    
+    // Construire l'URL du PDF
+    const pdfUrl = "{% url 'notes:bulletin_dynamique_pdf' %}" + 
+                   `?classe_id=${currentBulletinData.classe_id}` +
+                   `&eleve_id=${currentBulletinData.eleve_id}` +
+                   `&periode=${currentBulletinData.periode}` +
+                   `&system_type=${currentBulletinData.system_type}`;
+    
+    // Ouvrir dans un nouvel onglet (le navigateur proposera automatiquement le téléchargement)
+    window.open(pdfUrl, '_blank');
+    
+    // Alternative: Téléchargement direct (décommentez si préféré)
+    /*
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = `bulletin_${currentBulletinData.eleve_nom}_${currentBulletinData.periode}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    */
+}
 
 function envoyerBulletinWhatsApp() {
     if (!currentBulletinData.eleve_id) {

@@ -7,7 +7,7 @@ from typing import List, Dict, Optional
 
 def calculer_moyenne_devoirs(notes: List[Decimal]) -> Optional[Decimal]:
     """
-    Calcule la moyenne des devoirs (compte les absents comme 0)
+    Calcule la moyenne des devoirs (IGNORE les absents)
     
     Args:
         notes: Liste des notes des devoirs
@@ -18,10 +18,13 @@ def calculer_moyenne_devoirs(notes: List[Decimal]) -> Optional[Decimal]:
     if not notes:
         return None
     
-    # Convertir les None (absents) en 0
-    notes_avec_absents = [n if n is not None else Decimal('0') for n in notes]
+    # IGNORER les None (absents) au lieu de les compter comme 0
+    notes_valides = [n for n in notes if n is not None]
     
-    moyenne = sum(notes_avec_absents) / len(notes_avec_absents)
+    if not notes_valides:
+        return None
+    
+    moyenne = sum(notes_valides) / len(notes_valides)
     return moyenne.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 

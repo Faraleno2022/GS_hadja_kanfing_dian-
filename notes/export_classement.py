@@ -18,7 +18,7 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
-from eleves.models import Eleve, Classe
+from eleves.models import Eleve, Classe as ClasseEleve
 from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
 
 
@@ -71,60 +71,71 @@ def exporter_classement_classe(request):
     # Récupérer la classe
     classe_note = get_object_or_404(ClasseNote, pk=classe_id)
     
-    # Récupérer la classe élève correspondante avec recherche flexible
+    # Récupérer la classe élève correspondante avec mapping spécial (même logique que les autres vues)
     try:
-        # Essai 1: Correspondance exacte
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe_note.nom,
-            annee_scolaire=classe_note.annee_scolaire,
-            ecole=classe_note.ecole
-        ).first()
+        # Mapping spécial pour les classes avec noms différents
+        mapping_classes = {
+            61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+            59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+        }
         
-        # Essai 2: Correspondance insensible à la casse
-        if not classe_eleve:
+        if classe_note.id in mapping_classes:
             classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe_note.nom,
+                id=mapping_classes[classe_note.id]
+            ).first()
+        else:
+            # Essai 1: Correspondance exacte
+            classe_eleve = ClasseEleve.objects.filter(
+                nom=classe_note.nom,
                 annee_scolaire=classe_note.annee_scolaire,
                 ecole=classe_note.ecole
             ).first()
-        
-        # Essai 3: Recherche par mots-clés (ex: "12ème Série scientifique" → "12" + "SCIENCES")
-        if not classe_eleve:
-            # Extraire le niveau (ex: "12")
-            import re
-            match = re.search(r'(\d+)', classe_note.nom)
-            if match:
-                niveau_num = match.group(1)
-                
-                # Chercher d'abord avec l'école
-                classes_possibles = ClasseEleve.objects.filter(
-                    nom__icontains=niveau_num,
+            
+            # Essai 2: Correspondance insensible à la casse
+            if not classe_eleve:
+                classe_eleve = ClasseEleve.objects.filter(
+                    nom__iexact=classe_note.nom,
                     annee_scolaire=classe_note.annee_scolaire,
                     ecole=classe_note.ecole
-                )
-                
-                # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
-                if not classes_possibles.exists():
+                ).first()
+            
+            # Essai 3: Recherche par mots-clés (ex: "12ème Série scientifique" → "12" + "SCIENCES")
+            if not classe_eleve:
+                # Extraire le niveau (ex: "12")
+                import re
+                match = re.search(r'(\d+)', classe_note.nom)
+                if match:
+                    niveau_num = match.group(1)
+                    
+                    # Chercher d'abord avec l'école
                     classes_possibles = ClasseEleve.objects.filter(
                         nom__icontains=niveau_num,
-                        annee_scolaire=classe_note.annee_scolaire
+                        annee_scolaire=classe_note.annee_scolaire,
+                        ecole=classe_note.ecole
                     )
-                
-                classe_eleve = classes_possibles.first()
-                
-                # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
-                if classe_eleve and classes_possibles.count() > 1:
-                    # Chercher des mots-clés spécifiques dans le nom de la classe
-                    if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
-                        for c in classes_possibles:
-                            if 'SCIENCE' in c.nom.upper():
-                                classe_eleve = c
-                                break
-                    elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
-                        for c in classes_possibles:
-                            if 'LETTRE' in c.nom.upper():
-                                classe_eleve = c
-                                break
+                    
+                    # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
+                    if not classes_possibles.exists():
+                        classes_possibles = ClasseEleve.objects.filter(
+                            nom__icontains=niveau_num,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                    
+                    classe_eleve = classes_possibles.first()
+                    
+                    # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
+                    if classe_eleve and classes_possibles.count() > 1:
+                        # Chercher des mots-clés spécifiques dans le nom de la classe
+                        if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
+                            for c in classes_possibles:
+                                if 'SCIENCE' in c.nom.upper():
+                                    classe_eleve = c
+                                    break
+                        elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
+                            for c in classes_possibles:
+                                if 'LETTRE' in c.nom.upper():
+                                    classe_eleve = c
+                                    break
         
         if not classe_eleve:
             return HttpResponse(
@@ -680,58 +691,69 @@ def exporter_classement_classe_pdf(request):
     # Récupérer la classe
     classe_note = get_object_or_404(ClasseNote, pk=classe_id)
     
-    # Récupérer la classe élève correspondante avec recherche flexible
+    # Récupérer la classe élève correspondante avec mapping spécial (même logique que les autres vues)
     try:
-        # Essai 1: Correspondance exacte
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe_note.nom,
-            annee_scolaire=classe_note.annee_scolaire,
-            ecole=classe_note.ecole
-        ).first()
+        # Mapping spécial pour les classes avec noms différents
+        mapping_classes = {
+            61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+            59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+        }
         
-        # Essai 2: Correspondance insensible à la casse
-        if not classe_eleve:
+        if classe_note.id in mapping_classes:
             classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe_note.nom,
+                id=mapping_classes[classe_note.id]
+            ).first()
+        else:
+            # Essai 1: Correspondance exacte
+            classe_eleve = ClasseEleve.objects.filter(
+                nom=classe_note.nom,
                 annee_scolaire=classe_note.annee_scolaire,
                 ecole=classe_note.ecole
             ).first()
-        
-        # Essai 3: Recherche par mots-clés
-        if not classe_eleve:
-            import re
-            match = re.search(r'(\d+)', classe_note.nom)
-            if match:
-                niveau_num = match.group(1)
-                
-                # Chercher d'abord avec l'école
-                classes_possibles = ClasseEleve.objects.filter(
-                    nom__icontains=niveau_num,
+            
+            # Essai 2: Correspondance insensible à la casse
+            if not classe_eleve:
+                classe_eleve = ClasseEleve.objects.filter(
+                    nom__iexact=classe_note.nom,
                     annee_scolaire=classe_note.annee_scolaire,
                     ecole=classe_note.ecole
-                )
-                
-                # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
-                if not classes_possibles.exists():
+                ).first()
+            
+            # Essai 3: Recherche par mots-clés
+            if not classe_eleve:
+                import re
+                match = re.search(r'(\d+)', classe_note.nom)
+                if match:
+                    niveau_num = match.group(1)
+                    
+                    # Chercher d'abord avec l'école
                     classes_possibles = ClasseEleve.objects.filter(
                         nom__icontains=niveau_num,
-                        annee_scolaire=classe_note.annee_scolaire
+                        annee_scolaire=classe_note.annee_scolaire,
+                        ecole=classe_note.ecole
                     )
-                
-                classe_eleve = classes_possibles.first()
-                
-                # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
-                if classe_eleve and classes_possibles.count() > 1:
-                    if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
-                        for c in classes_possibles:
-                            if 'SCIENCE' in c.nom.upper():
-                                classe_eleve = c
-                                break
-                    elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
-                        for c in classes_possibles:
-                            if 'LETTRE' in c.nom.upper():
-                                classe_eleve = c
-                                break
+                    
+                    # Si aucune classe trouvée avec l'école, chercher sans filtrer par école
+                    if not classes_possibles.exists():
+                        classes_possibles = ClasseEleve.objects.filter(
+                            nom__icontains=niveau_num,
+                            annee_scolaire=classe_note.annee_scolaire
+                        )
+                    
+                    classe_eleve = classes_possibles.first()
+                    
+                    # Si plusieurs classes trouvées, essayer d'affiner avec les mots-clés
+                    if classe_eleve and classes_possibles.count() > 1:
+                        if 'scientifique' in classe_note.nom.lower() or 'science' in classe_note.nom.lower():
+                            for c in classes_possibles:
+                                if 'SCIENCE' in c.nom.upper():
+                                    classe_eleve = c
+                                    break
+                        elif 'littéraire' in classe_note.nom.lower() or 'lettre' in classe_note.nom.lower():
+                            for c in classes_possibles:
+                                if 'LETTRE' in c.nom.upper():
+                                    classe_eleve = c
+                                    break
         
         if not classe_eleve:
             return HttpResponse(

@@ -126,35 +126,61 @@ class ImportNotesProcessor:
         raise ImportNotesError(f"Type d'import non supporté: {self.type_import}")
     
     def _importer_notes_mensuelles(self, matiere):
-        """Importe des notes mensuelles"""
+        """Importe des notes mensuelles - VERSION OPTIMISÉE"""
+        # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
+        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        
+        # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
+        notes_existantes = {}
+        for note in NoteMensuelle.objects.filter(
+            matiere=matiere,
+            mois=self.periode,
+            annee_scolaire=self.annee_scolaire
+        ).select_related('eleve'):
+            notes_existantes[note.eleve.matricule] = note
+        
+        notes_a_creer = []
+        notes_a_modifier = []
+        
         with transaction.atomic():
             for index, row in self.df.iterrows():
                 self.stats['total'] += 1
                 
                 try:
                     matricule = str(row['Matricule']).strip()
-                    eleve = Eleve.objects.get(matricule=matricule)
+                    eleve = eleves_dict.get(matricule)
+                    
+                    if not eleve:
+                        self.stats['erreurs'] += 1
+                        print(f"Erreur ligne {index + 2}: Élève {matricule} introuvable")
+                        continue
                     
                     absent = str(row.get('Absent', 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
                     note_value = None if absent else row.get('Note')
                     
-                    # Créer ou mettre à jour la note
-                    note, created = NoteMensuelle.objects.update_or_create(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=self.periode,
-                        annee_scolaire=self.annee_scolaire,
-                        defaults={
-                            'note': Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else Decimal('0'),
-                            'absent': absent,
-                            'cree_par': self.user
-                        }
-                    )
+                    note_decimal = Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else Decimal('0')
                     
-                    if created:
-                        self.stats['importees'] += 1
-                    else:
+                    # Vérifier si la note existe déjà
+                    if matricule in notes_existantes:
+                        # Modifier
+                        note = notes_existantes[matricule]
+                        note.note = note_decimal
+                        note.absent = absent
+                        note.cree_par = self.user
+                        notes_a_modifier.append(note)
                         self.stats['modifiees'] += 1
+                    else:
+                        # Créer
+                        notes_a_creer.append(NoteMensuelle(
+                            eleve=eleve,
+                            matiere=matiere,
+                            mois=self.periode,
+                            annee_scolaire=self.annee_scolaire,
+                            note=note_decimal,
+                            absent=absent,
+                            cree_par=self.user
+                        ))
+                        self.stats['importees'] += 1
                     
                     if absent:
                         self.stats['absents'] += 1
@@ -162,39 +188,77 @@ class ImportNotesProcessor:
                 except Exception as e:
                     self.stats['erreurs'] += 1
                     print(f"Erreur ligne {index + 2}: {e}")
+            
+            # ⚡ BULK OPERATIONS (1 seule requête pour toutes les créations)
+            if notes_a_creer:
+                NoteMensuelle.objects.bulk_create(notes_a_creer, batch_size=500)
+            
+            # ⚡ BULK UPDATE (1 seule requête pour toutes les modifications)
+            if notes_a_modifier:
+                NoteMensuelle.objects.bulk_update(
+                    notes_a_modifier, 
+                    ['note', 'absent', 'cree_par'],
+                    batch_size=500
+                )
         
         return self.stats
     
     def _importer_notes_composition(self, matiere):
-        """Importe des notes de composition"""
+        """Importe des notes de composition - VERSION OPTIMISÉE"""
+        # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
+        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        
+        # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
+        notes_existantes = {}
+        for note in CompositionNote.objects.filter(
+            matiere=matiere,
+            periode=self.periode,
+            annee_scolaire=self.annee_scolaire
+        ).select_related('eleve'):
+            notes_existantes[note.eleve.matricule] = note
+        
+        notes_a_creer = []
+        notes_a_modifier = []
+        
         with transaction.atomic():
             for index, row in self.df.iterrows():
                 self.stats['total'] += 1
                 
                 try:
                     matricule = str(row['Matricule']).strip()
-                    eleve = Eleve.objects.get(matricule=matricule)
+                    eleve = eleves_dict.get(matricule)
+                    
+                    if not eleve:
+                        self.stats['erreurs'] += 1
+                        print(f"Erreur ligne {index + 2}: Élève {matricule} introuvable")
+                        continue
                     
                     absent = str(row.get('Absent', 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
                     note_value = None if absent else row.get('Note')
                     
-                    # Créer ou mettre à jour la note
-                    note, created = CompositionNote.objects.update_or_create(
-                        eleve=eleve,
-                        matiere=matiere,
-                        periode=self.periode,
-                        annee_scolaire=self.annee_scolaire,
-                        defaults={
-                            'note': Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else Decimal('0'),
-                            'absent': absent,
-                            'cree_par': self.user
-                        }
-                    )
+                    note_decimal = Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else Decimal('0')
                     
-                    if created:
-                        self.stats['importees'] += 1
-                    else:
+                    # Vérifier si la note existe déjà
+                    if matricule in notes_existantes:
+                        # Modifier
+                        note = notes_existantes[matricule]
+                        note.note = note_decimal
+                        note.absent = absent
+                        note.cree_par = self.user
+                        notes_a_modifier.append(note)
                         self.stats['modifiees'] += 1
+                    else:
+                        # Créer
+                        notes_a_creer.append(CompositionNote(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=self.periode,
+                            annee_scolaire=self.annee_scolaire,
+                            note=note_decimal,
+                            absent=absent,
+                            cree_par=self.user
+                        ))
+                        self.stats['importees'] += 1
                     
                     if absent:
                         self.stats['absents'] += 1
@@ -202,42 +266,78 @@ class ImportNotesProcessor:
                 except Exception as e:
                     self.stats['erreurs'] += 1
                     print(f"Erreur ligne {index + 2}: {e}")
+            
+            # ⚡ BULK OPERATIONS (1 seule requête pour toutes les créations)
+            if notes_a_creer:
+                CompositionNote.objects.bulk_create(notes_a_creer, batch_size=500)
+            
+            # ⚡ BULK UPDATE (1 seule requête pour toutes les modifications)
+            if notes_a_modifier:
+                CompositionNote.objects.bulk_update(
+                    notes_a_modifier, 
+                    ['note', 'absent', 'cree_par'],
+                    batch_size=500
+                )
         
         return self.stats
     
     def _importer_notes_evaluation(self, matiere):
-        """Importe des notes d'évaluation"""
+        """Importe des notes d'évaluation - VERSION OPTIMISÉE"""
         try:
             evaluation = Evaluation.objects.get(id=self.evaluation_id)
         except Evaluation.DoesNotExist:
             raise ImportNotesError("Évaluation introuvable")
         
+        # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
+        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        
+        # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
+        notes_existantes = {}
+        for note in NoteEleve.objects.filter(
+            evaluation=evaluation
+        ).select_related('eleve'):
+            notes_existantes[note.eleve.matricule] = note
+        
+        notes_a_creer = []
+        notes_a_modifier = []
+        
         with transaction.atomic():
             for index, row in self.df.iterrows():
                 self.stats['total'] += 1
                 
                 try:
                     matricule = str(row['Matricule']).strip()
-                    eleve = Eleve.objects.get(matricule=matricule)
+                    eleve = eleves_dict.get(matricule)
+                    
+                    if not eleve:
+                        self.stats['erreurs'] += 1
+                        print(f"Erreur ligne {index + 2}: Élève {matricule} introuvable")
+                        continue
                     
                     absent = str(row.get('Absent', 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
                     note_value = None if absent else row.get('Note')
                     
-                    # Créer ou mettre à jour la note
-                    note, created = NoteEleve.objects.update_or_create(
-                        evaluation=evaluation,
-                        eleve=eleve,
-                        defaults={
-                            'note': Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else None,
-                            'absent': absent,
-                            'cree_par': self.user
-                        }
-                    )
+                    note_decimal = Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else None
                     
-                    if created:
-                        self.stats['importees'] += 1
-                    else:
+                    # Vérifier si la note existe déjà
+                    if matricule in notes_existantes:
+                        # Modifier
+                        note = notes_existantes[matricule]
+                        note.note = note_decimal
+                        note.absent = absent
+                        note.cree_par = self.user
+                        notes_a_modifier.append(note)
                         self.stats['modifiees'] += 1
+                    else:
+                        # Créer
+                        notes_a_creer.append(NoteEleve(
+                            evaluation=evaluation,
+                            eleve=eleve,
+                            note=note_decimal,
+                            absent=absent,
+                            cree_par=self.user
+                        ))
+                        self.stats['importees'] += 1
                     
                     if absent:
                         self.stats['absents'] += 1
@@ -245,6 +345,18 @@ class ImportNotesProcessor:
                 except Exception as e:
                     self.stats['erreurs'] += 1
                     print(f"Erreur ligne {index + 2}: {e}")
+            
+            # ⚡ BULK OPERATIONS (1 seule requête pour toutes les créations)
+            if notes_a_creer:
+                NoteEleve.objects.bulk_create(notes_a_creer, batch_size=500)
+            
+            # ⚡ BULK UPDATE (1 seule requête pour toutes les modifications)
+            if notes_a_modifier:
+                NoteEleve.objects.bulk_update(
+                    notes_a_modifier, 
+                    ['note', 'absent', 'cree_par'],
+                    batch_size=500
+                )
         
         return self.stats
 

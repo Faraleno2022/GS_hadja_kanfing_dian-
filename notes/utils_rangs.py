@@ -40,12 +40,22 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     from eleves.models import Eleve, Classe as ClasseEleve
     from .models import MatiereNote, Evaluation, NoteEleve
     
-    # Récupérer la classe élève correspondante
-    classe_eleve = ClasseEleve.objects.filter(
-        nom=classe_note.nom,
-        annee_scolaire=classe_note.annee_scolaire,
-        ecole=classe_note.ecole
-    ).first()
+    # Récupérer la classe élève correspondante avec mapping spécial
+    mapping_classes = {
+        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
+        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
+    }
+    
+    if classe_note.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(
+            id=mapping_classes[classe_note.id]
+        ).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire,
+            ecole=classe_note.ecole
+        ).first()
     
     if not classe_eleve:
         return {}

@@ -94,7 +94,8 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     if system_type == 'mensuel':
         moyenne_matiere = moyenne_continue
     elif moyenne_continue is not None and note_composition is not None:
-        moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
+        # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+        moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
     elif note_composition is not None:
         moyenne_matiere = note_composition
     elif moyenne_continue is not None:
