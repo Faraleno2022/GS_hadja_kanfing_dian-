@@ -57,37 +57,52 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     moyenne_continue = None
     note_composition = None
     
-    # Récupérer les évaluations
-    evaluations = Evaluation.objects.filter(
-        matiere=matiere,
-        periode=periode
-    ).order_by('date_evaluation')
-    
-    # Calculer moyennes continue et composition
-    total_devoirs = Decimal('0')
-    count_devoirs = 0
-    total_compo = Decimal('0')
-    count_compo = 0
-    
-    for evaluation in evaluations:
+    # SYSTÈME MENSUEL: Utiliser NoteMensuelle
+    if system_type == 'mensuel':
         try:
-            note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-            if note_obj.note is not None and not note_obj.absent:
-                if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                    total_compo += Decimal(str(note_obj.note))
-                    count_compo += 1
-                else:
-                    total_devoirs += Decimal(str(note_obj.note))
-                    count_devoirs += 1
-        except NoteEleve.DoesNotExist:
-            # Note n'existe pas, continuer sans erreur
-            continue
-    
-    if count_devoirs > 0:
-        moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-    
-    if count_compo > 0:
-        note_composition = round(float(total_compo / count_compo), 2)
+            note_mensuelle = NoteMensuelle.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                mois=periode,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if not note_mensuelle.absent and note_mensuelle.note is not None:
+                moyenne_continue = float(note_mensuelle.note)
+        except NoteMensuelle.DoesNotExist:
+            pass
+    else:
+        # AUTRES SYSTÈMES: Utiliser les évaluations
+        # Récupérer les évaluations
+        evaluations = Evaluation.objects.filter(
+            matiere=matiere,
+            periode=periode
+        ).order_by('date_evaluation')
+        
+        # Calculer moyennes continue et composition
+        total_devoirs = Decimal('0')
+        count_devoirs = 0
+        total_compo = Decimal('0')
+        count_compo = 0
+        
+        for evaluation in evaluations:
+            try:
+                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                if note_obj.note is not None and not note_obj.absent:
+                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                        total_compo += Decimal(str(note_obj.note))
+                        count_compo += 1
+                    else:
+                        total_devoirs += Decimal(str(note_obj.note))
+                        count_devoirs += 1
+            except NoteEleve.DoesNotExist:
+                # Note n'existe pas, continuer sans erreur
+                continue
+        
+        if count_devoirs > 0:
+            moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
+        
+        if count_compo > 0:
+            note_composition = round(float(total_compo / count_compo), 2)
     
     # Calculer la moyenne de la matière selon le système
     moyenne_matiere = None

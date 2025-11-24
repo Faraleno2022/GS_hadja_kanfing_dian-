@@ -122,7 +122,9 @@
                 {% if system_type == 'mensuel' %}
                     <!-- Affichage mensuel classique -->
                     <td>
-                        {% if matiere_note.moyenne_continue %}
+                        {% if matiere_note.moyenne %}
+                            {{ matiere_note.moyenne|floatformat:2 }}
+                        {% elif matiere_note.moyenne_continue %}
                             {{ matiere_note.moyenne_continue|floatformat:2 }}
                         {% else %}
                             -

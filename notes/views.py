@@ -5133,8 +5133,21 @@ def bulletin_dynamique(request):
                         note_composition = data_matiere['note_composition']
                         moyennes_mensuelles = data_matiere['moyennes_mensuelles']
                         
+                    elif system_type == 'mensuel':
+                        # NOUVEAU: Pour les bulletins mensuels, utiliser NoteMensuelle
+                        try:
+                            note_mensuelle = NoteMensuelle.objects.get(
+                                eleve=eleve_selectionne,
+                                matiere=matiere,
+                                mois=periode,
+                                annee_scolaire=classe_selectionnee.annee_scolaire
+                            )
+                            if not note_mensuelle.absent and note_mensuelle.note is not None:
+                                moyenne_continue = float(note_mensuelle.note)
+                        except NoteMensuelle.DoesNotExist:
+                            pass
                     else:
-                        # ANCIEN: Système mensuel ou autres - garder l'ancien calcul
+                        # ANCIEN: Système annuel ou autres - garder l'ancien calcul
                         # Chercher les évaluations de cette matière
                         evaluations = Evaluation.objects.filter(
                             matiere=matiere,
