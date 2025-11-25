@@ -1023,6 +1023,104 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c.showPage(); c.save()
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     """Génère en un seul PDF les bulletins mensuels de tous les élèves d'une classe (Collège/Lycée)."""
@@ -1173,6 +1271,104 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     c.save();
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     """Génère en un seul PDF les bulletins semestriels de tous les élèves d'une classe (Collège/Lycée)."""
@@ -1320,6 +1516,104 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
         c.showPage()
     c.save();
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 def course_month_avg(eleve, matiere, annee_scolaire, mois):
     """Calcule la moyenne des devoirs pour un mois donné"""
@@ -1583,6 +1877,104 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     c.showPage(); c.save()
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int = 1):
@@ -1693,6 +2085,104 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     c.showPage(); c.save()
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Génère en un seul PDF les bulletins de tous les élèves d'une classe pour un trimestre."""
@@ -1789,8 +2279,13 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         if s_den > 0:
             moyenne_generale_map[e.id] = (s_num / s_den).quantize(Decimal('0.01'))
 
-    # Classement
-    classement = sorted(moyenne_generale_map.items(), key=lambda t: t[1], reverse=True)
+    # Classement (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
+    # Récupérer les matricules pour le tri secondaire
+    matricules_map = {e.id: e.matricule for e in eleves}
+    classement = sorted(
+        moyenne_generale_map.items(), 
+        key=lambda t: (-float(t[1]), matricules_map.get(t[0], ""))
+    )
     rang_map: dict[int, int] = {eid: idx for idx, (eid, _) in enumerate(classement, start=1)}
     total_eleves_ayant_moyenne = len(classement)
 
@@ -1932,6 +2427,104 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     c.save()
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str = "T1"):
     """Export Excel des notes d'une classe pour une matière et un trimestre.
@@ -1993,6 +2586,104 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     wb.save(response)
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: int) -> Decimal | None:
     s_num = Decimal('0'); s_den = Decimal('0')
     for mat in matieres:
@@ -2037,6 +2728,104 @@ def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @admin_required
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
@@ -2119,6 +2908,104 @@ def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
     c.drawString(margin, margin/2, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     c.showPage(); c.save()
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 def _collect_evals_all_trimestres(classe, matieres):
     """Retourne un dict {matiere_id: [evaluations sur T1+T2+T3]} triées par date."""
     evals_by_matiere = {}
@@ -2225,7 +3112,13 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
         if s_den > 0:
             moyenne_generale_map[e.id] = (s_num / s_den).quantize(Decimal('0.01'))
 
-    classement = sorted(moyenne_generale_map.items(), key=lambda t: t[1], reverse=True)
+    # Classement (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
+    # Récupérer les matricules pour le tri secondaire
+    matricules_map = {e.id: e.matricule for e in eleves}
+    classement = sorted(
+        moyenne_generale_map.items(), 
+        key=lambda t: (-float(t[1]), matricules_map.get(t[0], ""))
+    )
     rang_map: dict[int, int] = {eid: idx for idx, (eid, _) in enumerate(classement, start=1)}
     rang = rang_map.get(eleve.id)
 
@@ -2316,6 +3209,104 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     c.setFont('Helvetica-Oblique', 10); c.setFillColor(colors.darkgrey); c.drawString(margin, margin/2, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     c.showPage(); c.save(); return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def bulletins_annuels_classe_pdf(request, classe_id: int):
     """Bulletins annuels (T1+T2+T3) pour tous les élèves d'une classe en un seul PDF."""
@@ -2374,7 +3365,13 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
                 s_den += Decimal(mat.coefficient or 1)
         if s_den > 0:
             moyenne_generale_map[e.id] = (s_num / s_den).quantize(Decimal('0.01'))
-    classement = sorted(moyenne_generale_map.items(), key=lambda t: t[1], reverse=True)
+    # Classement (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
+    # Récupérer les matricules pour le tri secondaire
+    matricules_map = {e.id: e.matricule for e in eleves}
+    classement = sorted(
+        moyenne_generale_map.items(), 
+        key=lambda t: (-float(t[1]), matricules_map.get(t[0], ""))
+    )
     rang_map: dict[int, int] = {eid: idx for idx, (eid, _) in enumerate(classement, start=1)}
 
     def mention_for(avg: Decimal | None) -> str:
@@ -2463,6 +3460,104 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         draw_for_student(e)
 
     c.save(); return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
 @require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
@@ -2705,6 +3800,104 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     c.save()
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @admin_required
 def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     """Export Excel du classement d'une classe."""
@@ -2827,6 +4020,104 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     
     wb.save(response)
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
 @require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
@@ -3101,7 +4392,7 @@ def cartes_scolaires_pdf(request, classe_id):
         
         # Nom et prénom
         c.setFont('Helvetica-Bold', 9)
-        nom_complet = f"{eleve.nom} {eleve.prenom}".upper()
+        nom_complet = eleve.nom_complet.upper()
         if len(nom_complet) > 25:
             nom_complet = nom_complet[:25] + "..."
         c.drawString(info_x, info_y, nom_complet)
@@ -3147,6 +4438,104 @@ def cartes_scolaires_pdf(request, classe_id):
     response.write(pdf)
     
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
 def carte_eleve_pdf(request, matricule):
@@ -3410,7 +4799,7 @@ def carte_eleve_pdf(request, matricule):
     # Nom complet (en majuscules et gras)
     c.setFont("Helvetica-Bold", 11)
     c.setFillColor(colors.HexColor('#1f2937'))
-    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
+    nom_complet = eleve.nom_complet.upper()
     if len(nom_complet) > 16:
         nom_complet = nom_complet[:13] + "..."
     c.drawString(info_x, info_y_start, nom_complet)
@@ -3477,6 +4866,104 @@ def carte_eleve_pdf(request, matricule):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
 def statistiques(request):
@@ -3548,49 +5035,68 @@ def statistiques(request):
                 has_notes = False
                 
                 for matiere in matieres:
-                    # Récupérer les évaluations de la période
-                    evaluations = Evaluation.objects.filter(
-                        matiere=matiere,
-                        periode=periode
-                    )
+                    # Vérifier si c'est une période mensuelle (OCTOBRE, NOVEMBRE, etc.)
+                    mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
                     
-                    if evaluations.exists():
-                        # Calculer la moyenne de la matière
-                        total_devoirs = Decimal('0')
-                        count_devoirs = 0
-                        total_compo = Decimal('0')
-                        count_compo = 0
+                    if periode in mois_periodes:
+                        # Utiliser les notes mensuelles
+                        try:
+                            note_mensuelle = NoteMensuelle.objects.get(
+                                eleve=eleve,
+                                matiere=matiere,
+                                mois=periode,
+                                annee_scolaire=classe_selectionnee.annee_scolaire
+                            )
+                            if note_mensuelle.note is not None and not note_mensuelle.absent:
+                                has_notes = True
+                                total_points += note_mensuelle.note * matiere.coefficient
+                                total_coefficients += matiere.coefficient
+                        except NoteMensuelle.DoesNotExist:
+                            pass
+                    else:
+                        # Utiliser les évaluations (ancien système)
+                        evaluations = Evaluation.objects.filter(
+                            matiere=matiere,
+                            periode=periode
+                        )
                         
-                        for evaluation in evaluations:
-                            try:
-                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                                if note_obj.note is not None and not note_obj.absent:
-                                    has_notes = True
-                                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                        total_compo += Decimal(str(note_obj.note))
-                                        count_compo += 1
-                                    else:
-                                        total_devoirs += Decimal(str(note_obj.note))
-                                        count_devoirs += 1
-                            except NoteEleve.DoesNotExist:
-                                pass
-                        
-                        # Calculer la moyenne de la matière
-                        moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
-                        note_composition = total_compo / count_compo if count_compo > 0 else None
-                        
-                        moyenne_matiere = None
-                        if moyenne_continue is not None and note_composition is not None:
-                            # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
-                            moyenne_matiere = (moyenne_continue + note_composition) / 2
-                        elif note_composition is not None:
-                            moyenne_matiere = note_composition
-                        elif moyenne_continue is not None:
-                            moyenne_matiere = moyenne_continue
-                        
-                        if moyenne_matiere is not None:
-                            total_points += moyenne_matiere * matiere.coefficient
-                            total_coefficients += matiere.coefficient
+                        if evaluations.exists():
+                            # Calculer la moyenne de la matière
+                            total_devoirs = Decimal('0')
+                            count_devoirs = 0
+                            total_compo = Decimal('0')
+                            count_compo = 0
+                            
+                            for evaluation in evaluations:
+                                try:
+                                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                                    if note_obj.note is not None and not note_obj.absent:
+                                        has_notes = True
+                                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
+                                            total_compo += Decimal(str(note_obj.note))
+                                            count_compo += 1
+                                        else:
+                                            total_devoirs += Decimal(str(note_obj.note))
+                                            count_devoirs += 1
+                                except NoteEleve.DoesNotExist:
+                                    pass
+                            
+                            # Calculer la moyenne de la matière
+                            moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
+                            note_composition = total_compo / count_compo if count_compo > 0 else None
+                            
+                            moyenne_matiere = None
+                            if moyenne_continue is not None and note_composition is not None:
+                                # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                                moyenne_matiere = (moyenne_continue + note_composition) / 2
+                            elif note_composition is not None:
+                                moyenne_matiere = note_composition
+                            elif moyenne_continue is not None:
+                                moyenne_matiere = moyenne_continue
+                            
+                            if moyenne_matiere is not None:
+                                total_points += moyenne_matiere * matiere.coefficient
+                                total_coefficients += matiere.coefficient
                 
                 # Calculer la moyenne générale
                 if has_notes and total_coefficients > 0:
@@ -3671,6 +5177,89 @@ def statistiques(request):
             'couleur': 'info'
         })
     
+    # Calculer les statistiques générales si des élèves sont évalués
+    stats_generales = None
+    if nb_evalues > 0:
+        # Calculer la moyenne de classe
+        total_moyennes = 0
+        moyenne_max = 0
+        moyenne_min = 20
+        
+        for data in eleves_non_admis + eleves_a_suivre + eleves_excellents + eleves_precaution:
+            moyenne = data['moyenne']
+            total_moyennes += moyenne
+            moyenne_max = max(moyenne_max, moyenne)
+            moyenne_min = min(moyenne_min, moyenne)
+        
+        moyenne_classe = round(total_moyennes / nb_evalues, 2) if nb_evalues > 0 else 0
+        taux_reussite = round((nb_evalues - nb_non_admis) / nb_evalues * 100, 1) if nb_evalues > 0 else 0
+        
+        stats_generales = {
+            'total_eleves': nb_evalues,
+            'moyenne_classe': moyenne_classe,
+            'moyenne_max': round(moyenne_max, 2),
+            'moyenne_min': round(moyenne_min, 2),
+            'taux_reussite': taux_reussite
+        }
+        
+        # Calculer les données pour les graphiques
+        import json
+        
+        # Répartition des notes
+        all_eleves = eleves_non_admis + eleves_a_suivre + eleves_excellents + eleves_precaution
+        
+        excellent = len([e for e in all_eleves if e['moyenne'] >= 16])
+        tres_bien = len([e for e in all_eleves if 14 <= e['moyenne'] < 16])
+        bien = len([e for e in all_eleves if 12 <= e['moyenne'] < 14])
+        assez_bien = len([e for e in all_eleves if 10 <= e['moyenne'] < 12])
+        insuffisant = len([e for e in all_eleves if e['moyenne'] < 10])
+        
+        repartition_json = json.dumps({
+            'excellent': excellent,
+            'tres_bien': tres_bien,
+            'bien': bien,
+            'assez_bien': assez_bien,
+            'insuffisant': insuffisant
+        })
+        
+        # Statistiques par matière
+        stats_matieres = []
+        for matiere in matieres:
+            notes_matiere = []
+            for eleve in eleves:
+                try:
+                    note = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=periode,
+                        annee_scolaire=classe_selectionnee.annee_scolaire
+                    )
+                    if note.note is not None and not note.absent:
+                        notes_matiere.append(float(note.note))
+                except NoteMensuelle.DoesNotExist:
+                    pass
+            
+            if notes_matiere:
+                stats_matieres.append({
+                    'matiere': matiere.nom,
+                    'moyenne': round(sum(notes_matiere) / len(notes_matiere), 2),
+                    'max': round(max(notes_matiere), 2),
+                    'min': round(min(notes_matiere), 2),
+                    'nb_eleves': len(notes_matiere)
+                })
+        
+        stats_matieres_json = json.dumps(stats_matieres)
+        
+        # Évolution (pour l'instant, juste la période actuelle)
+        evolution_json = json.dumps([{
+            'periode': periode,
+            'moyenne': moyenne_classe
+        }])
+    else:
+        repartition_json = '[]'
+        stats_matieres_json = '[]'
+        evolution_json = '[]'
+    
     context = {
         'titre_page': 'Statistiques de l\'École',
         'ecole': ecole,
@@ -3679,6 +5268,11 @@ def statistiques(request):
         'periode': periode,
         'total_eleves': total_eleves,
         'total_classes': total_classes,
+        'stats_generales': stats_generales,
+        'repartition_json': repartition_json,
+        'stats_matieres_json': stats_matieres_json,
+        'evolution_json': evolution_json,
+        'stats_par_matiere': json.loads(stats_matieres_json) if stats_matieres_json != '[]' else None,
         'nb_evalues': nb_evalues,
         'nb_non_evalues': nb_non_evalues,
         'nb_non_admis': nb_non_admis,
@@ -3743,9 +5337,9 @@ def gerer_classes(request):
                 classe.ecole = ecole
             classe.cree_par = request.user
             
-            # Vérifier si la classe existe déjà
+            # Vérifier si la classe existe déjà (utiliser les données du formulaire directement)
             classe_existante = ClasseNote.objects.filter(
-                ecole=classe.ecole,
+                ecole=ecole,  # Utiliser l'école du profil utilisateur
                 nom=classe.nom,
                 annee_scolaire=classe.annee_scolaire
             ).first()
@@ -4515,6 +6109,104 @@ def liste_saisie_pdf(request):
     
     return response
 
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
 @login_required
 def sauvegarder_notes(request):
     """Sauvegarder les notes saisies avec support des transactions"""
@@ -4841,113 +6533,142 @@ def consulter_notes(request):
             else:
                 eleves = []
             
-            # Pour chaque élève, récupérer toutes ses notes pour toutes les matières
+            # Utiliser directement les données centralisées pour garantir cohérence totale
+            from .utils_rangs import calculer_rangs_classe_periode
+            
+            # Déterminer la période à utiliser
+            if periode_classement:
+                periode_pour_calcul = periode_classement
+            else:
+                periode_pour_calcul = 'OCTOBRE'
+                periodes_codes = [p[0] for p in periodes_disponibles]
+                if 'OCTOBRE' not in periodes_codes:
+                    periode_pour_calcul = periodes_disponibles[0][0]
+            
+            # Calculer les rangs et moyennes avec la fonction centralisée
+            rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_calcul, use_cache=False)
+            
+            # Pour chaque élève, récupérer toutes ses notes pour l'affichage
             for eleve in eleves:
                 notes_par_matiere = {}
-                somme_moy_coef = Decimal('0')
-                somme_coef = Decimal('0')
                 
-                for matiere in matieres:
-                    # Récupérer toutes les évaluations de cette matière
-                    evaluations = Evaluation.objects.filter(matiere=matiere)
-                    if periode_classement:
-                        evaluations = evaluations.filter(periode=periode_classement)
-                    
-                    notes_matiere = {
-                        'evaluations': [],
-                        'notes': [],
-                        'moyenne': None
-                    }
-                    
-                    # Calculer la moyenne pondérée par coefficient d'évaluation
-                    total_pondere = Decimal('0')
-                    total_coef_eval = Decimal('0')
-                    
-                    for evaluation in evaluations:
+                # Récupérer les données centralisées
+                rang_info = rangs_dict.get(eleve.id)
+                moyenne_generale = float(rang_info['moyenne']) if rang_info else None
+                rang = rang_info['rang'] if rang_info else '-'
+                
+                # Déterminer le type de système selon la période
+                if periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+                    # Système mensuel - utiliser NoteMensuelle
+                    for matiere in matieres:
+                        # Créer une évaluation factice pour l'affichage
+                        eval_factice = type('EvalFactice', (), {
+                            'titre': periode_classement,
+                            'periode': periode_classement,
+                            'coefficient': 1,
+                            'date_evaluation': None
+                        })()
+                        
+                        notes_matiere = {
+                            'evaluations': [eval_factice],
+                            'notes': [],
+                            'moyenne': None
+                        }
+                        
+                        # Récupérer les notes mensuelles pour cette période
                         try:
-                            note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                            notes_matiere['evaluations'].append(evaluation)
+                            note_mensuelle = NoteMensuelle.objects.get(
+                                eleve=eleve,
+                                matiere=matiere,
+                                mois=periode_classement,
+                                annee_scolaire=classe_selectionnee.annee_scolaire
+                            )
+                            
                             notes_matiere['notes'].append({
-                                'evaluation': evaluation,
-                                'note': note_obj.note,
-                                'absent': note_obj.absent,
+                                'evaluation': eval_factice,
+                                'note': note_mensuelle.note,
+                                'absent': note_mensuelle.absent,
                             })
-                            # Compter les absences comme 0
-                            coef_eval = Decimal(str(evaluation.coefficient or 1))
-                            if note_obj.absent or note_obj.note is None:
-                                # Absence = 0
-                                total_pondere += Decimal('0') * coef_eval
+                            
+                            # Calculer la moyenne pour cette matière
+                            if not note_mensuelle.absent and note_mensuelle.note is not None:
+                                notes_matiere['moyenne'] = float(note_mensuelle.note)
                             else:
-                                total_pondere += Decimal(str(note_obj.note)) * coef_eval
-                            total_coef_eval += coef_eval
-                        except NoteEleve.DoesNotExist:
-                            notes_matiere['evaluations'].append(evaluation)
+                                notes_matiere['moyenne'] = 0.0
+                            
+                        except NoteMensuelle.DoesNotExist:
+                            # Pas de note = 0
                             notes_matiere['notes'].append({
-                                'evaluation': evaluation,
+                                'evaluation': eval_factice,
                                 'note': None,
                                 'absent': False,
                             })
-                            # Pas de note = 0
-                            coef_eval = Decimal(str(evaluation.coefficient or 1))
-                            total_pondere += Decimal('0') * coef_eval
-                            total_coef_eval += coef_eval
-                    
-                    # Calculer la moyenne pondérée de la matière
-                    if total_coef_eval > 0:
-                        moyenne_matiere = total_pondere / total_coef_eval
-                        notes_matiere['moyenne'] = round(float(moyenne_matiere), 2)
+                            notes_matiere['moyenne'] = 0.0
                         
-                        # Ajouter à la moyenne générale pondérée par coefficient de matière
-                        coef_matiere = Decimal(str(matiere.coefficient or 1))
-                        somme_moy_coef += moyenne_matiere * coef_matiere
-                        somme_coef += coef_matiere
-                    
-                    notes_par_matiere[matiere.id] = notes_matiere
-                
-                # Calculer la moyenne générale
-                moyenne_generale = None
-                if somme_coef > 0:
-                    moyenne_generale = round(float(somme_moy_coef / somme_coef), 2)
+                        notes_par_matiere[matiere.id] = notes_matiere
+                else:
+                    # Système annuel/trimestriel - utiliser Evaluation et NoteEleve
+                    for matiere in matieres:
+                        # Récupérer toutes les évaluations de cette matière
+                        evaluations = Evaluation.objects.filter(matiere=matiere)
+                        if periode_classement:
+                            evaluations = evaluations.filter(periode=periode_classement)
+                        
+                        notes_matiere = {
+                            'evaluations': [],
+                            'notes': [],
+                            'moyenne': None
+                        }
+                        
+                        # Calculer la moyenne pondérée par coefficient d'évaluation
+                        total_pondere = Decimal('0')
+                        total_coef_eval = Decimal('0')
+                        
+                        for evaluation in evaluations:
+                            try:
+                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                                notes_matiere['evaluations'].append(evaluation)
+                                notes_matiere['notes'].append({
+                                    'evaluation': evaluation,
+                                    'note': note_obj.note,
+                                    'absent': note_obj.absent,
+                                })
+                                # Compter les absences comme 0
+                                coef_eval = Decimal(str(evaluation.coefficient or 1))
+                                if note_obj.absent or note_obj.note is None:
+                                    # Absence = 0
+                                    total_pondere += Decimal('0') * coef_eval
+                                else:
+                                    total_pondere += Decimal(str(note_obj.note)) * coef_eval
+                                total_coef_eval += coef_eval
+                            except NoteEleve.DoesNotExist:
+                                notes_matiere['evaluations'].append(evaluation)
+                                notes_matiere['notes'].append({
+                                    'evaluation': evaluation,
+                                    'note': None,
+                                    'absent': False,
+                                })
+                                # Pas de note = 0
+                                coef_eval = Decimal(str(evaluation.coefficient or 1))
+                                total_pondere += Decimal('0') * coef_eval
+                                total_coef_eval += coef_eval
+                        
+                        # Calculer la moyenne pondérée de la matière
+                        if total_coef_eval > 0:
+                            moyenne_matiere = total_pondere / total_coef_eval
+                            notes_matiere['moyenne'] = round(float(moyenne_matiere), 2)
+                        
+                        notes_par_matiere[matiere.id] = notes_matiere
                 
                 eleves_toutes_notes.append({
                     'eleve': eleve,
                     'notes_par_matiere': notes_par_matiere,
-                    'moyenne_generale': moyenne_generale,
+                    'moyenne_generale': moyenne_generale,  # Utiliser la moyenne centralisée
+                    'rang': rang,  # Utiliser le rang centralisé
                 })
                 
         except ClasseEleve.DoesNotExist:
             pass
-    
-    # Utiliser la fonction centralisée pour garantir cohérence totale avec les bulletins
-    from .utils_rangs import calculer_rangs_classe_periode
-    
-    # Calculer les rangs avec la fonction centralisée
-    # Utiliser la période sélectionnée ou OCTOBRE par défaut
-    if periodes_disponibles and classe_selectionnee:
-        if periode_classement:
-            periode_pour_rang = periode_classement  # Utiliser la période sélectionnée
-        else:
-            # Utiliser OCTOBRE par défaut (période la plus courante)
-            periode_pour_rang = 'OCTOBRE'
-            # Si OCTOBRE n'est pas disponible, prendre la première période
-            periodes_codes = [p[0] for p in periodes_disponibles]
-            if 'OCTOBRE' not in periodes_codes:
-                periode_pour_rang = periodes_disponibles[0][0]
-        
-        rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_rang)
-        
-        # Attribuer les rangs aux élèves
-        for eleve_data in eleves_toutes_notes:
-            eleve_id = eleve_data['eleve'].id
-            rang_info = rangs_dict.get(eleve_id)
-            if rang_info:
-                eleve_data['rang'] = rang_info['rang']
-            else:
-                eleve_data['rang'] = '-'
-    else:
-        # Pas de période disponible, pas de rang
-        for eleve_data in eleves_toutes_notes:
-            eleve_data['rang'] = '-'
     
     # Trier par rang pour l'affichage (élèves avec rang d'abord)
     eleves_avec_rang = [e for e in eleves_toutes_notes if e['rang'] != '-']
@@ -4958,9 +6679,25 @@ def consulter_notes(request):
     # Récupérer toutes les évaluations pour les en-têtes
     evaluations_par_matiere = {}
     for matiere in matieres:
-        evaluations_par_matiere[matiere.id] = Evaluation.objects.filter(
-            matiere=matiere
-        ).order_by('periode', 'date_evaluation')
+        # Filtrer les évaluations selon la période sélectionnée
+        evaluations = Evaluation.objects.filter(matiere=matiere)
+        
+        # Si une période spécifique est sélectionnée, filtrer les évaluations
+        if periode_classement and periode_classement not in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            # Pour les trimestres/semestres, filtrer par période
+            evaluations = evaluations.filter(periode=periode_classement)
+        elif periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            # Pour les mois, ajouter une évaluation factice pour l'affichage
+            eval_factice = type('EvalFactice', (), {
+                'id': f'mensuel_{matiere.id}',
+                'titre': periode_classement,
+                'periode': periode_classement,
+                'coefficient': 1,
+                'date_evaluation': None
+            })()
+            evaluations = [eval_factice]
+        
+        evaluations_par_matiere[matiere.id] = evaluations
     periode_classement = periodes_disponibles[0] if periodes_disponibles else None
     
     context = {
@@ -5113,6 +6850,27 @@ def bulletin_dynamique(request):
             total_points = Decimal('0')
             total_coefficients = Decimal('0')
             
+            # NOUVEAU: Totaux par colonne pour les détails trimestriels/semestriels
+            totaux_colonnes = {
+                'octobre': Decimal('0'),
+                'novembre': Decimal('0'), 
+                'decembre': Decimal('0'),
+                'janvier': Decimal('0'),
+                'fevrier': Decimal('0'),
+                'mars': Decimal('0'),
+                'avril': Decimal('0'),
+                'mai': Decimal('0'),
+                'juin': Decimal('0'),
+                'moyenne_continue': Decimal('0'),
+                'composition': Decimal('0'),
+                'count_moyenne_continue': 0,
+                'count_composition': 0
+            }
+            
+            # Calculer les totaux des coefficients (même sans élève sélectionné)
+            for matiere in matieres:
+                total_coefficients += matiere.coefficient
+            
             for matiere in matieres:
                 # Initialiser les variables
                 moyenne_continue = None
@@ -5261,10 +7019,79 @@ def bulletin_dynamique(request):
                     'points': points,
                     'total': points,  # Alias pour compatibilité
                 })
+                
+                # NOUVEAU: Accumuler les totaux par colonne
+                if system_type in ['trimestre', 'semestre'] and moyennes_mensuelles:
+                    # Ajouter les moyennes mensuelles aux totaux
+                    for moy_mens in moyennes_mensuelles:
+                        if not moy_mens['absent'] and moy_mens['moyenne'] is not None:
+                            mois_lower = moy_mens['libelle'].lower()
+                            if 'oct' in mois_lower:
+                                totaux_colonnes['octobre'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'nov' in mois_lower:
+                                totaux_colonnes['novembre'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'déc' in mois_lower or 'dec' in mois_lower:
+                                totaux_colonnes['decembre'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'jan' in mois_lower:
+                                totaux_colonnes['janvier'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'fév' in mois_lower or 'fev' in mois_lower:
+                                totaux_colonnes['fevrier'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'mar' in mois_lower:
+                                totaux_colonnes['mars'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'avr' in mois_lower or 'avr' in mois_lower:
+                                totaux_colonnes['avril'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'mai' in mois_lower:
+                                totaux_colonnes['mai'] += Decimal(str(moy_mens['moyenne']))
+                            elif 'jui' in mois_lower and 'juin' in mois_lower:
+                                totaux_colonnes['juin'] += Decimal(str(moy_mens['moyenne']))
+                    
+                    # Ajouter la moyenne continue
+                    if moyenne_continue is not None:
+                        totaux_colonnes['moyenne_continue'] += Decimal(str(moyenne_continue))
+                        totaux_colonnes['count_moyenne_continue'] += 1
+                    
+                    # Ajouter la composition
+                    if note_composition is not None:
+                        totaux_colonnes['composition'] += Decimal(str(note_composition))
+                        totaux_colonnes['count_composition'] += 1
+                        
+                elif system_type == 'mensuel' and moyenne_continue is not None:
+                    # Pour les bulletins mensuels, ajouter à la moyenne continue
+                    totaux_colonnes['moyenne_continue'] += Decimal(str(moyenne_continue))
+                    totaux_colonnes['count_moyenne_continue'] += 1
             
             # Ajouter les totaux au bulletin
             bulletin_data['total_points'] = round(float(total_points), 2) if total_points > 0 else None
             bulletin_data['total_coefficients'] = float(total_coefficients) if total_coefficients > 0 else None
+            
+            # NOUVEAU: Ajouter les totaux par colonne
+            bulletin_data['totaux_colonnes'] = {}
+            
+            # Calculer les moyennes pour les totaux par colonne
+            if totaux_colonnes['count_moyenne_continue'] > 0:
+                bulletin_data['totaux_colonnes']['moyenne_continue'] = round(
+                    float(totaux_colonnes['moyenne_continue'] / totaux_colonnes['count_moyenne_continue']), 2
+                )
+            else:
+                bulletin_data['totaux_colonnes']['moyenne_continue'] = None
+                
+            if totaux_colonnes['count_composition'] > 0:
+                bulletin_data['totaux_colonnes']['composition'] = round(
+                    float(totaux_colonnes['composition'] / totaux_colonnes['count_composition']), 2
+                )
+            else:
+                bulletin_data['totaux_colonnes']['composition'] = None
+            
+            # Ajouter les totaux mensuels (sans moyenne, juste la somme)
+            bulletin_data['totaux_colonnes']['octobre'] = round(float(totaux_colonnes['octobre']), 2) if totaux_colonnes['octobre'] > 0 else None
+            bulletin_data['totaux_colonnes']['novembre'] = round(float(totaux_colonnes['novembre']), 2) if totaux_colonnes['novembre'] > 0 else None
+            bulletin_data['totaux_colonnes']['decembre'] = round(float(totaux_colonnes['decembre']), 2) if totaux_colonnes['decembre'] > 0 else None
+            bulletin_data['totaux_colonnes']['janvier'] = round(float(totaux_colonnes['janvier']), 2) if totaux_colonnes['janvier'] > 0 else None
+            bulletin_data['totaux_colonnes']['fevrier'] = round(float(totaux_colonnes['fevrier']), 2) if totaux_colonnes['fevrier'] > 0 else None
+            bulletin_data['totaux_colonnes']['mars'] = round(float(totaux_colonnes['mars']), 2) if totaux_colonnes['mars'] > 0 else None
+            bulletin_data['totaux_colonnes']['avril'] = round(float(totaux_colonnes['avril']), 2) if totaux_colonnes['avril'] > 0 else None
+            bulletin_data['totaux_colonnes']['mai'] = round(float(totaux_colonnes['mai']), 2) if totaux_colonnes['mai'] > 0 else None
+            bulletin_data['totaux_colonnes']['juin'] = round(float(totaux_colonnes['juin']), 2) if totaux_colonnes['juin'] > 0 else None
             
             # Calculer la moyenne générale (seulement si élève sélectionné)
             if eleve_selectionne and total_coefficients > 0:
@@ -5289,106 +7116,41 @@ def bulletin_dynamique(request):
                     bulletin_data['total_points'] = float(classement.total_points)
                     bulletin_data['total_coefficients'] = float(classement.total_coefficients)
                 else:
-                    # Sinon, calculer à la volée (fallback)
+                    # Sinon, calculer à la volée (fallback) avec la même source pour moyenne et rang
                     from decimal import Decimal as _Dec
-                    moyenne_dec = _Dec(str(moyenne_generale))
-                    bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
-                    bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
-                    
-                    # Calculer le rang
-                    # Récupérer toutes les moyennes de la classe pour cette période
-                    if periode:
-                        moyennes_classe_pairs = []  # (eleve_id, moyenne_float)
-                        for eleve_classe in eleves:
-                            total_eleve = Decimal('0')
-                            total_coef_eleve = Decimal('0')
-                            
-                            for matiere in matieres:
-                                # Récupérer les évaluations de cette matière pour la période
-                                evals = Evaluation.objects.filter(
-                                    matiere=matiere,
-                                    periode=periode
-                                )
-                                
-                                # Si pas d'évaluation, chercher par nom (matière recréée)
-                                if not evals.exists():
-                                    from django.db.models import Q
-                                    evals = Evaluation.objects.filter(
-                                        Q(matiere__nom=matiere.nom) &
-                                        Q(matiere__classe=classe_selectionnee) &
-                                        Q(periode=periode)
-                                    )
-                                
-                                # Séparer devoirs et compositions
-                                total_dev = Decimal('0')
-                                count_dev = 0
-                                total_comp = Decimal('0')
-                                count_comp = 0
-                                
-                                for ev in evals:
-                                    try:
-                                        n = NoteEleve.objects.get(eleve=eleve_classe, evaluation=ev)
-                                        # Traiter les absences comme 0 (harmonisation avec le classement)
-                                        note_value = Decimal(str(n.note)) if n.note is not None and not n.absent else Decimal('0')
-                                        
-                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                            total_comp += note_value
-                                            count_comp += 1
-                                        else:
-                                            total_dev += note_value
-                                            count_dev += 1
-                                    except NoteEleve.DoesNotExist:
-                                        # Pas de note = 0
-                                        if ev.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                            count_comp += 1
-                                        else:
-                                            count_dev += 1
-                                
-                                # Calculer la moyenne de la matière
-                                moy_cont = total_dev / count_dev if count_dev > 0 else None
-                                moy_comp = total_comp / count_comp if count_comp > 0 else None
-                                moy_mat = None
-                                
-                                if system_type == 'mensuel':
-                                    moy_mat = moy_cont
-                                elif moy_cont is not None and moy_comp is not None:
-                                    moy_mat = (moy_cont + moy_comp * 2) / 3
-                                elif moy_comp is not None:
-                                    moy_mat = moy_comp
-                                elif moy_cont is not None:
-                                    moy_mat = moy_cont
-                                
-                                # Si l'élève a une moyenne dans cette matière
-                                if moy_mat is not None:
-                                    total_eleve += moy_mat * matiere.coefficient
-                                    total_coef_eleve += matiere.coefficient
-                            
-                            if total_coef_eleve > 0:
-                                moy_eleve = float(total_eleve / total_coef_eleve)
-                                moyennes_classe_pairs.append((eleve_classe.id, moy_eleve))
-                        
-                        # Trier et attribuer les rangs avec gestion des ex-aequo
-                        moyennes_classe_pairs.sort(key=lambda p: p[1], reverse=True)
-                        rang_map = {}
-                        prev_moy = None
-                        prev_rank = None
-                        for idx, (eid, mg) in enumerate(moyennes_classe_pairs, start=1):
-                            if prev_moy is not None and abs(mg - prev_moy) < 0.01:
-                                # ex-aequo: même rang que le précédent
-                                rang_map[eid] = prev_rank
-                            else:
-                                rang_map[eid] = idx
-                                prev_rank = idx
-                                prev_moy = mg
+                    from .calculs_moyennes import calculer_classement_classe
 
-                        rang_num = rang_map.get(eleve_selectionne.id)
-                        
-                        if rang_num is not None:
-                            sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
-                            bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, len(moyennes_classe_pairs))
+                    if periode:
+                        classement_data = calculer_classement_classe(eleves, matieres, periode, system_type)
+                        details_map = classement_data['details_par_eleve']
+                        moyennes_map = classement_data['moyennes_par_eleve']
+                        rang_map = classement_data['rang_map']
+
+                        moyenne_eleve = moyennes_map.get(eleve_selectionne.id)
+                        if moyenne_eleve is not None:
+                            moyenne_dec = _Dec(str(moyenne_eleve))
+                            bulletin_data['moyenne_generale'] = float(moyenne_eleve)
+                            bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+
+                            details = details_map.get(eleve_selectionne.id, {})
+                            bulletin_data['total_points'] = details.get('total_points', bulletin_data['total_points'])
+                            bulletin_data['total_coefficients'] = details.get('total_coefficients', bulletin_data['total_coefficients'])
+
+                            rang_num = rang_map.get(eleve_selectionne.id)
+                            if rang_num is not None:
+                                sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
+                                bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, classement_data['total_eleves'])
+                            else:
+                                bulletin_data['rang'] = "-"
                         else:
+                            bulletin_data['mention'] = None
+                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom)
                             bulletin_data['rang'] = "-"
                     else:
+                        moyenne_dec = _Dec(str(moyenne_generale))
+                        bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                        bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                         bulletin_data['rang'] = "-"
     
     context = {
@@ -5410,9 +7172,279 @@ def bulletin_dynamique(request):
     
     return render(request, 'notes/bulletin_dynamique.html', context)
 
+def generate_bulletin_pdf_reportlab(request, classe_id, eleve_id, periode, system_type):
+    """Alternative ReportLab pour générer le bulletin PDF quand WeasyPrint n'est pas disponible - Version améliorée"""
+    from django.http import HttpResponse
+    from django.contrib import messages
+    from django.shortcuts import redirect
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.colors import Color
+    
+    try:
+        # Utiliser la même logique que bulletin_dynamique pour obtenir les données
+        user_profil = getattr(request.user, 'profil', None)
+        ecole = user_profil.ecole if user_profil else None
+        
+        from .models import ClasseNote, MatiereNote
+        from eleves.models import Eleve
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
+        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+        
+        # Utiliser la logique centralisée pour calculer les données
+        from .calculs_moyennes import calculer_moyenne_generale_eleve
+        
+        result_centralized = calculer_moyenne_generale_eleve(eleve_selectionne, matieres, periode, system_type)
+        
+        # Préparer les données du bulletin
+        bulletin_data = {
+            'eleve': eleve_selectionne,
+            'classe': classe_selectionnee,
+            'periode': periode,
+            'system_type': system_type,
+            'titre_periode': result_centralized.get('titre_periode', periode),
+            'matieres_notes': [],
+            'moyenne_generale': result_centralized['moyenne_generale'],
+            'total_points': result_centralized['total_points'],
+            'total_coefficients': result_centralized['total_coefficients'],
+        }
+        
+        # Calculer les totaux par colonne comme dans bulletin_dynamique
+        totaux_colonnes = {}
+        if system_type == 'mensuel':
+            totaux_colonnes = {'Moyenne': 0}
+        elif system_type in ['trimestre', 'semestre']:
+            totaux_colonnes = {'Moy. Continue': 0, 'Composition': 0}
+        
+        total_coefficients = 0
+        
+        # Préparer les données des matières
+        for detail in result_centralized['details_matieres']:
+            matiere = detail['matiere']
+            
+            # Préparer les notes pour l'affichage
+            notes_matiere = []
+            if system_type == 'mensuel':
+                notes_matiere = [
+                    {'note': detail['moyenne_continue'], 'absent': False, 'libelle': 'Moyenne', 'type': 'mensuelle'}
+                ]
+                if detail['moyenne_continue'] is not None:
+                    totaux_colonnes['Moyenne'] += detail['moyenne_continue']
+                    
+            elif system_type in ['trimestre', 'semestre']:
+                # Ajouter la moyenne continue
+                moy_continue = detail['moyenne_continue']
+                notes_matiere.append({
+                    'note': moy_continue,
+                    'absent': False,
+                    'libelle': 'Moy. Continue',
+                    'type': 'continue'
+                })
+                
+                # Ajouter la composition
+                note_compo = detail['note_composition']
+                notes_matiere.append({
+                    'note': note_compo,
+                    'absent': False,
+                    'libelle': 'Composition',
+                    'type': 'composition'
+                })
+                
+                # Ajouter aux totaux par colonne
+                if moy_continue is not None:
+                    totaux_colonnes['Moy. Continue'] += moy_continue
+                if note_compo is not None:
+                    totaux_colonnes['Composition'] += note_compo
+            
+            bulletin_data['matieres_notes'].append({
+                'matiere': matiere,
+                'notes': notes_matiere,
+                'moyenne_continue': detail['moyenne_continue'],
+                'note_composition': detail['note_composition'],
+                'moyenne': detail['moyenne'],
+                'coefficient': detail['coefficient'],
+                'points': detail['points'],
+                'total': detail['points'],
+            })
+            
+            total_coefficients += detail['coefficient']
+        
+        bulletin_data['totaux_colonnes'] = totaux_colonnes
+        
+        # Créer le PDF avec ReportLab
+        response = HttpResponse(content_type='application/pdf')
+        filename = f"bulletin_{eleve_selectionne.nom}_{eleve_selectionne.prenom}_{periode}.pdf"
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        
+        # Créer le canvas PDF
+        p = canvas.Canvas(response, pagesize=A4)
+        width, height = A4
+        
+        # Marges
+        margin = 15 * mm
+        y_position = height - margin
+        
+        # Couleurs personnalisées
+        header_color = Color(0.2, 0.4, 0.8)  # Bleu
+        totals_color = Color(0.9, 0.95, 1.0)  # Fond clair
+        
+        # En-tête
+        p.setFont('Helvetica-Bold', 18)
+        p.setFillColor(header_color)
+        p.drawCentredString(width/2, y_position, "BULLETIN SCOLAIRE")
+        y_position -= 25 * mm
+        
+        # Informations élève
+        p.setFillColor(colors.black)
+        p.setFont('Helvetica-Bold', 12)
+        p.drawString(margin, y_position, f"Élève: {eleve_selectionne.nom_complet}")
+        y_position -= 12 * mm
+        
+        p.drawString(margin, y_position, f"Classe: {classe_selectionnee.nom}")
+        y_position -= 12 * mm
+        
+        p.drawString(margin, y_position, f"Période: {bulletin_data.get('titre_periode', periode)}")
+        y_position -= 12 * mm
+        
+        p.drawString(margin, y_position, f"Type: {system_type}")
+        y_position -= 20 * mm
+        
+        # Tableau des matières et notes
+        p.setFont('Helvetica-Bold', 10)
+        
+        # Déterminer les colonnes selon le système
+        if system_type == 'mensuel':
+            headers = ['Matière', 'Coefficient', 'Moyenne', 'Points']
+            x_positions = [margin, margin + 50 * mm, margin + 90 * mm, margin + 130 * mm]
+        else:  # trimestre/semestre
+            headers = ['Matière', 'Coefficient', 'Moy. Continue', 'Composition', 'Points']
+            x_positions = [margin, margin + 45 * mm, margin + 85 * mm, margin + 125 * mm, margin + 165 * mm]
+        
+        # Dessiner les en-têtes avec fond coloré
+        p.setFillColor(totals_color)
+        header_height = 10 * mm
+        for i, header in enumerate(headers):
+            x_pos = x_positions[i]
+            if i == len(headers) - 1:
+                # Dernière colonne
+                p.rect(x_pos, y_position - header_height, width - margin - x_pos, header_height, fill=1, stroke=1)
+            else:
+                # Colonnes intermédiaires
+                next_x = x_positions[i + 1] if i + 1 < len(x_positions) else width - margin
+                p.rect(x_pos, y_position - header_height, next_x - x_pos - 1, header_height, fill=1, stroke=1)
+        
+        # Texte des en-têtes
+        p.setFillColor(colors.black)
+        for i, header in enumerate(headers):
+            p.drawCentredString(x_positions[i] + (x_positions[i + 1] - x_positions[i]) / 2 if i + 1 < len(x_positions) else (width - margin - x_positions[i]) / 2, y_position - 6 * mm, header)
+        
+        y_position -= header_height + 5 * mm
+        
+        # Données des matières
+        p.setFont('Helvetica', 9)
+        matieres_notes = bulletin_data.get('matieres_notes', [])
+        
+        for matiere_note in matieres_notes:
+            matiere = matiere_note.get('matiere', {})
+            notes = matiere_note.get('notes', [])
+            
+            # Nom de la matière
+            p.drawString(x_positions[0], y_position, str(matiere.nom))
+            
+            # Coefficient
+            p.drawCentredString(x_positions[1] + (x_positions[2] - x_positions[1]) / 2, y_position, str(matiere.coefficient))
+            
+            # Notes selon le système
+            if system_type == 'mensuel' and notes:
+                note = notes[0].get('note')
+                p.drawCentredString(x_positions[2] + (x_positions[3] - x_positions[2]) / 2, y_position, f"{note:.2f}" if note else "-")
+                
+                # Points
+                points = matiere_note.get('points')
+                p.drawCentredString(x_positions[3] + (width - margin - x_positions[3]) / 2, y_position, f"{points:.2f}" if points else "-")
+                
+            elif system_type in ['trimestre', 'semestre'] and len(notes) >= 2:
+                # Moyenne Continue
+                moy_continue = notes[0].get('note')
+                p.drawCentredString(x_positions[2] + (x_positions[3] - x_positions[2]) / 2, y_position, f"{moy_continue:.2f}" if moy_continue else "-")
+                
+                # Composition
+                composition = notes[1].get('note')
+                p.drawCentredString(x_positions[3] + (x_positions[4] - x_positions[3]) / 2, y_position, f"{composition:.2f}" if composition else "-")
+                
+                # Points
+                points = matiere_note.get('points')
+                p.drawCentredString(x_positions[4] + (width - margin - x_positions[4]) / 2, y_position, f"{points:.2f}" if points else "-")
+            
+            y_position -= 8 * mm
+            
+            # Saut de page si nécessaire
+            if y_position < 60 * mm:
+                p.showPage()
+                y_position = height - margin
+        
+        # Ligne de séparation avant les totaux
+        y_position -= 10 * mm
+        p.line(margin, y_position, width - margin, y_position)
+        y_position -= 15 * mm
+        
+        # Totaux par colonne
+        p.setFillColor(totals_color)
+        p.rect(margin, y_position - 12 * mm, width - 2 * margin, 12 * mm, fill=1, stroke=1)
+        
+        p.setFillColor(colors.black)
+        p.setFont('Helvetica-Bold', 10)
+        p.drawString(x_positions[0], y_position - 8 * mm, "TOTAUX")
+        p.drawCentredString(x_positions[1] + (x_positions[2] - x_positions[1]) / 2, y_position - 8 * mm, f"{total_coefficients:.1f}")
+        
+        if system_type == 'mensuel':
+            total_moy = totaux_colonnes.get('Moyenne', 0)
+            p.drawCentredString(x_positions[2] + (x_positions[3] - x_positions[2]) / 2, y_position - 8 * mm, f"{total_moy:.2f}")
+        else:
+            total_continue = totaux_colonnes.get('Moy. Continue', 0)
+            total_compo = totaux_colonnes.get('Composition', 0)
+            p.drawCentredString(x_positions[2] + (x_positions[3] - x_positions[2]) / 2, y_position - 8 * mm, f"{total_continue:.2f}")
+            p.drawCentredString(x_positions[3] + (x_positions[4] - x_positions[3]) / 2, y_position - 8 * mm, f"{total_compo:.2f}")
+        
+        # Total des points
+        total_points = bulletin_data.get('total_points', 0)
+        if system_type == 'mensuel':
+            p.drawCentredString(x_positions[3] + (width - margin - x_positions[3]) / 2, y_position - 8 * mm, f"{total_points:.2f}")
+        else:
+            p.drawCentredString(x_positions[4] + (width - margin - x_positions[4]) / 2, y_position - 8 * mm, f"{total_points:.2f}")
+        
+        y_position -= 25 * mm
+        
+        # Moyenne générale et rang
+        moyenne = bulletin_data.get('moyenne_generale')
+        
+        if moyenne is not None:
+            p.setFont('Helvetica-Bold', 12)
+            p.setFillColor(header_color)
+            p.drawString(margin, y_position, f"Moyenne générale: {moyenne:.2f}/20")
+            y_position -= 15 * mm
+        
+        # Pied de page
+        p.setFont('Helvetica-Oblique', 8)
+        p.setFillColor(colors.grey)
+        from datetime import datetime
+        p.drawString(margin, 20 * mm, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        # Finaliser le PDF
+        p.save()
+        
+        return response
+        
+    except Exception as e:
+        messages.error(request, f"❌ Erreur lors de la génération du PDF: {str(e)}")
+        return redirect('notes:bulletin_dynamique')
+
 @login_required
 def bulletin_dynamique_pdf(request):
-    """Générer le bulletin dynamique en PDF"""
+    """Générer le bulletin dynamique en PDF - Utilise exactement la même logique que bulletin_dynamique"""
     from django.http import HttpResponse
     from django.template.loader import render_to_string
     from django.contrib import messages
@@ -5452,252 +7484,138 @@ def bulletin_dynamique_pdf(request):
         messages.error(request, "❌ Veuillez sélectionner une classe, un élève et une période avant de générer le bulletin PDF.")
         return redirect('notes:bulletin_dynamique')
     
-    # Si WeasyPrint n'est pas disponible, rediriger vers l'alternative
+    # Si WeasyPrint n'est pas disponible, utiliser ReportLab comme alternative
     if not use_weasyprint:
-        messages.warning(request, "⚠️ WeasyPrint non disponible sur ce système. Utilisez l'export de bulletins de classe à la place.")
-        return redirect(f'/notes/bulletins/classe/pdf/?classe_id={classe_id}&periode={periode}&system_type={system_type}')
+        return generate_bulletin_pdf_reportlab(request, classe_id, eleve_id, periode, system_type)
     
-    # Réutiliser la logique de bulletin_dynamique pour obtenir les données
-    from decimal import Decimal
-    from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
+    # NOUVEAU: Utiliser exactement la même logique que bulletin_dynamique
+    # Créer une requête factice avec les mêmes paramètres
+    from django.test import RequestFactory
+    factory = RequestFactory()
+    fake_request = factory.get(f'/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}')
+    fake_request.user = request.user
     
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else None
-    
-    classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
-    eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
-    matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
-    
-    # Récupérer les élèves pour calculer le rang avec mapping spécial
-    mapping_classes = {
-        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
-        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
-    }
-    
-    if classe_selectionnee.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(
-            id=mapping_classes[classe_selectionnee.id]
-        ).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe_selectionnee.nom,
-            annee_scolaire=classe_selectionnee.annee_scolaire,
-            ecole=classe_selectionnee.ecole
-        ).first()
-    
-    if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
-    else:
-        eleves = []
-    
-    # Déterminer le titre de la période
-    periodes_map = {
-        'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre',
-        'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars',
-        'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
-        'TRIMESTRE_1': '1er Trimestre', 'TRIMESTRE_2': '2ème Trimestre', 'TRIMESTRE_3': '3ème Trimestre',
-        'SEMESTRE_1': '1er Semestre', 'SEMESTRE_2': '2ème Semestre',
-        'ANNUEL': 'Bulletin Annuel'
-    }
-    titre_periode = periodes_map.get(periode, periode)
-    
-    # Préparer les données du bulletin (logique simplifiée)
-    bulletin_data = {
-        'eleve': eleve_selectionne,
-        'classe': classe_selectionnee,
-        'periode': periode,
-        'system_type': system_type,
-        'titre_periode': titre_periode,
-        'matieres_notes': [],
-        'moyenne_generale': None,
-        'rang': None,
-        'mention': None,
-        'effectif': len(eleves),
-        'mois_libelle': titre_periode,
-    }
-    
-    # UTILISER LE MODULE CENTRALISÉ (SOURCE UNIQUE)
-    result_centralized = calculer_moyenne_generale_eleve(eleve_selectionne, matieres, periode, system_type)
-    
-    # Extraire les données du calcul centralisé
-    bulletin_data['moyenne_generale'] = result_centralized['moyenne_generale']
-    bulletin_data['total_points'] = result_centralized['total_points']
-    bulletin_data['total_coefficients'] = result_centralized['total_coefficients']
-    
-    # Préparer les données des matières avec moyennes mensuelles détaillées
-    for detail in result_centralized['details_matieres']:
-        matiere = detail['matiere']
+    # Appeler bulletin_dynamique pour obtenir les mêmes données
+    try:
+        response_html = bulletin_dynamique(fake_request)
+        if response_html.status_code != 200:
+            messages.error(request, "❌ Erreur lors de la génération des données du bulletin.")
+            return redirect('notes:bulletin_dynamique')
         
-        # NOUVEAU: Récupérer les moyennes mensuelles détaillées pour trimestre/semestre
-        moyennes_mensuelles = []
-        if system_type in ['trimestre', 'semestre']:
-            from .utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
-            
-            data_matiere = calculer_bulletin_avec_details_mensuels(
-                eleve_selectionne, matiere, system_type, periode
-            )
-            moyennes_mensuelles = data_matiere['moyennes_mensuelles']
+        # Récupérer le contexte directement depuis la réponse
+        context = response_html.context_data
         
-        # Préparer les notes pour l'affichage
-        notes_matiere = []
-        if system_type in ['trimestre', 'semestre']:
-            # NOUVEAU: Inclure les moyennes mensuelles détaillées
-            if moyennes_mensuelles:
-                # Ajouter les moyennes mensuelles
-                for moy_mens in moyennes_mensuelles:
-                    notes_matiere.append({
-                        'note': moy_mens['moyenne'],
-                        'absent': moy_mens['absent'],
-                        'libelle': moy_mens['libelle'],
-                        'type': 'mensuelle'
-                    })
-            
-            # Ajouter la moyenne continue calculée
-            notes_matiere.append({
-                'note': detail['moyenne_continue'],
-                'absent': False,
-                'libelle': 'Moy. Continue',
-                'type': 'continue'
-            })
-            
-            # Ajouter la composition
-            notes_matiere.append({
-                'note': detail['note_composition'],
-                'absent': False,
-                'libelle': 'Composition',
-                'type': 'composition'
-            })
-            
-        elif system_type == 'mensuel':
-            notes_matiere = [
-                {'note': detail['moyenne_continue'], 'absent': False, 'libelle': 'Moyenne', 'type': 'mensuelle'}
-            ]
-        
-        bulletin_data['matieres_notes'].append({
-            'matiere': matiere,
-            'notes': notes_matiere,
-            'moyennes_mensuelles': moyennes_mensuelles,  # NOUVEAU: Détails mensuels
-            'moyenne_continue': detail['moyenne_continue'],
-            'note_composition': detail['note_composition'],
-            'moyenne': detail['moyenne'],
-            'coefficient': detail['coefficient'],
-            'points': detail['points'],
-            'total': detail['points'],
-        })
+    except Exception as e:
+        messages.error(request, f"❌ Erreur lors de la récupération des données: {str(e)}")
+        return redirect('notes:bulletin_dynamique')
     
-    # Les valeurs sont déjà extraites du module centralisé
-    total_points = Decimal(str(result_centralized['total_points'])) if result_centralized['total_points'] else Decimal('0')
-    total_coefficients = Decimal(str(result_centralized['total_coefficients'])) if result_centralized['total_coefficients'] else Decimal('0')
-    
-    # Calculer le rang en utilisant le module centralisé pour tous les élèves
-    if eleves and bulletin_data['moyenne_generale'] is not None:
-        # Calculer le classement avec le module centralisé (SOURCE UNIQUE)
-        classement_complet = calculer_classement_classe(eleves, matieres, periode, system_type)
-        
-        # Récupérer le rang de l'élève depuis le classement centralisé
-        rang_map = classement_complet.get('rang_map', {})
-        rang_num = rang_map.get(eleve_selectionne.id)
-        
-        if rang_num:
-            # Formater le rang avec accord grammatical
-            from .calculs_moyennes import formater_rang_intelligent
-            sexe = getattr(eleve_selectionne, 'sexe', 'M') or 'M'
-            bulletin_data['rang'] = formater_rang_intelligent(rang_num, sexe, classement_complet['total_eleves'])
-        else:
-            bulletin_data['rang'] = '-'
-    
-    # Déterminer la mention avec le module centralisé
-    if bulletin_data['moyenne_generale'] is not None:
-        from .calculs_moyennes import obtenir_mention_intelligente, obtenir_appreciation_intelligente
-        bulletin_data['mention'] = obtenir_mention_intelligente(bulletin_data['moyenne_generale'])
-        bulletin_data['appreciation'] = obtenir_appreciation_intelligente(bulletin_data['moyenne_generale'], eleve_selectionne.prenom)
-    
-    # Préparer les images en base64 (même logique que pour l'export de classe)
-    import base64
-    logo_base64 = None
-    photo_base64 = None
-    
-    if ecole and getattr(ecole, 'logo', None):
-        try:
-            logo_path = ecole.logo.path
-            with open(logo_path, 'rb') as img_file:
-                logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-        except Exception:
-            pass
-    
-    if getattr(eleve_selectionne, 'photo', None):
-        try:
-            photo_path = eleve_selectionne.photo.path
-            with open(photo_path, 'rb') as img_file:
-                photo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-        except Exception:
-            pass
-
-    # CSS identique à celui utilisé pour bulletins_dynamiques_classe_pdf
+    # CSS pour le PDF (optimisé pour l'impression)
     css_string = """
     @page {
         size: A4;
-        margin: 10mm 10mm 10mm 10mm;
+        margin: 15mm;
+        @bottom-center {
+            content: counter(page);
+            font-size: 10px;
+            color: #666;
+        }
     }
     body {
         font-family: 'Arial', 'Helvetica', sans-serif;
-        margin: 0;
-        padding: 0;
         font-size: 12px;
-    }
-    .bulletin-container {
+        line-height: 1.4;
+        color: #333;
+        margin: 0;
+        padding: 20px;
         background: white;
-        width: 190mm;
-        height: 277mm;
-        padding: 5mm;
-        position: relative;
-        page-break-after: always;
-        page-break-inside: avoid;
-        overflow: hidden;
-        box-sizing: border-box;
     }
-    .bulletin-container:last-child {
-        page-break-after: auto;
+    .container {
+        max-width: 100%;
+        margin: 0 auto;
+        background: white;
     }
-    /* Filigrane amélioré */
-    .watermark {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(-30deg);
-        opacity: 0.08;
-        width: 600px;
-        height: 600px;
-        z-index: -1;
-        pointer-events: none;
-        filter: grayscale(100%);
-        mix-blend-mode: multiply;
+    h1, h2, h3, h4, h5, h6 {
+        color: #2c3e50;
+        margin: 15px 0 10px 0;
     }
-    .header-section, .info-grid, .notes-table, .resultats-section,
-    .appreciation-section, .signatures-section, .calcul-explanation-section, .footer-section {
-        position: relative;
-        z-index: 1;
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+        font-size: 11px;
+    }
+    .table th, .table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        color: #495057;
+    }
+    .table tfoot td {
+        background-color: #f8f9fa;
+        font-weight: bold;
+    }
+    .text-center { text-align: center; }
+    .text-left { text-align: left; }
+    .text-right { text-align: right; }
+    .font-weight-bold { font-weight: bold; }
+    .mt-3 { margin-top: 20px; }
+    .mb-3 { margin-bottom: 20px; }
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: bold;
+    }
+    .bg-success { background-color: #28a745; color: white; }
+    .bg-warning { background-color: #ffc107; color: #212529; }
+    .bg-info { background-color: #17a2b8; color: white; }
+    .card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        margin: 15px 0;
+        padding: 15px;
+        background: white;
+    }
+    .card-header {
+        font-weight: bold;
+        margin-bottom: 10px;
+        color: #2c3e50;
+    }
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+        margin: -10px;
+    }
+    .col-md-6 {
+        flex: 0 0 50%;
+        padding: 10px;
+    }
+    @media print {
+        body { font-size: 10px; }
+        .table { font-size: 9px; }
+        .table th, .table td { padding: 5px; }
+        .card { break-inside: avoid; }
+        h1 { font-size: 18px; }
+        h2 { font-size: 16px; }
+        h3 { font-size: 14px; }
     }
     """
-
-    # Contexte pour le template "single" (même que pour l'export de classe)
-    context = {
-        'bulletin_data': bulletin_data,
-        'classe_selectionnee': classe_selectionnee,
-        'ecole': ecole,
-        'annee_scolaire': classe_selectionnee.annee_scolaire,
-        'system_type': system_type,
-        'logo_base64': logo_base64,
-        'photo_base64': photo_base64,
-    }
-
-    # Générer le HTML complet avec le même fragment que pour l'export de classe
-    bulletin_html = render_to_string('notes/bulletin_dynamique_single.html', context)
+    
+    # Générer le HTML avec le même template que l'affichage
+    bulletin_html = render_to_string('notes/bulletin_dynamique.html', context, request=request)
+    
+    # HTML complet pour WeasyPrint
     full_html = f'''
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
+        <title>Bulletin - {context.get("bulletin_data", {}).get("eleve", {}).get("nom_complet", "Élève")}</title>
         <style>
             {css_string}
         </style>
@@ -5707,43 +7625,229 @@ def bulletin_dynamique_pdf(request):
     </body>
     </html>
     '''
-
-    # Générer le PDF avec WeasyPrint (même moteur que pour l'export de classe)
+    
+    # Générer le PDF avec WeasyPrint
     try:
         from weasyprint import HTML, CSS
         from weasyprint.text.fonts import FontConfiguration
-
+        
         font_config = FontConfiguration()
-
+        
         response = HttpResponse(content_type='application/pdf')
-        filename = f"bulletin_{eleve_selectionne.nom}_{eleve_selectionne.prenom}_{periode}.pdf"
+        filename = f"bulletin_{context.get('bulletin_data', {}).get('eleve', {}).get('nom', 'eleve')}_{context.get('bulletin_data', {}).get('eleve', {}).get('prenom', '')}_{periode}.pdf"
         response['Content-Disposition'] = f'inline; filename="{filename}"'
-
+        
         HTML(string=full_html).write_pdf(
             response,
             stylesheets=[CSS(string=css_string, font_config=font_config)],
             font_config=font_config
         )
-
+        
         return response
-
+        
     except ImportError:
-        # Si WeasyPrint n'est pas installé, retourner le HTML avec un message
-        return HttpResponse(
-            "<h1>WeasyPrint non installé</h1>"
-            "<p>Pour générer des PDF, installez WeasyPrint:</p>"
-            "<pre>pip install weasyprint</pre>"
-            "<p>En attendant, utilisez le bouton 'Imprimer' et sélectionnez 'Enregistrer au format PDF' dans votre navigateur.</p>"
-            f"<p><a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a></p>",
-            status=501
-        )
+        messages.error(request, "WeasyPrint n'est pas installé. Installez-le avec: pip install weasyprint")
+        return redirect('notes:bulletin_dynamique')
     except Exception as e:
-        # En cas d'erreur, retourner un message d'erreur
-        return HttpResponse(
-            f"Erreur lors de la génération du PDF: {str(e)}<br><br>"
-            f"<a href='/notes/bulletins/?classe_id={classe_id}&eleve_id={eleve_id}&periode={periode}&system_type={system_type}'>Retour au bulletin</a>",
-            status=500
-        )
+        messages.error(request, f"Erreur lors de la génération du PDF: {str(e)}")
+        return redirect('notes:bulletin_dynamique')
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
+
+@login_required
+def imprimer_tableau_notes_html(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape (version navigateur)"""
+    from django.template.loader import render_to_string
+    from django.http import HttpResponse
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        # Vérifier si ClasseNote a un attribut classe ou classe_eleve
+        if hasattr(classe_note, 'classe'):
+            classe = classe_note.classe
+        elif hasattr(classe_note, 'classe_eleve'):
+            classe = classe_note.classe_eleve
+        else:
+            # Si aucun attribut, utiliser directement l'objet
+            classe = classe_note
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        # Si classe_note est une ClasseNote, utiliser classe_note.classe
+        if hasattr(classe_note, 'classe') and classe_note.classe:
+            eleves = Eleve.objects.filter(classe=classe_note.classe, statut='actif').order_by('matricule')
+        else:
+            # Sinon, essayer de récupérer les élèves directement
+            eleves = Eleve.objects.filter(statut='actif').order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Retourner le HTML (le navigateur gérera l'impression)
+        response = HttpResponse(html_content, content_type='text/html')
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
 def saisie_notes_simple(request):
@@ -6361,92 +8465,55 @@ def bulletins_dynamiques_classe_pdf(request):
             moyenne_continue = None
             note_composition = None
             
-            evaluations = Evaluation.objects.filter(
-                matiere=matiere,
-                periode=periode
-            ).order_by('date_evaluation')
+            # Utiliser la logique centralisée pour chaque matière
+            from .calculs_moyennes import calculer_moyenne_matiere
             
-            if not evaluations.exists():
-                from django.db.models import Q
-                evaluations = Evaluation.objects.filter(
-                    Q(matiere__nom=matiere.nom) &
-                    Q(matiere__classe=classe_selectionnee) &
-                    Q(periode=periode)
-                ).order_by('date_evaluation')
-            
-            total_devoirs = Decimal('0')
-            count_devoirs = 0
-            total_compo = Decimal('0')
-            count_compo = 0
-            
-            for evaluation in evaluations:
-                try:
-                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                    if note_obj.note is not None and not note_obj.absent:
-                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                            total_compo += Decimal(str(note_obj.note))
-                            count_compo += 1
-                        else:
-                            total_devoirs += Decimal(str(note_obj.note))
-                            count_devoirs += 1
-                except NoteEleve.DoesNotExist:
-                    pass
-            
-            if count_devoirs > 0:
-                moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-            
-            if count_compo > 0:
-                note_composition = round(float(total_compo / count_compo), 2)
-            
-            moyenne_matiere = None
-            if system_type == 'mensuel':
-                moyenne_matiere = moyenne_continue
-            elif moyenne_continue is not None and note_composition is not None:
-                # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
-                moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
-            elif note_composition is not None:
-                moyenne_matiere = note_composition
-            elif moyenne_continue is not None:
-                moyenne_matiere = moyenne_continue
-            
-            points = None
-            if moyenne_matiere is not None:
-                points = round(moyenne_matiere * float(matiere.coefficient), 2)
-                total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
-                total_coefficients += matiere.coefficient
-            
-            notes_matiere = []
-            if system_type in ['trimestre', 'semestre']:
-                notes_matiere = [
-                    {'note': moyenne_continue, 'absent': False},
-                    {'note': note_composition, 'absent': False}
-                ]
-            elif system_type == 'mensuel':
-                notes_matiere = [
-                    {'note': moyenne_continue, 'absent': False}
-                ]
-            
-            bulletin_data['matieres_notes'].append({
-                'matiere': matiere,
-                'notes': notes_matiere,
-                'moyenne': moyenne_matiere,
-                'coefficient': matiere.coefficient,
-                'points': points,
-            })
+            try:
+                result = calculer_moyenne_matiere(eleve, matiere, periode, system_type)
+                if result and 'moyenne' in result:
+                    moyenne_matiere = result['moyenne']
+                    points = moyenne_matiere * Decimal(str(matiere.coefficient))
+                    
+                    # Préparer les notes selon le système
+                    notes_matiere = []
+                    if system_type == 'mensuel':
+                        notes_matiere = [
+                            {'note': moyenne_matiere, 'absent': False, 'libelle': 'Moyenne'}
+                        ]
+                    elif system_type in ['trimestre', 'semestre']:
+                        notes_matiere = [
+                            {'note': result.get('moyenne_continue', moyenne_matiere), 'absent': False, 'libelle': 'Moy. Continue'},
+                            {'note': result.get('note_composition', moyenne_matiere), 'absent': False, 'libelle': 'Composition'}
+                        ]
+                    
+                    bulletin_data['matieres_notes'].append({
+                        'matiere': matiere,
+                        'notes': notes_matiere,
+                        'moyenne': moyenne_matiere,
+                        'coefficient': matiere.coefficient,
+                        'points': points,
+                    })
+                    
+                    total_points += points
+                    total_coefficients += Decimal(str(matiere.coefficient))
+            except Exception:
+                continue
         
         bulletin_data['total_points'] = round(float(total_points), 2) if total_points > 0 else None
         bulletin_data['total_coefficients'] = float(total_coefficients) if total_coefficients > 0 else None
         
+        # Calculer la moyenne générale
         if total_coefficients > 0:
             moyenne_generale = round(float(total_points / total_coefficients), 2)
             bulletin_data['moyenne_generale'] = moyenne_generale
             
+            # Déterminer la mention et l'appréciation
             from decimal import Decimal as _Dec
             moyenne_dec = _Dec(str(moyenne_generale))
             bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve.prenom)
             
-            # Ajouter le rang (déjà formaté dans rang_map)
+            # Ajouter le rang
             rang_str = rang_map.get(eleve.id)
             if rang_str:
                 bulletin_data['rang'] = rang_str
@@ -6460,27 +8527,23 @@ def bulletins_dynamiques_classe_pdf(request):
         
         # Préparer les images en base64 pour le PDF
         import base64
-        from django.conf import settings
-        
         logo_base64 = None
         photo_base64 = None
         
-        # Encoder le logo de l'école en base64
-        if ecole and ecole.logo:
+        if ecole and getattr(ecole, 'logo', None):
             try:
                 logo_path = ecole.logo.path
                 with open(logo_path, 'rb') as img_file:
                     logo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-            except:
+            except Exception:
                 pass
         
-        # Encoder la photo de l'élève en base64
-        if eleve.photo:
+        if getattr(eleve, 'photo', None):
             try:
                 photo_path = eleve.photo.path
                 with open(photo_path, 'rb') as img_file:
                     photo_base64 = base64.b64encode(img_file.read()).decode('utf-8')
-            except:
+            except Exception:
                 pass
         
         # Contexte pour le template
@@ -6494,8 +8557,8 @@ def bulletins_dynamiques_classe_pdf(request):
             'photo_base64': photo_base64,
         }
         
-        # Générer le HTML pour ce bulletin
-        bulletin_html = render_to_string('notes/bulletin_dynamique_single.html', context)
+        # Générer le HTML avec le même template que l'affichage
+        bulletin_html = render_to_string('notes/bulletin_dynamique.html', context, request=request)
         bulletins_html.append(bulletin_html)
     
     # Créer un template HTML complet avec tous les bulletins
@@ -6559,3 +8622,101 @@ def bulletins_dynamiques_classe_pdf(request):
             return views.bulletins_classe_pdf(request, int(classe_eleve_id), trimestre)
     
     return response
+
+
+@login_required
+def imprimer_tableau_notes_pdf(request):
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML, CSS
+    from django.http import HttpResponse
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode')
+    
+    if not classe_id or not periode:
+        return HttpResponse("Paramètres manquants", status=400)
+    
+    try:
+        # Récupérer la classe et les données
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = classe_note.classe
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
+        
+        # Calculer le classement
+        from .calculs_moyennes import calculer_classement_classe
+        from .calculs_intelligent import calculer_rang_intelligent
+        
+        # Récupérer les élèves
+        from eleves.models import Eleve
+        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        
+        # Calculer les moyennes et rangs
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        
+        # Préparer les données pour le template
+        classement_data = []
+        for eleve in eleves:
+            # Récupérer les détails des notes par matière
+            details_matieres = {}
+            for matiere in matieres:
+                from .calculs_moyennes import calculer_moyenne_matiere
+                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                details_matieres[matiere.id] = result
+            
+            # Récupérer le rang et la moyenne
+            rang_num = classement_resultat['rang_map'].get(eleve.id)
+            rang_str = str(rang_num) if rang_num else "-"
+            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
+            
+            # Formatter le rang avec ex-æquo si nécessaire
+            if rang_num:
+                from .calculs_intelligent import formater_rang_intelligent
+                sexe = getattr(eleve, 'sexe', 'M') or 'M'
+                rang_str = formater_rang_intelligent(rang_num, sexe)
+            
+            classement_data.append({
+                'matricule': eleve.matricule,
+                'nom_complet': eleve.nom_complet,
+                'rang': rang_str,
+                'moyenne': moyenne,
+                'details_matieres': details_matieres,
+                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
+            })
+        
+        # Trier par rang
+        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        
+        # Contexte pour le template
+        context = {
+            'classe_selectionnee': classe,
+            'periode_selectionnee': periode,
+            'matieres': matieres,
+            'classement_data': classement_data,
+        }
+        
+        # Générer le HTML
+        html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
+        
+        # Créer le PDF avec WeasyPrint
+        html = HTML(string=html_content)
+        css = CSS(string='''
+            @page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+        ''')
+        
+        pdf = html.write_pdf(stylesheets=[css])
+        
+        # Retourner le PDF
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        return response
+        
+    except Exception as e:
+        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
+        return HttpResponse(f"Erreur: {str(e)}", status=500)
