@@ -27,7 +27,7 @@ def formater_rang(rang, sexe):
     Formate le rang avec l'accord grammatical selon le sexe
     
     Args:
-        rang: Le numéro de rang (int ou str) ou rang déjà formaté (ex: "10ème/18")
+        rang: Le numéro de rang (int ou str) ou rang déjà formaté (ex: "1er", "2ème ex")
         sexe: 'M' pour masculin, 'F' pour féminin
     
     Returns:
@@ -36,11 +36,26 @@ def formater_rang(rang, sexe):
     if rang == '-' or rang is None:
         return '-'
     
-    # Si le rang est déjà formaté (contient "/"), le retourner tel quel
-    if isinstance(rang, str) and '/' in rang:
-        return rang
-    
-    rang_num = int(rang)
+    # Si le rang est déjà formaté (vérifier plus précisément)
+    if isinstance(rang, str):
+        # Si le rang contient "/" (ancien format), extraire le numéro
+        if '/' in rang:
+            import re
+            # Extraire la partie numérique avant "/"
+            match = re.match(r'(\d+)', rang)
+            if match:
+                rang_num = int(match.group(1))
+            else:
+                rang_num = int(rang.split('/')[0])
+        # Patterns de rangs déjà formatés (sans "/")
+        elif rang.endswith('er') or rang.endswith('ère') or 'ème' in rang or ' ex' in rang:
+            return rang
+        else:
+            # Convertir en entier si c'est un nombre
+            rang_num = int(rang)
+    else:
+        # Si c'est déjà un nombre
+        rang_num = int(rang)
     
     # Cas spécial pour le rang 1
     if rang_num == 1:
@@ -359,9 +374,19 @@ def _generer_classement_matiere(eleves, classe_note, matiere_id, type_note, peri
         
         # Essayer d'abord avec NoteEleve et Evaluation (système moderne)
         from .models import Evaluation, NoteEleve
-        evaluations = Evaluation.objects.filter(matiere=matiere)
-        if periode:
-            evaluations = evaluations.filter(periode=periode)
+        
+        # Pour les périodes mensuelles, chercher les évaluations de cette période
+        if periode and periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            # Système mensuel : chercher une évaluation pour cette période
+            evaluations = Evaluation.objects.filter(
+                matiere=matiere,
+                periode=periode
+            )
+        else:
+            # Autres périodes : chercher toutes les évaluations
+            evaluations = Evaluation.objects.filter(matiere=matiere)
+            if periode:
+                evaluations = evaluations.filter(periode=periode)
         
         if evaluations.exists():
             # Calculer la moyenne pondérée des évaluations pour cette matière
@@ -389,34 +414,8 @@ def _generer_classement_matiere(eleves, classe_note, matiere_id, type_note, peri
                 absent = toutes_absentes and not notes_trouvees
                 pas_de_notes = False
         
-        # Si pas de notes trouvées avec NoteEleve, essayer avec NoteMensuelle/CompositionNote
-        if note_value is None and pas_de_notes:
-            # Essayer NoteMensuelle si période est un mois
-            if periode:
-                try:
-                    note_obj = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=periode,
-                        annee_scolaire=classe_note.annee_scolaire
-                    )
-                    note_value = float(note_obj.note) if note_obj.note else None
-                    absent = note_obj.absent
-                    pas_de_notes = False
-                except NoteMensuelle.DoesNotExist:
-                    # Essayer CompositionNote
-                    try:
-                        note_obj = CompositionNote.objects.get(
-                            eleve=eleve,
-                            matiere=matiere,
-                            periode=periode,
-                            annee_scolaire=classe_note.annee_scolaire
-                        )
-                        note_value = float(note_obj.note) if note_obj.note else None
-                        absent = note_obj.absent
-                        pas_de_notes = False
-                    except CompositionNote.DoesNotExist:
-                        pas_de_notes = True
+        # Si pas de notes trouvées, garder note_value = None et pas_de_notes = True
+        # Ne plus essayer NoteMensuelle/CompositionNote comme fallback
         
         classement_data.append({
             'matricule': eleve.matricule or 'N/A',
