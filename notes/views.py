@@ -6577,26 +6577,42 @@ def consulter_notes(request):
                         
                         # Récupérer les notes mensuelles pour cette période
                         try:
-                            note_mensuelle = NoteMensuelle.objects.get(
-                                eleve=eleve,
+                            # Chercher dans les notes standard (Evaluation + Note) au lieu de NoteMensuelle
+                            evaluations_mois = Evaluation.objects.filter(
                                 matiere=matiere,
-                                mois=periode_classement,
-                                annee_scolaire=classe_selectionnee.annee_scolaire
+                                periode=periode_classement
                             )
                             
-                            notes_matiere['notes'].append({
-                                'evaluation': eval_factice,
-                                'note': note_mensuelle.note,
-                                'absent': note_mensuelle.absent,
-                            })
+                            # Prendre la première évaluation du mois
+                            evaluation_mois = evaluations_mois.first()
                             
-                            # Calculer la moyenne pour cette matière
-                            if not note_mensuelle.absent and note_mensuelle.note is not None:
-                                notes_matiere['moyenne'] = float(note_mensuelle.note)
+                            if evaluation_mois:
+                                note_obj = NoteEleve.objects.get(
+                                    eleve=eleve,
+                                    evaluation=evaluation_mois
+                                )
+                                
+                                notes_matiere['notes'].append({
+                                    'evaluation': eval_factice,
+                                    'note': note_obj.note,
+                                    'absent': note_obj.absent if hasattr(note_obj, 'absent') else False,
+                                })
+                                
+                                # Calculer la moyenne pour cette matière
+                                if note_obj.note is not None and not (hasattr(note_obj, 'absent') and note_obj.absent):
+                                    notes_matiere['moyenne'] = float(note_obj.note)
+                                else:
+                                    notes_matiere['moyenne'] = 0.0
                             else:
+                                # Pas d'évaluation pour ce mois
+                                notes_matiere['notes'].append({
+                                    'evaluation': eval_factice,
+                                    'note': None,
+                                    'absent': False,
+                                })
                                 notes_matiere['moyenne'] = 0.0
-                            
-                        except NoteMensuelle.DoesNotExist:
+                                
+                        except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
                             # Pas de note = 0
                             notes_matiere['notes'].append({
                                 'evaluation': eval_factice,
