@@ -14,7 +14,7 @@ from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve
 from eleves.models import Eleve
 from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
@@ -5039,20 +5039,20 @@ def statistiques(request):
                     mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
                     
                     if periode in mois_periodes:
-                        # Utiliser les notes mensuelles
-                        try:
-                            note_mensuelle = NoteMensuelle.objects.get(
-                                eleve=eleve,
-                                matiere=matiere,
-                                mois=periode,
-                                annee_scolaire=classe_selectionnee.annee_scolaire
-                            )
-                            if note_mensuelle.note is not None and not note_mensuelle.absent:
-                                has_notes = True
-                                total_points += note_mensuelle.note * matiere.coefficient
-                                total_coefficients += matiere.coefficient
-                        except NoteMensuelle.DoesNotExist:
-                            pass
+                        # Utiliser les évaluations avec NoteEleve (système moderne)
+                        evaluations = Evaluation.objects.filter(
+                            matiere=matiere,
+                            periode=periode
+                        )
+                        for evaluation in evaluations:
+                            try:
+                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                                if note_obj.note is not None and not note_obj.absent:
+                                    has_notes = True
+                                    total_points += note_obj.note * matiere.coefficient
+                                    total_coefficients += matiere.coefficient
+                            except NoteEleve.DoesNotExist:
+                                pass
                     else:
                         # Utiliser les évaluations (ancien système)
                         evaluations = Evaluation.objects.filter(
@@ -5227,17 +5227,18 @@ def statistiques(request):
         for matiere in matieres:
             notes_matiere = []
             for eleve in eleves:
-                try:
-                    note = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=periode,
-                        annee_scolaire=classe_selectionnee.annee_scolaire
-                    )
-                    if note.note is not None and not note.absent:
-                        notes_matiere.append(float(note.note))
-                except NoteMensuelle.DoesNotExist:
-                    pass
+                # Chercher les évaluations pour cette période
+                evaluations = Evaluation.objects.filter(
+                    matiere=matiere,
+                    periode=periode
+                )
+                for evaluation in evaluations:
+                    try:
+                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                        if note_obj.note is not None and not note_obj.absent:
+                            notes_matiere.append(float(note_obj.note))
+                    except NoteEleve.DoesNotExist:
+                        pass
             
             if notes_matiere:
                 stats_matieres.append({
@@ -6559,7 +6560,7 @@ def consulter_notes(request):
                 
                 # Déterminer le type de système selon la période
                 if periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-                    # Système mensuel - utiliser NoteMensuelle
+                    # Système mensuel - utiliser NoteEleve avec Evaluation
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
                         eval_factice = type('EvalFactice', (), {
@@ -6908,18 +6909,24 @@ def bulletin_dynamique(request):
                         moyennes_mensuelles = data_matiere['moyennes_mensuelles']
                         
                     elif system_type == 'mensuel':
-                        # NOUVEAU: Pour les bulletins mensuels, utiliser NoteMensuelle
-                        try:
-                            note_mensuelle = NoteMensuelle.objects.get(
-                                eleve=eleve_selectionne,
-                                matiere=matiere,
-                                mois=periode,
-                                annee_scolaire=classe_selectionnee.annee_scolaire
-                            )
-                            if not note_mensuelle.absent and note_mensuelle.note is not None:
-                                moyenne_continue = float(note_mensuelle.note)
-                        except NoteMensuelle.DoesNotExist:
-                            pass
+                        # Pour les bulletins mensuels, utiliser NoteEleve avec Evaluation
+                        evaluations = Evaluation.objects.filter(
+                            matiere=matiere,
+                            periode=periode
+                        )
+                        
+                        if evaluations.exists():
+                            # Prendre la première évaluation de la période
+                            evaluation = evaluations.first()
+                            try:
+                                note_obj = NoteEleve.objects.get(
+                                    eleve=eleve_selectionne,
+                                    evaluation=evaluation
+                                )
+                                if not (hasattr(note_obj, 'absent') and note_obj.absent) and note_obj.note is not None:
+                                    moyenne_continue = float(note_obj.note)
+                            except NoteEleve.DoesNotExist:
+                                pass
                     else:
                         # ANCIEN: Système annuel ou autres - garder l'ancien calcul
                         # Chercher les évaluations de cette matière
