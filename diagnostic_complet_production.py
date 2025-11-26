@@ -98,7 +98,7 @@ def diagnostic_complet_production():
         
         # 4. Vérifier les matières
         matieres = MatiereNote.objects.filter(classe=classe_test, actif=True)
-        print(f"\n📖 {len(matières)} matières actives")
+        print(f"\n📖 {len(matieres)} matières actives")
         for matiere in matieres[:3]:
             print(f"  • {matiere.nom} (ID: {matiere.id})")
         
