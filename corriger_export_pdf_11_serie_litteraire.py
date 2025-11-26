@@ -16,7 +16,6 @@ def corriger_export_pdf_11_serie_litteraire():
         from django.contrib.auth.models import User
         from notes.models import ClasseNote, MatiereNote, Evaluation, NoteEleve
         from notes.export_classement import exporter_classement_classe
-        from notes.export_classement import generer_pdf_classement
         from eleves.models import Eleve, Classe as ClasseEleve
         
         print("🔧 CORRECTION EXPORT PDF - 11 SÉRIE LITTÉRAIRE")
