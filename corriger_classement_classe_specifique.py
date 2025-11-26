@@ -54,7 +54,7 @@ def corriger_classement_classe_specifique(classe_id=None, classe_nom=None):
         matieres = MatiereNote.objects.filter(classe=classe, actif=True)
         
         print(f"👥 {len(eleves)} élèves actifs")
-        print(f"📖 {len(matières)} matières actives")
+        print(f"📖 {len(matieres)} matières actives")
         
         # 4. Créer les évaluations et notes OCTOBRE
         periode = 'OCTOBRE'
