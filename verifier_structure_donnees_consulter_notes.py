@@ -185,13 +185,13 @@ def verifier_structure_donnees_consulter_notes():
         
         # 7. Diagnostic du problème template
         print(f"\n🔍 DIAGNOSTIC TEMPLATE :")
-        print(f"  Le template utilise :")
-        print(f"    {% for note_info in notes_matiere.notes %}")
-        print(f"      {{ note_info.note }}")
-        print(f"      {{ note_info.absent }}")
-        print(f"")
-        print(f"  Si notes_matiere.notes est vide, rien ne s'affiche.")
-        print(f"  Si note_info.note est None, '-' s'affiche.")
+        print("  Le template utilise :")
+        print("    {% for note_info in notes_matiere.notes %}")
+        print("      {{ note_info.note }}")
+        print("      {{ note_info.absent }}")
+        print("")
+        print("  Si notes_matiere.notes est vide, rien ne s'affiche.")
+        print("  Si note_info.note est None, '-' s'affiche.")
         
         # 8. Solution proposée
         print(f"\n🔧 SOLUTION PROPOSÉE :")
