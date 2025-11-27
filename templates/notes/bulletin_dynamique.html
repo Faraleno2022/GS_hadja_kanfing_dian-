@@ -681,11 +681,6 @@
 
     {% if classe_selectionnee and periode_selectionnee and bulletin_data and bulletin_data.eleve %}
     <div class="text-center mb-3 no-print btn-group">
-        <button class="btn btn-lg btn-download-pdf" 
-                onclick="telechargerBulletinPDF()"
-                title="Télécharger le bulletin affiché en PDF">
-            <i class="fas fa-file-pdf me-2"></i>Télécharger le bulletin PDF
-        </button>
         <button class="btn btn-lg btn-whatsapp" 
                 onclick="envoyerBulletinWhatsApp()"
                 title="Envoyer le bulletin par WhatsApp au parent">
@@ -1407,40 +1402,5 @@ window.addEventListener('load', function() {
     }
 });
 
-function telechargerBulletinPDF() {
-    const bulletinElement = document.getElementById('bulletin');
-    if (!bulletinElement) {
-        alert("Aucun bulletin à télécharger. Veuillez en afficher un d'abord.");
-        return;
-    }
-
-    if (typeof html2pdf === 'undefined') {
-        alert("La bibliothèque de génération PDF n'est pas disponible.");
-        return;
-    }
-
-    const eleveId = bulletinElement.dataset.eleveId;
-    const classeId = bulletinElement.dataset.classeId;
-    const periode = bulletinElement.dataset.periode || 'periode';
-    const systemType = bulletinElement.dataset.systemType || 'systeme';
-    const nomEleve = bulletinElement.dataset.eleveNom || 'bulletin';
-
-    const safeNom = nomEleve
-        .replace(/\s+/g, '_')
-        .replace(/[^a-zA-Z0-9_\-]/g, '')
-        .toUpperCase();
-
-    const filename = `bulletin_${safeNom}_classe${classeId || ''}_${periode}_${systemType}.pdf`;
-
-    const options = {
-        margin: [10, 10, 10, 10],
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    html2pdf().set(options).from(bulletinElement).save();
-}
 </script>
 {% endblock %}
