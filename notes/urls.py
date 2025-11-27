@@ -5,8 +5,6 @@ from .bulletin_intelligent import (
     bulletin_intelligent_pdf,
     bulletin_intelligent_excel
 )
-from .export_classement import exporter_classement_classe, exporter_classement_classe_pdf
-from .export_classement_fixed import exporter_classement_classe_fixed
 from .views_import import (
     importer_notes,
     telecharger_template_import,
@@ -32,8 +30,6 @@ urlpatterns = [
     path('saisir/', views.saisir_notes, name='saisir_notes'),
     path('consulter/', views.consulter_notes, name='consulter_notes'),
     path('bulletins/', views.bulletin_dynamique, name='generer_bulletins'),
-    path('bulletins/pdf/', views.bulletin_dynamique_pdf, name='bulletin_dynamique_pdf'),
-    path('bulletins/classe/pdf/', views.bulletins_dynamiques_classe_pdf, name='bulletins_dynamiques_classe_pdf'),
     path('bulletin-guineen/', views.bulletin_guineen, name='bulletin_guineen'),
     path('bulletin-dynamique/', views.bulletin_dynamique, name='bulletin_dynamique'),
     path('saisie-notes-guineen/', views.saisie_notes_simple, name='saisie_notes_guineen'),
@@ -43,6 +39,8 @@ urlpatterns = [
     path('liste-saisie-pdf/', views.liste_saisie_pdf, name='liste_saisie_pdf'),
     path('sauvegarder-notes/', views.sauvegarder_notes, name='sauvegarder_notes'),
     path('supprimer-notes/', views.supprimer_notes, name='supprimer_notes'),
+    path('imprimer-tableau-notes-pdf/', views.imprimer_tableau_notes_pdf, name='imprimer_tableau_notes_pdf'),
+    path('imprimer-tableau-notes-html/', views.imprimer_tableau_notes_html, name='imprimer_tableau_notes_html'),
     
     # Bulletin Intelligent avec calculs automatiques et exports
     path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/', 
@@ -51,11 +49,6 @@ urlpatterns = [
          bulletin_intelligent_pdf, name='bulletin_intelligent_pdf'),
     path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/excel/', 
          bulletin_intelligent_excel, name='bulletin_intelligent_excel'),
-    
-    # Export des classements
-    path('exporter-classement/', exporter_classement_classe, name='exporter_classement'),
-    path('exporter-classement-pdf/', exporter_classement_classe_pdf, name='exporter_classement_pdf'),
-    path('exporter-classement-fixed/', exporter_classement_classe_fixed, name='exporter_classement_fixed'),
     
     # Importation de notes
     path('importer/', importer_notes, name='importer_notes'),

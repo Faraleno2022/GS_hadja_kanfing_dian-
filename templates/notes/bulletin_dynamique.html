@@ -526,20 +526,6 @@
         justify-content: center;
     }
     
-    /* Styles pour le bouton d'export de classe */
-    .btn-export-classe {
-        background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
-        border: none;
-        box-shadow: 0 4px 6px rgba(255, 193, 7, 0.3);
-        transition: all 0.3s ease;
-    }
-    
-    .btn-export-classe:hover {
-        background: linear-gradient(135deg, #ffb300 0%, #ffa000 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(255, 193, 7, 0.4);
-    }
-    
     /* Styles pour le bouton WhatsApp */
     .btn-whatsapp {
         background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
@@ -561,6 +547,29 @@
         cursor: not-allowed;
         transform: none;
         box-shadow: none;
+    }
+
+    /* Bouton de téléchargement PDF */
+    .btn-download-pdf {
+        background: linear-gradient(135deg, #f45c43 0%, #eb3349 100%);
+        border: none;
+        color: white;
+        box-shadow: 0 4px 6px rgba(235, 51, 73, 0.3);
+        transition: all 0.3s ease;
+    }
+
+    .btn-download-pdf:hover {
+        background: linear-gradient(135deg, #eb3349 0%, #d62839 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(235, 51, 73, 0.4);
+        color: white;
+    }
+
+    .btn-download-pdf:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
     }
 </style>
 {% endblock %}
@@ -670,31 +679,18 @@
     </div>
     {% endif %}
 
-    <!-- Boutons d'action -->
-    {% if classe_selectionnee and periode_selectionnee %}
-    <div class="text-center mb-3 no-print">
-        {% if bulletin_data and bulletin_data.eleve %}
-        <!-- Bouton unique pour télécharger et ouvrir le PDF -->
-        <button onclick="telechargerEtOuvrirPDF()" class="btn btn-danger btn-lg me-2" 
-                title="Télécharger et ouvrir le bulletin en PDF">
-            <i class="fas fa-file-download me-2"></i>Télécharger le Bulletin PDF
+    {% if classe_selectionnee and periode_selectionnee and bulletin_data and bulletin_data.eleve %}
+    <div class="text-center mb-3 no-print btn-group">
+        <button class="btn btn-lg btn-download-pdf" 
+                onclick="telechargerBulletinPDF()"
+                title="Télécharger le bulletin affiché en PDF">
+            <i class="fas fa-file-pdf me-2"></i>Télécharger le bulletin PDF
         </button>
-        
-        <!-- Bouton WhatsApp -->
-        <button class="btn btn-lg me-2 btn-whatsapp" 
+        <button class="btn btn-lg btn-whatsapp" 
                 onclick="envoyerBulletinWhatsApp()"
                 title="Envoyer le bulletin par WhatsApp au parent">
             <i class="fab fa-whatsapp me-2"></i>Envoyer par WhatsApp
         </button>
-        {% endif %}
-        
-        <!-- Bouton pour exporter tous les bulletins de la classe -->
-        <a href="{% url 'notes:bulletins_dynamiques_classe_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode_selectionnee }}&system_type={{ system_type }}" 
-           class="btn btn-warning btn-lg btn-export-classe"
-           target="_blank"
-           title="Exporter tous les bulletins de la classe {{ classe_selectionnee.nom }} en un seul PDF avec filigrane">
-            <i class="fas fa-file-download me-2"></i>Exporter tous les bulletins de la classe
-        </a>
     </div>
     {% endif %}
 
@@ -903,33 +899,149 @@
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr>
-                    <td colspan="2"><strong>TOTAL</strong></td>
-                    {% if system_type == 'mensuel' %}
-                        <td></td>
-                    {% elif system_type == 'trimestre' %}
-                        <!-- 3 mois + moyenne continue + composition = 5 colonnes -->
-                        <td colspan="5"></td>
-                    {% elif system_type == 'semestre' %}
-                        <!-- 5 mois + moyenne continue + composition = 7 colonnes -->
-                        <td colspan="7"></td>
-                    {% else %}
-                        <td colspan="2"></td>
-                    {% endif %}
-                    <td style="background: #d4edda; font-weight: bold; color: #155724;"><strong>
+                <tr style="background: #f8f9fa; border-top: 2px solid #dee2e6;">
+                    <td style="font-weight: bold; color: #495057; text-align: left;">
+                        <i class="fas fa-calculator"></i> TOTAUX
+                    </td>
+                    
+                    <!-- Colonne COEF: Total des coefficients -->
+                    <td style="background: #e3f2fd; text-align: center; font-weight: bold; color: #1565c0;">
                         {% if bulletin_data.total_coefficients %}
                             {{ bulletin_data.total_coefficients|floatformat:0 }}
                         {% else %}
                             -
                         {% endif %}
-                    </strong></td>
-                    <td style="background: #f8d7da; font-weight: bold; color: #721c24;"><strong>
+                    </td>
+                    
+                    {% if system_type == 'mensuel' %}
+                        <!-- Mensuel: colonne NOTE -->
+                        <td style="background: #f1f3f4; text-align: center; font-size: 10px; color: #666;">-</td>
+                        
+                    {% elif system_type == 'trimestre' %}
+                        <!-- Trimestre: afficher les totaux pour chaque mois -->
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.octobre %}
+                                {{ bulletin_data.totaux_colonnes.octobre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.novembre %}
+                                {{ bulletin_data.totaux_colonnes.novembre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.decembre %}
+                                {{ bulletin_data.totaux_colonnes.decembre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #d1ecf1; text-align: center; font-weight: bold; color: #0c5460; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.moyenne_continue %}
+                                {{ bulletin_data.totaux_colonnes.moyenne_continue|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #d4edda; text-align: center; font-weight: bold; color: #155724; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.composition %}
+                                {{ bulletin_data.totaux_colonnes.composition|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        
+                    {% elif system_type == 'semestre' %}
+                        <!-- Semestre: afficher les totaux pour chaque mois -->
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.octobre %}
+                                {{ bulletin_data.totaux_colonnes.octobre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.novembre %}
+                                {{ bulletin_data.totaux_colonnes.novembre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.decembre %}
+                                {{ bulletin_data.totaux_colonnes.decembre|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.janvier %}
+                                {{ bulletin_data.totaux_colonnes.janvier|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.fevrier %}
+                                {{ bulletin_data.totaux_colonnes.fevrier|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #d1ecf1; text-align: center; font-weight: bold; color: #0c5460; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.moyenne_continue %}
+                                {{ bulletin_data.totaux_colonnes.moyenne_continue|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #d4edda; text-align: center; font-weight: bold; color: #155724; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.composition %}
+                                {{ bulletin_data.totaux_colonnes.composition|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        
+                    {% elif system_type == 'annuel' %}
+                        <!-- Annuel: afficher les totaux pour chaque semestre -->
+                        <td style="background: #d1ecf1; text-align: center; font-weight: bold; color: #0c5460; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.moyenne_continue %}
+                                S1: {{ bulletin_data.totaux_colonnes.moyenne_continue|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td style="background: #d4edda; text-align: center; font-weight: bold; color: #155724; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.composition %}
+                                S2: {{ bulletin_data.totaux_colonnes.composition|floatformat:2 }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    {% endif %}
+                    
+                    <!-- Colonne MOYenne: Total des points pondérés -->
+                    <td style="background: #e3f2fd; text-align: center; font-weight: bold; color: #1565c0;">
                         {% if bulletin_data.total_points %}
                             {{ bulletin_data.total_points|floatformat:2 }}
                         {% else %}
                             -
                         {% endif %}
-                    </strong></td>
+                    </td>
+                    
+                    <!-- Colonne PTS: Total des points (même valeur que MOY) -->
+                    <td style="background: #e3f2fd; text-align: center; font-weight: bold; color: #1565c0;">
+                        {% if bulletin_data.total_points %}
+                            {{ bulletin_data.total_points|floatformat:2 }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
                 </tr>
             </tfoot>
         </table>
@@ -1121,37 +1233,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-/**
- * Fonction pour télécharger et ouvrir le bulletin PDF
- * Ouvre le PDF dans un nouvel onglet pour visualisation immédiate
- */
-function telechargerEtOuvrirPDF() {
-    if (!currentBulletinData.eleve_id) {
-        alert('Erreur: Données du bulletin manquantes');
-        return;
-    }
-    
-    // Construire l'URL du PDF
-    const pdfUrl = "{% url 'notes:bulletin_dynamique_pdf' %}" + 
-                   `?classe_id=${currentBulletinData.classe_id}` +
-                   `&eleve_id=${currentBulletinData.eleve_id}` +
-                   `&periode=${currentBulletinData.periode}` +
-                   `&system_type=${currentBulletinData.system_type}`;
-    
-    // Ouvrir dans un nouvel onglet (le navigateur proposera automatiquement le téléchargement)
-    window.open(pdfUrl, '_blank');
-    
-    // Alternative: Téléchargement direct (décommentez si préféré)
-    /*
-    const link = document.createElement('a');
-    link.href = pdfUrl;
-    link.download = `bulletin_${currentBulletinData.eleve_nom}_${currentBulletinData.periode}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    */
-}
-
 function envoyerBulletinWhatsApp() {
     if (!currentBulletinData.eleve_id) {
         alert('Erreur: Données du bulletin manquantes');
@@ -1314,5 +1395,41 @@ document.getElementById('btnConfirmerEnvoi').addEventListener('click', function(
         btn.innerHTML = originalText;
     });
 });
+
+function telechargerBulletinPDF() {
+    const bulletinElement = document.getElementById('bulletin');
+    if (!bulletinElement) {
+        alert("Aucun bulletin à télécharger. Veuillez en afficher un d'abord.");
+        return;
+    }
+
+    if (typeof html2pdf === 'undefined') {
+        alert("La bibliothèque de génération PDF n'est pas disponible.");
+        return;
+    }
+
+    const eleveId = bulletinElement.dataset.eleveId;
+    const classeId = bulletinElement.dataset.classeId;
+    const periode = bulletinElement.dataset.periode || 'periode';
+    const systemType = bulletinElement.dataset.systemType || 'systeme';
+    const nomEleve = bulletinElement.dataset.eleveNom || 'bulletin';
+
+    const safeNom = nomEleve
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_\-]/g, '')
+        .toUpperCase();
+
+    const filename = `bulletin_${safeNom}_classe${classeId || ''}_${periode}_${systemType}.pdf`;
+
+    const options = {
+        margin: [10, 10, 10, 10],
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    html2pdf().set(options).from(bulletinElement).save();
+}
 </script>
 {% endblock %}

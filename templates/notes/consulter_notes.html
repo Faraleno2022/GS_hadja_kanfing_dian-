@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load notes_tags %}
 {% load notes_extras %}
 
 {% block title %}Consulter les Notes{% endblock %}
@@ -197,45 +197,24 @@
     </div>
     {% endif %}
 
-    {% if eleves_toutes_notes %}
+    {% if classe_selectionnee %}
     <!-- Vue Complète: Toutes les matières -->
     <div class="table-card">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - Trimestre 1</h4>
-            <div>
-                <button class="btn btn-success btn-sm" onclick="window.print()">
-                    <i class="fas fa-print me-1"></i>Imprimer
+            <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
+            <div class="btn-group gap-2">
+                <button class="btn btn-danger btn-sm" onclick="telechargerClassementPDF()">
+                    <i class="fas fa-file-pdf me-1"></i>Télécharger Classement PDF
                 </button>
                 <button class="btn btn-primary btn-sm" onclick="exportToExcel()">
-                    <i class="fas fa-file-excel me-1"></i>Exporter Excel
+                    <i class="fas fa-file-excel me-1"></i>Télécharger Classement Excel
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="imprimerTableauNotes()">
+                    <i class="fas fa-print me-1"></i>Imprimer
                 </button>
                 <a href="{% url 'notes:importer_notes' %}" class="btn btn-success btn-sm">
                     <i class="fas fa-file-upload me-1"></i>Importer Notes
                 </a>
-                {% if classe_selectionnee %}
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-trophy me-1"></i>Exporter Classement
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li class="dropdown-header"><i class="fas fa-file-excel me-1"></i>Format Excel</li>
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general', 'excel'); return false;">
-                            <i class="fas fa-star me-2"></i>Classement Général
-                        </a></li>
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere', 'excel'); return false;">
-                            <i class="fas fa-book me-2"></i>Par Matière (filtrée)
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li class="dropdown-header"><i class="fas fa-file-pdf me-1"></i>Format PDF</li>
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('general', 'pdf'); return false;">
-                            <i class="fas fa-star me-2"></i>Classement Général
-                        </a></li>
-                        <li><a class="dropdown-item" href="#" onclick="exporterClassementAvecFiltres('matiere', 'pdf'); return false;">
-                            <i class="fas fa-book me-2"></i>Par Matière (filtrée)
-                        </a></li>
-                    </ul>
-                </div>
-                {% endif %}
             </div>
         </div>
         
@@ -253,26 +232,26 @@
             <div class="col-md-2">
                 <label class="form-label"><i class="fas fa-calendar me-1"></i>Filtrer par Période</label>
                 <select id="filtrePeriode" class="form-select form-select-sm">
-                    <option value="">Toutes les périodes</option>
+                    <option value="" {% if not request.GET.periode %}selected{% endif %}>Toutes les périodes</option>
                     <optgroup label="Mois">
-                        <option value="OCTOBRE">Octobre</option>
-                        <option value="NOVEMBRE">Novembre</option>
-                        <option value="DECEMBRE">Décembre</option>
-                        <option value="JANVIER">Janvier</option>
-                        <option value="FEVRIER">Février</option>
-                        <option value="MARS">Mars</option>
-                        <option value="AVRIL">Avril</option>
-                        <option value="MAI">Mai</option>
-                        <option value="JUIN">Juin</option>
+                        <option value="OCTOBRE" {% if request.GET.periode == 'OCTOBRE' %}selected{% endif %}>Octobre</option>
+                        <option value="NOVEMBRE" {% if request.GET.periode == 'NOVEMBRE' %}selected{% endif %}>Novembre</option>
+                        <option value="DECEMBRE" {% if request.GET.periode == 'DECEMBRE' %}selected{% endif %}>Décembre</option>
+                        <option value="JANVIER" {% if request.GET.periode == 'JANVIER' %}selected{% endif %}>Janvier</option>
+                        <option value="FEVRIER" {% if request.GET.periode == 'FEVRIER' %}selected{% endif %}>Février</option>
+                        <option value="MARS" {% if request.GET.periode == 'MARS' %}selected{% endif %}>Mars</option>
+                        <option value="AVRIL" {% if request.GET.periode == 'AVRIL' %}selected{% endif %}>Avril</option>
+                        <option value="MAI" {% if request.GET.periode == 'MAI' %}selected{% endif %}>Mai</option>
+                        <option value="JUIN" {% if request.GET.periode == 'JUIN' %}selected{% endif %}>Juin</option>
                     </optgroup>
                     <optgroup label="Trimestres">
-                        <option value="TRIMESTRE_1">1er Trimestre</option>
-                        <option value="TRIMESTRE_2">2ème Trimestre</option>
-                        <option value="TRIMESTRE_3">3ème Trimestre</option>
+                        <option value="TRIMESTRE_1" {% if request.GET.periode == 'TRIMESTRE_1' %}selected{% endif %}>1er Trimestre</option>
+                        <option value="TRIMESTRE_2" {% if request.GET.periode == 'TRIMESTRE_2' %}selected{% endif %}>2ème Trimestre</option>
+                        <option value="TRIMESTRE_3" {% if request.GET.periode == 'TRIMESTRE_3' %}selected{% endif %}>3ème Trimestre</option>
                     </optgroup>
                     <optgroup label="Semestres">
-                        <option value="SEMESTRE_1">1er Semestre</option>
-                        <option value="SEMESTRE_2">2ème Semestre</option>
+                        <option value="SEMESTRE_1" {% if request.GET.periode == 'SEMESTRE_1' %}selected{% endif %}>1er Semestre</option>
+                        <option value="SEMESTRE_2" {% if request.GET.periode == 'SEMESTRE_2' %}selected{% endif %}>2ème Semestre</option>
                     </optgroup>
                 </select>
             </div>
@@ -294,6 +273,8 @@
             </div>
         </div>
 
+        {% if eleves_toutes_notes %}
+        <!-- Afficher le tableau si des données existent -->
         <div class="table-responsive">
             <table class="table table-bordered table-sm" id="notesTableComplete" style="font-size: 0.85rem;">
                 <thead class="table-primary">
@@ -343,7 +324,7 @@
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}
-                                <td class="text-center note-cell" data-matiere-id="{{ matiere.id }}" data-periode="{{ note_info.evaluation.periode }}">
+                                <td class="text-center note-cell" data-matiere-id="{{ matiere.id }}" data-periode="{% if note_info.evaluation %}{{ note_info.evaluation.periode }}{% else %}mensuelle{% endif %}">
                                     {% if note_info.absent %}
                                         <span class="text-danger">ABS</span>
                                     {% elif note_info.note is not None %}
@@ -367,13 +348,21 @@
                 </tbody>
             </table>
         </div>
+        {% else %}
+        <!-- Message si aucune donnée -->
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Aucune donnée disponible</strong><br>
+            Aucune note n'a été saisie pour cette classe et cette période. Utilisez le bouton "Importer Notes" pour ajouter des notes.
+        </div>
+        {% endif %}
         
         <div class="mt-3">
             <p class="text-muted">
                 <i class="fas fa-info-circle me-2"></i>
                 <strong>{{ eleves_toutes_notes|length }}</strong> élève(s) - 
                 <strong>{{ matieres|length }}</strong> matière(s) - 
-                Trimestre 1 (Octobre, Novembre, Décembre + Composition)
+                {{ periode_selectionnee|default:"Toutes périodes" }}
             </p>
         </div>
     </div>
@@ -381,20 +370,59 @@
     {% else %}
     <div class="alert alert-info">
         <i class="fas fa-info-circle me-2"></i>
-        Veuillez sélectionner une classe, une matière et une période pour consulter les notes.
+        Veuillez sélectionner une classe pour consulter les notes.
     </div>
     {% endif %}
 </div>
 
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP0ckR5Q8Zg+UtYRFEs0u9B6L9I7DiIP9N6byN1Nsx3Rp3XIan+FJxuxMxDPZWS9Vyuk3F7S2X3pG4a0dJQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 function exportToExcel() {
-    const table = document.getElementById('notesTable') || document.getElementById('notesTableComplete');
-    let html = table.outerHTML;
-    const url = 'data:application/vnd.ms-excel,' + encodeURIComponent(html);
+    const table = document.getElementById('notesTableComplete');
+    if (!table) {
+        alert("Aucun tableau de classement disponible pour l'export.");
+        return;
+    }
+
+    const classe = '{{ classe_selectionnee.nom|default:"classe" }}'.replace(/\s+/g, '_');
+    const periode = '{{ periode_selectionnee|default:"toutes_periodes" }}'.replace(/\s+/g, '_');
+    const filename = `classement_${classe}_${periode}.xls`;
+
+    const blob = new Blob([`\ufeff${table.outerHTML}`], { type: 'application/vnd.ms-excel' });
     const link = document.createElement('a');
-    link.href = url;
-    link.download = 'notes_{{ classe_selectionnee.nom|default:"classe" }}_{{ matiere_selectionnee.nom|default:"matiere" }}.xls';
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
     link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function telechargerClassementPDF() {
+    const container = document.querySelector('.table-card');
+    const table = document.getElementById('notesTableComplete');
+    if (!container || !table) {
+        alert("Aucun classement à exporter en PDF.");
+        return;
+    }
+
+    if (typeof html2pdf === 'undefined') {
+        alert("La bibliothèque de génération PDF n'est pas disponible.");
+        return;
+    }
+
+    const classe = '{{ classe_selectionnee.nom|default:"classe" }}'.replace(/\s+/g, '_');
+    const periode = '{{ periode_selectionnee|default:"toutes_periodes" }}'.replace(/\s+/g, '_');
+    const filename = `classement_${classe}_${periode}.pdf`;
+
+    const options = {
+        margin: [10, 10, 10, 10],
+        filename,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(options).from(container).save();
 }
 
 // Filtres dynamiques pour la vue complète
@@ -566,45 +594,21 @@ document.addEventListener('DOMContentLoaded', function() {
     rechercheEleve.addEventListener('input', appliquerFiltres);
 });
 
-// Fonction pour exporter le classement
-function exporterClassementAvecFiltres(typeClassement, format = 'excel') {
-    const classeId = document.getElementById('classe_id')?.value;
+// Fonction pour imprimer le tableau de notes PDF optimisé
+function imprimerTableauNotes() {
+    const classeId = "{{ classe_selectionnee.id }}";
+    const periode = "{{ periode_selectionnee }}";
     
-    if (!classeId) {
-        alert('Veuillez sélectionner une classe');
+    if (!classeId || !periode) {
+        alert('Veuillez sélectionner une classe et une période');
         return;
     }
     
-    // Récupérer les filtres actuels
-    const matiereId = document.getElementById('filtreMatiere')?.value || '';
-    const periode = document.getElementById('filtrePeriode')?.value || '';
-    const typeNote = document.getElementById('filtreType')?.value || 'mensuelle';
-    
-    // Choisir l'URL selon le format
-    let baseUrl;
-    if (format === 'pdf') {
-        baseUrl = "{% url 'notes:exporter_classement_pdf' %}";
-    } else {
-        baseUrl = "{% url 'notes:exporter_classement' %}";
-    }
-    
-    // Construire l'URL d'export
-    let url = baseUrl + "?classe_id=" + classeId;
-    
-    if (typeClassement === 'matiere' && matiereId) {
-        url += "&matiere_id=" + matiereId;
-    }
-    
-    if (periode) {
-        url += "&periode=" + periode;
-    }
-    
-    if (typeNote) {
-        url += "&type_note=" + typeNote;
-    }
-    
-    // Ouvrir l'URL pour télécharger le fichier
-    window.location.href = url;
+    const url = "{% url 'notes:imprimer_tableau_notes_html' %}?classe_id=" + classeId + "&periode=" + periode;
+    window.open(url, '_blank');
 }
+
+// Include html2pdf is handled at top of this block
 </script>
+{% endblock %}
 {% endblock %}
