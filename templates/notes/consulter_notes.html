@@ -378,6 +378,13 @@
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP0ckR5Q8Zg+UtYRFEs0u9B6L9I7DiIP9N6byN1Nsx3Rp3XIan+FJxuxMxDPZWS9Vyuk3F7S2X3pG4a0dJQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
+window.addEventListener('load', function() {
+    if (typeof html2pdf !== 'undefined') {
+        console.log('html2pdf.js chargé avec succès.');
+    } else {
+        console.error('html2pdf.js n\'a pas pu être chargé.');
+    }
+});
 function exportToExcel() {
     const table = document.getElementById('notesTableComplete');
     if (!table) {
