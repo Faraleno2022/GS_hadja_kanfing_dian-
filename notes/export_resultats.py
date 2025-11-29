@@ -1,0 +1,430 @@
+"""
+Export des résultats de classe en PDF et Excel
+"""
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
+import io
+import re
+
+from .models import ClasseNote, MatiereNote
+from eleves.models import Eleve, Classe as ClasseEleve
+
+
+@login_required
+def exporter_resultats_pdf(request):
+    """Exporter les résultats d'une classe en PDF"""
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+    
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', '')
+    
+    if not classe_id:
+        return HttpResponse("Paramètre classe_id manquant", status=400)
+    
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        matieres = MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom')
+        
+        # Récupérer les élèves
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom, annee_scolaire=classe.annee_scolaire, ecole=classe.ecole
+        ).first()
+        
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
+        
+        # Calculer les moyennes
+        from .calculs_moyennes import calculer_moyenne_generale_eleve
+        from .calculs_intelligent import formater_rang_intelligent
+        
+        resultats = []
+        # Si pas de période spécifiée, utiliser OCTOBRE par défaut
+        periode_calcul = periode if periode else 'OCTOBRE'
+        
+        # Déterminer le type de système selon la période (dynamique)
+        if periode_calcul in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            system_type = 'mensuel'
+        elif 'TRIMESTRE' in periode_calcul:
+            system_type = 'trimestriel'
+        elif 'SEMESTRE' in periode_calcul:
+            system_type = 'semestriel'
+        else:
+            system_type = 'mensuel'
+        
+        for eleve in eleves:
+            result = calculer_moyenne_generale_eleve(eleve, matieres, periode_calcul, system_type)
+            # La fonction retourne un dict avec 'moyenne_generale'
+            if isinstance(result, dict):
+                moyenne = result.get('moyenne_generale', 0) or 0
+            else:
+                moyenne = result or 0
+            resultats.append({'eleve': eleve, 'moyenne': float(moyenne)})
+        
+        # Trier par moyenne décroissante
+        resultats.sort(key=lambda x: float(x['moyenne']), reverse=True)
+        
+        # Attribuer les rangs
+        rang = 1
+        for i, r in enumerate(resultats):
+            if i > 0 and float(resultats[i-1]['moyenne']) != float(r['moyenne']):
+                rang = i + 1
+            sexe = getattr(r['eleve'], 'sexe', 'M') or 'M'
+            r['rang'] = formater_rang_intelligent(rang, sexe) if r['moyenne'] else '-'
+        
+        # Mettre à jour la période pour l'affichage
+        periode = periode_calcul
+        
+        # Créer le PDF
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), topMargin=1*cm, bottomMargin=1*cm)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Récupérer les informations de l'école
+        ecole = classe.ecole
+        
+        # Styles personnalisés
+        header_style = ParagraphStyle(
+            'Header',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_CENTER,
+            spaceAfter=2
+        )
+        
+        school_name_style = ParagraphStyle(
+            'SchoolName',
+            parent=styles['Heading1'],
+            fontSize=14,
+            textColor=colors.HexColor('#007bff'),
+            alignment=TA_CENTER,
+            spaceAfter=4
+        )
+        
+        title_style = ParagraphStyle(
+            'Title', 
+            parent=styles['Heading1'], 
+            fontSize=16, 
+            textColor=colors.HexColor('#007bff'), 
+            spaceAfter=8, 
+            alignment=TA_CENTER
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'Subtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=12
+        )
+        
+        # En-tête avec informations de l'école
+        elements.append(Paragraph("RÉPUBLIQUE DE GUINÉE", header_style))
+        elements.append(Paragraph("Travail - Justice - Solidarité", header_style))
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Nom de l'école
+        nom_ecole = ecole.nom if ecole else "École"
+        elements.append(Paragraph(f"<b>{nom_ecole.upper()}</b>", school_name_style))
+        
+        # Adresse et contact
+        if ecole:
+            adresse_parts = []
+            if ecole.adresse:
+                adresse_parts.append(ecole.adresse)
+            if ecole.telephone:
+                adresse_parts.append(f"Tél: {ecole.telephone}")
+            if ecole.email:
+                adresse_parts.append(f"Email: {ecole.email}")
+            if adresse_parts:
+                elements.append(Paragraph(" | ".join(adresse_parts), header_style))
+        
+        elements.append(Spacer(1, 0.5*cm))
+        
+        # Ligne de séparation
+        elements.append(Paragraph("_" * 100, header_style))
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Titre du document
+        elements.append(Paragraph(f"RÉSULTATS DE LA CLASSE - {classe.nom}", title_style))
+        elements.append(Paragraph(f"Période: {periode or 'Année complète'} | Année scolaire: {classe.annee_scolaire}", subtitle_style))
+        elements.append(Spacer(1, 0.3*cm))
+        
+        # Tableau des résultats
+        data = [['Rang', 'Matricule', 'Nom', 'Prénom', 'Moyenne /20', 'Mention']]
+        for r in resultats:
+            moy = r['moyenne']
+            if moy >= 16:
+                mention = 'Très Bien'
+            elif moy >= 14:
+                mention = 'Bien'
+            elif moy >= 12:
+                mention = 'Assez Bien'
+            elif moy >= 10:
+                mention = 'Passable'
+            else:
+                mention = 'Insuffisant'
+            
+            data.append([
+                r['rang'], 
+                r['eleve'].matricule or '', 
+                r['eleve'].nom or '', 
+                r['eleve'].prenom or '', 
+                f"{moy:.2f}" if moy else '-', 
+                mention if moy else '-'
+            ])
+        
+        # Style du tableau
+        table = Table(data, colWidths=[2*cm, 3*cm, 5*cm, 5*cm, 3*cm, 3*cm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('ALIGN', (2, 1), (3, -1), 'LEFT'),
+        ]))
+        elements.append(table)
+        
+        # Statistiques
+        elements.append(Spacer(1, 1*cm))
+        moyennes_valides = [r['moyenne'] for r in resultats if r['moyenne']]
+        if moyennes_valides:
+            stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {sum(moyennes_valides)/len(moyennes_valides):.2f} | "
+            stats_text += f"Max: {max(moyennes_valides):.2f} | Min: {min(moyennes_valides):.2f}"
+            elements.append(Paragraph(stats_text, styles['Normal']))
+        
+        # Construire le PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Nom de fichier nettoyé
+        nom_clean = re.sub(r'[^\w\s-]', '', classe.nom).replace(' ', '_')
+        filename = f"resultats_{nom_clean}_{periode or 'annee'}.pdf"
+        
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Erreur export PDF: {str(e)}", status=500)
+
+
+@login_required  
+def exporter_resultats_excel(request):
+    """Exporter les résultats d'une classe en Excel"""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    except ImportError:
+        return HttpResponse("Module openpyxl non installé", status=500)
+    
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', '')
+    
+    if not classe_id:
+        return HttpResponse("Paramètre classe_id manquant", status=400)
+    
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        matieres = MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom')
+        
+        # Récupérer les élèves
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom, annee_scolaire=classe.annee_scolaire, ecole=classe.ecole
+        ).first()
+        
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
+        
+        # Calculer les moyennes
+        from .calculs_moyennes import calculer_moyenne_generale_eleve
+        from .calculs_intelligent import formater_rang_intelligent
+        
+        resultats = []
+        # Si pas de période spécifiée, utiliser OCTOBRE par défaut
+        periode_calcul = periode if periode else 'OCTOBRE'
+        
+        # Déterminer le type de système selon la période (dynamique)
+        if periode_calcul in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            system_type = 'mensuel'
+        elif 'TRIMESTRE' in periode_calcul:
+            system_type = 'trimestriel'
+        elif 'SEMESTRE' in periode_calcul:
+            system_type = 'semestriel'
+        else:
+            system_type = 'mensuel'
+        
+        for eleve in eleves:
+            result = calculer_moyenne_generale_eleve(eleve, matieres, periode_calcul, system_type)
+            # La fonction retourne un dict avec 'moyenne_generale'
+            if isinstance(result, dict):
+                moyenne = result.get('moyenne_generale', 0) or 0
+            else:
+                moyenne = result or 0
+            resultats.append({'eleve': eleve, 'moyenne': float(moyenne)})
+        
+        # Trier par moyenne décroissante
+        resultats.sort(key=lambda x: float(x['moyenne']), reverse=True)
+        
+        # Attribuer les rangs
+        rang = 1
+        for i, r in enumerate(resultats):
+            if i > 0 and float(resultats[i-1]['moyenne']) != float(r['moyenne']):
+                rang = i + 1
+            sexe = getattr(r['eleve'], 'sexe', 'M') or 'M'
+            r['rang'] = formater_rang_intelligent(rang, sexe) if r['moyenne'] else '-'
+        
+        # Mettre à jour la période pour l'affichage
+        periode = periode_calcul
+        
+        # Créer le workbook Excel
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Résultats"
+        
+        # Récupérer les informations de l'école
+        ecole = classe.ecole
+        
+        # Styles
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        header_fill = PatternFill(start_color="007BFF", end_color="007BFF", fill_type="solid")
+        center_align = Alignment(horizontal="center", vertical="center")
+        left_align = Alignment(horizontal="left", vertical="center")
+        thin_border = Border(
+            left=Side(style='thin'), right=Side(style='thin'), 
+            top=Side(style='thin'), bottom=Side(style='thin')
+        )
+        
+        # En-tête avec informations de l'école
+        ws.merge_cells('A1:F1')
+        ws['A1'] = "RÉPUBLIQUE DE GUINÉE"
+        ws['A1'].font = Font(bold=True, size=10)
+        ws['A1'].alignment = center_align
+        
+        ws.merge_cells('A2:F2')
+        ws['A2'] = "Travail - Justice - Solidarité"
+        ws['A2'].font = Font(italic=True, size=9)
+        ws['A2'].alignment = center_align
+        
+        ws.merge_cells('A3:F3')
+        nom_ecole = ecole.nom.upper() if ecole else "ÉCOLE"
+        ws['A3'] = nom_ecole
+        ws['A3'].font = Font(bold=True, size=14, color="007BFF")
+        ws['A3'].alignment = center_align
+        
+        # Adresse et contact
+        ws.merge_cells('A4:F4')
+        if ecole:
+            adresse_parts = []
+            if ecole.adresse:
+                adresse_parts.append(ecole.adresse)
+            if ecole.telephone:
+                adresse_parts.append(f"Tél: {ecole.telephone}")
+            if ecole.email:
+                adresse_parts.append(f"Email: {ecole.email}")
+            ws['A4'] = " | ".join(adresse_parts) if adresse_parts else ""
+        ws['A4'].font = Font(size=9)
+        ws['A4'].alignment = center_align
+        
+        # Ligne vide
+        ws.merge_cells('A5:F5')
+        ws['A5'] = "─" * 50
+        ws['A5'].alignment = center_align
+        
+        # Titre du document
+        ws.merge_cells('A6:F6')
+        ws['A6'] = f"RÉSULTATS DE LA CLASSE - {classe.nom}"
+        ws['A6'].font = Font(bold=True, size=14)
+        ws['A6'].alignment = center_align
+        
+        ws.merge_cells('A7:F7')
+        ws['A7'] = f"Période: {periode or 'Année complète'} | Année scolaire: {classe.annee_scolaire}"
+        ws['A7'].alignment = center_align
+        
+        # En-têtes du tableau (décalés à la ligne 9)
+        headers = ['Rang', 'Matricule', 'Nom', 'Prénom', 'Moyenne /20', 'Mention']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=9, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+        
+        # Données (décalées à partir de la ligne 10)
+        for row_idx, r in enumerate(resultats, 10):
+            moy = r['moyenne']
+            if moy >= 16:
+                mention = 'Très Bien'
+            elif moy >= 14:
+                mention = 'Bien'
+            elif moy >= 12:
+                mention = 'Assez Bien'
+            elif moy >= 10:
+                mention = 'Passable'
+            else:
+                mention = 'Insuffisant'
+            
+            data_row = [
+                r['rang'], 
+                r['eleve'].matricule or '', 
+                r['eleve'].nom or '', 
+                r['eleve'].prenom or '', 
+                f"{moy:.2f}" if moy else '-', 
+                mention if moy else '-'
+            ]
+            
+            for col, value in enumerate(data_row, 1):
+                cell = ws.cell(row=row_idx, column=col, value=value)
+                cell.border = thin_border
+                if col in [1, 5, 6]:
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+        
+        # Ajuster les largeurs de colonnes
+        ws.column_dimensions['A'].width = 10
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 20
+        ws.column_dimensions['D'].width = 20
+        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['F'].width = 15
+        
+        # Statistiques (décalées de 5 lignes supplémentaires pour l'en-tête école)
+        last_row = len(resultats) + 11
+        moyennes_valides = [r['moyenne'] for r in resultats if r['moyenne']]
+        if moyennes_valides:
+            ws.cell(row=last_row, column=1, value="Statistiques:")
+            ws.cell(row=last_row, column=1).font = Font(bold=True)
+            ws.cell(row=last_row + 1, column=1, value=f"Effectif: {len(resultats)}")
+            ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {sum(moyennes_valides)/len(moyennes_valides):.2f}")
+            ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}")
+            ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}")
+        
+        # Sauvegarder dans un buffer
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        # Nom de fichier nettoyé
+        nom_clean = re.sub(r'[^\w\s-]', '', classe.nom).replace(' ', '_')
+        filename = f"resultats_{nom_clean}_{periode or 'annee'}.xlsx"
+        
+        response = HttpResponse(
+            buffer,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Erreur export Excel: {str(e)}", status=500)

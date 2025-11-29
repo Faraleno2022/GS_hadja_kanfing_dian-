@@ -133,7 +133,8 @@ def _traiter_import(request):
             annee_scolaire=annee_scolaire,
             type_import=type_import,
             evaluation_id=evaluation_id,
-            user=request.user
+            user=request.user,
+            colonnes_mapping=getattr(validator, 'colonnes_mapping', None)
         )
         
         stats = processor.importer()

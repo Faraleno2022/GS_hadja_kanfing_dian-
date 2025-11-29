@@ -5982,6 +5982,7 @@ def liste_saisie_pdf(request):
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
     import io
+    import re
     
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
@@ -5990,15 +5991,19 @@ def liste_saisie_pdf(request):
     type_note = request.GET.get('type_note', '')
     
     if not all([classe_id, matiere_id, periode]):
-        return HttpResponse("Paramètres manquants", status=400)
+        return HttpResponse("Paramètres manquants: classe_id, matiere_id et periode sont requis", status=400)
     
-    classe = get_object_or_404(ClasseNote, pk=classe_id)
-    matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+    except Exception as e:
+        return HttpResponse(f"Erreur lors de la récupération des données: {str(e)}", status=400)
     
     # Déterminer le type de notation selon le niveau
-    niveau_enseignement = classe.niveau_enseignement
+    niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
+    niveau = classe.niveau or ''
     is_maternelle = niveau_enseignement == 'MATERNELLE'
-    is_primaire = niveau_enseignement == 'PRIMAIRE' or 'PRIMAIRE' in classe.niveau
+    is_primaire = niveau_enseignement == 'PRIMAIRE' or 'PRIMAIRE' in niveau
     is_appreciation = type_note == 'appreciation'
     
     # Déterminer la note maximale
@@ -6064,9 +6069,9 @@ def liste_saisie_pdf(request):
         if is_appreciation:
             data.append([
                 str(idx),
-                eleve.matricule,
-                eleve.prenom,
-                eleve.nom,
+                eleve.matricule or '',
+                eleve.prenom or '',
+                eleve.nom or '',
                 '',  # Appréciation à remplir
                 '',  # Commentaire
                 ''   # Absent à cocher
@@ -6074,9 +6079,9 @@ def liste_saisie_pdf(request):
         else:
             data.append([
                 str(idx),
-                eleve.matricule,
-                eleve.prenom,
-                eleve.nom,
+                eleve.matricule or '',
+                eleve.prenom or '',
+                eleve.nom or '',
                 '',  # Note à remplir
                 '',  # Absent à cocher
                 ''   # Observations
@@ -6105,8 +6110,14 @@ def liste_saisie_pdf(request):
     
     # Retourner la réponse
     buffer.seek(0)
+    
+    # Nettoyer le nom de fichier (supprimer les caractères spéciaux)
+    nom_classe_clean = re.sub(r'[^\w\s-]', '', classe.nom).replace(' ', '_')
+    code_matiere_clean = re.sub(r'[^\w\s-]', '', matiere.code).replace(' ', '_')
+    filename = f"liste_saisie_{nom_classe_clean}_{code_matiere_clean}.pdf"
+    
     response = HttpResponse(buffer, content_type='application/pdf')
-    response['Content-Disposition'] = f'inline; filename="liste_saisie_{classe.nom}_{matiere.code}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
 
@@ -6715,7 +6726,11 @@ def consulter_notes(request):
             evaluations = [eval_factice]
         
         evaluations_par_matiere[matiere.id] = evaluations
-    periode_classement = periodes_disponibles[0] if periodes_disponibles else None
+    
+    # Garder la période sélectionnée (ne pas écraser avec la première période)
+    periode_selectionnee = request.GET.get('periode', '')
+    if not periode_selectionnee and periodes_disponibles:
+        periode_selectionnee = periodes_disponibles[0][0]  # Code de la première période
     
     context = {
         'titre_page': 'Consultation des Notes',
@@ -6723,7 +6738,7 @@ def consulter_notes(request):
         'classe_selectionnee': classe_selectionnee,
         'matieres': matieres,
         'periodes_disponibles': periodes_disponibles,
-        'periode_classement': periode_classement,
+        'periode_classement': periode_selectionnee,
         'eleves_toutes_notes': eleves_toutes_notes,
         'evaluations_par_matiere': evaluations_par_matiere,
         'niveau_enseignement': niveau_enseignement,
@@ -7197,9 +7212,162 @@ def bulletin_dynamique(request):
 
 @login_required
 def sauvegarder_appreciations_maternelle(request):
-    """Sauvegarder appréciations maternelle"""
+    """Sauvegarder les appréciations pour la maternelle/garderie"""
     from django.http import JsonResponse
-    return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
+    import json
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        
+        from .models import AppreciationMaternelle, MatiereNote
+        from eleves.models import Eleve
+        
+        # Format 1: Liste d'appréciations (pour import en masse)
+        if 'appreciations' in data and isinstance(data['appreciations'], list):
+            appreciations_data = data.get('appreciations', [])
+            
+            if not appreciations_data:
+                return JsonResponse({'success': False, 'error': 'Aucune appréciation à sauvegarder'})
+            
+            saved_count = 0
+            errors = []
+            
+            for item in appreciations_data:
+                try:
+                    eleve_id = item.get('eleve_id')
+                    matiere_id = item.get('matiere_id')
+                    trimestre = item.get('trimestre')
+                    appreciation = item.get('appreciation')
+                    commentaire = item.get('commentaire', '')
+                    absent = item.get('absent', False)
+                    
+                    if not all([eleve_id, matiere_id, trimestre]):
+                        continue
+                    
+                    eleve = Eleve.objects.get(pk=eleve_id)
+                    matiere = MatiereNote.objects.get(pk=matiere_id)
+                    annee_scolaire = matiere.classe.annee_scolaire
+                    
+                    obj, created = AppreciationMaternelle.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        trimestre=trimestre,
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'appreciation': appreciation if not absent else '',
+                            'commentaire': commentaire,
+                            'absent': absent,
+                            'cree_par': request.user,
+                        }
+                    )
+                    saved_count += 1
+                    
+                except Eleve.DoesNotExist:
+                    errors.append(f"Élève {eleve_id} non trouvé")
+                except MatiereNote.DoesNotExist:
+                    errors.append(f"Matière {matiere_id} non trouvée")
+                except Exception as e:
+                    errors.append(str(e))
+            
+            if errors:
+                return JsonResponse({
+                    'success': True,
+                    'message': f'{saved_count} appréciations sauvegardées avec {len(errors)} erreurs',
+                    'errors': errors[:5]
+                })
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'{saved_count} appréciations sauvegardées avec succès'
+            })
+        
+        # Format 2: Appréciations par trimestre (depuis le template)
+        else:
+            eleve_id = data.get('eleve_id')
+            matiere_id = data.get('matiere_id')
+            annee_scolaire = data.get('annee_scolaire')
+            appreciations = data.get('appreciations', {})
+            
+            if not all([eleve_id, matiere_id]):
+                return JsonResponse({'success': False, 'error': 'Élève et matière requis'})
+            
+            try:
+                eleve = Eleve.objects.get(pk=eleve_id)
+                matiere = MatiereNote.objects.get(pk=matiere_id)
+                
+                if not annee_scolaire:
+                    annee_scolaire = matiere.classe.annee_scolaire
+                
+                saved_count = 0
+                
+                # Trimestre 1
+                if 'trimestre1' in appreciations:
+                    t1 = appreciations['trimestre1']
+                    obj, created = AppreciationMaternelle.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        trimestre='TRIMESTRE_1',
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'appreciation': t1.get('appreciation', ''),
+                            'commentaire': t1.get('commentaire', ''),
+                            'absent': t1.get('absent', False),
+                            'cree_par': request.user,
+                        }
+                    )
+                    saved_count += 1
+                
+                # Trimestre 2
+                if 'trimestre2' in appreciations:
+                    t2 = appreciations['trimestre2']
+                    obj, created = AppreciationMaternelle.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        trimestre='TRIMESTRE_2',
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'appreciation': t2.get('appreciation', ''),
+                            'commentaire': t2.get('commentaire', ''),
+                            'absent': t2.get('absent', False),
+                            'cree_par': request.user,
+                        }
+                    )
+                    saved_count += 1
+                
+                # Trimestre 3
+                if 'trimestre3' in appreciations:
+                    t3 = appreciations['trimestre3']
+                    obj, created = AppreciationMaternelle.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        trimestre='TRIMESTRE_3',
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'appreciation': t3.get('appreciation', ''),
+                            'commentaire': t3.get('commentaire', ''),
+                            'absent': t3.get('absent', False),
+                            'cree_par': request.user,
+                        }
+                    )
+                    saved_count += 1
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': f'{saved_count} appréciations sauvegardées avec succès'
+                })
+                
+            except Eleve.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Élève non trouvé'})
+            except MatiereNote.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Matière non trouvée'})
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 @login_required
 def saisie_notes_simple(request):
@@ -7313,12 +7481,6 @@ def saisie_notes_simple(request):
 @login_required
 def sauvegarder_notes_guineen(request):
     """Sauvegarder notes guinéen"""
-    from django.http import JsonResponse
-    return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
-
-@login_required
-def sauvegarder_appreciations_maternelle(request):
-    """Sauvegarder appréciations maternelle"""
     from django.http import JsonResponse
     return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
 

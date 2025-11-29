@@ -159,7 +159,7 @@ def _traiter_import_eleves(request):
             )
             
             # Rediriger vers la liste des élèves de la classe
-            return redirect('eleves:liste_classe', classe_id=classe_id)
+            return redirect('eleves:gestion_classes')
             
         finally:
             # Nettoyer le fichier temporaire
@@ -344,4 +344,4 @@ def exporter_eleves_classe(request, classe_id):
     
     except Exception as e:
         messages.error(request, f"Erreur lors de l'export: {e}")
-        return redirect('eleves:liste_classe', classe_id=classe_id)
+        return redirect('eleves:gestion_classes')

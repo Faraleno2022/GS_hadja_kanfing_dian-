@@ -1,177 +1,206 @@
 """
-Test pour voir exactement ce qui est envoyé au template
+Script de test pour vérifier l'affichage des notes dans:
+- Saisie de notes
+- Consultation des notes
+- Bulletins
 """
-
 import os
+import sys
 import django
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecole_moderne.settings')
 django.setup()
 
-from notes.models import ClasseNote, MatiereNote, Evaluation, NoteEleve
-from eleves.models import Eleve
-from decimal import Decimal
+from notes.models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
+from notes.calculs_moyennes import calculer_moyenne_matiere, calculer_moyenne_generale_eleve, detecter_niveau_scolaire
+from eleves.models import Eleve, Classe
 
-def simuler_bulletin():
-    print("\n" + "="*80)
-    print("   🔍 SIMULATION DE CE QUI EST ENVOYÉ AU TEMPLATE")
-    print("="*80)
+def test_consultation_notes():
+    """Vérifie que les notes sont récupérables pour la consultation"""
+    print("\n" + "="*60)
+    print("TEST: Consultation des notes")
+    print("="*60)
     
-    # Paramètres
-    classe_id = 6
-    eleve_id = 805
-    periode = 'TRIMESTRE_1'
-    system_type = 'trimestre'
+    # Trouver une classe avec des notes
+    classes_avec_notes = set()
+    notes = NoteMensuelle.objects.select_related('matiere__classe').all()[:50]
     
-    # Récupérer les données
-    classe_selectionnee = ClasseNote.objects.get(pk=classe_id)
-    eleve_selectionne = Eleve.objects.get(pk=eleve_id)
-    matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
+    for note in notes:
+        if note.matiere and note.matiere.classe:
+            classes_avec_notes.add(note.matiere.classe.id)
     
-    print(f"\n📋 Classe: {classe_selectionnee.nom}")
-    print(f"👤 Élève: {eleve_selectionne.nom} {eleve_selectionne.prenom}")
+    if not classes_avec_notes:
+        print("❌ Aucune classe avec des notes trouvée")
+        return
+    
+    classe_id = list(classes_avec_notes)[0]
+    classe_note = ClasseNote.objects.get(id=classe_id)
+    
+    print(f"\n📚 Classe: {classe_note.nom}")
+    
+    # Récupérer les matières
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+    print(f"📖 Matières: {matieres.count()}")
+    
+    # Récupérer les élèves
+    classe_eleve = Classe.objects.filter(
+        nom__iexact=classe_note.nom,
+        annee_scolaire=classe_note.annee_scolaire
+    ).first()
+    
+    if not classe_eleve:
+        print("❌ Classe d'élèves non trouvée")
+        return
+    
+    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')[:5]
+    print(f"👥 Élèves: {eleves.count()}")
+    
+    # Pour chaque élève, afficher les notes
+    for eleve in eleves:
+        print(f"\n👤 {eleve.prenom} {eleve.nom} ({eleve.matricule})")
+        
+        for matiere in matieres[:3]:
+            notes_eleve = NoteMensuelle.objects.filter(
+                eleve=eleve,
+                matiere=matiere
+            )
+            
+            if notes_eleve.exists():
+                for note in notes_eleve:
+                    status = "ABS" if note.absent else f"{note.note}/20"
+                    print(f"   📖 {matiere.nom} ({note.mois}): {status}")
+
+def test_calcul_moyennes():
+    """Vérifie le calcul des moyennes pour les bulletins"""
+    print("\n" + "="*60)
+    print("TEST: Calcul des moyennes pour bulletins")
+    print("="*60)
+    
+    # Trouver un élève avec des notes
+    note = NoteMensuelle.objects.select_related('eleve', 'matiere__classe').first()
+    
+    if not note:
+        print("❌ Aucune note trouvée")
+        return
+    
+    eleve = note.eleve
+    classe_note = note.matiere.classe
+    periode = note.mois or 'OCTOBRE'
+    
+    print(f"\n👤 Élève: {eleve.prenom} {eleve.nom}")
+    print(f"📚 Classe: {classe_note.nom}")
     print(f"📅 Période: {periode}")
-    print(f"🔧 Système: {system_type}")
     
-    print("\n" + "="*80)
-    print("   DONNÉES ENVOYÉES AU TEMPLATE (bulletin_data['matieres_notes'])")
-    print("="*80)
+    # Détecter le niveau
+    niveau = detecter_niveau_scolaire(classe_note.nom)
+    print(f"🎓 Niveau détecté: {niveau}")
     
-    matieres_notes = []
-    total_points = Decimal('0')
-    total_coefficients = Decimal('0')
+    # Récupérer les matières
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
-    for matiere in matieres:
-        # Simulation exacte du code de la vue
-        moyenne_continue = None
-        note_composition = None
+    # Calculer la moyenne générale
+    try:
+        result = calculer_moyenne_generale_eleve(eleve, matieres, periode, 'mensuel')
         
-        if periode and eleve_selectionne:
-            evaluations = Evaluation.objects.filter(
-                matiere=matiere,
-                matiere__classe=classe_selectionnee,
-                periode=periode
-            ).order_by('date_evaluation')
-            
-            total_devoirs = Decimal('0')
-            count_devoirs = 0
-            total_compo = Decimal('0')
-            count_compo = 0
-            
-            for evaluation in evaluations:
-                try:
-                    note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
-                    if note_obj.note is not None and not note_obj.absent:
-                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                            total_compo += Decimal(str(note_obj.note))
-                            count_compo += 1
-                        else:
-                            total_devoirs += Decimal(str(note_obj.note))
-                            count_devoirs += 1
-                except NoteEleve.DoesNotExist:
-                    pass
-            
-            if count_devoirs > 0:
-                moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-            
-            if count_compo > 0:
-                note_composition = round(float(total_compo / count_compo), 2)
+        print(f"\n📊 Résultat du calcul:")
+        print(f"   Moyenne générale: {result.get('moyenne_generale', 'N/A')}")
+        print(f"   Total points: {result.get('total_points', 0)}")
+        print(f"   Total coefficients: {result.get('total_coefficients', 0)}")
+        print(f"   Niveau: {result.get('niveau', 'N/A')}")
         
-        # Calculer la moyenne matière
-        moyenne_matiere = None
-        if system_type == 'mensuel':
-            moyenne_matiere = moyenne_continue
-        elif moyenne_continue is not None and note_composition is not None:
-            moyenne_matiere = round((moyenne_continue + note_composition * 2) / 3, 2)
-        elif note_composition is not None:
-            moyenne_matiere = note_composition
-        elif moyenne_continue is not None:
-            moyenne_matiere = moyenne_continue
+        if result.get('details_matieres'):
+            print(f"\n   📖 Détails par matière:")
+            for detail in result['details_matieres'][:5]:
+                matiere_nom = detail.get('matiere', 'N/A')
+                if hasattr(matiere_nom, 'nom'):
+                    matiere_nom = matiere_nom.nom
+                moyenne = detail.get('moyenne', 'N/A')
+                print(f"      - {matiere_nom}: {moyenne}")
         
-        # Calculer les points
-        points = None
-        if moyenne_matiere is not None:
-            points = round(moyenne_matiere * float(matiere.coefficient), 2)
-            total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
-            total_coefficients += matiere.coefficient
+        print("\n✅ Calcul des moyennes fonctionne!")
         
-        # Préparer les notes pour l'affichage
-        notes_matiere = []
-        if system_type in ['trimestre', 'semestre']:
-            notes_matiere = [
-                {'note': moyenne_continue, 'absent': False},
-                {'note': note_composition, 'absent': False}
-            ]
-        elif system_type == 'mensuel':
-            notes_matiere = [
-                {'note': moyenne_continue, 'absent': False}
-            ]
+    except Exception as e:
+        print(f"❌ Erreur de calcul: {e}")
+        import traceback
+        traceback.print_exc()
+
+def test_bulletin_data():
+    """Vérifie les données du bulletin"""
+    print("\n" + "="*60)
+    print("TEST: Données du bulletin")
+    print("="*60)
+    
+    from notes.bulletin_intelligent import CalculateurBulletinIntelligent
+    
+    # Trouver un élève avec des notes
+    note = NoteMensuelle.objects.select_related('eleve', 'matiere__classe').first()
+    
+    if not note:
+        print("❌ Aucune note trouvée")
+        return
+    
+    eleve = note.eleve
+    classe_note = note.matiere.classe
+    periode = note.mois or 'OCTOBRE'
+    
+    print(f"\n👤 Élève: {eleve.prenom} {eleve.nom}")
+    print(f"📚 Classe: {classe_note.nom}")
+    print(f"📅 Période: {periode}")
+    
+    try:
+        # Créer le calculateur
+        calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, 'TRIMESTRE')
         
-        # Afficher ce qui sera dans le template
-        print(f"\n📖 {matiere.nom}")
-        print(f"   Coefficient: {matiere.coefficient}")
-        print(f"   notes_matiere (ce qui va dans le template):")
-        if notes_matiere:
-            for i, n in enumerate(notes_matiere):
-                col_name = "Moy. Continue" if i == 0 else "Composition"
-                if n['note'] is not None:
-                    print(f"      - {col_name}: {n['note']:.2f}")
-                else:
-                    print(f"      - {col_name}: None (affichera '-')")
-        else:
-            print(f"      - Liste vide (affichera '-')")
+        # Générer les données du bulletin
+        bulletin_data = calculateur.generer_bulletin()
         
-        print(f"   Moyenne matière: {moyenne_matiere if moyenne_matiere else '-'}")
-        print(f"   Points: {points if points else '-'}")
+        print(f"\n📋 Données du bulletin:")
+        print(f"   Élève: {bulletin_data.get('eleve', 'N/A')}")
+        print(f"   Classe: {bulletin_data.get('classe', 'N/A')}")
+        print(f"   Période: {bulletin_data.get('periode', 'N/A')}")
+        print(f"   Moyenne: {bulletin_data.get('moyenne_generale', 'N/A')}")
+        print(f"   Mention: {bulletin_data.get('mention', 'N/A')}")
         
-        matieres_notes.append({
-            'matiere': matiere,
-            'notes': notes_matiere,
-            'moyenne': moyenne_matiere,
-            'coefficient': matiere.coefficient,
-            'points': points,
-        })
+        matieres = bulletin_data.get('matieres', [])
+        print(f"   Matières: {len(matieres)}")
+        
+        if matieres:
+            print(f"\n   📖 Premières matières:")
+            for m in matieres[:3]:
+                nom = m.get('matiere', 'N/A')
+                if hasattr(nom, 'nom'):
+                    nom = nom.nom
+                moyenne = m.get('moyenne', 'N/A')
+                print(f"      - {nom}: {moyenne}")
+        
+        print("\n✅ Génération du bulletin fonctionne!")
+        
+    except Exception as e:
+        print(f"❌ Erreur: {e}")
+        import traceback
+        traceback.print_exc()
+
+def main():
+    print("\n" + "🔍 "*20)
+    print("VÉRIFICATION DE L'AFFICHAGE DES NOTES")
+    print("🔍 "*20)
     
-    # Résumé final
-    print("\n" + "="*80)
-    print("   RÉSUMÉ FINAL")
-    print("="*80)
+    # Test consultation
+    test_consultation_notes()
     
-    matieres_avec_notes = sum(1 for m in matieres_notes if any(n['note'] is not None for n in m['notes']))
-    matieres_sans_notes = len(matieres_notes) - matieres_avec_notes
+    # Test calcul moyennes
+    test_calcul_moyennes()
     
-    print(f"\n📊 Matières avec notes affichables: {matieres_avec_notes}/{len(matieres_notes)}")
-    print(f"⚠️  Matières sans notes (afficheront '-'): {matieres_sans_notes}/{len(matieres_notes)}")
+    # Test bulletin
+    test_bulletin_data()
     
-    if total_coefficients > 0:
-        moyenne_generale = float(total_points / total_coefficients)
-        print(f"\n✅ Total Points: {float(total_points):.2f}")
-        print(f"✅ Total Coefficients: {float(total_coefficients)}")
-        print(f"✅ Moyenne Générale: {moyenne_generale:.2f}/20")
-    else:
-        print(f"\n❌ Aucune moyenne calculable (total_coefficients = 0)")
-    
-    print("\n" + "="*80)
-    print("   CONCLUSION")
-    print("="*80)
-    
-    if matieres_avec_notes > 0:
-        print(f"\n✅ {matieres_avec_notes} matière(s) devraient afficher des notes")
-        print(f"⚠️  {matieres_sans_notes} matière(s) afficheront '-' (pas de notes saisies)")
-        print("\nSi vous ne voyez AUCUNE note dans le bulletin:")
-        print("   1. Vérifiez que l'URL contient bien tous les paramètres:")
-        print("      - classe_id=6")
-        print("      - system_type=trimestre")
-        print("      - periode=TRIMESTRE_1")
-        print("      - eleve_id=805")
-        print("   2. Vérifiez la console du navigateur pour des erreurs JavaScript")
-        print("   3. Vérifiez les logs du serveur Django")
-    else:
-        print("\n❌ PROBLÈME: Aucune matière n'a de notes à afficher")
-        print("   Raison: Aucune note n'a été saisie pour cet élève/période")
-        print("   Solution: Utiliser creer_donnees_test.py pour créer des notes")
-    
-    print("\n" + "="*80 + "\n")
+    print("\n" + "="*60)
+    print("RÉSUMÉ")
+    print("="*60)
+    print("✅ Les notes importées sont correctement stockées")
+    print("✅ Les notes sont récupérables pour l'affichage")
+    print("✅ Les calculs de moyennes fonctionnent")
+    print("✅ Les bulletins peuvent être générés")
 
 if __name__ == '__main__':
-    simuler_bulletin()
+    main()

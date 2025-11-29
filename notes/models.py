@@ -147,7 +147,10 @@ class NoteEleve(models.Model):
     def __str__(self):
         if self.absent:
             return f"{self.eleve} - Absent"
-        return f"{self.eleve} - {self.note}/{self.evaluation.note_sur}"
+        try:
+            return f"{self.eleve} - {self.note}/{self.evaluation.note_sur}"
+        except Evaluation.DoesNotExist:
+            return f"{self.eleve} - {self.note}/? (évaluation supprimée)"
     
     @property
     def note_sur_20(self):
@@ -322,6 +325,32 @@ class ThemeBulletin(models.Model):
         if self.par_defaut:
             ThemeBulletin.objects.filter(ecole=self.ecole, par_defaut=True).exclude(id=self.id).update(par_defaut=False)
         super().save(*args, **kwargs)
+
+
+# Signaux pour l'invalidation automatique du cache des rangs
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from .utils_rangs import invalider_cache_rangs
+
+@receiver(post_save, sender=NoteMensuelle)
+@receiver(post_delete, sender=NoteMensuelle)
+def invalider_cache_note_mensuelle(sender, instance, **kwargs):
+    """Invalide le cache des rangs quand une note mensuelle est modifiée"""
+    try:
+        invalider_cache_rangs(instance.matiere.classe, instance.mois)
+        print(f"Cache invalidé pour {instance.matiere.classe.nom} - {instance.mois}")
+    except Exception as e:
+        print(f"Erreur invalidation cache: {e}")
+
+@receiver(post_save, sender=NoteEleve)
+@receiver(post_delete, sender=NoteEleve)
+def invalider_cache_note_eleve(sender, instance, **kwargs):
+    """Invalide le cache des rangs quand une note d'évaluation est modifiée"""
+    try:
+        invalider_cache_rangs(instance.evaluation.matiere.classe, instance.evaluation.periode)
+        print(f"Cache invalidé pour {instance.evaluation.matiere.classe.nom} - {instance.evaluation.periode}")
+    except Exception as e:
+        print(f"Erreur invalidation cache: {e}")
 
 
 class Classement(models.Model):

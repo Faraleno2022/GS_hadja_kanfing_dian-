@@ -3,7 +3,8 @@ from . import views
 from .bulletin_intelligent import (
     bulletin_intelligent_view,
     bulletin_intelligent_pdf,
-    bulletin_intelligent_excel
+    bulletin_intelligent_excel,
+    bulletins_classe_pdf
 )
 from .views_import import (
     importer_notes,
@@ -12,6 +13,7 @@ from .views_import import (
     get_evaluations_matiere
 )
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
+from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
 
 app_name = 'notes'
 
@@ -50,6 +52,10 @@ urlpatterns = [
     path('bulletin-intelligent/<int:eleve_id>/<int:classe_note_id>/<str:periode>/excel/', 
          bulletin_intelligent_excel, name='bulletin_intelligent_excel'),
     
+    # PDF de tous les bulletins d'une classe
+    path('bulletins-classe-pdf/<int:classe_note_id>/<str:periode>/', 
+         bulletins_classe_pdf, name='bulletins_classe_pdf'),
+    
     # Importation de notes
     path('importer/', importer_notes, name='importer_notes'),
     path('template-import/', telecharger_template_import, name='telecharger_template_import'),
@@ -61,4 +67,8 @@ urlpatterns = [
     # WhatsApp Bulletin
     path('bulletin/whatsapp/envoyer/', envoyer_bulletin_whatsapp, name='envoyer_bulletin_whatsapp'),
     path('bulletin/whatsapp/apercu/', apercu_message_whatsapp, name='apercu_message_whatsapp'),
+    
+    # Export des résultats par classe
+    path('exporter-resultats-pdf/', exporter_resultats_pdf, name='exporter_resultats_pdf'),
+    path('exporter-resultats-excel/', exporter_resultats_excel, name='exporter_resultats_excel'),
 ]

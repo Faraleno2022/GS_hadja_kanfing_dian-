@@ -258,43 +258,51 @@
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-{% if stats_generales %}
+// Données injectées depuis Django
+window.chartData = {
+    repartition: {{ repartition_json|safe }},
+    matieres: {{ stats_matieres_json|safe }},
+    evolution: {{ evolution_json|safe }}
+};
+
 // Répartition des notes
-const repartitionData = {{ repartition_json|safe }};
-const repartitionCtx = document.getElementById('repartitionChart').getContext('2d');
-new Chart(repartitionCtx, {
-    type: 'doughnut',
-    data: {
-        labels: ['Excellent (≥16)', 'Très bien (≥14)', 'Bien (≥12)', 'Assez bien (≥10)', 'Insuffisant (<10)'],
-        datasets: [{
-            data: [
-                repartitionData.excellent,
-                repartitionData.tres_bien,
-                repartitionData.bien,
-                repartitionData.assez_bien,
-                repartitionData.insuffisant
-            ],
-            backgroundColor: [
-                '#28a745',
-                '#17a2b8',
-                '#ffc107',
-                '#fd7e14',
-                '#dc3545'
-            ]
-        }]
-    },
-    options: {
-        responsive: true,
-        plugins: {
-            legend: {
-                position: 'bottom'
+const repartitionData = window.chartData.repartition;
+if (repartitionData && (repartitionData.excellent > 0 || repartitionData.tres_bien > 0 || repartitionData.bien > 0 || repartitionData.assez_bien > 0 || repartitionData.insuffisant > 0)) {
+    const repartitionCtx = document.getElementById('repartitionChart').getContext('2d');
+    new Chart(repartitionCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Excellent (≥16)', 'Très bien (≥14)', 'Bien (≥12)', 'Assez bien (≥10)', 'Insuffisant (<10)'],
+            datasets: [{
+                data: [
+                    repartitionData.excellent,
+                    repartitionData.tres_bien,
+                    repartitionData.bien,
+                    repartitionData.assez_bien,
+                    repartitionData.insuffisant
+                ],
+                backgroundColor: [
+                    '#28a745',
+                    '#17a2b8',
+                    '#ffc107',
+                    '#fd7e14',
+                    '#dc3545'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
             }
         }
-    }
-});
+    });
+}
 
 // Moyennes par matière
-const matieresData = {{ stats_matieres_json|safe }};
+const matieresData = window.chartData.matieres;
 if (matieresData.length > 0) {
     const matieresCtx = document.getElementById('matieresChart').getContext('2d');
     new Chart(matieresCtx, {
@@ -327,7 +335,7 @@ if (matieresData.length > 0) {
 }
 
 // Évolution des moyennes
-const evolutionData = {{ evolution_json|safe }};
+const evolutionData = window.chartData.evolution;
 if (evolutionData.length > 0) {
     const evolutionCtx = document.getElementById('evolutionChart').getContext('2d');
     new Chart(evolutionCtx, {
@@ -350,10 +358,14 @@ if (evolutionData.length > 0) {
                     beginAtZero: true,
                     max: 20
                 }
+            },
+            plugins: {
+                legend: {
+                    display: false
+                }
             }
         }
     });
 }
-{% endif %}
 </script>
 {% endblock %}

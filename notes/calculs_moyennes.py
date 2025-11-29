@@ -20,18 +20,18 @@ def detecter_niveau_scolaire(classe_nom):
     if any(x in nom_upper for x in ['MATERNELLE', 'GARDERIE', 'PETITE SECTION', 'MOYENNE SECTION', 'GRANDE SECTION', 'CRÈCHE']):
         return 'MATERNELLE'
     
+    # Lycée (11ème à Terminale) - AVANT primaire pour éviter confusion avec 12ème/2ème
+    if any(x in nom_upper for x in ['11ÈME', '12ÈME', 'TERMINALE']):
+        return 'LYCEE'
+    
+    # Collège (7ème à 10ème année) - AVANT primaire pour éviter confusion avec 10ème/0ème
+    if any(x in nom_upper for x in ['7ÈME', '8ÈME', '9ÈME', '10ÈME']):
+        return 'COLLEGE'
+    
     # Primaire (1ère à 6ème année ou CP, CE1, CE2, CM1, CM2)
     if any(x in nom_upper for x in ['1ÈRE ANNÉE', '2ÈME ANNÉE', '3ÈME ANNÉE', '4ÈME ANNÉE', '5ÈME ANNÉE', '6ÈME ANNÉE',
                                      'CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2']):
         return 'PRIMAIRE'
-    
-    # Collège (7ème à 10ème année)
-    if any(x in nom_upper for x in ['7ÈME', '8ÈME', '9ÈME', '10ÈME']):
-        return 'COLLEGE'
-    
-    # Lycée (11ème à Terminale)
-    if any(x in nom_upper for x in ['11ÈME', '12ÈME', 'TERMINALE']):
-        return 'LYCEE'
     
     # Par défaut, considérer comme collège
     return 'COLLEGE'
@@ -57,7 +57,7 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     moyenne_continue = None
     note_composition = None
     
-    # SYSTÈME MENSUEL: Utiliser NoteMensuelle
+    # SYSTÈME MENSUEL: Utiliser NoteMensuelle directement
     if system_type == 'mensuel':
         try:
             note_mensuelle = NoteMensuelle.objects.get(
@@ -71,38 +71,56 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
         except NoteMensuelle.DoesNotExist:
             pass
     else:
-        # AUTRES SYSTÈMES: Utiliser les évaluations
-        # Récupérer les évaluations
-        evaluations = Evaluation.objects.filter(
-            matiere=matiere,
-            periode=periode
-        ).order_by('date_evaluation')
+        # SYSTÈMES TRIMESTRIEL/SEMESTRIEL: Calculer la moyenne des mois de la période
+        # Déterminer les mois de la période
+        mois_periode = []
+        if system_type == 'trimestriel':
+            if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
+                mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+            elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
+                mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
+            elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
+                mois_periode = ['AVRIL', 'MAI', 'JUIN']
+        elif system_type == 'semestriel':
+            if 'SEMESTRE_1' in periode or periode == '1er Semestre':
+                mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+            elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
+                mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
         
-        # Calculer moyennes continue et composition
-        total_devoirs = Decimal('0')
-        count_devoirs = 0
-        total_compo = Decimal('0')
-        count_compo = 0
+        # Calculer la moyenne des notes mensuelles
+        if mois_periode:
+            total_notes = Decimal('0')
+            count_notes = 0
+            
+            for mois in mois_periode:
+                try:
+                    note_mensuelle = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=mois,
+                        annee_scolaire=matiere.classe.annee_scolaire
+                    )
+                    if not note_mensuelle.absent and note_mensuelle.note is not None:
+                        total_notes += Decimal(str(note_mensuelle.note))
+                        count_notes += 1
+                except NoteMensuelle.DoesNotExist:
+                    continue
+            
+            if count_notes > 0:
+                moyenne_continue = round(float(total_notes / count_notes), 2)
         
-        for evaluation in evaluations:
-            try:
-                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                if note_obj.note is not None and not note_obj.absent:
-                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                        total_compo += Decimal(str(note_obj.note))
-                        count_compo += 1
-                    else:
-                        total_devoirs += Decimal(str(note_obj.note))
-                        count_devoirs += 1
-            except NoteEleve.DoesNotExist:
-                # Note n'existe pas, continuer sans erreur
-                continue
-        
-        if count_devoirs > 0:
-            moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-        
-        if count_compo > 0:
-            note_composition = round(float(total_compo / count_compo), 2)
+        # Récupérer la note de composition
+        try:
+            compo = CompositionNote.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                periode=periode,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if not compo.absent and compo.note is not None:
+                note_composition = float(compo.note)
+        except CompositionNote.DoesNotExist:
+            pass
     
     # Calculer la moyenne de la matière selon le système
     moyenne_matiere = None
@@ -255,8 +273,13 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel')
             moyennes_par_eleve[eleve.id] = result['moyenne_generale']
             details_par_eleve[eleve.id] = result
     
-    # Créer le classement trié
-    classement = sorted(moyennes_par_eleve.items(), key=lambda x: x[1], reverse=True)
+    # Créer le classement trié (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
+    # Récupérer les matricules pour le tri secondaire
+    matricules_map = {eleve.id: eleve.matricule for eleve in eleves}
+    classement = sorted(
+        moyennes_par_eleve.items(), 
+        key=lambda x: (-float(x[1]), matricules_map.get(x[0], ""))
+    )
     
     # Créer le mapping des rangs (gestion des ex-aequo)
     rang_map = {}
@@ -344,32 +367,31 @@ def obtenir_appreciation_intelligente(moyenne, prenom):
         return f"{prenom}, résultats insuffisants. Un travail sérieux s'impose."
 
 
-def formater_rang_intelligent(rang, sexe, total=None):
+def formater_rang_intelligent(rang, sexe='M', total=None, est_ex_aequo=False):
     """
-    Formate le rang avec accord grammatical selon le sexe
+    Formate le rang avec accord grammatical
     
     Args:
         rang: int
         sexe: str ('M' ou 'F')
         total: int optionnel (nombre total d'élèves)
+        est_ex_aequo: bool (True si l'élève est ex-æquo)
     
     Returns:
-        str: Rang formaté (ex: "1er", "1ère", "2ème")
+        str: Rang formaté (ex: "1er", "1ère", "2ème ex-æquo")
     """
-    if rang is None:
-        return "N/A"
+    if rang is None or rang == 0:
+        return "-"
     
-    # Accord grammatical pour le rang 1
+    # Formater le rang avec accord grammatical
     if rang == 1:
-        if sexe == 'F':
-            rang_str = "1ère"
-        else:
-            rang_str = "1er"
+        rang_str = "1ère" if sexe == 'F' else "1er"
     else:
         rang_str = f"{rang}ème"
     
-    # Ajouter le total si fourni
-    if total:
-        return f"{rang_str}/{total}"
+    # Ajouter "ex" si c'est le cas et que ce n'est pas le premier rang
+    if est_ex_aequo and rang > 1:
+        rang_str += " ex"
     
+    # Ne pas ajouter le total pour un affichage plus compact
     return rang_str

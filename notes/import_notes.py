@@ -29,14 +29,52 @@ class ImportNotesValidator:
     
     def valider(self):
         """Valide le fichier importé"""
-        # Vérifier les colonnes requises
+        # Vérifier les colonnes requises (flexible avec la casse)
         colonnes_requises = self._get_colonnes_requises()
-        colonnes_manquantes = set(colonnes_requises) - set(self.df.columns)
+        colonnes_fichier = list(self.df.columns)
+        
+        # Fonction de normalisation plus robuste
+        def normaliser_colonne(col):
+            col = col.strip()
+            # Gérer les accents
+            col = col.replace('é', 'e').replace('è', 'e').replace('ê', 'e')
+            col = col.replace('à', 'a').replace('â', 'a').replace('ä', 'a')
+            col = col.replace('ö', 'o').replace('ô', 'o')
+            col = col.replace('ù', 'u').replace('û', 'u')
+            col = col.replace('ç', 'c')
+            # Mettre en minuscules puis capitaliser chaque mot
+            return ' '.join(word.capitalize() for word in col.lower().split())
+        
+        # Normaliser les colonnes pour la comparaison
+        colonnes_fichier_normalisees = [normaliser_colonne(col) for col in colonnes_fichier]
+        colonnes_requises_normalisees = [normaliser_colonne(col) for col in colonnes_requises]
+        
+        colonnes_manquantes = set(colonnes_requises_normalisees) - set(colonnes_fichier_normalisees)
         
         if colonnes_manquantes:
-            raise ImportNotesError(
-                f"Colonnes manquantes: {', '.join(colonnes_manquantes)}"
-            )
+            # Créer un mapping des colonnes suggérées
+            suggestions = {}
+            for requise in colonnes_manquantes:
+                for i, existante in enumerate(colonnes_fichier_normalisees):
+                    if existante == requise:
+                        suggestions[requise] = colonnes_fichier[i]
+                        break
+            
+            message = f"Colonnes manquantes: {', '.join(colonnes_manquantes)}"
+            if suggestions:
+                message += f"\nColonnes suggérées: {', '.join([f'{k}→{v}' for k, v in suggestions.items()])}"
+            else:
+                message += f"\nColonnes attendues: {', '.join(colonnes_requises)}"
+            
+            raise ImportNotesError(message)
+        
+        # Créer un mapping des colonnes pour le traitement
+        self.colonnes_mapping = {}
+        for requise in colonnes_requises_normalisees:
+            for i, existante in enumerate(colonnes_fichier_normalisees):
+                if existante == requise:
+                    self.colonnes_mapping[colonnes_requises[colonnes_requises_normalisees.index(requise)]] = colonnes_fichier[i]
+                    break
         
         # Valider chaque ligne
         for index, row in self.df.iterrows():
@@ -59,9 +97,14 @@ class ImportNotesValidator:
     
     def _valider_ligne(self, numero_ligne, row):
         """Valide une ligne du fichier"""
+        # Utiliser le mapping des colonnes si disponible
+        matricule_col = getattr(self, 'colonnes_mapping', {}).get('Matricule', 'Matricule')
+        absent_col = getattr(self, 'colonnes_mapping', {}).get('Absent', 'Absent')
+        note_col = getattr(self, 'colonnes_mapping', {}).get('Note', 'Note')
+        
         # Vérifier le matricule
-        matricule = str(row.get('Matricule', '')).strip()
-        if not matricule or pd.isna(row['Matricule']):
+        matricule = str(row.get(matricule_col, '')).strip()
+        if not matricule or pd.isna(row.get(matricule_col, '')):
             self.erreurs.append(f"Ligne {numero_ligne}: Matricule manquant")
             return
         
@@ -73,10 +116,10 @@ class ImportNotesValidator:
             return
         
         # Vérifier la note
-        absent = str(row.get('Absent', 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
+        absent = str(row.get(absent_col, 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
         
         if not absent:
-            note = row.get('Note')
+            note = row.get(note_col)
             if pd.isna(note) or note == '':
                 self.avertissements.append(f"Ligne {numero_ligne}: Note manquante pour {eleve}")
             else:
@@ -91,22 +134,22 @@ class ImportNotesValidator:
 class ImportNotesProcessor:
     """Processeur pour importer les notes"""
     
-    def __init__(self, df, classe_id, matiere_id, periode, annee_scolaire, type_import='MENSUELLE', 
-                 evaluation_id=None, user=None):
+    def __init__(self, df, classe_id, matiere_id, periode, annee_scolaire, type_import='MENSUELLE', user=None, evaluation_id=None, colonnes_mapping=None):
         self.df = df
         self.classe_id = classe_id
         self.matiere_id = matiere_id
         self.periode = periode
         self.annee_scolaire = annee_scolaire
         self.type_import = type_import
-        self.evaluation_id = evaluation_id
         self.user = user
+        self.evaluation_id = evaluation_id
+        self.colonnes_mapping = colonnes_mapping or {}
         self.stats = {
             'total': 0,
             'importees': 0,
             'modifiees': 0,
-            'erreurs': 0,
-            'absents': 0
+            'absents': 0,
+            'erreurs': 0
         }
     
     def importer(self):
@@ -147,7 +190,12 @@ class ImportNotesProcessor:
                 self.stats['total'] += 1
                 
                 try:
-                    matricule = str(row['Matricule']).strip()
+                    # Utiliser le mapping des colonnes
+                    matricule_col = self.colonnes_mapping.get('Matricule', 'Matricule')
+                    absent_col = self.colonnes_mapping.get('Absent', 'Absent')
+                    note_col = self.colonnes_mapping.get('Note', 'Note')
+                    
+                    matricule = str(row[matricule_col]).strip()
                     eleve = eleves_dict.get(matricule)
                     
                     if not eleve:
@@ -155,8 +203,8 @@ class ImportNotesProcessor:
                         print(f"Erreur ligne {index + 2}: Élève {matricule} introuvable")
                         continue
                     
-                    absent = str(row.get('Absent', 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
-                    note_value = None if absent else row.get('Note')
+                    absent = str(row.get(absent_col, 'NON')).strip().upper() in ['OUI', 'O', 'YES', 'Y', '1', 'TRUE']
+                    note_value = None if absent else row.get(note_col)
                     
                     note_decimal = Decimal(str(note_value)) if note_value is not None and not pd.isna(note_value) else Decimal('0')
                     

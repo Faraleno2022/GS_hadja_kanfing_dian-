@@ -1,8 +1,0 @@
-#!/bin/bash
-# Script wrapper pour corriger les classements
-
-# Aller au bon répertoire
-cd /home/myschoolgn/GS_hadja_kanfing_dian-
-
-# Exécuter le script Python avec les arguments
-python corriger_classement_menu.py "$@"

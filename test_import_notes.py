@@ -1,257 +1,190 @@
 """
-Test complet de la fonction d'import de notes
-Vérifie que l'import fonctionne correctement
+Script de test pour vérifier le système d'importation des notes
 """
 import os
 import sys
 import django
-import pandas as pd
-from io import BytesIO
 
-# Configuration Django
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecole_moderne.settings')
 django.setup()
 
-from notes.models import ClasseNote, MatiereNote, Evaluation, NoteEleve
-from notes.import_notes import ImportNotesProcessor, ImportNotesValidator, generer_template_excel
-from eleves.models import Eleve
+from notes.models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
+from notes.import_notes import generer_template_excel, ImportNotesValidator, ImportNotesProcessor, lire_fichier_import
+from eleves.models import Eleve, Classe
+import pandas as pd
 
-print("\n" + "="*80)
-print("TEST COMPLET DE L'IMPORT DE NOTES")
-print("="*80)
-
-# PARAMÈTRES DE TEST
-classe_nom = "12 SÉRIE SCIENTIFIQUE"
-matiere_nom = "Mathématique"
-periode = "OCTOBRE"
-
-# Récupérer la classe
-classe_note = ClasseNote.objects.filter(nom__icontains=classe_nom).first()
-if not classe_note:
-    print(f"❌ Classe '{classe_nom}' non trouvée")
-    sys.exit(1)
-
-print(f"\n✅ Classe : {classe_note.nom}")
-
-# Récupérer la matière
-matiere = MatiereNote.objects.filter(classe=classe_note, nom__icontains=matiere_nom).first()
-if not matiere:
-    print(f"❌ Matière '{matiere_nom}' non trouvée")
-    sys.exit(1)
-
-print(f"✅ Matière : {matiere.nom}")
-print(f"✅ Période : {periode}")
-
-# TEST 1: GÉNÉRATION DU TEMPLATE
-print("\n" + "-"*80)
-print("TEST 1: GÉNÉRATION DU TEMPLATE EXCEL")
-print("-"*80)
-
-try:
-    template_buffer = generer_template_excel(
-        classe_id=classe_note.id,
-        matiere_id=matiere.id,
-        type_import='MENSUELLE'
-    )
-    print(f"✅ Template généré : {len(template_buffer.getvalue())} octets")
+def test_generation_template():
+    """Test la génération du template Excel avec les élèves"""
+    print("\n" + "="*60)
+    print("TEST 1: Génération du template Excel")
+    print("="*60)
     
-    # Lire le template pour vérifier
-    template_buffer.seek(0)
-    df_template = pd.read_excel(template_buffer)
-    print(f"✅ Colonnes du template : {list(df_template.columns)}")
-    print(f"✅ Nombre d'élèves dans le template : {len(df_template)}")
+    # Récupérer une classe avec des élèves
+    classes_note = ClasseNote.objects.filter(actif=True)[:5]
     
-    # Afficher les 3 premiers élèves
-    print("\n📊 Aperçu du template:")
-    for i, row in df_template.head(3).iterrows():
-        print(f"  {i+1}. {row.get('Matricule', 'N/A')} - {row.get('Nom', 'N/A')} {row.get('Prénom', 'N/A')}")
+    if not classes_note:
+        print("❌ Aucune ClasseNote trouvée")
+        return False
     
-except Exception as e:
-    print(f"❌ Erreur lors de la génération du template : {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
-
-# TEST 2: VALIDATION DES DONNÉES
-print("\n" + "-"*80)
-print("TEST 2: VALIDATION DES DONNÉES")
-print("-"*80)
-
-# Créer un DataFrame de test avec quelques notes
-test_data = []
-eleves = Eleve.objects.filter(classe__nom=classe_note.nom, statut='ACTIF')[:5]
-
-for eleve in eleves:
-    test_data.append({
-        'Matricule': eleve.matricule,
-        'Nom': eleve.nom,
-        'Prénom': eleve.prenom,
-        'Note': 15.5,
-        'Absent': 'Non'
-    })
-
-df_test = pd.DataFrame(test_data)
-print(f"✅ DataFrame de test créé : {len(df_test)} élèves")
-
-# Valider les données
-try:
-    validator = ImportNotesValidator(
-        df=df_test,
-        classe_id=classe_note.id,
-        matiere_id=matiere.id,
-        type_import='MENSUELLE'
-    )
-    
-    is_valid, errors = validator.valider()
-    
-    if is_valid:
-        print("✅ Validation réussie : Aucune erreur")
-    else:
-        print(f"⚠️  Validation échouée : {len(errors)} erreurs")
-        for error in errors[:5]:  # Afficher les 5 premières erreurs
-            print(f"   - {error}")
+    for classe_note in classes_note:
+        print(f"\n📚 Classe: {classe_note.nom} ({classe_note.annee_scolaire})")
+        
+        # Récupérer les matières
+        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)[:1]
+        
+        if not matieres:
+            print(f"   ⚠️ Aucune matière pour cette classe")
+            continue
+        
+        matiere = matieres[0]
+        print(f"   📖 Matière: {matiere.nom} ({matiere.code})")
+        
+        try:
+            # Générer le template
+            df = generer_template_excel(classe_note.id, matiere.id, 'MENSUELLE')
             
-except Exception as e:
-    print(f"❌ Erreur lors de la validation : {e}")
-    import traceback
-    traceback.print_exc()
-
-# TEST 3: IMPORT DES NOTES (SIMULATION)
-print("\n" + "-"*80)
-print("TEST 3: SIMULATION D'IMPORT DE NOTES")
-print("-"*80)
-
-print("⚠️  Ce test ne modifie PAS la base de données")
-print("   Il simule uniquement le processus d'import")
-
-try:
-    # Créer le processeur d'import
-    processor = ImportNotesProcessor(
-        df=df_test,
-        classe_id=classe_note.id,
-        matiere_id=matiere.id,
-        periode=periode,
-        annee_scolaire=classe_note.annee_scolaire,
-        type_import='MENSUELLE'
-    )
+            print(f"   ✅ Template généré avec {len(df)} lignes")
+            print(f"   📋 Colonnes: {list(df.columns)}")
+            
+            if len(df) > 0:
+                print(f"   👤 Premier élève: {df.iloc[0]['Prénom']} {df.iloc[0]['Nom']} ({df.iloc[0]['Matricule']})")
+                
+                # Vérifier si c'est un message d'erreur
+                if 'ERREUR' in str(df.iloc[0]['Matricule']):
+                    print(f"   ⚠️ Pas d'élèves trouvés pour cette classe")
+                else:
+                    print(f"   ✅ Élèves correctement récupérés!")
+                    return True
+            else:
+                print(f"   ⚠️ Template vide")
+                
+        except Exception as e:
+            print(f"   ❌ Erreur: {e}")
     
-    print(f"✅ Processeur d'import créé")
-    print(f"   - Classe : {classe_note.nom}")
-    print(f"   - Matière : {matiere.nom}")
-    print(f"   - Période : {periode}")
-    print(f"   - Type : MENSUELLE")
-    print(f"   - Nombre de notes : {len(df_test)}")
+    return False
+
+def test_correspondance_classes():
+    """Test la correspondance entre ClasseNote et Classe (élèves)"""
+    print("\n" + "="*60)
+    print("TEST 2: Correspondance ClasseNote <-> Classe (élèves)")
+    print("="*60)
     
-    # NE PAS EXÉCUTER L'IMPORT RÉEL
-    # stats = processor.importer()
+    classes_note = ClasseNote.objects.filter(actif=True)[:10]
     
-    print("\n✅ Simulation réussie (import non exécuté)")
+    for cn in classes_note:
+        print(f"\n📚 ClasseNote: '{cn.nom}' ({cn.annee_scolaire})")
+        
+        # Chercher la classe d'élèves correspondante
+        classe_eleve = Classe.objects.filter(
+            nom__iexact=cn.nom,
+            annee_scolaire=cn.annee_scolaire
+        ).first()
+        
+        if not classe_eleve:
+            classe_eleve = Classe.objects.filter(nom__iexact=cn.nom).first()
+        
+        if classe_eleve:
+            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+            print(f"   ✅ Classe trouvée: '{classe_eleve.nom}' avec {eleves.count()} élèves actifs")
+        else:
+            print(f"   ❌ Aucune classe d'élèves correspondante")
+            
+            # Afficher les classes disponibles
+            toutes_classes = Classe.objects.all()[:5]
+            print(f"   📋 Classes disponibles: {[c.nom for c in toutes_classes]}")
+
+def test_notes_importees():
+    """Vérifie les notes déjà importées"""
+    print("\n" + "="*60)
+    print("TEST 3: Notes existantes dans la base")
+    print("="*60)
     
-except Exception as e:
-    print(f"❌ Erreur lors de la simulation : {e}")
-    import traceback
-    traceback.print_exc()
-
-# TEST 4: VÉRIFIER LES ÉVALUATIONS EXISTANTES
-print("\n" + "-"*80)
-print("TEST 4: VÉRIFICATION DES ÉVALUATIONS")
-print("-"*80)
-
-evaluations = Evaluation.objects.filter(
-    matiere=matiere,
-    periode=periode
-)
-
-print(f"✅ Nombre d'évaluations pour {matiere.nom} - {periode} : {evaluations.count()}")
-
-if evaluations.exists():
-    print("\n📊 Évaluations existantes:")
-    for eval in evaluations[:5]:
-        notes_count = NoteEleve.objects.filter(evaluation=eval).count()
-        print(f"  - {eval.nom or 'Sans nom'} : {notes_count} notes")
-else:
-    print("⚠️  Aucune évaluation trouvée pour cette période")
-
-# TEST 5: VÉRIFIER LES NOTES EXISTANTES
-print("\n" + "-"*80)
-print("TEST 5: VÉRIFICATION DES NOTES EXISTANTES")
-print("-"*80)
-
-if evaluations.exists():
-    eval_test = evaluations.first()
-    notes = NoteEleve.objects.filter(evaluation=eval_test)
+    # Notes mensuelles
+    notes_mensuelles = NoteMensuelle.objects.all()
+    print(f"\n📊 Notes mensuelles: {notes_mensuelles.count()}")
     
-    print(f"✅ Évaluation testée : {eval_test.nom or 'Sans nom'}")
-    print(f"✅ Nombre de notes : {notes.count()}")
+    if notes_mensuelles.exists():
+        # Grouper par mois
+        mois_counts = {}
+        for note in notes_mensuelles[:100]:
+            mois = note.mois
+            mois_counts[mois] = mois_counts.get(mois, 0) + 1
+        
+        for mois, count in mois_counts.items():
+            print(f"   - {mois}: {count} notes")
     
-    if notes.exists():
-        print("\n📊 Aperçu des notes:")
-        for note in notes[:5]:
-            absent_str = "ABS" if note.absent else f"{note.note}/20"
-            print(f"  - {note.eleve.prenom} {note.eleve.nom} : {absent_str}")
-else:
-    print("⚠️  Aucune évaluation pour vérifier les notes")
+    # Notes de composition
+    notes_compo = CompositionNote.objects.all()
+    print(f"\n📊 Notes de composition: {notes_compo.count()}")
+    
+    if notes_compo.exists():
+        # Grouper par période
+        periode_counts = {}
+        for note in notes_compo[:100]:
+            periode = note.periode
+            periode_counts[periode] = periode_counts.get(periode, 0) + 1
+        
+        for periode, count in periode_counts.items():
+            print(f"   - {periode}: {count} notes")
 
-# TEST 6: VÉRIFIER LES COLONNES REQUISES
-print("\n" + "-"*80)
-print("TEST 6: VÉRIFICATION DES COLONNES REQUISES")
-print("-"*80)
+def test_affichage_saisie_notes():
+    """Vérifie que les notes sont bien récupérables pour l'affichage"""
+    print("\n" + "="*60)
+    print("TEST 4: Récupération des notes pour affichage")
+    print("="*60)
+    
+    # Prendre un élève avec des notes
+    eleve_avec_notes = None
+    
+    notes = NoteMensuelle.objects.select_related('eleve', 'matiere')[:10]
+    
+    if notes:
+        for note in notes:
+            print(f"\n👤 Élève: {note.eleve.prenom} {note.eleve.nom}")
+            print(f"   📖 Matière: {note.matiere.nom}")
+            print(f"   📅 Mois: {note.mois}")
+            print(f"   📊 Note: {note.note}/20")
+            print(f"   ❓ Absent: {note.absent}")
+            eleve_avec_notes = note.eleve
+            break
+    else:
+        print("⚠️ Aucune note mensuelle trouvée")
+    
+    return eleve_avec_notes
 
-colonnes_requises = ['Matricule', 'Nom', 'Prénom', 'Note']
-colonnes_optionnelles = ['Absent', 'Observation']
+def main():
+    print("\n" + "🔍 "*20)
+    print("VÉRIFICATION DU SYSTÈME D'IMPORTATION DES NOTES")
+    print("🔍 "*20)
+    
+    # Test 1: Génération template
+    template_ok = test_generation_template()
+    
+    # Test 2: Correspondance classes
+    test_correspondance_classes()
+    
+    # Test 3: Notes existantes
+    test_notes_importees()
+    
+    # Test 4: Affichage
+    test_affichage_saisie_notes()
+    
+    print("\n" + "="*60)
+    print("RÉSUMÉ")
+    print("="*60)
+    
+    if template_ok:
+        print("✅ Le système d'importation fonctionne correctement")
+        print("✅ Les templates sont générés avec les élèves de la classe")
+    else:
+        print("⚠️ Vérifiez la correspondance entre ClasseNote et Classe")
+        print("   Les noms doivent correspondre exactement")
+    
+    print("\n📌 URLs disponibles:")
+    print("   - /notes/importer/ : Interface d'importation")
+    print("   - /notes/template-import/ : Téléchargement du template")
+    print("   - /notes/consulter/ : Consultation des notes")
+    print("   - /notes/bulletin-dynamique/ : Bulletins")
 
-print("📋 Colonnes requises:")
-for col in colonnes_requises:
-    present = col in df_template.columns
-    status = "✅" if present else "❌"
-    print(f"  {status} {col}")
-
-print("\n📋 Colonnes optionnelles:")
-for col in colonnes_optionnelles:
-    present = col in df_template.columns
-    status = "✅" if present else "⚠️ "
-    print(f"  {status} {col}")
-
-# RÉSUMÉ
-print("\n" + "="*80)
-print("RÉSUMÉ DES TESTS")
-print("="*80)
-
-print("""
-✅ TEST 1: Génération du template - OK
-✅ TEST 2: Validation des données - OK
-✅ TEST 3: Simulation d'import - OK
-✅ TEST 4: Vérification des évaluations - OK
-✅ TEST 5: Vérification des notes - OK
-✅ TEST 6: Vérification des colonnes - OK
-
-📋 FONCTIONNEMENT DE L'IMPORT:
-
-1. Télécharger le template Excel:
-   URL: /notes/template-import/?classe_id=X&matiere_id=Y&type=MENSUELLE
-
-2. Remplir le template avec les notes:
-   - Matricule: Obligatoire
-   - Nom/Prénom: Pour vérification
-   - Note: Entre 0 et 20
-   - Absent: Oui/Non (optionnel)
-
-3. Importer le fichier:
-   URL: /notes/importer/
-   - Sélectionner la classe
-   - Sélectionner la matière
-   - Sélectionner la période
-   - Uploader le fichier Excel
-
-4. Vérifier les résultats:
-   - Nombre de notes importées
-   - Nombre d'erreurs
-   - Liste des élèves absents
-
-✅ CONCLUSION:
-   Le système d'import de notes fonctionne correctement !
-   Tous les composants sont opérationnels.
-""")
-
-print("="*80 + "\n")
+if __name__ == '__main__':
+    main()

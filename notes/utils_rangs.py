@@ -66,56 +66,146 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     # Récupérer les matières
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
+    # Détecter le niveau scolaire pour gérer les coefficients
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau = detecter_niveau_scolaire(classe_note.nom)
+    est_primaire = (niveau == 'PRIMAIRE')
+    
     # Calculer les moyennes pour chaque élève
     moyennes_pour_rang = []
     
-    for eleve in eleves:
-        total_points = Decimal('0')
-        total_coefficients = Decimal('0')
+    # Déterminer le type de système selon la période
+    if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+        # Système mensuel - utiliser NoteMensuelle
+        from .models import NoteMensuelle
         
-        for matiere in matieres:
-            # Récupérer les évaluations de la période
-            evaluations = Evaluation.objects.filter(
-                matiere=matiere,
-                periode=periode
-            )
+        for eleve in eleves:
+            total_points = Decimal('0')
+            total_coefficients = Decimal('0')
             
-            if not evaluations.exists():
-                continue
-            
-            # Calculer la moyenne de la matière
-            total_devoirs = Decimal('0')
-            count_devoirs = 0
-            
-            for evaluation in evaluations:
+            for matiere in matieres:
+                # PRIMAIRE: Pas de coefficients (tous égaux à 1)
+                coefficient = Decimal('1') if est_primaire else matiere.coefficient
+                
+                # Récupérer la note mensuelle pour cette période
                 try:
-                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                    note_mensuelle = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=periode,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                    
                     # Traiter les absences comme 0
-                    if note_obj.note is not None and not note_obj.absent:
-                        note_value = Decimal(str(note_obj.note))
+                    if note_mensuelle.note is not None and not note_mensuelle.absent:
+                        note_value = Decimal(str(note_mensuelle.note))
                     else:
                         note_value = Decimal('0')
                     
-                    total_devoirs += note_value
-                    count_devoirs += 1
-                except NoteEleve.DoesNotExist:
+                    total_points += note_value * coefficient
+                    total_coefficients += coefficient
+                    
+                except NoteMensuelle.DoesNotExist:
                     # Pas de note = 0
-                    count_devoirs += 1
+                    total_points += Decimal('0') * coefficient
+                    total_coefficients += coefficient
             
-            if count_devoirs > 0:
-                moyenne_matiere = total_devoirs / count_devoirs
-                total_points += moyenne_matiere * matiere.coefficient
-                total_coefficients += matiere.coefficient
+            if total_coefficients > 0:
+                moyenne_generale = (total_points / total_coefficients).quantize(Decimal('0.01'))
+                moyennes_pour_rang.append({
+                    'eleve_id': eleve.id,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'sexe': getattr(eleve, 'sexe', 'M'),
+                    'moyenne': moyenne_generale
+                })
+    else:
+        # Système trimestriel/semestriel - utiliser NoteMensuelle + CompositionNote
+        from .models import NoteMensuelle, CompositionNote
         
-        if total_coefficients > 0:
-            moyenne_generale = (total_points / total_coefficients).quantize(Decimal('0.01'))
-            moyennes_pour_rang.append({
-                'eleve_id': eleve.id,
-                'prenom': eleve.prenom,
-                'nom': eleve.nom,
-                'sexe': getattr(eleve, 'sexe', 'M'),
-                'moyenne': moyenne_generale
-            })
+        # Déterminer les mois de la période
+        mois_periode = []
+        if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
+            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+        elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
+            mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
+        elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
+            mois_periode = ['AVRIL', 'MAI', 'JUIN']
+        elif 'SEMESTRE_1' in periode or periode == '1er Semestre':
+            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+        elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
+            mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+        
+        for eleve in eleves:
+            total_points = Decimal('0')
+            total_coefficients = Decimal('0')
+            
+            for matiere in matieres:
+                moyenne_continue = None
+                note_composition = None
+                
+                # Calculer la moyenne continue à partir des notes mensuelles
+                if mois_periode:
+                    total_notes = Decimal('0')
+                    count_notes = 0
+                    
+                    for mois in mois_periode:
+                        try:
+                            note_mensuelle = NoteMensuelle.objects.get(
+                                eleve=eleve,
+                                matiere=matiere,
+                                mois=mois,
+                                annee_scolaire=classe_note.annee_scolaire
+                            )
+                            if not note_mensuelle.absent and note_mensuelle.note is not None:
+                                total_notes += Decimal(str(note_mensuelle.note))
+                                count_notes += 1
+                        except NoteMensuelle.DoesNotExist:
+                            continue
+                    
+                    if count_notes > 0:
+                        moyenne_continue = float(total_notes / count_notes)
+                
+                # Récupérer la note de composition
+                try:
+                    compo = CompositionNote.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        periode=periode,
+                        annee_scolaire=classe_note.annee_scolaire
+                    )
+                    if not compo.absent and compo.note is not None:
+                        note_composition = float(compo.note)
+                except CompositionNote.DoesNotExist:
+                    pass
+                
+                # PRIMAIRE: Pas de coefficients (tous égaux à 1)
+                coefficient = Decimal('1') if est_primaire else matiere.coefficient
+                
+                # Calculer la moyenne de la matière selon la formule guinéenne
+                moyenne_matiere = None
+                if moyenne_continue is not None and note_composition is not None:
+                    # Formule: (Moyenne Continue + Composition) / 2 (50% chacun)
+                    moyenne_matiere = (moyenne_continue + note_composition) / 2
+                elif note_composition is not None:
+                    moyenne_matiere = note_composition
+                elif moyenne_continue is not None:
+                    moyenne_matiere = moyenne_continue
+                else:
+                    moyenne_matiere = 0.0  # Pas de note = 0
+                
+                total_points += Decimal(str(moyenne_matiere)) * coefficient
+                total_coefficients += coefficient
+            
+            if total_coefficients > 0:
+                moyenne_generale = (total_points / total_coefficients).quantize(Decimal('0.01'))
+                moyennes_pour_rang.append({
+                    'eleve_id': eleve.id,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'sexe': getattr(eleve, 'sexe', 'M'),
+                    'moyenne': moyenne_generale
+                })
     
     # Calculer les rangs avec la fonction centralisée
     resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)

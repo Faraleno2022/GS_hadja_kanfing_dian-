@@ -196,23 +196,23 @@ class CalculateurBulletinIntelligent:
             return None
         
         # Récupérer tous les élèves de la classe
-        eleves = Eleve.objects.filter(classe=self.eleve.classe)
+        eleves = Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF')
+        
+        # Récupérer les matières de la classe
+        matieres = MatiereNote.objects.filter(classe=self.classe_note)
         
         moyennes_eleves = []
         for eleve in eleves:
-            calc = CalculateurBulletinIntelligent(
-                eleve, 
-                self.classe_note, 
-                self.periode, 
-                self.systeme
-            )
-            bulletin = calc.generer_bulletin()
-            if bulletin['moyenne_generale']:
+            # Utiliser directement calculer_moyenne_generale_eleve pour éviter la récursion
+            result = calculer_moyenne_generale_eleve(eleve, matieres, self.periode)
+            moyenne = result.get('moyenne_generale') if isinstance(result, dict) else result
+            
+            if moyenne:
                 moyennes_eleves.append({
                     'eleve_id': eleve.id,
                     'prenom': eleve.prenom,
                     'sexe': eleve.sexe,
-                    'moyenne': bulletin['moyenne_generale']
+                    'moyenne': moyenne
                 })
         
         # Calculer les rangs avec accord grammatical
@@ -226,148 +226,732 @@ class CalculateurBulletinIntelligent:
         return None
 
 
-def generer_pdf_avec_filigrane(bulletin_data, logo_path=None):
-    """Génère un PDF avec le logo en filigrane"""
+def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
+    """Génère un PDF avec le même design exact que le modèle imprimé"""
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     
-    # Dessiner le filigrane (logo en transparence)
+    # Couleurs du design (exactement comme le modèle)
+    BLEU_HEADER = colors.HexColor('#4a90d9')  # Bleu de l'en-tête du tableau
+    BLEU_CLAIR = colors.HexColor('#e8f4fd')   # Fond des infos élève
+    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')  # Fond appréciation
+    VERT_MOY = colors.HexColor('#c8e6c9')     # Colonne MOY
+    ROUGE_PTS = colors.HexColor('#ffcdd2')    # Colonne PTS
+    ROUGE_DRAPEAU = colors.HexColor('#CE1126')
+    JAUNE_DRAPEAU = colors.HexColor('#FCD116')
+    VERT_DRAPEAU = colors.HexColor('#009460')
+    GRIS_TOTAL = colors.HexColor('#37474f')   # Ligne total
+    
+    # Couleurs des mentions
+    MENTION_COLORS = {
+        'EXCELLENT': colors.HexColor('#1b5e20'),
+        'TRÈS BIEN': colors.HexColor('#2e7d32'),
+        'BIEN': colors.HexColor('#0277bd'),
+        'ASSEZ BIEN': colors.HexColor('#f9a825'),
+        'PASSABLE': colors.HexColor('#ef6c00'),
+        'INSUFFISANT': colors.HexColor('#c62828'),
+        'FAIBLE': colors.HexColor('#b71c1c'),
+    }
+    
+    # ===== FILIGRANE (logo en transparence au centre) =====
     if logo_path:
         try:
-            # Charger l'image
-            img = Image.open(logo_path)
-            
-            # Créer un ImageReader
             img_reader = ImageReader(logo_path)
-            
-            # Dessiner en filigrane (centré, grande taille, opacité réduite)
             c.saveState()
-            c.setFillAlpha(0.1)  # Transparence 10%
-            
-            # Taille du filigrane
-            filigrane_width = 15 * cm
-            filigrane_height = 15 * cm
-            
-            # Position centrée
-            x = (width - filigrane_width) / 2
-            y = (height - filigrane_height) / 2
-            
-            c.drawImage(img_reader, x, y, width=filigrane_width, height=filigrane_height, 
+            c.setFillAlpha(0.08)  # Transparence 8%
+            filigrane_size = 14 * cm
+            x = (width - filigrane_size) / 2
+            y = (height - filigrane_size) / 2
+            c.drawImage(img_reader, x, y, width=filigrane_size, height=filigrane_size, 
                        preserveAspectRatio=True, mask='auto')
             c.restoreState()
         except Exception as e:
             print(f"Erreur filigrane: {e}")
     
-    # En-tête
-    y = height - 2*cm
-    c.setFont("Helvetica-Bold", 16)
-    c.drawCentredString(width/2, y, "RÉPUBLIQUE DE GUINÉE")
+    # ===== EN-TÊTE =====
+    # Logo en haut à gauche
+    if logo_path:
+        try:
+            img_reader = ImageReader(logo_path)
+            c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                       preserveAspectRatio=True, mask='auto')
+        except:
+            pass
     
-    y -= 0.5*cm
-    c.setFont("Helvetica-Oblique", 10)
-    c.drawCentredString(width/2, y, "Travail - Justice - Solidarité")
+    # Drapeau guinéen en haut à droite
+    drapeau_x = width - 2.5*cm
+    drapeau_y = height - 2.2*cm
+    drapeau_w = 1.2*cm
+    drapeau_h = 0.8*cm
+    c.setFillColor(ROUGE_DRAPEAU)
+    c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(JAUNE_DRAPEAU)
+    c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(VERT_DRAPEAU)
+    c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
     
-    y -= 1*cm
+    # Textes de l'en-tête
+    y_header = height - 1.2*cm
+    c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 14)
-    c.drawCentredString(width/2, y, "BULLETIN DE NOTES")
+    c.drawCentredString(width/2, y_header, "RÉPUBLIQUE DE GUINÉE")
     
-    # Informations élève
-    y -= 1.5*cm
+    # Devise avec couleurs
+    y_header -= 0.5*cm
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(ROUGE_DRAPEAU)
+    c.drawCentredString(width/2 - 1.8*cm, y_header, "Travail")
+    c.setFillColor(JAUNE_DRAPEAU)
+    c.drawCentredString(width/2, y_header, "Justice")
+    c.setFillColor(VERT_DRAPEAU)
+    c.drawCentredString(width/2 + 1.8*cm, y_header, "Solidarité")
+    # Tirets
+    c.setFillColor(colors.black)
+    c.drawCentredString(width/2 - 0.9*cm, y_header, "-")
+    c.drawCentredString(width/2 + 0.9*cm, y_header, "-")
+    
+    # MPU-A
+    y_header -= 0.45*cm
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(width/2, y_header, "MPU-A")
+    
+    # Nom de l'école
+    y_header -= 0.5*cm
+    c.setFont("Helvetica-Bold", 10)
+    nom_ecole = ecole.nom.upper() if ecole else "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA"
+    c.drawCentredString(width/2, y_header, nom_ecole)
+    
+    # Titre du bulletin
+    y_header -= 0.6*cm
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(2*cm, y, f"Élève: {bulletin_data['eleve']}")
+    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {bulletin_data['periode'].upper()}")
     
-    y -= 0.7*cm
-    c.setFont("Helvetica", 11)
-    c.drawString(2*cm, y, f"Classe: {bulletin_data['classe']}")
-    c.drawString(12*cm, y, f"Période: {bulletin_data['periode']}")
+    # Année scolaire (petite, à droite)
+    c.setFont("Helvetica", 7)
+    c.setFillColor(colors.HexColor('#666666'))
+    c.drawRightString(width - 1.5*cm, y_header, "Année Scolaire 2024-2025")
     
-    # Tableau des notes
-    y -= 1.5*cm
+    # ===== LIGNE DE SÉPARATION NOIRE =====
+    y_header -= 0.4*cm
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.5)
+    c.line(1.2*cm, y_header, width - 1.2*cm, y_header)
+    c.setLineWidth(1)
     
-    # Préparer les données du tableau
-    data = [['Matière', 'Coef.', 'Moy. Cours', 'Composition', 'Moyenne', 'Points']]
+    # ===== INFORMATIONS ÉLÈVE (grille 2x3) =====
+    y = y_header - 0.6*cm
+    
+    # Extraire nom et prénom
+    eleve_nom_complet = bulletin_data.get('eleve', '')
+    parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
+    prenom = parties[0] if len(parties) > 0 else ''
+    nom = parties[1] if len(parties) > 1 else ''
+    
+    # Première ligne: NOM, PRÉNOM, MATRICULE
+    # Deuxième ligne: CLASSE, PÉRIODE, EFFECTIF
+    info_data = [
+        [('NOM', nom.upper()), ('PRÉNOM', prenom.title()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
+        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
+    ]
+    
+    # Largeur totale alignée avec la ligne (de 1.2cm à width-1.2cm)
+    info_total_width = width - 2.4*cm
+    box_width = (info_total_width - 0.4*cm) / 3  # 3 colonnes avec espacement
+    box_height = 0.9*cm
+    info_margin_left = 1.2*cm
+    
+    for row_idx, row in enumerate(info_data):
+        for col_idx, (label, value) in enumerate(row):
+            x = info_margin_left + col_idx * (box_width + 0.2*cm)
+            box_y = y - row_idx * (box_height + 0.15*cm)
+            
+            # Fond bleu clair
+            c.setFillColor(BLEU_CLAIR)
+            c.rect(x, box_y - box_height, box_width, box_height, fill=1, stroke=0)
+            # Bordure
+            c.setStrokeColor(colors.HexColor('#b3d4fc'))
+            c.rect(x, box_y - box_height, box_width, box_height, fill=0, stroke=1)
+            
+            # Label en bleu
+            c.setFillColor(colors.HexColor('#1976d2'))
+            c.setFont("Helvetica-Bold", 7)
+            c.drawString(x + 0.15*cm, box_y - 0.3*cm, label)
+            
+            # Valeur en noir
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(x + 0.15*cm, box_y - 0.7*cm, str(value))
+    
+    # ===== TABLEAU DES NOTES =====
+    y -= 2.3*cm
+    
+    # Largeur totale du tableau = même que la ligne de séparation (de 1.2cm à width-1.2cm)
+    table_total_width = width - 2.4*cm
+    margin_left = 1.2*cm
+    
+    # Déterminer le type de système pour le bulletin individuel
+    system_type_indiv = bulletin_data.get('system_type', 'mensuel')
+    periode = bulletin_data.get('periode', '')
+    
+    # Détecter le niveau scolaire
+    from notes.calculs_moyennes import detecter_niveau_scolaire
+    classe_nom = bulletin_data.get('classe', '')
+    niveau_scolaire = detecter_niveau_scolaire(classe_nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    est_maternelle = (niveau_scolaire == 'MATERNELLE')
+    
+    # MATERNELLE/GARDERIE: Afficher les appréciations au lieu des notes
+    if est_maternelle:
+        _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole)
+        return
+    
+    # Déterminer les mois selon la période pour trimestre/semestre
+    mois_labels = []
+    if system_type_indiv == 'trimestriel':
+        if 'TRIMESTRE_1' in periode or '1' in periode:
+            mois_labels = ['Oct.', 'Nov.', 'Déc.']
+        elif 'TRIMESTRE_2' in periode or '2' in periode:
+            mois_labels = ['Jan.', 'Fév.', 'Mars']
+        elif 'TRIMESTRE_3' in periode or '3' in periode:
+            mois_labels = ['Avr.', 'Mai', 'Juin']
+    elif system_type_indiv == 'semestriel':
+        if 'SEMESTRE_1' in periode or '1' in periode:
+            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.', 'Fév.']
+        elif 'SEMESTRE_2' in periode or '2' in periode:
+            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
+    
+    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
+    if system_type_indiv == 'trimestriel' and mois_labels:
+        if est_primaire:
+            # Primaire Trimestre: MATIÈRE | M1 | M2 | M3 | Moy.C | Compo | MOY | PTS (sans COEF)
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        else:
+            # Trimestre: MATIÈRE | COEF | M1 | M2 | M3 | Moy.C | Compo | MOY | PTS
+            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    elif system_type_indiv == 'semestriel' and mois_labels:
+        if est_primaire:
+            # Primaire Semestre: MATIÈRE | M1..M5 | Moy.C | Compo | MOY | PTS (sans COEF)
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        else:
+            # Semestre: MATIÈRE | COEF | M1..M5 | Moy.C | Compo | MOY | PTS
+            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    else:
+        if est_primaire:
+            # Primaire Mensuel: MATIÈRE | NOTE | MOY | PTS (sans COEF)
+            data = [['MATIÈRE', 'NOTE', 'MOY', 'PTS']]
+            nb_cols = 4
+        else:
+            # Système mensuel: MATIÈRE | COEF | NOTE | MOY | PTS
+            data = [['MATIÈRE', 'COEF', 'NOTE', 'MOY', 'PTS']]
+            nb_cols = 5
+    
+    total_coef = 0
+    total_moy = 0
+    total_points = 0
+    nb_matieres_avec_moy = 0
     
     for matiere in bulletin_data['matieres']:
-        moy_cours = '-'
-        if matiere['notes_mensuelles']:
-            notes_list = []
-            for notes in matiere['notes_mensuelles'].values():
-                notes_list.extend(notes)
-            if notes_list:
-                moy_cours = f"{sum(notes_list) / len(notes_list):.2f}"
+        nom_matiere = str(matiere.get('matiere', '-'))
+        if hasattr(matiere.get('matiere'), 'nom'):
+            nom_matiere = matiere['matiere'].nom
         
-        composition = f"{matiere['composition']:.2f}" if matiere['composition'] else '-'
-        moyenne = f"{matiere['moyenne']:.2f}" if matiere['moyenne'] else '-'
-        points = f"{matiere['moyenne'] * matiere['coefficient']:.2f}" if matiere['moyenne'] else '-'
+        coef = float(matiere.get('coefficient', 1))
+        moy_continue = matiere.get('moyenne_continue')
+        note_compo = matiere.get('note_composition')
+        moyenne = matiere.get('moyenne') or matiere.get('moyenne_calculee')
+        points = matiere.get('points')
         
-        data.append([
-            matiere['matiere'],
-            str(matiere['coefficient']),
-            moy_cours,
-            composition,
-            moyenne,
-            points
-        ])
+        if points is None and moyenne:
+            points = moyenne * coef
+        
+        # Récupérer les moyennes mensuelles si disponibles
+        moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+        
+        total_coef += coef
+        if moyenne:
+            total_moy += moyenne
+            nb_matieres_avec_moy += 1
+        if points:
+            total_points += points
+        
+        if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+            # Construire la ligne avec les détails mensuels
+            if est_primaire:
+                row = [nom_matiere]  # Sans COEF pour primaire
+            else:
+                row = [nom_matiere, f"{coef:.0f}"]
+            
+            # Ajouter les notes mensuelles
+            for i, mois_label in enumerate(mois_labels):
+                note_mois = '-'
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_mens = moyennes_mensuelles[i]
+                    if isinstance(moy_mens, dict):
+                        val = moy_mens.get('moyenne')
+                        if val is not None:
+                            note_mois = f"{val:.2f}"
+                    elif moy_mens is not None:
+                        note_mois = f"{moy_mens:.2f}"
+                row.append(note_mois)
+            
+            # Ajouter Moy.C, Compo, MOY, PTS
+            row.append(f"{moy_continue:.2f}" if moy_continue else '-')
+            row.append(f"{note_compo:.2f}" if note_compo else '-')
+            row.append(f"{moyenne:.2f}" if moyenne else '-')
+            row.append(f"{points:.2f}" if points else '-')
+            data.append(row)
+        else:
+            # Mensuel
+            cours_str = f"{moy_continue:.2f}" if moy_continue else '-'
+            moyenne_str = f"{moyenne:.2f}" if moyenne else '-'
+            points_str = f"{points:.2f}" if points else '-'
+            if est_primaire:
+                # Primaire: sans COEF
+                data.append([nom_matiere, cours_str, moyenne_str, points_str])
+            else:
+                data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
-    # Créer le tableau
-    table = Table(data, colWidths=[6*cm, 1.5*cm, 2*cm, 2*cm, 2*cm, 2*cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+    # Ligne TOTAL
+    if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+        if est_primaire:
+            total_row = ['TOTAL']  # Sans COEF pour primaire
+        else:
+            total_row = ['TOTAL', f"{total_coef:.0f}"]
+        total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
+        total_row += ['-', '-']  # Moy.C et Compo
+        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
+        total_row.append(f"{total_points:.2f}")
+        data.append(total_row)
+    else:
+        if est_primaire:
+            # Primaire: sans COEF
+            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+        else:
+            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+    
+    # Calculer les largeurs de colonnes
+    if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+        col_matiere = table_total_width * 0.22
+        nb_autres_cols = nb_cols - 1
+        col_autres = (table_total_width - col_matiere) / nb_autres_cols
+        col_widths = [col_matiere] + [col_autres] * nb_autres_cols
+    else:
+        if est_primaire:
+            # Primaire: 4 colonnes (sans COEF)
+            col_matiere = table_total_width * 0.40
+            col_autres = (table_total_width - col_matiere) / 3
+            col_widths = [col_matiere, col_autres, col_autres, col_autres]
+        else:
+            col_matiere = table_total_width * 0.35
+            col_autres = (table_total_width - col_matiere) / 4
+            col_widths = [col_matiere, col_autres, col_autres, col_autres, col_autres]
+    
+    table = Table(data, colWidths=col_widths)
+    
+    # Style du tableau - base
+    style = [
+        # En-tête bleu
+        ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-    ]))
-    
-    # Dessiner le tableau
-    table.wrapOn(c, width, height)
-    table.drawOn(c, 2*cm, y - len(data) * 0.6*cm)
-    
-    # Résultats
-    y = y - len(data) * 0.6*cm - 1.5*cm
-    
-    c.setFont("Helvetica-Bold", 12)
-    if bulletin_data['moyenne_generale']:
-        c.drawString(2*cm, y, f"Moyenne Générale: {bulletin_data['moyenne_generale']:.2f}/20")
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
         
-        # Afficher le rang correctement formaté
-        rang_affiche = bulletin_data['rang'] if bulletin_data['rang'] else "-"
-        c.drawString(10*cm, y, f"Rang: {rang_affiche}")
+        # Corps
+        ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -2), 8),
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('LEFTPADDING', (0, 1), (0, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
+        ('TOPPADDING', (0, 1), (-1, -1), 4),
         
-        y -= 0.7*cm
-        c.drawString(2*cm, y, f"Mention: {bulletin_data['mention']}")
+        # Grille
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
         
-        y -= 0.7*cm
-        c.setFont("Helvetica-Oblique", 10)
-        c.drawString(2*cm, y, f"Appréciation: {bulletin_data['appreciation']}")
+        # Alternance de couleurs
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f5f5f5')]),
+        
+        # Ligne TOTAL
+        ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 9),
+    ]
     
-    # Signatures
-    y -= 2*cm
-    c.setFont("Helvetica", 10)
-    c.drawString(2*cm, y, "Directeur")
-    c.drawString(10*cm, y, "Enseignant")
-    c.drawString(15*cm, y, "Parent")
+    # Colonnes MOY et PTS avec couleurs (position varie selon le système et le niveau)
+    if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+        # Colonnes dynamiques: MOY = avant-dernière colonne, PTS = dernière colonne
+        col_moy = nb_cols - 2
+        col_pts = nb_cols - 1
+        style.extend([
+            ('BACKGROUND', (col_moy, 1), (col_moy, -2), VERT_MOY),
+            ('FONTNAME', (col_moy, 1), (col_moy, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
+            ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
+            # Réduire la taille de police pour les colonnes nombreuses
+            ('FONTSIZE', (0, 0), (-1, 0), 7),
+            ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ])
+    else:
+        if est_primaire:
+            # Primaire: 4 colonnes: MATIÈRE | NOTE | MOY | PTS (sans COEF)
+            style.extend([
+                ('BACKGROUND', (2, 1), (2, -2), VERT_MOY),    # MOY = colonne 2
+                ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (3, 1), (3, -2), ROUGE_PTS),   # PTS = colonne 3
+                ('FONTNAME', (3, 1), (3, -1), 'Helvetica-Bold'),
+            ])
+        else:
+            # 5 colonnes: MATIÈRE | COEF | NOTE | MOY | PTS
+            style.extend([
+                ('BACKGROUND', (3, 1), (3, -2), VERT_MOY),    # MOY = colonne 3
+                ('FONTNAME', (3, 1), (3, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (4, 1), (4, -2), ROUGE_PTS),   # PTS = colonne 4
+                ('FONTNAME', (4, 1), (4, -1), 'Helvetica-Bold'),
+            ])
     
-    # Pied de page
+    table.setStyle(TableStyle(style))
+    
+    # Calculer la hauteur du tableau et le dessiner aligné avec la ligne
+    table_w, table_h = table.wrap(width, height)
+    table.drawOn(c, margin_left, y - table_h)
+    
+    # ===== SECTION RÉSULTATS =====
+    y = y - table_h - 0.8*cm
+    
+    # Trois colonnes alignées avec le tableau (de 1.2cm à width-1.2cm)
+    result_total_width = width - 2.4*cm
+    col_width = (result_total_width - 0.4*cm) / 3  # 3 colonnes avec espacement
+    col_height = 1.4*cm
+    start_x = 1.2*cm
+    
+    # MOYENNE GÉNÉRALE
+    c.setFillColor(colors.white)
+    c.rect(start_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(start_x + col_width/2, y - 0.35*cm, "MOYENNE GÉNÉRALE")
+    c.setFont("Helvetica-Bold", 16)
+    moy_gen = bulletin_data.get('moyenne_generale')
+    moy_str = f"{moy_gen:.2f}/20" if moy_gen else '-'
+    c.drawCentredString(start_x + col_width/2, y - 1*cm, moy_str)
+    
+    # RANG
+    rang_x = start_x + col_width + 0.2*cm
+    c.setFillColor(colors.white)
+    c.rect(rang_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(rang_x + col_width/2, y - 0.35*cm, "RANG")
+    c.setFont("Helvetica-Bold", 16)
+    rang = bulletin_data.get('rang', '-')
+    c.drawCentredString(rang_x + col_width/2, y - 1*cm, str(rang))
+    
+    # MENTION (avec badge coloré)
+    mention_x = start_x + 2*(col_width + 0.2*cm)
+    c.setFillColor(colors.white)
+    c.rect(mention_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(mention_x + col_width/2, y - 0.35*cm, "MENTION")
+    
+    # Badge de mention
+    mention = bulletin_data.get('mention', '-')
+    mention_upper = mention.upper() if mention else '-'
+    mention_color = MENTION_COLORS.get(mention_upper, colors.HexColor('#666666'))
+    
+    # Dessiner le badge
+    badge_width = min(4*cm, col_width - 0.4*cm)
+    badge_height = 0.6*cm
+    badge_x = mention_x + (col_width - badge_width) / 2
+    badge_y = y - 1.15*cm
+    
+    c.setFillColor(mention_color)
+    c.roundRect(badge_x, badge_y, badge_width, badge_height, 3, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(mention_x + col_width/2, badge_y + 0.15*cm, mention_upper)
+    
+    # ===== APPRÉCIATION =====
+    y -= col_height + 0.6*cm
+    
+    appreciation_height = 1.2*cm
+    c.setFillColor(BLEU_APPRECIATION)
+    c.rect(1.2*cm, y - appreciation_height, width - 2.4*cm, appreciation_height, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#90caf9'))
+    c.rect(1.2*cm, y - appreciation_height, width - 2.4*cm, appreciation_height, fill=0, stroke=1)
+    
+    c.setFillColor(colors.HexColor('#1565c0'))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(1.4*cm, y - 0.35*cm, "APPRÉCIATION DU CONSEIL DE CLASSE")
+    
+    c.setFillColor(colors.black)
     c.setFont("Helvetica-Oblique", 8)
-    c.drawCentredString(width/2, 1*cm, 
-                       f"Bulletin généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    appreciation = bulletin_data.get('appreciation') or 'Bon travail. Continuez vos efforts.'
+    if appreciation and len(appreciation) > 100:
+        appreciation = appreciation[:97] + '...'
+    c.drawString(1.4*cm, y - 0.85*cm, appreciation)
+    
+    # ===== SIGNATURES =====
+    y -= appreciation_height + 0.8*cm
+    
+    sig_width = 6*cm
+    
+    # Censeur (aligné à gauche avec 1.2cm)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(1.2*cm + sig_width/2, y, "Censeur de l'établissement")
+    c.setStrokeColor(colors.black)
+    c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(1.2*cm + sig_width/2, y - 1.8*cm, "Signature")
+    
+    # Directeur Général (aligné à droite avec 1.2cm)
+    dir_x = width - 1.2*cm - sig_width
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
+    c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")
+    
+    # ===== MÉTHODE DE CALCUL =====
+    y -= 2.5*cm
+    
+    c.setFillColor(colors.HexColor('#f5f5f5'))
+    c.rect(1.2*cm, y - 1.8*cm, width - 2.4*cm, 1.8*cm, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#1976d2'))
+    c.setLineWidth(2)
+    c.line(1.2*cm, y, 1.2*cm, y - 1.8*cm)
+    c.setLineWidth(1)
+    
+    c.setFillColor(colors.HexColor('#1976d2'))
+    c.setFont("Helvetica-Bold", 8)
+    
+    # Adapter le texte selon le système (pour bulletin individuel)
+    system_type_indiv = bulletin_data.get('system_type', 'mensuel')
+    
+    # Texte pour les points (différent pour primaire)
+    points_text = "• Points : Moyenne (pas de coefficient pour le primaire)" if est_primaire else "• Points : Moyenne × Coefficient"
+    
+    if system_type_indiv == 'trimestriel':
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du trimestre")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition du trimestre")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+    elif system_type_indiv == 'semestriel':
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du semestre")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition (examen) du semestre")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+    else:
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Note : Moyenne des notes d'évaluations continues du mois")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moyenne : Égale à la note du cours pour le système mensuel")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    
+    c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
+    
+    # ===== PIED DE PAGE =====
+    c.setFillColor(colors.HexColor('#999999'))
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(width/2, 0.8*cm, 
+                       f"© 2025 Myschool. Tous droits réservés. +224 622613559 | faraleno16@gmail.com")
     c.drawCentredString(width/2, 0.5*cm, 
-                       "Système de calcul: 40% cours + 60% composition")
+                       f"Bulletin généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
     
     c.showPage()
     c.save()
     
     buffer.seek(0)
     return buffer
+
+
+def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
+    """Dessine un bulletin spécifique pour la maternelle/garderie avec appréciations"""
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Table, TableStyle
+    
+    # Couleurs
+    BLEU_HEADER = colors.HexColor('#4a90d9')
+    BLEU_CLAIR = colors.HexColor('#e8f4fd')
+    VERT_ACQUIS = colors.HexColor('#c8e6c9')
+    JAUNE_ENCOURS = colors.HexColor('#fff9c4')
+    ROUGE_NONACQUIS = colors.HexColor('#ffcdd2')
+    GRIS_TOTAL = colors.HexColor('#37474f')
+    
+    table_total_width = width - 2.4*cm
+    margin_left = 1.2*cm
+    
+    # Récupérer les appréciations depuis bulletin_data
+    appreciations = bulletin_data.get('appreciations', [])
+    matieres = bulletin_data.get('matieres', [])
+    
+    # En-tête du tableau
+    header = ['DOMAINE D\'ACTIVITÉ', 'APPRÉCIATION', 'COMMENTAIRE']
+    data = [header]
+    
+    # Mapping des appréciations
+    APPRECIATION_DISPLAY = {
+        'TRES_BIEN_ACQUIS': 'Très Bien Acquis',
+        'BIEN_ACQUIS': 'Bien Acquis',
+        'EN_COURS': 'En Cours d\'Acquisition',
+        'NON_ACQUIS': 'Non Acquis',
+    }
+    
+    # Si on a des appréciations, les afficher
+    if appreciations:
+        for app in appreciations:
+            matiere_nom = app.get('matiere', '-')
+            appreciation = app.get('appreciation', '-')
+            commentaire = app.get('commentaire', '')
+            absent = app.get('absent', False)
+            
+            if absent:
+                appreciation_display = 'Absent'
+            else:
+                appreciation_display = APPRECIATION_DISPLAY.get(appreciation, appreciation)
+            
+            data.append([matiere_nom, appreciation_display, commentaire or '-'])
+    elif matieres:
+        # Sinon, afficher les matières avec un message
+        for matiere in matieres:
+            nom_matiere = str(matiere.get('matiere', '-'))
+            if hasattr(matiere.get('matiere'), 'nom'):
+                nom_matiere = matiere['matiere'].nom
+            data.append([nom_matiere, 'Non évalué', '-'])
+    else:
+        data.append(['Aucune activité', '-', '-'])
+    
+    # Largeurs de colonnes
+    col_widths = [table_total_width * 0.35, table_total_width * 0.30, table_total_width * 0.35]
+    
+    table = Table(data, colWidths=col_widths)
+    
+    # Styles du tableau
+    style = [
+        # En-tête
+        ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+        
+        # Corps
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('ALIGN', (1, 1), (1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('LEFTPADDING', (0, 1), (0, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        
+        # Grille
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        
+        # Alternance de couleurs
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+    ]
+    
+    # Colorer les appréciations selon leur valeur
+    for i, row in enumerate(data[1:], start=1):
+        appreciation = row[1]
+        if 'Très Bien' in appreciation:
+            style.append(('BACKGROUND', (1, i), (1, i), VERT_ACQUIS))
+        elif 'Bien Acquis' in appreciation:
+            style.append(('BACKGROUND', (1, i), (1, i), colors.HexColor('#a5d6a7')))
+        elif 'En Cours' in appreciation:
+            style.append(('BACKGROUND', (1, i), (1, i), JAUNE_ENCOURS))
+        elif 'Non Acquis' in appreciation:
+            style.append(('BACKGROUND', (1, i), (1, i), ROUGE_NONACQUIS))
+    
+    table.setStyle(TableStyle(style))
+    
+    # Dessiner le tableau
+    table_w, table_h = table.wrap(width, height)
+    table.drawOn(c, margin_left, y - table_h)
+    
+    # ===== SECTION RÉSULTATS (Appréciation générale) =====
+    y = y - table_h - 1*cm
+    
+    # Boîte d'appréciation générale
+    c.setFillColor(BLEU_CLAIR)
+    c.rect(1.2*cm, y - 2*cm, table_total_width, 2*cm, fill=1, stroke=1)
+    
+    c.setFillColor(colors.HexColor('#1976d2'))
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(1.4*cm, y - 0.4*cm, "APPRÉCIATION GÉNÉRALE")
+    
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 9)
+    appreciation_generale = bulletin_data.get('appreciation', 'Suivi pédagogique qualitatif - Évaluation par compétences')
+    c.drawString(1.4*cm, y - 1*cm, appreciation_generale)
+    
+    mention = bulletin_data.get('mention', 'Suivi continu')
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(1.4*cm, y - 1.6*cm, f"Mention : {mention}")
+    
+    # ===== SIGNATURES =====
+    y -= 3*cm
+    
+    sig_width = 6*cm
+    
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(1.2*cm + sig_width/2, y, "L'Éducateur(trice)")
+    c.setStrokeColor(colors.black)
+    c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(1.2*cm + sig_width/2, y - 1.8*cm, "Signature")
+    
+    dir_x = width - 1.2*cm - sig_width
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(dir_x + sig_width/2, y, "Le Directeur / La Directrice")
+    c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")
+    
+    # ===== MÉTHODE D'ÉVALUATION =====
+    y -= 2.5*cm
+    
+    c.setFillColor(colors.HexColor('#f5f5f5'))
+    c.rect(1.2*cm, y - 1.5*cm, table_total_width, 1.5*cm, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#1976d2'))
+    c.setLineWidth(2)
+    c.line(1.2*cm, y, 1.2*cm, y - 1.5*cm)
+    c.setLineWidth(1)
+    
+    c.setFillColor(colors.HexColor('#1976d2'))
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(1.4*cm, y - 0.3*cm, "MÉTHODE D'ÉVALUATION - MATERNELLE / GARDERIE")
+    
+    c.setFillColor(colors.HexColor('#333333'))
+    c.setFont("Helvetica", 7)
+    c.drawString(1.4*cm, y - 0.6*cm, "• Évaluation qualitative par compétences (pas de notes numériques)")
+    c.drawString(1.4*cm, y - 0.9*cm, "• Appréciations : Très Bien Acquis | Bien Acquis | En Cours d'Acquisition | Non Acquis")
+    c.drawString(1.4*cm, y - 1.2*cm, "• Suivi individualisé du développement de l'enfant")
 
 
 def generer_excel(bulletin_data):
@@ -509,9 +1093,43 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
     
+    # Déterminer le type de système pour l'affichage
+    system_type = 'mensuel'
+    if 'TRIMESTRE' in periode:
+        system_type = 'trimestriel'
+    elif 'SEMESTRE' in periode:
+        system_type = 'semestriel'
+    
     # Calculer le bulletin
     calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
     bulletin_data = calculateur.generer_bulletin()
+    
+    # Ajouter le system_type et la période
+    bulletin_data['system_type'] = system_type
+    bulletin_data['periode'] = periode
+    
+    # Pour trimestre/semestre, enrichir avec les moyennes mensuelles détaillées
+    if system_type in ['trimestriel', 'semestriel']:
+        from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+        
+        periode_type_detail = 'trimestre' if system_type == 'trimestriel' else 'semestre'
+        matieres_enrichies = []
+        
+        for mat_data in bulletin_data.get('matieres', []):
+            mat_obj = mat_data.get('matiere')
+            if mat_obj:
+                try:
+                    details_mensuels = calculer_bulletin_avec_details_mensuels(
+                        eleve, mat_obj, periode_type_detail, periode
+                    )
+                    mat_data['moyennes_mensuelles'] = details_mensuels.get('moyennes_mensuelles', [])
+                    mat_data['note_composition'] = details_mensuels.get('note_composition')
+                    mat_data['moyenne_continue'] = details_mensuels.get('moyenne_continue')
+                except:
+                    pass
+            matieres_enrichies.append(mat_data)
+        
+        bulletin_data['matieres'] = matieres_enrichies
     
     # Chemin du logo
     ecole = eleve.classe.ecole
@@ -519,8 +1137,11 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     if hasattr(ecole, 'logo') and ecole.logo:
         logo_path = ecole.logo.path
     
-    # Générer le PDF
-    pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path)
+    # Ajouter le matricule aux données du bulletin
+    bulletin_data['matricule'] = eleve.matricule
+    
+    # Générer le PDF avec l'école
+    pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path, ecole)
     
     # Réponse HTTP
     response = HttpResponse(pdf_buffer, content_type='application/pdf')
@@ -562,3 +1183,668 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
+
+
+@login_required
+def bulletins_classe_pdf(request, classe_note_id, periode):
+    """Génère tous les bulletins d'une classe en un seul PDF - VERSION OPTIMISÉE"""
+    import re
+    
+    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    
+    # Récupérer tous les élèves de la classe
+    classe_eleve = Classe.objects.filter(
+        nom=classe_note.nom,
+        annee_scolaire=classe_note.annee_scolaire,
+        ecole=classe_note.ecole
+    ).first()
+    
+    if not classe_eleve:
+        return HttpResponse("Classe non trouvée", status=404)
+    
+    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+    
+    if not eleves:
+        return HttpResponse("Aucun élève dans cette classe", status=404)
+    
+    # Déterminer le système
+    systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
+    
+    # Chemin du logo
+    ecole = classe_note.ecole
+    logo_path = None
+    if hasattr(ecole, 'logo') and ecole.logo:
+        logo_path = ecole.logo.path
+    
+    # ===== OPTIMISATION: Pré-calculer le classement pour tous les élèves =====
+    from notes.calculs_moyennes import calculer_classement_classe
+    
+    # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
+    matieres = MatiereNote.objects.filter(classe=classe_note)
+    
+    # Déterminer le type de système
+    system_type = 'mensuel'
+    if 'TRIMESTRE' in periode:
+        system_type = 'trimestriel'
+    elif 'SEMESTRE' in periode:
+        system_type = 'semestriel'
+    
+    # Calculer le classement une seule fois pour toute la classe
+    classement_result = calculer_classement_classe(eleves, matieres, periode, system_type)
+    
+    # Extraire les données pré-calculées
+    rang_map = classement_result.get('rang_map', {})
+    moyennes_map = classement_result.get('moyennes_par_eleve', {})
+    details_map = classement_result.get('details_par_eleve', {})
+    
+    total_eleves = len(eleves)
+    
+    # Pré-charger le logo une seule fois
+    logo_reader = None
+    if logo_path:
+        try:
+            logo_reader = ImageReader(logo_path)
+        except:
+            pass
+    
+    # ===== Générer un seul PDF multi-pages =====
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    
+    # Import pour les détails mensuels (trimestre/semestre)
+    from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+    
+    # Déterminer le type de période pour les détails mensuels
+    periode_type_detail = None
+    if system_type == 'trimestriel':
+        periode_type_detail = 'trimestre'
+    elif system_type == 'semestriel':
+        periode_type_detail = 'semestre'
+    
+    for idx, eleve in enumerate(eleves):
+        try:
+            # Utiliser les données pré-calculées si disponibles
+            if eleve.id in details_map:
+                details = details_map[eleve.id]
+                matieres_data = details.get('details_matieres', [])
+                
+                # Pour trimestre/semestre, enrichir avec les moyennes mensuelles détaillées
+                if periode_type_detail and matieres:
+                    matieres_enrichies = []
+                    for mat_data in matieres_data:
+                        mat_obj = mat_data.get('matiere')
+                        if mat_obj:
+                            # Récupérer les détails mensuels
+                            try:
+                                details_mensuels = calculer_bulletin_avec_details_mensuels(
+                                    eleve, mat_obj, periode_type_detail, periode
+                                )
+                                mat_data['moyennes_mensuelles'] = details_mensuels.get('moyennes_mensuelles', [])
+                                mat_data['note_composition'] = details_mensuels.get('note_composition')
+                                mat_data['moyenne_continue'] = details_mensuels.get('moyenne_continue')
+                            except:
+                                pass
+                        matieres_enrichies.append(mat_data)
+                    matieres_data = matieres_enrichies
+                
+                bulletin_data = {
+                    'eleve': f"{eleve.prenom} {eleve.nom}",
+                    'classe': classe_note.nom,
+                    'periode': periode,
+                    'system_type': system_type,
+                    'matieres': matieres_data,
+                    'moyenne_generale': details.get('moyenne_generale'),
+                    'total_points': details.get('total_points'),
+                    'total_coefficients': details.get('total_coefficients'),
+                    'rang': rang_map.get(eleve.id, '-'),
+                    'mention': obtenir_mention_intelligente(details.get('moyenne_generale')),
+                    'matricule': eleve.matricule,
+                    'total_eleves': total_eleves,
+                }
+            else:
+                # Fallback: calculer si pas dans le cache
+                calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
+                bulletin_data = calculateur.generer_bulletin()
+                bulletin_data['rang'] = rang_map.get(eleve.id, '-')
+                bulletin_data['matricule'] = eleve.matricule
+                bulletin_data['total_eleves'] = total_eleves
+                bulletin_data['system_type'] = system_type
+            
+            # Dessiner le bulletin sur la page courante (passer le logo pré-chargé)
+            _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader)
+            
+            # Nouvelle page sauf pour le dernier élève
+            if idx < len(eleves) - 1:
+                c.showPage()
+                
+        except Exception as e:
+            print(f"Erreur pour {eleve.nom} {eleve.prenom}: {str(e)}")
+            # Ajouter une page vide avec message d'erreur
+            c.setFont("Helvetica", 12)
+            c.drawString(2*cm, A4[1]/2, f"Erreur pour {eleve.nom} {eleve.prenom}")
+            if idx < len(eleves) - 1:
+                c.showPage()
+            continue
+    
+    c.save()
+    buffer.seek(0)
+    
+    # Nettoyer le nom de fichier
+    nom_classe_clean = re.sub(r'[^\w\s-]', '', classe_note.nom).replace(' ', '_')
+    filename = f"bulletins_{nom_classe_clean}_{periode}.pdf"
+    
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+
+def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None):
+    """Dessine un bulletin sur la page courante du canvas - fonction interne optimisée"""
+    width, height = A4
+    
+    # Couleurs du design (constantes)
+    BLEU_HEADER = colors.HexColor('#4a90d9')
+    BLEU_CLAIR = colors.HexColor('#e8f4fd')
+    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')
+    VERT_MOY = colors.HexColor('#c8e6c9')
+    ROUGE_PTS = colors.HexColor('#ffcdd2')
+    ROUGE_DRAPEAU = colors.HexColor('#CE1126')
+    JAUNE_DRAPEAU = colors.HexColor('#FCD116')
+    VERT_DRAPEAU = colors.HexColor('#009460')
+    GRIS_TOTAL = colors.HexColor('#37474f')
+    
+    MENTION_COLORS = {
+        'EXCELLENT': colors.HexColor('#1b5e20'),
+        'TRÈS BIEN': colors.HexColor('#2e7d32'),
+        'BIEN': colors.HexColor('#0277bd'),
+        'ASSEZ BIEN': colors.HexColor('#f9a825'),
+        'PASSABLE': colors.HexColor('#ef6c00'),
+        'INSUFFISANT': colors.HexColor('#c62828'),
+        'FAIBLE': colors.HexColor('#b71c1c'),
+    }
+    
+    # Utiliser le logo pré-chargé ou le charger si nécessaire
+    img_reader = logo_reader
+    if img_reader is None and logo_path:
+        try:
+            img_reader = ImageReader(logo_path)
+        except:
+            pass
+    
+    # ===== FILIGRANE =====
+    if img_reader:
+        try:
+            c.saveState()
+            c.setFillAlpha(0.08)
+            filigrane_size = 14 * cm
+            x = (width - filigrane_size) / 2
+            y = (height - filigrane_size) / 2
+            c.drawImage(img_reader, x, y, width=filigrane_size, height=filigrane_size, 
+                       preserveAspectRatio=True, mask='auto')
+            c.restoreState()
+        except:
+            pass
+    
+    # ===== EN-TÊTE =====
+    if img_reader:
+        try:
+            c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                       preserveAspectRatio=True, mask='auto')
+        except:
+            pass
+    
+    # Drapeau guinéen
+    drapeau_x = width - 2.5*cm
+    drapeau_y = height - 2.2*cm
+    drapeau_w = 1.2*cm
+    drapeau_h = 0.8*cm
+    c.setFillColor(ROUGE_DRAPEAU)
+    c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(JAUNE_DRAPEAU)
+    c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(VERT_DRAPEAU)
+    c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    
+    # Textes en-tête
+    y_header = height - 1.2*cm
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(width/2, y_header, "RÉPUBLIQUE DE GUINÉE")
+    
+    y_header -= 0.5*cm
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(ROUGE_DRAPEAU)
+    c.drawCentredString(width/2 - 1.8*cm, y_header, "Travail")
+    c.setFillColor(JAUNE_DRAPEAU)
+    c.drawCentredString(width/2, y_header, "Justice")
+    c.setFillColor(VERT_DRAPEAU)
+    c.drawCentredString(width/2 + 1.8*cm, y_header, "Solidarité")
+    c.setFillColor(colors.black)
+    c.drawCentredString(width/2 - 0.9*cm, y_header, "-")
+    c.drawCentredString(width/2 + 0.9*cm, y_header, "-")
+    
+    y_header -= 0.45*cm
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(width/2, y_header, "MPU-A")
+    
+    y_header -= 0.5*cm
+    c.setFont("Helvetica-Bold", 10)
+    nom_ecole = ecole.nom.upper() if ecole else "GROUPE SCOLAIRE"
+    c.drawCentredString(width/2, y_header, nom_ecole)
+    
+    y_header -= 0.6*cm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {bulletin_data['periode'].upper()}")
+    
+    c.setFont("Helvetica", 7)
+    c.setFillColor(colors.HexColor('#666666'))
+    c.drawRightString(width - 1.2*cm, y_header, "Année Scolaire 2024-2025")
+    
+    # Ligne de séparation
+    y_header -= 0.4*cm
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.5)
+    c.line(1.2*cm, y_header, width - 1.2*cm, y_header)
+    c.setLineWidth(1)
+    
+    # ===== INFORMATIONS ÉLÈVE =====
+    y = y_header - 0.6*cm
+    
+    eleve_nom_complet = bulletin_data.get('eleve', '')
+    parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
+    prenom = parties[0] if len(parties) > 0 else ''
+    nom = parties[1] if len(parties) > 1 else ''
+    
+    info_data = [
+        [('NOM', nom.upper()), ('PRÉNOM', prenom.title()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
+        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
+    ]
+    
+    info_total_width = width - 2.4*cm
+    box_width = (info_total_width - 0.4*cm) / 3
+    box_height = 0.9*cm
+    
+    for row_idx, row in enumerate(info_data):
+        for col_idx, (label, value) in enumerate(row):
+            x = 1.2*cm + col_idx * (box_width + 0.2*cm)
+            box_y = y - row_idx * (box_height + 0.15*cm)
+            
+            c.setFillColor(BLEU_CLAIR)
+            c.rect(x, box_y - box_height, box_width, box_height, fill=1, stroke=0)
+            c.setStrokeColor(colors.HexColor('#b3d4fc'))
+            c.rect(x, box_y - box_height, box_width, box_height, fill=0, stroke=1)
+            
+            c.setFillColor(colors.HexColor('#1976d2'))
+            c.setFont("Helvetica-Bold", 7)
+            c.drawString(x + 0.15*cm, box_y - 0.3*cm, label)
+            
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(x + 0.15*cm, box_y - 0.7*cm, str(value))
+    
+    # ===== TABLEAU DES NOTES =====
+    y -= 2.3*cm
+    
+    table_total_width = width - 2.4*cm
+    margin_left = 1.2*cm
+    
+    # Déterminer le type de système
+    system_type = bulletin_data.get('system_type', 'mensuel')
+    periode = bulletin_data.get('periode', '')
+    
+    # Détecter le niveau scolaire
+    from notes.calculs_moyennes import detecter_niveau_scolaire
+    classe_nom = bulletin_data.get('classe', '')
+    niveau_scolaire = detecter_niveau_scolaire(classe_nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    est_maternelle = (niveau_scolaire == 'MATERNELLE')
+    
+    # MATERNELLE/GARDERIE: Afficher les appréciations au lieu des notes
+    if est_maternelle:
+        _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole)
+        return
+    
+    # Déterminer les mois selon la période pour trimestre/semestre
+    mois_labels = []
+    if system_type == 'trimestriel':
+        if 'TRIMESTRE_1' in periode or '1' in periode:
+            mois_labels = ['Oct.', 'Nov.', 'Déc.']
+        elif 'TRIMESTRE_2' in periode or '2' in periode:
+            mois_labels = ['Jan.', 'Fév.', 'Mars']
+        elif 'TRIMESTRE_3' in periode or '3' in periode:
+            mois_labels = ['Avr.', 'Mai', 'Juin']
+    elif system_type == 'semestriel':
+        if 'SEMESTRE_1' in periode or '1' in periode:
+            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.', 'Fév.']
+        elif 'SEMESTRE_2' in periode or '2' in periode:
+            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
+    
+    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
+    if system_type == 'trimestriel' and mois_labels:
+        if est_primaire:
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        else:
+            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    elif system_type == 'semestriel' and mois_labels:
+        if est_primaire:
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        else:
+            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    else:
+        if est_primaire:
+            data = [['MATIÈRE', 'NOTE', 'MOY', 'PTS']]
+            nb_cols = 4
+        else:
+            data = [['MATIÈRE', 'COEF', 'NOTE', 'MOY', 'PTS']]
+            nb_cols = 5
+    
+    total_coef = 0
+    total_moy = 0
+    total_points = 0
+    nb_matieres_avec_moy = 0
+    
+    for matiere in bulletin_data['matieres']:
+        nom_matiere = str(matiere.get('matiere', '-'))
+        if hasattr(matiere.get('matiere'), 'nom'):
+            nom_matiere = matiere['matiere'].nom
+        
+        coef = float(matiere.get('coefficient', 1))
+        moy_continue = matiere.get('moyenne_continue')
+        note_compo = matiere.get('note_composition')
+        moyenne = matiere.get('moyenne') or matiere.get('moyenne_calculee')
+        points = matiere.get('points')
+        
+        if points is None and moyenne:
+            points = moyenne * coef
+        
+        # Récupérer les moyennes mensuelles si disponibles
+        moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+        
+        total_coef += coef
+        if moyenne:
+            total_moy += moyenne
+            nb_matieres_avec_moy += 1
+        if points:
+            total_points += points
+        
+        if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+            # Construire la ligne avec les détails mensuels
+            if est_primaire:
+                row = [nom_matiere]  # Sans COEF pour primaire
+            else:
+                row = [nom_matiere, f"{coef:.0f}"]
+            
+            # Ajouter les notes mensuelles
+            for i, mois_label in enumerate(mois_labels):
+                note_mois = '-'
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_mens = moyennes_mensuelles[i]
+                    if isinstance(moy_mens, dict):
+                        val = moy_mens.get('moyenne')
+                        if val is not None:
+                            note_mois = f"{val:.2f}"
+                    elif moy_mens is not None:
+                        note_mois = f"{moy_mens:.2f}"
+                row.append(note_mois)
+            
+            # Ajouter Moy.C, Compo, MOY, PTS
+            row.append(f"{moy_continue:.2f}" if moy_continue else '-')
+            row.append(f"{note_compo:.2f}" if note_compo else '-')
+            row.append(f"{moyenne:.2f}" if moyenne else '-')
+            row.append(f"{points:.2f}" if points else '-')
+            data.append(row)
+        else:
+            # Mensuel
+            cours_str = f"{moy_continue:.2f}" if moy_continue else '-'
+            moyenne_str = f"{moyenne:.2f}" if moyenne else '-'
+            points_str = f"{points:.2f}" if points else '-'
+            if est_primaire:
+                data.append([nom_matiere, cours_str, moyenne_str, points_str])
+            else:
+                data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
+    
+    # Ligne TOTAL
+    if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+        if est_primaire:
+            total_row = ['TOTAL']
+        else:
+            total_row = ['TOTAL', f"{total_coef:.0f}"]
+        total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
+        total_row += ['-', '-']  # Moy.C et Compo
+        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
+        total_row.append(f"{total_points:.2f}")
+        data.append(total_row)
+    else:
+        if est_primaire:
+            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+        else:
+            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+    
+    # Calculer les largeurs de colonnes
+    if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+        # Répartition: MATIÈRE 25%, reste divisé équitablement
+        col_matiere = table_total_width * 0.22
+        nb_autres_cols = nb_cols - 1
+        col_autres = (table_total_width - col_matiere) / nb_autres_cols
+        col_widths = [col_matiere] + [col_autres] * nb_autres_cols
+    else:
+        if est_primaire:
+            col_matiere = table_total_width * 0.40
+            col_autres = (table_total_width - col_matiere) / 3
+            col_widths = [col_matiere, col_autres, col_autres, col_autres]
+        else:
+            col_matiere = table_total_width * 0.35
+            col_autres = (table_total_width - col_matiere) / 4
+            col_widths = [col_matiere, col_autres, col_autres, col_autres, col_autres]
+    
+    table = Table(data, colWidths=col_widths)
+    
+    # Styles de base
+    style = [
+        ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -2), 8),
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        ('LEFTPADDING', (0, 1), (0, -1), 5),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
+        ('TOPPADDING', (0, 1), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 9),
+    ]
+    
+    # Colonnes MOY et PTS avec couleurs (position varie selon le système et le niveau)
+    if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+        # Colonnes dynamiques: MOY = avant-dernière colonne, PTS = dernière colonne
+        col_moy = nb_cols - 2
+        col_pts = nb_cols - 1
+        style.extend([
+            ('BACKGROUND', (col_moy, 1), (col_moy, -2), VERT_MOY),
+            ('FONTNAME', (col_moy, 1), (col_moy, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
+            ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
+            # Réduire la taille de police pour les colonnes nombreuses
+            ('FONTSIZE', (0, 0), (-1, 0), 7),
+            ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ])
+    else:
+        if est_primaire:
+            # Primaire: 4 colonnes: MATIÈRE | NOTE | MOY | PTS (sans COEF)
+            style.extend([
+                ('BACKGROUND', (2, 1), (2, -2), VERT_MOY),    # MOY = colonne 2
+                ('FONTNAME', (2, 1), (2, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (3, 1), (3, -2), ROUGE_PTS),   # PTS = colonne 3
+                ('FONTNAME', (3, 1), (3, -1), 'Helvetica-Bold'),
+            ])
+        else:
+            # 5 colonnes: MATIÈRE | COEF | NOTE | MOY | PTS
+            style.extend([
+                ('BACKGROUND', (3, 1), (3, -2), VERT_MOY),    # MOY = colonne 3
+                ('FONTNAME', (3, 1), (3, -1), 'Helvetica-Bold'),
+                ('BACKGROUND', (4, 1), (4, -2), ROUGE_PTS),   # PTS = colonne 4
+                ('FONTNAME', (4, 1), (4, -1), 'Helvetica-Bold'),
+            ])
+    
+    table.setStyle(TableStyle(style))
+    table_w, table_h = table.wrap(width, height)
+    table.drawOn(c, margin_left, y - table_h)
+    
+    # ===== SECTION RÉSULTATS =====
+    y = y - table_h - 0.8*cm
+    
+    result_total_width = width - 2.4*cm
+    col_width = (result_total_width - 0.4*cm) / 3
+    col_height = 1.4*cm
+    start_x = 1.2*cm
+    
+    # MOYENNE GÉNÉRALE
+    c.setFillColor(colors.white)
+    c.rect(start_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(start_x + col_width/2, y - 0.35*cm, "MOYENNE GÉNÉRALE")
+    c.setFont("Helvetica-Bold", 16)
+    moy_gen = bulletin_data.get('moyenne_generale')
+    moy_str = f"{moy_gen:.2f}/20" if moy_gen else '-'
+    c.drawCentredString(start_x + col_width/2, y - 1*cm, moy_str)
+    
+    # RANG
+    rang_x = start_x + col_width + 0.2*cm
+    c.setFillColor(colors.white)
+    c.rect(rang_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(rang_x + col_width/2, y - 0.35*cm, "RANG")
+    c.setFont("Helvetica-Bold", 16)
+    rang = bulletin_data.get('rang', '-')
+    c.drawCentredString(rang_x + col_width/2, y - 1*cm, str(rang))
+    
+    # MENTION
+    mention_x = start_x + 2*(col_width + 0.2*cm)
+    c.setFillColor(colors.white)
+    c.rect(mention_x, y - col_height, col_width, col_height, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(mention_x + col_width/2, y - 0.35*cm, "MENTION")
+    
+    mention = bulletin_data.get('mention', '-')
+    mention_upper = mention.upper() if mention else '-'
+    mention_color = MENTION_COLORS.get(mention_upper, colors.HexColor('#666666'))
+    
+    badge_width = min(4*cm, col_width - 0.4*cm)
+    badge_height = 0.6*cm
+    badge_x = mention_x + (col_width - badge_width) / 2
+    badge_y = y - 1.15*cm
+    
+    c.setFillColor(mention_color)
+    c.roundRect(badge_x, badge_y, badge_width, badge_height, 3, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(mention_x + col_width/2, badge_y + 0.15*cm, mention_upper)
+    
+    # ===== APPRÉCIATION =====
+    y -= col_height + 0.6*cm
+    
+    appreciation_height = 1.2*cm
+    c.setFillColor(BLEU_APPRECIATION)
+    c.rect(1.2*cm, y - appreciation_height, width - 2.4*cm, appreciation_height, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#90caf9'))
+    c.rect(1.2*cm, y - appreciation_height, width - 2.4*cm, appreciation_height, fill=0, stroke=1)
+    
+    c.setFillColor(colors.HexColor('#1565c0'))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(1.4*cm, y - 0.35*cm, "APPRÉCIATION DU CONSEIL DE CLASSE")
+    
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Oblique", 8)
+    appreciation = bulletin_data.get('appreciation') or 'Bon travail. Continuez vos efforts.'
+    if appreciation and len(appreciation) > 100:
+        appreciation = appreciation[:97] + '...'
+    c.drawString(1.4*cm, y - 0.85*cm, appreciation)
+    
+    # ===== SIGNATURES =====
+    y -= appreciation_height + 0.8*cm
+    
+    sig_width = 6*cm
+    
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(1.2*cm + sig_width/2, y, "Censeur de l'établissement")
+    c.setStrokeColor(colors.black)
+    c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(1.2*cm + sig_width/2, y - 1.8*cm, "Signature")
+    
+    dir_x = width - 1.2*cm - sig_width
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
+    c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")
+    
+    # ===== MÉTHODE DE CALCUL =====
+    y -= 2.5*cm
+    
+    c.setFillColor(colors.HexColor('#f5f5f5'))
+    c.rect(1.2*cm, y - 1.8*cm, width - 2.4*cm, 1.8*cm, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#1976d2'))
+    c.setLineWidth(2)
+    c.line(1.2*cm, y, 1.2*cm, y - 1.8*cm)
+    c.setLineWidth(1)
+    
+    c.setFillColor(colors.HexColor('#1976d2'))
+    c.setFont("Helvetica-Bold", 8)
+    
+    # Texte pour les points (différent pour primaire)
+    points_text = "• Points : Moyenne (pas de coefficient pour le primaire)" if est_primaire else "• Points : Moyenne × Coefficient"
+    
+    # Adapter le texte selon le système
+    if system_type == 'trimestriel':
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du trimestre")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition du trimestre")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+    elif system_type == 'semestriel':
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du semestre")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition (examen) du semestre")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+    else:
+        titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• Note : Moyenne des notes d'évaluations continues du mois")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moyenne : Égale à la note du cours pour le système mensuel")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    
+    c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
+    
+    # ===== PIED DE PAGE =====
+    c.setFillColor(colors.HexColor('#999999'))
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(width/2, 0.8*cm, "© 2025 Myschool. Tous droits réservés. +224 622613559 | faraleno16@gmail.com")
+    c.drawCentredString(width/2, 0.5*cm, f"Bulletin généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")

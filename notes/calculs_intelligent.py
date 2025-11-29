@@ -212,7 +212,7 @@ def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = 
         return f"Résultats très insuffisants. Une remise en question complète est nécessaire."
 
 
-def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = None) -> str:
+def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = None, est_ex_aequo: bool = False) -> str:
     """
     Formate le rang avec accord grammatical intelligent
     
@@ -220,9 +220,10 @@ def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = No
         rang: Position dans le classement
         sexe: 'M' pour masculin, 'F' pour féminin
         total_eleves: Nombre total d'élèves (optionnel)
+        est_ex_aequo: True si l'élève est ex-æquo avec d'autres
         
     Returns:
-        Rang formaté avec accord grammatical (ex: "1er/25", "1ère/25", "2ème/25")
+        Rang formaté avec accord grammatical (ex: "1er/25", "1ère/25", "2ème ex-æquo/25")
     """
     if rang is None or rang == 0:
         return "-"
@@ -233,11 +234,12 @@ def formater_rang_intelligent(rang: int, sexe: str = 'M', total_eleves: int = No
     else:
         rang_str = f"{rang}ème"
     
-    # Ajouter le total si disponible (sans "ème" sur le total)
-    if total_eleves:
-        return f"{rang_str}/{total_eleves}"
-    else:
-        return rang_str
+    # Ajouter "ex" si c'est le cas
+    if est_ex_aequo and rang > 1:
+        rang_str += " ex"
+    
+    # Ne pas ajouter le total pour un affichage plus compact
+    return rang_str
 
 
 def calculer_rang_intelligent(moyennes_eleves: List[Dict]) -> List[Dict]:
@@ -269,6 +271,10 @@ def calculer_rang_intelligent(moyennes_eleves: List[Dict]) -> List[Dict]:
     rang_actuel = 1
     total_eleves = len(eleves_avec_moyenne)
     
+    # Compter les occurrences de chaque moyenne pour détecter les ex-æquo
+    from collections import Counter
+    moyennes_occurrences = Counter([e['moyenne'] for e in eleves_tries])
+    
     for i, eleve in enumerate(eleves_tries):
         # Gérer les ex-aequo
         if i > 0 and abs(eleve['moyenne'] - eleves_tries[i-1]['moyenne']) < Decimal('0.01'):
@@ -278,9 +284,13 @@ def calculer_rang_intelligent(moyennes_eleves: List[Dict]) -> List[Dict]:
         
         rang_actuel += 1
         
-        # Formater le rang avec accord grammatical (sans le total)
+        # Détecter si c'est un ex-æquo
+        moyenne_actuelle = eleve['moyenne']
+        est_ex_aequo = moyennes_occurrences[moyenne_actuelle] > 1
+        
+        # Formater le rang avec accord grammatical
         sexe = eleve.get('sexe', 'M')
-        eleve['rang'] = formater_rang_intelligent(eleve['rang_num'], sexe)
+        eleve['rang'] = formater_rang_intelligent(eleve['rang_num'], sexe, total_eleves, est_ex_aequo)
         # Stocker aussi le total pour les vues qui en ont besoin
         eleve['total_eleves'] = total_eleves
         

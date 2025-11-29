@@ -203,16 +203,16 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
             <div class="btn-group gap-2">
-                <button class="btn btn-danger btn-sm" onclick="telechargerClassementPDF()">
-                    <i class="fas fa-file-pdf me-1"></i>Télécharger Classement PDF
+                <button class="btn btn-danger btn-sm" onclick="exporterResultatsPDF()">
+                    <i class="fas fa-file-pdf me-1"></i>Exporter PDF
                 </button>
-                <button class="btn btn-primary btn-sm" onclick="exportToExcel()">
-                    <i class="fas fa-file-excel me-1"></i>Télécharger Classement Excel
+                <button class="btn btn-success btn-sm" onclick="exporterResultatsExcel()">
+                    <i class="fas fa-file-excel me-1"></i>Exporter Excel
                 </button>
                 <button class="btn btn-outline-secondary btn-sm" onclick="imprimerTableauNotes()">
                     <i class="fas fa-print me-1"></i>Imprimer
                 </button>
-                <a href="{% url 'notes:importer_notes' %}" class="btn btn-success btn-sm">
+                <a href="{% url 'notes:importer_notes' %}" class="btn btn-info btn-sm">
                     <i class="fas fa-file-upload me-1"></i>Importer Notes
                 </a>
             </div>
@@ -377,63 +377,7 @@
 
 {% load static %}
 {% block extra_js %}
-<script src="{% static 'js/html2pdf.bundle.min.js' %}"></script>
 <script>
-window.addEventListener('load', function() {
-    if (typeof html2pdf !== 'undefined') {
-        console.log('html2pdf.js chargé avec succès (local).');
-    } else {
-        console.error('html2pdf.js n\'a pas pu être chargé (local).');
-    }
-});
-
-function telechargerClassementPDF() {
-    const container = document.querySelector('.table-card');
-    const table = document.getElementById('notesTableComplete');
-    if (!container || !table) {
-        alert("Aucun classement à exporter en PDF.");
-        return;
-    }
-
-    if (typeof html2pdf === 'undefined') {
-        alert("La bibliothèque de génération PDF n'est pas disponible.");
-        return;
-    }
-
-    const classe = '{{ classe_selectionnee.nom|default:"classe" }}'.replace(/\s+/g, '_');
-    const periode = '{{ periode_selectionnee|default:"toutes_periodes" }}'.replace(/\s+/g, '_');
-    const filename = `classement_${classe}_${periode}.pdf`;
-
-    const options = {
-        margin: [10, 10, 10, 10],
-        filename: filename,
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    };
-
-    html2pdf().set(options).from(container).save();
-}
-
-function exportToExcel() {
-    const table = document.getElementById('notesTableComplete');
-    if (!table) {
-        alert("Aucun tableau de classement disponible pour l'export.");
-        return;
-    }
-
-    const classe = '{{ classe_selectionnee.nom|default:"classe" }}'.replace(/\s+/g, '_');
-    const periode = '{{ periode_selectionnee|default:"toutes_periodes" }}'.replace(/\s+/g, '_');
-    const filename = `classement_${classe}_${periode}.xls`;
-
-    const blob = new Blob([`\ufeff${table.outerHTML}`], { type: 'application/vnd.ms-excel' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
-}
-
 // Filtres dynamiques pour la vue complète
 document.addEventListener('DOMContentLoaded', function() {
     const filtreMatiere = document.getElementById('filtreMatiere');
@@ -617,7 +561,55 @@ function imprimerTableauNotes() {
     window.open(url, '_blank');
 }
 
-// Include html2pdf is handled at top of this block
+// Fonction pour exporter les résultats en PDF
+function exporterResultatsPDF() {
+    const classeId = "{{ classe_selectionnee.id|default:'' }}";
+    // Récupérer la période depuis le sélecteur du formulaire
+    const periodeSelect = document.getElementById('periode');
+    const periode = periodeSelect ? periodeSelect.value : '';
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    // Construire l'URL pour l'export PDF
+    let url = "{% url 'notes:exporter_resultats_pdf' %}?classe_id=" + classeId;
+    if (periode) {
+        url += "&periode=" + encodeURIComponent(periode);
+    }
+    
+    // Ouvrir dans un nouvel onglet pour télécharger
+    window.open(url, '_blank');
+}
+
+// Fonction pour exporter les résultats en Excel
+function exporterResultatsExcel() {
+    const classeId = "{{ classe_selectionnee.id|default:'' }}";
+    // Récupérer la période depuis le sélecteur du formulaire
+    const periodeSelect = document.getElementById('periode');
+    const periode = periodeSelect ? periodeSelect.value : '';
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    // Construire l'URL pour l'export Excel
+    let url = "{% url 'notes:exporter_resultats_excel' %}?classe_id=" + classeId;
+    if (periode) {
+        url += "&periode=" + encodeURIComponent(periode);
+    }
+    
+    // Télécharger via un lien
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'resultats_classe.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 </script>
 {% endblock %}
 {% endblock %}
