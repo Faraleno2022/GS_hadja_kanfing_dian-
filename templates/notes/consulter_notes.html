@@ -376,41 +376,15 @@
 </div>
 
 {% block extra_js %}
+<script src="{% static 'js/html2pdf.bundle.min.js' %}"></script>
 <script>
-// Tentative de chargement de html2pdf depuis plusieurs sources
-function loadHtml2Pdf() {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    script.integrity = 'sha512-YcsIP0ckR5Q8Zg+UtYRFEs0u9B6L9I7DiIP9N6byN1Nsx3Rp3XIan+FJxuxMxDPZWS9Vyuk3F7S2X3pG4a0dJQ==';
-    script.crossOrigin = 'anonymous';
-    script.referrerPolicy = 'no-referrer';
-    
-    script.onload = function() {
-        console.log('html2pdf.js chargé avec succès.');
-        window.html2pdfLoaded = true;
-    };
-    
-    script.onerror = function() {
-        console.error('html2pdf.js n\'a pas pu être chargé depuis cdnjs.');
-        // Essayer une autre source
-        const fallbackScript = document.createElement('script');
-        fallbackScript.src = 'https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js';
-        fallbackScript.onload = function() {
-            console.log('html2pdf.js chargé avec succès depuis unpkg.');
-            window.html2pdfLoaded = true;
-        };
-        fallbackScript.onerror = function() {
-            console.error('html2pdf.js n\'a pas pu être chargé depuis aucune source.');
-            window.html2pdfLoaded = false;
-        };
-        document.head.appendChild(fallbackScript);
-    };
-    
-    document.head.appendChild(script);
-}
-
-// Charger au démarrage
-loadHtml2Pdf();
+window.addEventListener('load', function() {
+    if (typeof html2pdf !== 'undefined') {
+        console.log('html2pdf.js chargé avec succès (local).');
+    } else {
+        console.error('html2pdf.js n\'a pas pu être chargé (local).');
+    }
+});
 
 function telechargerClassementPDF() {
     const container = document.querySelector('.table-card');
@@ -420,14 +394,8 @@ function telechargerClassementPDF() {
         return;
     }
 
-    // Attendre que html2pdf soit chargé
     if (typeof html2pdf === 'undefined') {
-        if (window.html2pdfLoaded === false) {
-            alert("La bibliothèque de génération PDF n'est pas disponible. Vérifiez votre connexion internet.");
-            return;
-        }
-        // Attendre un peu et réessayer
-        setTimeout(() => telechargerClassementPDF(), 500);
+        alert("La bibliothèque de génération PDF n'est pas disponible.");
         return;
     }
 
