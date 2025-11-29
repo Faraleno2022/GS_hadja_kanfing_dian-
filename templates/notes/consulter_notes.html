@@ -203,6 +203,9 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
             <div class="btn-group gap-2">
+                <button class="btn btn-danger btn-sm" onclick="telechargerClassementPDF()">
+                    <i class="fas fa-file-pdf me-1"></i>Télécharger Classement PDF
+                </button>
                 <button class="btn btn-primary btn-sm" onclick="exportToExcel()">
                     <i class="fas fa-file-excel me-1"></i>Télécharger Classement Excel
                 </button>
@@ -382,6 +385,35 @@ window.addEventListener('load', function() {
         console.error('html2pdf.js n\'a pas pu être chargé.');
     }
 });
+
+function telechargerClassementPDF() {
+    const container = document.querySelector('.table-card');
+    const table = document.getElementById('notesTableComplete');
+    if (!container || !table) {
+        alert("Aucun classement à exporter en PDF.");
+        return;
+    }
+
+    if (typeof html2pdf === 'undefined') {
+        alert("La bibliothèque de génération PDF n'est pas disponible.");
+        return;
+    }
+
+    const classe = '{{ classe_selectionnee.nom|default:"classe" }}'.replace(/\s+/g, '_');
+    const periode = '{{ periode_selectionnee|default:"toutes_periodes" }}'.replace(/\s+/g, '_');
+    const filename = `classement_${classe}_${periode}.pdf`;
+
+    const options = {
+        margin: [10, 10, 10, 10],
+        filename: filename,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(options).from(container).save();
+}
+
 function exportToExcel() {
     const table = document.getElementById('notesTableComplete');
     if (!table) {
