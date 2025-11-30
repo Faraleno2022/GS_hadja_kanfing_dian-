@@ -6643,9 +6643,19 @@ def consulter_notes(request):
                 periodes_codes = [p[0] for p in periodes_disponibles]
                 if 'OCTOBRE' not in periodes_codes:
                     periode_pour_calcul = periodes_disponibles[0][0]
+                # IMPORTANT: Mettre à jour periode_classement pour la recherche des notes
+                periode_classement = periode_pour_calcul
             
             # Calculer les rangs et moyennes avec la fonction centralisée
             rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_calcul, use_cache=False)
+            
+            # Définir les listes de périodes pour la classification
+            periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+            periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+            periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
+            
+            # Import des modèles nécessaires (une seule fois)
+            from .models import NoteMensuelle, CompositionNote
             
             # Pour chaque élève, récupérer toutes ses notes pour l'affichage
             for eleve in eleves:
@@ -6656,11 +6666,7 @@ def consulter_notes(request):
                 moyenne_generale = float(rang_info['moyenne']) if rang_info else None
                 rang = rang_info['rang'] if rang_info else '-'
                 
-                # Déterminer le type de système selon la période
-                # Import des modèles nécessaires
-                from .models import NoteMensuelle, CompositionNote
-                
-                if periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+                if periode_classement in periodes_mensuelles:
                     # Système mensuel - chercher dans NoteMensuelle ET NoteEleve
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
@@ -6731,9 +6737,6 @@ def consulter_notes(request):
                         notes_par_matiere[matiere.id] = notes_matiere
                 else:
                     # Système trimestriel/semestriel - chercher dans CompositionNote ET NoteEleve
-                    periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
-                    periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
-                    
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
                         eval_factice = type('EvalFactice', (), {
