@@ -3,6 +3,7 @@ from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
 from . import views_rappels
 from .whatsapp_recu import apercu_message_whatsapp_recu, apercu_message_whatsapp_note_rappel
+from .recu_public import recu_public_pdf, note_rappel_public_pdf
 
 app_name = 'paiements'
 
@@ -81,6 +82,10 @@ urlpatterns = [
     # WhatsApp - Envoi de reçus et notes de rappel
     path('whatsapp/apercu-recu/', apercu_message_whatsapp_recu, name='apercu_whatsapp_recu'),
     path('whatsapp/apercu-note-rappel/', apercu_message_whatsapp_note_rappel, name='apercu_whatsapp_note_rappel'),
+    
+    # URLs publiques (téléchargement sans authentification via token)
+    path('recu-public/<int:paiement_id>/', recu_public_pdf, name='recu_public_pdf'),
+    path('note-rappel-public/<int:eleve_id>/', note_rappel_public_pdf, name='note_rappel_public_pdf'),
 ]
 
 

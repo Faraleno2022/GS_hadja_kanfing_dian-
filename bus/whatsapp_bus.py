@@ -193,14 +193,13 @@ def apercu_message_whatsapp_abonnement(request):
         eleve = abonnement.eleve
         telephone = whatsapp_bus_sender._get_telephone_parent(eleve)
         
-        # Générer l'URL du PDF
+        # Générer l'URL PUBLIQUE du PDF (sans authentification requise - validité 7 jours)
         pdf_url = None
         try:
-            base_url = request.build_absolute_uri('/')[:-1]
-            pdf_path = reverse('bus:recu_pdf', args=[abonnement.id])
-            pdf_url = f"{base_url}{pdf_path}"
+            from .abonnement_public import generer_url_abonnement_public
+            pdf_url = generer_url_abonnement_public(request, abonnement.id)
         except Exception as e:
-            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+            logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
         
         # Générer le message
         message = whatsapp_bus_sender._generer_message_abonnement(abonnement, pdf_url)
@@ -259,14 +258,13 @@ def apercu_message_whatsapp_expiration(request):
         eleve = abonnement.eleve
         telephone = whatsapp_bus_sender._get_telephone_parent(eleve)
         
-        # Générer l'URL du PDF
+        # Générer l'URL PUBLIQUE du PDF (sans authentification requise - validité 7 jours)
         pdf_url = None
         try:
-            base_url = request.build_absolute_uri('/')[:-1]
-            pdf_path = reverse('bus:recu_pdf', args=[abonnement.id])
-            pdf_url = f"{base_url}{pdf_path}"
+            from .abonnement_public import generer_url_abonnement_public
+            pdf_url = generer_url_abonnement_public(request, abonnement.id)
         except Exception as e:
-            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+            logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
         
         # Générer le message d'expiration
         message = whatsapp_bus_sender._generer_message_expiration(abonnement, pdf_url)

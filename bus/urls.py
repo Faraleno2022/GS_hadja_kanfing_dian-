@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import views_cantine
 from .whatsapp_bus import apercu_message_whatsapp_abonnement, apercu_message_whatsapp_expiration
+from .abonnement_public import abonnement_public_pdf
 
 app_name = 'bus'
 
@@ -32,4 +33,7 @@ urlpatterns = [
     # WhatsApp - Abonnements Bus
     path('whatsapp/apercu-abonnement/', apercu_message_whatsapp_abonnement, name='apercu_whatsapp_abonnement'),
     path('whatsapp/apercu-expiration/', apercu_message_whatsapp_expiration, name='apercu_whatsapp_expiration'),
+    
+    # URL publique (téléchargement sans authentification via token - validité 7 jours)
+    path('recu-public/<int:abonnement_id>/', abonnement_public_pdf, name='recu_public_pdf'),
 ]

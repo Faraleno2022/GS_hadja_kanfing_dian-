@@ -121,14 +121,13 @@ def apercu_message_whatsapp_recu(request):
         eleve = paiement.eleve
         telephone = whatsapp_recu_sender._get_telephone_parent(eleve)
         
-        # Générer l'URL du PDF du reçu
+        # Générer l'URL PUBLIQUE du PDF du reçu (sans authentification requise)
         pdf_url = None
         try:
-            base_url = request.build_absolute_uri('/')[:-1]
-            pdf_path = reverse('paiements:generer_recu_pdf', args=[paiement.id])
-            pdf_url = f"{base_url}{pdf_path}"
+            from .recu_public import generer_url_recu_public
+            pdf_url = generer_url_recu_public(request, paiement.id)
         except Exception as e:
-            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+            logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
         
         # Générer le message
         message = whatsapp_recu_sender._generer_message_recu(paiement, pdf_url)
@@ -292,14 +291,13 @@ def apercu_message_whatsapp_note_rappel(request):
         # Calculer le solde
         solde_info = whatsapp_note_rappel_sender._calculer_solde_eleve(eleve)
         
-        # Générer l'URL du PDF
+        # Générer l'URL PUBLIQUE du PDF (sans authentification requise)
         pdf_url = None
         try:
-            base_url = request.build_absolute_uri('/')[:-1]
-            pdf_path = reverse('paiements:generer_note_rappel_pdf', args=[eleve.id])
-            pdf_url = f"{base_url}{pdf_path}"
+            from .recu_public import generer_url_note_rappel_public
+            pdf_url = generer_url_note_rappel_public(request, eleve.id)
         except Exception as e:
-            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+            logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
         
         # Générer le message
         message = whatsapp_note_rappel_sender._generer_message_note_rappel(eleve, solde_info, pdf_url)
