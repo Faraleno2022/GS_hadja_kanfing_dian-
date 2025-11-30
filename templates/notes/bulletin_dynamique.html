@@ -787,7 +787,9 @@
             <thead>
                 <tr>
                     <th rowspan="2">MATIÈRE</th>
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <th rowspan="2">COEF</th>
+                    {% endif %}
                     {% if system_type == 'mensuel' %}
                         <th rowspan="2">NOTE</th>
                     {% elif system_type == 'trimestre' %}
@@ -804,7 +806,9 @@
                         <th colspan="3">MOYENNES SEMESTRIELLES</th>
                     {% endif %}
                     <th rowspan="2">MOY</th>
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <th rowspan="2">PTS</th>
+                    {% endif %}
                 </tr>
                 <tr>
                     {% if system_type == 'trimestre' %}
@@ -845,7 +849,9 @@
                 {% for matiere_note in bulletin_data.matieres_notes %}
                 <tr>
                     <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <td>{{ matiere_note.coefficient }}</td>
+                    {% endif %}
                     
                     {% if system_type == 'mensuel' %}
                         <!-- Affichage mensuel classique -->
@@ -929,6 +935,7 @@
                             -
                         {% endif %}
                     </td>
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <td style="background: #f8d7da; font-weight: bold; color: #721c24;">
                         {% if matiere_note.points %}
                             {{ matiere_note.points|floatformat:2 }}
@@ -936,6 +943,7 @@
                             -
                         {% endif %}
                     </td>
+                    {% endif %}
                 </tr>
                 {% empty %}
                 <tr>
@@ -955,6 +963,7 @@
                         <i class="fas fa-calculator"></i> TOTAUX
                     </td>
                     
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <!-- Colonne COEF: Total des coefficients -->
                     <td style="background: #e3f2fd; text-align: center; font-weight: bold; color: #1565c0;">
                         {% if bulletin_data.total_coefficients %}
@@ -963,6 +972,7 @@
                             -
                         {% endif %}
                     </td>
+                    {% endif %}
                     
                     {% if system_type == 'mensuel' %}
                         <!-- Mensuel: colonne NOTE -->
@@ -1085,6 +1095,7 @@
                         {% endif %}
                     </td>
                     
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <!-- Colonne PTS: Total des points (même valeur que MOY) -->
                     <td style="background: #e3f2fd; text-align: center; font-weight: bold; color: #1565c0;">
                         {% if bulletin_data.total_points %}
@@ -1093,6 +1104,7 @@
                             -
                         {% endif %}
                     </td>
+                    {% endif %}
                 </tr>
             </tfoot>
         </table>
@@ -1106,7 +1118,9 @@
                 <div><span style="background: #e8f4fd; padding: 1px 3px;">■</span> Moyenne continue</div>
                 <div><span style="background: #fff3cd; padding: 1px 3px;">■</span> Composition</div>
                 <div><span style="background: #d4edda; padding: 1px 3px;">■</span> Moyenne finale</div>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <div><span style="background: #f8d7da; padding: 1px 3px;">■</span> Points</div>
+                {% endif %}
                 <div><span style="color: red; font-weight: bold;">ABS</span> = Absent</div>
             </div>
             <div style="margin-top: 4px; font-style: italic; color: #6c757d;">
@@ -1169,7 +1183,11 @@
                         <strong>📈 Formule :</strong> Moyenne = Somme des notes / Nombre d'évaluations
                     </p>
                     <p style="margin: 2px 0; color: #555;">
+                        {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
+                        <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                        {% else %}
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient)) / Σ Coefficients
+                        {% endif %}
                     </p>
                 {% elif system_type == 'trimestre' %}
                     <p style="margin: 2px 0; color: #555;">
@@ -1182,7 +1200,11 @@
                         <strong>⚖️ Pondération :</strong> La composition et les contrôles continus ont le même poids (50% chacun)
                     </p>
                     <p style="margin: 2px 0; color: #555;">
+                        {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
+                        <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                        {% else %}
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                        {% endif %}
                     </p>
                 {% elif system_type == 'semestre' %}
                     <p style="margin: 2px 0; color: #555;">
@@ -1195,7 +1217,11 @@
                         <strong>⚖️ Pondération :</strong> L'examen semestriel et les contrôles continus ont le même poids (50% chacun)
                     </p>
                     <p style="margin: 2px 0; color: #555;">
+                        {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
+                        <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                        {% else %}
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                        {% endif %}
                     </p>
                 {% elif system_type == 'annuel' %}
                     <p style="margin: 2px 0; color: #555;">
@@ -1205,7 +1231,11 @@
                         <strong>📈 Formule :</strong> Moyenne = (Moy. 1er Semestre + Moy. 2ème Semestre) / 2
                     </p>
                     <p style="margin: 2px 0; color: #555;">
+                        {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
+                        <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                        {% else %}
                         <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                        {% endif %}
                     </p>
                 {% endif %}
                 <p style="margin: 3px 0 2px 0; color: #333; border-top: 1px dashed #ccc; padding-top: 2px;">

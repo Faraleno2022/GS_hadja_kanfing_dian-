@@ -19,45 +19,48 @@ MATIERES_COLLEGE = [
 ]
 
 # Matières par défaut pour le PRIMAIRE CYCLE 1 (1ère, 2ème, 3ème année)
+# NOTE: Pas de coefficients pour le primaire - toutes les matières ont le même poids
 MATIERES_PRIMAIRE_CYCLE1 = [
-    {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': 1.0},
-    {'nom': 'Sciences d\'observation', 'code': 'SCI', 'coefficient': 1.0},
-    {'nom': 'Lecture', 'code': 'LECT', 'coefficient': 1.0},
-    {'nom': 'Langage', 'code': 'LANG', 'coefficient': 1.0},
-    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': 1.0},
-    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': 1.0},
-    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': 1.0},
+    {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': None},
+    {'nom': 'Sciences d\'observation', 'code': 'SCI', 'coefficient': None},
+    {'nom': 'Lecture', 'code': 'LECT', 'coefficient': None},
+    {'nom': 'Langage', 'code': 'LANG', 'coefficient': None},
+    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': None},
+    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': None},
+    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': None},
 ]
 
 # Matières par défaut pour le PRIMAIRE CYCLE 2 (4ème, 5ème, 6ème année - CP, CE, CM)
+# NOTE: Pas de coefficients pour le primaire - toutes les matières ont le même poids
 MATIERES_PRIMAIRE_CYCLE2 = [
-    {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': 1.0},
-    {'nom': 'Dictée et Questions', 'code': 'DICQ', 'coefficient': 1.0},
-    {'nom': 'Géographie', 'code': 'GEO', 'coefficient': 1.0},
-    {'nom': 'Histoire', 'code': 'HIS', 'coefficient': 1.0},
-    {'nom': 'E.C.M', 'code': 'ECM', 'coefficient': 1.0},
-    {'nom': 'Rédaction', 'code': 'RED', 'coefficient': 1.0},
-    {'nom': 'Sciences d\'observation', 'code': 'SCI', 'coefficient': 1.0},
-    {'nom': 'Lecture', 'code': 'LECT', 'coefficient': 1.0},
-    {'nom': 'Langage', 'code': 'LANG', 'coefficient': 1.0},
-    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': 1.0},
-    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': 1.0},
-    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': 1.0},
-    {'nom': 'EPS', 'code': 'EPS', 'coefficient': 1.0},
+    {'nom': 'Calcul écrit', 'code': 'CALC', 'coefficient': None},
+    {'nom': 'Dictée et Questions', 'code': 'DICQ', 'coefficient': None},
+    {'nom': 'Géographie', 'code': 'GEO', 'coefficient': None},
+    {'nom': 'Histoire', 'code': 'HIS', 'coefficient': None},
+    {'nom': 'E.C.M', 'code': 'ECM', 'coefficient': None},
+    {'nom': 'Rédaction', 'code': 'RED', 'coefficient': None},
+    {'nom': 'Sciences d\'observation', 'code': 'SCI', 'coefficient': None},
+    {'nom': 'Lecture', 'code': 'LECT', 'coefficient': None},
+    {'nom': 'Langage', 'code': 'LANG', 'coefficient': None},
+    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': None},
+    {'nom': 'Récitation et chant', 'code': 'REC', 'coefficient': None},
+    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': None},
+    {'nom': 'EPS', 'code': 'EPS', 'coefficient': None},
 ]
 
 # Alias pour compatibilité
 MATIERES_PRIMAIRE = MATIERES_PRIMAIRE_CYCLE2
 
 # Matières par défaut pour la MATERNELLE
+# NOTE: Pas de coefficients pour la maternelle - évaluation qualitative uniquement
 MATIERES_MATERNELLE = [
-    {'nom': 'Langage', 'code': 'LANG', 'coefficient': 1.0},
-    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': 1.0},
-    {'nom': 'Calcul', 'code': 'CALC', 'coefficient': 1.0},
-    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': 1.0},
-    {'nom': 'Récitation/Chant', 'code': 'REC', 'coefficient': 1.0},
-    {'nom': 'Jeux éducatifs', 'code': 'JEUX', 'coefficient': 1.0},
-    {'nom': 'Psychomotricité', 'code': 'PSYCH', 'coefficient': 1.0},
+    {'nom': 'Langage', 'code': 'LANG', 'coefficient': None},
+    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': None},
+    {'nom': 'Calcul', 'code': 'CALC', 'coefficient': None},
+    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': None},
+    {'nom': 'Récitation/Chant', 'code': 'REC', 'coefficient': None},
+    {'nom': 'Jeux éducatifs', 'code': 'JEUX', 'coefficient': None},
+    {'nom': 'Psychomotricité', 'code': 'PSYCH', 'coefficient': None},
 ]
 
 # Matières par défaut pour le LYCÉE - Série Sciences Mathématiques (11ème SM, 12ème SM)

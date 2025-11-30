@@ -71,7 +71,9 @@
         <thead>
             <tr>
                 <th rowspan="2">MATIÈRE</th>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <th rowspan="2">COEF</th>
+                {% endif %}
                 {% if system_type == 'mensuel' %}
                     <th rowspan="2">NOTE</th>
                 {% elif system_type == 'trimestre' %}
@@ -84,7 +86,9 @@
                     <th colspan="2">SEMESTRES</th>
                 {% endif %}
                 <th rowspan="2">MOY</th>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <th rowspan="2">PTS</th>
+                {% endif %}
             </tr>
             <tr>
                 {% if system_type == 'trimestre' %}
@@ -117,7 +121,9 @@
             {% for matiere_note in bulletin_data.matieres_notes %}
             <tr>
                 <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <td>{{ matiere_note.coefficient }}</td>
+                {% endif %}
                 
                 {% if system_type == 'mensuel' %}
                     <!-- Affichage mensuel classique -->
@@ -182,6 +188,7 @@
                         -
                     {% endif %}
                 </td>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <td style="background: #f8d7da; font-weight: bold; color: #721c24;">
                     {% if matiere_note.points %}
                         {{ matiere_note.points|floatformat:2 }}
@@ -189,6 +196,7 @@
                         -
                     {% endif %}
                 </td>
+                {% endif %}
             </tr>
             {% empty %}
             <tr>
@@ -204,7 +212,11 @@
         </tbody>
         <tfoot>
             <tr>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <td colspan="2"><strong>TOTAL</strong></td>
+                {% else %}
+                <td><strong>TOTAL</strong></td>
+                {% endif %}
                 {% if system_type == 'mensuel' %}
                     <td></td>
                 {% elif system_type == 'trimestre' %}
@@ -223,6 +235,7 @@
                         -
                     {% endif %}
                 </strong></td>
+                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                 <td style="background: #f8d7da; font-weight: bold; color: #721c24;"><strong>
                     {% if bulletin_data.total_points %}
                         {{ bulletin_data.total_points|floatformat:2 }}
@@ -230,6 +243,7 @@
                         -
                     {% endif %}
                 </strong></td>
+                {% endif %}
             </tr>
         </tfoot>
     </table>
@@ -243,7 +257,9 @@
             <div><span style="background: #e8f4fd; padding: 1px 3px;">■</span> Moyenne continue</div>
             <div><span style="background: #fff3cd; padding: 1px 3px;">■</span> Composition</div>
             <div><span style="background: #d4edda; padding: 1px 3px;">■</span> Moyenne finale</div>
+            {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
             <div><span style="background: #f8d7da; padding: 1px 3px;">■</span> Points</div>
+            {% endif %}
             <div><span style="color: red; font-weight: bold;">ABS</span> = Absent</div>
         </div>
         <div style="margin-top: 4px; font-style: italic; color: #6c757d;">
@@ -334,7 +350,11 @@
                 </p>
             {% endif %}
             <p style="margin: 1px 0; color: #555;">
+                {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
+                <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                {% else %}
                 <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
+                {% endif %}
             </p>
             <p style="margin: 2px 0 1px 0; color: #333; border-top: 1px dashed #ccc; padding-top: 1px;">
                 <strong>📋 Mentions :</strong> 

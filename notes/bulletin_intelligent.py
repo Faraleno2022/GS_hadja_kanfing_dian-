@@ -1527,25 +1527,25 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         elif 'SEMESTRE_2' in periode or '2' in periode:
             mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
     
-    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
+    # Adapter les colonnes selon le système ET le niveau (primaire/maternelle = sans COEF ni PTS)
     if system_type == 'trimestriel' and mois_labels:
-        if est_primaire:
-            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        if est_primaire or est_maternelle:
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
         else:
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     elif system_type == 'semestriel' and mois_labels:
-        if est_primaire:
-            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+        if est_primaire or est_maternelle:
+            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
         else:
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     else:
-        if est_primaire:
-            data = [['MATIÈRE', 'NOTE', 'MOY', 'PTS']]
-            nb_cols = 4
+        if est_primaire or est_maternelle:
+            data = [['MATIÈRE', 'NOTE', 'MOY']]
+            nb_cols = 3
         else:
             data = [['MATIÈRE', 'COEF', 'NOTE', 'MOY', 'PTS']]
             nb_cols = 5
@@ -1581,8 +1581,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         
         if system_type in ['trimestriel', 'semestriel'] and mois_labels:
             # Construire la ligne avec les détails mensuels
-            if est_primaire:
-                row = [nom_matiere]  # Sans COEF pour primaire
+            if est_primaire or est_maternelle:
+                row = [nom_matiere]  # Sans COEF pour primaire/maternelle
             else:
                 row = [nom_matiere, f"{coef:.0f}"]
             
@@ -1599,36 +1599,38 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
                         note_mois = f"{moy_mens:.2f}"
                 row.append(note_mois)
             
-            # Ajouter Moy.C, Compo, MOY, PTS
+            # Ajouter Moy.C, Compo, MOY (et PTS seulement pour collège/lycée)
             row.append(f"{moy_continue:.2f}" if moy_continue else '-')
             row.append(f"{note_compo:.2f}" if note_compo else '-')
             row.append(f"{moyenne:.2f}" if moyenne else '-')
-            row.append(f"{points:.2f}" if points else '-')
+            if not (est_primaire or est_maternelle):
+                row.append(f"{points:.2f}" if points else '-')
             data.append(row)
         else:
             # Mensuel
             cours_str = f"{moy_continue:.2f}" if moy_continue else '-'
             moyenne_str = f"{moyenne:.2f}" if moyenne else '-'
             points_str = f"{points:.2f}" if points else '-'
-            if est_primaire:
-                data.append([nom_matiere, cours_str, moyenne_str, points_str])
+            if est_primaire or est_maternelle:
+                data.append([nom_matiere, cours_str, moyenne_str])
             else:
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
     # Ligne TOTAL
     if system_type in ['trimestriel', 'semestriel'] and mois_labels:
-        if est_primaire:
+        if est_primaire or est_maternelle:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
         total_row += ['-', '-']  # Moy.C et Compo
         total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
-        total_row.append(f"{total_points:.2f}")
+        if not (est_primaire or est_maternelle):
+            total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     else:
-        if est_primaire:
-            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+        if est_primaire or est_maternelle:
+            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
         else:
             data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
@@ -1640,10 +1642,11 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         col_autres = (table_total_width - col_matiere) / nb_autres_cols
         col_widths = [col_matiere] + [col_autres] * nb_autres_cols
     else:
-        if est_primaire:
-            col_matiere = table_total_width * 0.40
-            col_autres = (table_total_width - col_matiere) / 3
-            col_widths = [col_matiere, col_autres, col_autres, col_autres]
+        if est_primaire or est_maternelle:
+            # Primaire/Maternelle: 3 colonnes (MATIÈRE, NOTE, MOY)
+            col_matiere = table_total_width * 0.50
+            col_autres = (table_total_width - col_matiere) / 2
+            col_widths = [col_matiere, col_autres, col_autres]
         else:
             col_matiere = table_total_width * 0.35
             col_autres = (table_total_width - col_matiere) / 4
