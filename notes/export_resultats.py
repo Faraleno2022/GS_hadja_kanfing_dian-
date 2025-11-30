@@ -117,31 +117,9 @@ def exporter_resultats_pdf(request):
             spaceAfter=12
         )
         
-        # En-tête avec informations de l'école
-        elements.append(Paragraph("RÉPUBLIQUE DE GUINÉE", header_style))
-        elements.append(Paragraph("Travail - Justice - Solidarité", header_style))
-        elements.append(Spacer(1, 0.3*cm))
-        
-        # Nom de l'école
+        # En-tête simplifié - Nom de l'école uniquement
         nom_ecole = ecole.nom if ecole else "École"
         elements.append(Paragraph(f"<b>{nom_ecole.upper()}</b>", school_name_style))
-        
-        # Adresse et contact
-        if ecole:
-            adresse_parts = []
-            if ecole.adresse:
-                adresse_parts.append(ecole.adresse)
-            if ecole.telephone:
-                adresse_parts.append(f"Tél: {ecole.telephone}")
-            if ecole.email:
-                adresse_parts.append(f"Email: {ecole.email}")
-            if adresse_parts:
-                elements.append(Paragraph(" | ".join(adresse_parts), header_style))
-        
-        elements.append(Spacer(1, 0.5*cm))
-        
-        # Ligne de séparation
-        elements.append(Paragraph("_" * 100, header_style))
         elements.append(Spacer(1, 0.3*cm))
         
         # Titre du document
