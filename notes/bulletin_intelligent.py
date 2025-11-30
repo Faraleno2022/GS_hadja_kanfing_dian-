@@ -351,10 +351,10 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     prenom = parties[0] if len(parties) > 0 else ''
     nom = parties[1] if len(parties) > 1 else ''
     
-    # Première ligne: NOM, PRÉNOM, MATRICULE
+    # Première ligne: PRÉNOM, NOM, MATRICULE (Prénom avant Nom)
     # Deuxième ligne: CLASSE, PÉRIODE, EFFECTIF
     info_data = [
-        [('NOM', nom.upper()), ('PRÉNOM', prenom.title()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
+        [('PRÉNOM', prenom.title()), ('NOM', nom.upper()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
         [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
     ]
     
@@ -1464,7 +1464,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     nom = parties[1] if len(parties) > 1 else ''
     
     info_data = [
-        [('NOM', nom.upper()), ('PRÉNOM', prenom.title()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
+        [('PRÉNOM', prenom.title()), ('NOM', nom.upper()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
         [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
     ]
     

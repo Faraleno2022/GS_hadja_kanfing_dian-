@@ -127,8 +127,8 @@ def exporter_resultats_pdf(request):
         elements.append(Paragraph(f"Période: {periode or 'Année complète'} | Année scolaire: {classe.annee_scolaire}", subtitle_style))
         elements.append(Spacer(1, 0.3*cm))
         
-        # Tableau des résultats
-        data = [['Rang', 'Matricule', 'Nom', 'Prénom', 'Moyenne /20', 'Mention']]
+        # Tableau des résultats (Prénom avant Nom)
+        data = [['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /20', 'Mention']]
         lignes_non_admis = []  # Pour stocker les indices des lignes avec moyenne < 10
         
         for idx, r in enumerate(resultats):
@@ -148,8 +148,8 @@ def exporter_resultats_pdf(request):
             data.append([
                 r['rang'], 
                 r['eleve'].matricule or '', 
+                r['eleve'].prenom or '',  # Prénom avant Nom
                 r['eleve'].nom or '', 
-                r['eleve'].prenom or '', 
                 f"{moy:.2f}" if moy else '-', 
                 mention if moy else '-'
             ])
@@ -330,8 +330,8 @@ def exporter_resultats_excel(request):
         ws['A7'] = f"Période: {periode or 'Année complète'} | Année scolaire: {classe.annee_scolaire}"
         ws['A7'].alignment = center_align
         
-        # En-têtes du tableau (décalés à la ligne 9)
-        headers = ['Rang', 'Matricule', 'Nom', 'Prénom', 'Moyenne /20', 'Mention']
+        # En-têtes du tableau (décalés à la ligne 9) - Prénom avant Nom
+        headers = ['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /20', 'Mention']
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=9, column=col, value=header)
             cell.font = header_font
@@ -356,8 +356,8 @@ def exporter_resultats_excel(request):
             data_row = [
                 r['rang'], 
                 r['eleve'].matricule or '', 
+                r['eleve'].prenom or '',  # Prénom avant Nom
                 r['eleve'].nom or '', 
-                r['eleve'].prenom or '', 
                 f"{moy:.2f}" if moy else '-', 
                 mention if moy else '-'
             ]
