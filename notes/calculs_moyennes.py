@@ -395,3 +395,157 @@ def formater_rang_intelligent(rang, sexe='M', total=None, est_ex_aequo=False):
     
     # Ne pas ajouter le total pour un affichage plus compact
     return rang_str
+
+
+def calculer_moyenne_annuelle_matiere(eleve, matiere, system_type='annuel_trimestriel'):
+    """
+    Calcule la moyenne annuelle d'un élève pour une matière
+    
+    Args:
+        eleve: Instance Eleve
+        matiere: Instance MatiereNote
+        system_type: 'annuel_trimestriel' (T1+T2+T3)/3 ou 'annuel_semestriel' (S1+S2)/2
+    
+    Returns:
+        dict avec:
+            - moyenne_annuelle: float ou None
+            - moyennes_periodes: dict des moyennes par période
+            - details: informations détaillées
+    """
+    moyennes_periodes = {}
+    
+    if system_type == 'annuel_trimestriel':
+        # Calculer les moyennes des 3 trimestres
+        periodes = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        for periode in periodes:
+            result = calculer_moyenne_matiere(eleve, matiere, periode, 'trimestre')
+            moyennes_periodes[periode] = result['moyenne_matiere']
+    
+    elif system_type == 'annuel_semestriel':
+        # Calculer les moyennes des 2 semestres
+        periodes = ['SEMESTRE_1', 'SEMESTRE_2']
+        for periode in periodes:
+            result = calculer_moyenne_matiere(eleve, matiere, periode, 'semestre')
+            moyennes_periodes[periode] = result['moyenne_matiere']
+    
+    # Calculer la moyenne annuelle
+    moyennes_valides = [m for m in moyennes_periodes.values() if m is not None]
+    
+    moyenne_annuelle = None
+    if moyennes_valides:
+        moyenne_annuelle = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+    
+    # Calculer les points
+    points = None
+    if moyenne_annuelle is not None:
+        try:
+            coefficient = float(matiere.coefficient) if matiere.coefficient and matiere.coefficient > 0 else 1.0
+        except (TypeError, ValueError):
+            coefficient = 1.0
+        points = round(moyenne_annuelle * coefficient, 2)
+    
+    return {
+        'moyenne_annuelle': moyenne_annuelle,
+        'moyennes_periodes': moyennes_periodes,
+        'points': points,
+    }
+
+
+def calculer_moyenne_generale_annuelle(eleve, matieres, system_type='annuel_trimestriel'):
+    """
+    Calcule la moyenne générale annuelle d'un élève
+    
+    Args:
+        eleve: Instance Eleve
+        matieres: QuerySet de MatiereNote
+        system_type: 'annuel_trimestriel' ou 'annuel_semestriel'
+    
+    Returns:
+        dict avec:
+            - moyenne_generale: float ou None
+            - total_points: float
+            - total_coefficients: float
+            - details_matieres: list de dict (une par matière)
+            - moyennes_periodes: dict des moyennes générales par période
+    """
+    # Détecter le niveau scolaire
+    niveau = 'COLLEGE'
+    if matieres.exists():
+        classe = matieres.first().classe
+        niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
+    
+    # MATERNELLE: Pas de notes
+    if niveau == 'MATERNELLE':
+        return {
+            'moyenne_generale': None,
+            'total_points': 0,
+            'total_coefficients': 0,
+            'details_matieres': [],
+            'moyennes_periodes': {},
+            'niveau': niveau,
+            'appreciations_only': True,
+        }
+    
+    total_points = Decimal('0')
+    total_coefficients = Decimal('0')
+    details_matieres = []
+    
+    # Calculer les moyennes générales par période
+    moyennes_generales_periodes = {}
+    
+    if system_type == 'annuel_trimestriel':
+        periodes = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        for periode in periodes:
+            result = calculer_moyenne_generale_eleve(eleve, matieres, periode, 'trimestre')
+            moyennes_generales_periodes[periode] = result['moyenne_generale']
+    elif system_type == 'annuel_semestriel':
+        periodes = ['SEMESTRE_1', 'SEMESTRE_2']
+        for periode in periodes:
+            result = calculer_moyenne_generale_eleve(eleve, matieres, periode, 'semestre')
+            moyennes_generales_periodes[periode] = result['moyenne_generale']
+    
+    # Calculer pour chaque matière
+    for matiere in matieres:
+        result = calculer_moyenne_annuelle_matiere(eleve, matiere, system_type)
+        
+        moyenne_matiere = result['moyenne_annuelle']
+        if moyenne_matiere is None:
+            moyenne_matiere = 0.0
+        
+        # PRIMAIRE: Pas de coefficients
+        if niveau == 'PRIMAIRE':
+            coefficient = Decimal('1')
+        else:
+            coefficient = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
+        
+        points = round(moyenne_matiere * float(coefficient), 2)
+        
+        total_points += Decimal(str(moyenne_matiere)) * coefficient
+        total_coefficients += coefficient
+        
+        details_matieres.append({
+            'matiere': matiere,
+            'moyenne_annuelle': result['moyenne_annuelle'],
+            'moyennes_periodes': result['moyennes_periodes'],
+            'moyenne': moyenne_matiere if result['moyenne_annuelle'] is not None else None,
+            'coefficient': coefficient if niveau != 'PRIMAIRE' else 1,
+            'points': points,
+        })
+    
+    # Calculer la moyenne générale annuelle
+    moyenne_generale = None
+    if total_coefficients and total_coefficients > 0:
+        try:
+            moyenne_generale = round(float(total_points / total_coefficients), 2)
+        except (ZeroDivisionError, ValueError, TypeError):
+            moyenne_generale = None
+    
+    return {
+        'moyenne_generale': moyenne_generale,
+        'total_points': round(float(total_points), 2) if total_points > 0 else 0,
+        'total_coefficients': float(total_coefficients),
+        'details_matieres': details_matieres,
+        'moyennes_periodes': moyennes_generales_periodes,
+        'niveau': niveau,
+        'appreciations_only': False,
+    }

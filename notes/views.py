@@ -6926,9 +6926,20 @@ def bulletin_dynamique(request):
                 ('SEMESTRE_1', '1er Semestre'),
                 ('SEMESTRE_2', '2ème Semestre'),
             ]
-        elif system_type == 'annuel':
+        elif system_type == 'annuel_trimestriel':
+            # Bulletin annuel basé sur les trimestres (T1+T2+T3)/3
             periodes_disponibles = [
-                ('ANNUEL', 'Bulletin Annuel'),
+                ('ANNUEL_TRIM', 'Bulletin Annuel (Trimestres)'),
+            ]
+        elif system_type == 'annuel_semestriel':
+            # Bulletin annuel basé sur les semestres (S1+S2)/2
+            periodes_disponibles = [
+                ('ANNUEL_SEM', 'Bulletin Annuel (Semestres)'),
+            ]
+        elif system_type == 'annuel':
+            # Ancien système annuel (redirige vers trimestriel par défaut)
+            periodes_disponibles = [
+                ('ANNUEL_TRIM', 'Bulletin Annuel (Trimestres)'),
             ]
         
         # Récupérer les élèves de la classe
@@ -7029,7 +7040,41 @@ def bulletin_dynamique(request):
                 
                 # Si une période est sélectionnée, récupérer les données
                 if periode and eleve_selectionne:
-                    if system_type in ['trimestre', 'semestre']:
+                    if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+                        # NOUVEAU: Bulletin annuel - calculer la moyenne des périodes
+                        from .calculs_moyennes import calculer_moyenne_annuelle_matiere
+                        
+                        result_annuel = calculer_moyenne_annuelle_matiere(
+                            eleve_selectionne, matiere, system_type
+                        )
+                        
+                        # La moyenne annuelle devient la moyenne de la matière
+                        moyenne_continue = result_annuel['moyenne_annuelle']
+                        note_composition = None  # Pas de composition pour le bulletin annuel
+                        
+                        # Préparer les moyennes par période pour l'affichage
+                        moyennes_mensuelles = []
+                        if system_type == 'annuel_trimestriel':
+                            periodes_labels = [
+                                ('TRIMESTRE_1', '1er Trim.'),
+                                ('TRIMESTRE_2', '2ème Trim.'),
+                                ('TRIMESTRE_3', '3ème Trim.'),
+                            ]
+                        else:
+                            periodes_labels = [
+                                ('SEMESTRE_1', '1er Sem.'),
+                                ('SEMESTRE_2', '2ème Sem.'),
+                            ]
+                        
+                        for code, label in periodes_labels:
+                            moy_periode = result_annuel['moyennes_periodes'].get(code)
+                            moyennes_mensuelles.append({
+                                'libelle': label,
+                                'moyenne': moy_periode,
+                                'absent': moy_periode is None
+                            })
+                        
+                    elif system_type in ['trimestre', 'semestre']:
                         # NOUVEAU: Utiliser les moyennes mensuelles détaillées
                         from .utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
                         
@@ -7108,9 +7153,13 @@ def bulletin_dynamique(request):
                 # Calculer la moyenne de la matière selon le système guinéen
                 # Si trimestre/semestre: moyenne = (moyenne_continue + composition) / 2 (poids égal)
                 # Si mensuel: moyenne = moyenne_continue uniquement (pas de composition)
+                # Si annuel: moyenne = moyenne des périodes (T1+T2+T3)/3 ou (S1+S2)/2
                 moyenne_matiere = None
                 
-                if system_type == 'mensuel':
+                if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+                    # Pour les bulletins annuels, moyenne_continue contient déjà la moyenne annuelle
+                    moyenne_matiere = moyenne_continue
+                elif system_type == 'mensuel':
                     moyenne_matiere = moyenne_continue
                 elif moyenne_continue is not None and note_composition is not None:
                     # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
@@ -7131,7 +7180,26 @@ def bulletin_dynamique(request):
                 
                 # Préparer les notes pour l'affichage
                 notes_matiere = []
-                if system_type in ['trimestre', 'semestre']:
+                if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+                    # Bulletin annuel: afficher les moyennes par période
+                    if moyennes_mensuelles:
+                        for moy_periode in moyennes_mensuelles:
+                            notes_matiere.append({
+                                'note': moy_periode['moyenne'],
+                                'absent': moy_periode['absent'],
+                                'libelle': moy_periode['libelle'],
+                                'type': 'periode'
+                            })
+                    
+                    # Ajouter la moyenne annuelle
+                    notes_matiere.append({
+                        'note': moyenne_matiere,
+                        'absent': False,
+                        'libelle': 'Moy. Annuelle',
+                        'type': 'annuelle'
+                    })
+                    
+                elif system_type in ['trimestre', 'semestre']:
                     # NOUVEAU: Inclure les moyennes mensuelles détaillées
                     if moyennes_mensuelles:
                         # Ajouter les moyennes mensuelles

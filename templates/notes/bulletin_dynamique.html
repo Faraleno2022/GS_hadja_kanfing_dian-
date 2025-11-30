@@ -612,7 +612,8 @@
                         <option value="mensuel" {% if system_type == 'mensuel' %}selected{% endif %}>Mensuel</option>
                         <option value="trimestre" {% if system_type == 'trimestre' %}selected{% endif %}>Trimestriel</option>
                         <option value="semestre" {% if system_type == 'semestre' %}selected{% endif %}>Semestriel</option>
-                        <option value="annuel" {% if system_type == 'annuel' %}selected{% endif %}>Annuel</option>
+                        <option value="annuel_trimestriel" {% if system_type == 'annuel_trimestriel' %}selected{% endif %}>Annuel (T1+T2+T3)/3</option>
+                        <option value="annuel_semestriel" {% if system_type == 'annuel_semestriel' %}selected{% endif %}>Annuel (S1+S2)/2</option>
                     </select>
                 </div>
                 
@@ -795,8 +796,12 @@
                     {% elif system_type == 'semestre' %}
                         <!-- NOUVEAU: Affichage dynamique des mois du semestre -->
                         <th colspan="7">DÉTAILS SEMESTRIEL</th>
-                    {% elif system_type == 'annuel' %}
-                        <th colspan="2">SEMESTRES</th>
+                    {% elif system_type == 'annuel_trimestriel' %}
+                        <!-- Bulletin annuel basé sur les trimestres -->
+                        <th colspan="4">MOYENNES TRIMESTRIELLES</th>
+                    {% elif system_type == 'annuel_semestriel' %}
+                        <!-- Bulletin annuel basé sur les semestres -->
+                        <th colspan="3">MOYENNES SEMESTRIELLES</th>
                     {% endif %}
                     <th rowspan="2">MOY</th>
                     <th rowspan="2">PTS</th>
@@ -822,9 +827,17 @@
                         {% endif %}
                         <th>Moy. Cont.</th>
                         <th>Compo</th>
-                    {% elif system_type == 'annuel' %}
-                        <th>1er Sem</th>
-                        <th>2ème Sem</th>
+                    {% elif system_type == 'annuel_trimestriel' %}
+                        <!-- Colonnes pour bulletin annuel trimestriel: T1 + T2 + T3 + Moy. Annuelle -->
+                        <th>1er Trim.</th>
+                        <th>2ème Trim.</th>
+                        <th>3ème Trim.</th>
+                        <th>Moy. Ann.</th>
+                    {% elif system_type == 'annuel_semestriel' %}
+                        <!-- Colonnes pour bulletin annuel semestriel: S1 + S2 + Moy. Annuelle -->
+                        <th>1er Sem.</th>
+                        <th>2ème Sem.</th>
+                        <th>Moy. Ann.</th>
                     {% endif %}
                 </tr>
             </thead>
@@ -885,9 +898,28 @@
                                 -
                             {% endif %}
                         </td>
-                    {% elif system_type == 'annuel' %}
-                        <!-- Affichage annuel (semestres) -->
-                        <td colspan="2">Données annuelles</td>
+                    {% elif system_type == 'annuel_trimestriel' or system_type == 'annuel_semestriel' %}
+                        <!-- Affichage bulletin annuel: moyennes par période -->
+                        {% if matiere_note.moyennes_mensuelles %}
+                            {% for moy_periode in matiere_note.moyennes_mensuelles %}
+                                <td style="background: #e8f4fd;">
+                                    {% if moy_periode.absent %}
+                                        <span style="color: red; font-weight: bold;">-</span>
+                                    {% elif moy_periode.moyenne is not None %}
+                                        <span style="color: #2c5aa0; font-weight: bold;">{{ moy_periode.moyenne|floatformat:2 }}</span>
+                                    {% else %}
+                                        <span style="color: #999;">-</span>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        {% else %}
+                            <!-- Si pas de données, afficher des colonnes vides -->
+                            {% if system_type == 'annuel_trimestriel' %}
+                                <td>-</td><td>-</td><td>-</td><td>-</td>
+                            {% elif system_type == 'annuel_semestriel' %}
+                                <td>-</td><td>-</td><td>-</td>
+                            {% endif %}
+                        {% endif %}
                     {% endif %}
                     
                     <td style="background: #d4edda; font-weight: bold; color: #155724;">
