@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import views_cantine
+from .whatsapp_bus import apercu_message_whatsapp_abonnement, apercu_message_whatsapp_expiration
 
 app_name = 'bus'
 
@@ -27,4 +28,8 @@ urlpatterns = [
     path('cantine/export/excel/', views_cantine.export_cantine_excel, name='export_cantine_excel'),
     path('cantine/api/alertes/', views_cantine.alertes_cantine_json, name='alertes_cantine_json'),
     path('cantine/api/eleve/<int:eleve_id>/', views_cantine.get_eleve_info_json, name='get_eleve_info_json'),
+    
+    # WhatsApp - Abonnements Bus
+    path('whatsapp/apercu-abonnement/', apercu_message_whatsapp_abonnement, name='apercu_whatsapp_abonnement'),
+    path('whatsapp/apercu-expiration/', apercu_message_whatsapp_expiration, name='apercu_whatsapp_expiration'),
 ]

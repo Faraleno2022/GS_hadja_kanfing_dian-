@@ -209,8 +209,11 @@
       <td>{{ a.zone }}</td>
       <td>{{ a.point_arret }}</td>
       <td>
-        <a class="btn btn-sm btn-outline-primary" href="{% url 'bus:modifier' a.id %}"><i class="fas fa-edit"></i></a>
-        <a class="btn btn-sm btn-outline-secondary" href="{% url 'bus:recu_pdf' a.id %}" target="_blank"><i class="fas fa-file-pdf"></i></a>
+        <div class="btn-group btn-group-sm">
+          <a class="btn btn-outline-primary" href="{% url 'bus:modifier' a.id %}" title="Modifier"><i class="fas fa-edit"></i></a>
+          <a class="btn btn-outline-secondary" href="{% url 'bus:recu_pdf' a.id %}" target="_blank" title="Reçu PDF"><i class="fas fa-file-pdf"></i></a>
+          <button type="button" class="btn btn-success" onclick="envoyerAbonnementWhatsApp({{ a.id }})" title="Envoyer par WhatsApp"><i class="fab fa-whatsapp"></i></button>
+        </div>
       </td>
     </tr>
     {% empty %}
@@ -221,4 +224,167 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}{% endblock %}
+{% block extra_js %}
+<!-- Modal WhatsApp pour abonnement bus -->
+<div class="modal fade" id="whatsappBusModal" tabindex="-1" aria-labelledby="whatsappBusModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: #25D366; color: white;">
+                <h5 class="modal-title" id="whatsappBusModalLabel">
+                    <i class="fab fa-whatsapp me-2"></i>Envoyer l'abonnement par WhatsApp
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="whatsappBusContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                        <p class="mt-2">Préparation du message...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" id="btnOuvrirWhatsAppBus" disabled>
+                    <i class="fab fa-whatsapp me-2"></i>Ouvrir WhatsApp
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let whatsappBusModal;
+let currentWhatsAppLinkBus = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    whatsappBusModal = new bootstrap.Modal(document.getElementById('whatsappBusModal'));
+    
+    document.getElementById('btnOuvrirWhatsAppBus').addEventListener('click', function() {
+        if (currentWhatsAppLinkBus) {
+            window.open(currentWhatsAppLinkBus, '_blank');
+            whatsappBusModal.hide();
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show mb-3';
+            alertDiv.innerHTML = `
+                <i class="fab fa-whatsapp me-2"></i>
+                <strong>WhatsApp ouvert !</strong> Le message avec le reçu d'abonnement a été pré-rempli.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            const container = document.querySelector('.container-fluid') || document.querySelector('form');
+            if (container) {
+                container.parentNode.insertBefore(alertDiv, container);
+                window.scrollTo(0, 0);
+            }
+        }
+    });
+});
+
+function envoyerAbonnementWhatsApp(aboId) {
+    whatsappBusModal.show();
+    chargerApercuWhatsAppBus(aboId);
+}
+
+function chargerApercuWhatsAppBus(aboId) {
+    const content = document.getElementById('whatsappBusContent');
+    const btnOuvrir = document.getElementById('btnOuvrirWhatsAppBus');
+    
+    btnOuvrir.disabled = true;
+    currentWhatsAppLinkBus = null;
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p class="mt-2">Préparation du message...</p>
+        </div>
+    `;
+    
+    fetch(`{% url 'bus:apercu_whatsapp_abonnement' %}?abo_id=${aboId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                afficherApercuWhatsAppBus(data);
+                if (data.whatsapp_link) {
+                    currentWhatsAppLinkBus = data.whatsapp_link;
+                    btnOuvrir.disabled = false;
+                }
+            } else {
+                content.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>Erreur:</strong> ${data.error}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Erreur:</strong> Erreur de connexion
+                </div>
+            `;
+        });
+}
+
+function afficherApercuWhatsAppBus(data) {
+    const content = document.getElementById('whatsappBusContent');
+    
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-5">
+                <h6><i class="fas fa-bus me-2"></i>Détails de l'abonnement</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <p><strong>Élève:</strong> ${data.eleve_nom}</p>
+                        <p><strong>Classe:</strong> ${data.classe}</p>
+                        <hr>
+                        <p><strong>Périodicité:</strong> ${data.periodicite}</p>
+                        <p><strong>Montant:</strong> <span class="badge bg-primary">${data.montant} GNF</span></p>
+                        <p><strong>Début:</strong> ${data.date_debut}</p>
+                        <p><strong>Expiration:</strong> ${data.date_expiration}</p>
+                        <p><strong>Statut:</strong> ${data.statut}</p>
+                        <p><strong>Zone:</strong> ${data.zone}</p>
+                        <p class="mb-0"><strong>Point d'arrêt:</strong> ${data.point_arret}</p>
+                    </div>
+                </div>
+                
+                ${data.pdf_url ? `
+                <div class="alert alert-success mt-3">
+                    <i class="fas fa-file-pdf me-2"></i>
+                    <strong>Reçu PDF inclus !</strong><br>
+                    <small>Le lien de téléchargement sera inclus dans le message.</small>
+                </div>
+                ` : ''}
+                
+                ${!data.telephone ? `
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Attention:</strong> Aucun numéro WhatsApp trouvé.
+                </div>
+                ` : `
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-phone me-2"></i>
+                    <strong>Destinataire:</strong> ${data.telephone}
+                </div>
+                `}
+            </div>
+            
+            <div class="col-md-7">
+                <h6><i class="fab fa-whatsapp me-2"></i>Aperçu du message</h6>
+                <div class="card">
+                    <div class="card-body" style="background: #e7ffdb; font-family: 'Segoe UI', sans-serif; max-height: 350px; overflow-y: auto;">
+                        <div style="white-space: pre-line; font-size: 13px;">${data.message}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+</script>
+{% endblock %}
