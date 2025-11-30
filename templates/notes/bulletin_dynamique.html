@@ -1300,8 +1300,8 @@ function chargerApercuWhatsApp() {
         </div>
     `;
     
-    // Appel AJAX pour l'aperçu
-    fetch(`{% url 'notes:apercu_message_whatsapp' %}?eleve_id=${currentBulletinData.eleve_id}&periode=${currentBulletinData.periode}&system_type=${currentBulletinData.system_type}`)
+    // Appel AJAX pour l'aperçu (inclut classe_id pour générer le lien PDF)
+    fetch(`{% url 'notes:apercu_message_whatsapp' %}?eleve_id=${currentBulletinData.eleve_id}&classe_id=${currentBulletinData.classe_id}&periode=${currentBulletinData.periode}&system_type=${currentBulletinData.system_type}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -1340,6 +1340,14 @@ function afficherApercuWhatsApp(data) {
                     </div>
                 </div>
                 
+                ${data.pdf_url ? `
+                <div class="alert alert-success mt-3">
+                    <i class="fas fa-file-pdf me-2"></i>
+                    <strong>Bulletin PDF inclus !</strong><br>
+                    <small>Le lien de téléchargement du bulletin PDF sera inclus dans le message WhatsApp.</small>
+                </div>
+                ` : ''}
+                
                 ${!data.telephone ? `
                 <div class="alert alert-warning mt-3">
                     <i class="fas fa-exclamation-triangle me-2"></i>
@@ -1350,7 +1358,7 @@ function afficherApercuWhatsApp(data) {
                 <div class="alert alert-info mt-3">
                     <i class="fas fa-info-circle me-2"></i>
                     <strong>Comment ça marche ?</strong><br>
-                    <small>En cliquant sur "Ouvrir WhatsApp", une nouvelle fenêtre s'ouvrira avec le message pré-rempli. Vous n'aurez qu'à cliquer sur "Envoyer".</small>
+                    <small>Le parent recevra le message avec un lien pour télécharger le bulletin PDF. Il n'aura qu'à cliquer sur le lien pour voir le bulletin.</small>
                 </div>
                 `}
             </div>

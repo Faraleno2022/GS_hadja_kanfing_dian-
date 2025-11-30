@@ -253,8 +253,8 @@ class WhatsAppBulletinSender:
         else:
             return None
     
-    def _generer_message_whatsapp(self, eleve, periode, system_type, moyenne=None, rang=None, mention=None):
-        """Génère le message WhatsApp personnalisé avec les infos de l'école"""
+    def _generer_message_whatsapp(self, eleve, periode, system_type, moyenne=None, rang=None, mention=None, pdf_url=None):
+        """Génère le message WhatsApp personnalisé avec les infos de l'école et le lien PDF"""
         titre_periode = self._get_titre_periode(periode, system_type)
         
         # Récupérer les infos de l'école
@@ -283,9 +283,14 @@ Nous avons le plaisir de vous transmettre les résultats de votre enfant *{eleve
                 message += f"""
 • Mention: *{mention}*"""
 
-        message += f"""
+        # Ajouter le lien vers le PDF
+        if pdf_url:
+            message += f"""
 
-📋 Vous pouvez consulter le bulletin complet sur notre plateforme.
+📄 *Télécharger le bulletin PDF:*
+{pdf_url}"""
+
+        message += f"""
 
 📞 Pour toute question, n'hésitez pas à nous contacter."""
 
@@ -401,9 +406,10 @@ def envoyer_bulletin_whatsapp(request):
 
 @login_required
 def apercu_message_whatsapp(request):
-    """Aperçu du message WhatsApp avant envoi"""
+    """Aperçu du message WhatsApp avant envoi avec lien PDF"""
     try:
         eleve_id = request.GET.get('eleve_id')
+        classe_id = request.GET.get('classe_id')
         periode = request.GET.get('periode')
         system_type = request.GET.get('system_type', 'trimestre')
         
@@ -420,17 +426,22 @@ def apercu_message_whatsapp(request):
         moyenne = None
         rang = None
         mention = None
+        classe_note = None
         
         try:
             from .models import ClasseNote
             from .utils_rangs import calculer_rangs_classe_periode
             
             # Trouver la ClasseNote correspondante
-            classe_note = ClasseNote.objects.filter(
-                nom=eleve.classe.nom,
-                annee_scolaire=eleve.classe.annee_scolaire,
-                ecole=eleve.classe.ecole
-            ).first()
+            if classe_id:
+                classe_note = ClasseNote.objects.filter(id=classe_id).first()
+            
+            if not classe_note and eleve.classe:
+                classe_note = ClasseNote.objects.filter(
+                    nom=eleve.classe.nom,
+                    annee_scolaire=eleve.classe.annee_scolaire,
+                    ecole=eleve.classe.ecole
+                ).first()
             
             if classe_note and periode:
                 rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=True)
@@ -454,8 +465,20 @@ def apercu_message_whatsapp(request):
         except Exception as e:
             logger.warning(f"Impossible de récupérer les résultats: {e}")
         
-        # Générer le message avec les résultats
-        message = whatsapp_sender._generer_message_whatsapp(eleve, periode, system_type, moyenne, rang, mention)
+        # Générer l'URL du PDF du bulletin
+        pdf_url = None
+        try:
+            from django.urls import reverse
+            # Construire l'URL absolue du PDF
+            base_url = request.build_absolute_uri('/')[:-1]  # Enlever le / final
+            if classe_note:
+                pdf_path = reverse('notes:bulletin_intelligent_pdf', args=[eleve.id, classe_note.id, periode])
+                pdf_url = f"{base_url}{pdf_path}"
+        except Exception as e:
+            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+        
+        # Générer le message avec les résultats et le lien PDF
+        message = whatsapp_sender._generer_message_whatsapp(eleve, periode, system_type, moyenne, rang, mention, pdf_url)
         
         # Formater le numéro pour WhatsApp (enlever les espaces, ajouter +224 si nécessaire)
         whatsapp_number = None
@@ -485,6 +508,7 @@ def apercu_message_whatsapp(request):
             'telephone': telephone,
             'whatsapp_number': whatsapp_number,
             'whatsapp_link': whatsapp_link,
+            'pdf_url': pdf_url,
             'eleve_nom': f"{eleve.prenom} {eleve.nom}",
             'moyenne': moyenne,
             'rang': rang,
