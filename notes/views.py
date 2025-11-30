@@ -5922,14 +5922,20 @@ def saisir_notes(request):
         import json as _json
         notes_map = {}
         
-        # 1. Chercher d'abord dans NoteMensuelle (notes importées ou saisies directement)
+        # Définir les types de périodes
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
+        
+        annee_scolaire = classe_selectionnee.annee_scolaire if classe_selectionnee else ''
+        
+        # 1. Chercher dans NoteMensuelle (notes mensuelles importées ou saisies)
         if periode in periodes_mensuelles:
             try:
                 notes_mensuelles = NoteMensuelle.objects.filter(
                     matiere=matiere_selectionnee,
                     mois=periode,
-                    annee_scolaire=classe_selectionnee.annee_scolaire if classe_selectionnee else ''
+                    annee_scolaire=annee_scolaire
                 ).select_related('eleve')
                 
                 for n in notes_mensuelles:
@@ -5945,7 +5951,29 @@ def saisir_notes(request):
             except Exception:
                 pass
         
-        # 2. Chercher aussi dans NoteEleve (via évaluations) - peut écraser les valeurs précédentes
+        # 2. Chercher dans CompositionNote (notes trimestrielles/semestrielles importées)
+        if periode in periodes_trimestrielles or periode in periodes_semestrielles:
+            try:
+                notes_composition = CompositionNote.objects.filter(
+                    matiere=matiere_selectionnee,
+                    periode=periode,
+                    annee_scolaire=annee_scolaire
+                ).select_related('eleve')
+                
+                for n in notes_composition:
+                    try:
+                        notes_map[n.eleve_id] = {
+                            'note': float(n.note) if n.note is not None else None,
+                            'absent': bool(n.absent),
+                            'appreciation': None,
+                            'commentaire': None,
+                        }
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        
+        # 3. Chercher aussi dans NoteEleve (via évaluations) - peut écraser les valeurs précédentes
         if evaluations.exists():
             try:
                 qs_notes = NoteEleve.objects.filter(
