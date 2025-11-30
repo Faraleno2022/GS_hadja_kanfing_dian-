@@ -405,8 +405,72 @@ class ImportNotesProcessor:
                     ['note', 'absent', 'cree_par'],
                     batch_size=500
                 )
+            
+            # 🔄 SYNCHRONISATION: Copier vers NoteMensuelle pour les périodes mensuelles
+            # (bulk_create/bulk_update ne déclenchent pas les signaux Django)
+            self._sync_notes_to_mensuelle(evaluation, notes_a_creer + notes_a_modifier)
         
         return self.stats
+    
+    def _sync_notes_to_mensuelle(self, evaluation, notes_eleve_list):
+        """
+        Synchronise les NoteEleve vers NoteMensuelle après un bulk import.
+        Nécessaire car bulk_create/bulk_update ne déclenchent pas les signaux.
+        """
+        periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 
+                               'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        
+        if evaluation.periode not in periodes_mensuelles:
+            return  # Pas de sync pour les trimestres/semestres
+        
+        matiere = evaluation.matiere
+        classe_note = matiere.classe
+        
+        notes_mensuelle_a_creer = []
+        notes_mensuelle_existantes = {}
+        
+        # Charger les NoteMensuelle existantes
+        for nm in NoteMensuelle.objects.filter(
+            matiere=matiere,
+            mois=evaluation.periode,
+            annee_scolaire=classe_note.annee_scolaire
+        ):
+            notes_mensuelle_existantes[nm.eleve_id] = nm
+        
+        for ne in notes_eleve_list:
+            if ne.note is None and not ne.absent:
+                continue
+            
+            note_value = ne.note if ne.note is not None else Decimal('0')
+            
+            if ne.eleve_id in notes_mensuelle_existantes:
+                # Mettre à jour
+                nm = notes_mensuelle_existantes[ne.eleve_id]
+                nm.note = note_value
+                nm.absent = ne.absent
+                nm.cree_par = ne.cree_par
+            else:
+                # Créer
+                notes_mensuelle_a_creer.append(NoteMensuelle(
+                    eleve=ne.eleve,
+                    matiere=matiere,
+                    mois=evaluation.periode,
+                    annee_scolaire=classe_note.annee_scolaire,
+                    note=note_value,
+                    absent=ne.absent,
+                    cree_par=ne.cree_par
+                ))
+        
+        # Bulk operations
+        if notes_mensuelle_a_creer:
+            NoteMensuelle.objects.bulk_create(notes_mensuelle_a_creer, batch_size=500)
+        
+        if notes_mensuelle_existantes:
+            NoteMensuelle.objects.bulk_update(
+                list(notes_mensuelle_existantes.values()),
+                ['note', 'absent', 'cree_par'],
+                batch_size=500
+            )
 
 
 def lire_fichier_import(file_path_or_obj):
