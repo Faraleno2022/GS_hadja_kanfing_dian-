@@ -17,7 +17,7 @@ from eleves.models import Eleve, Ecole
 from paiements.models import Paiement, EcheancierPaiement, PaiementRemise
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
-from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from django.contrib.staticfiles import finders
 from django.conf import settings
 
@@ -125,8 +125,9 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
     }
 
     # Restreindre le périmètre des écoles selon l'utilisateur
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
     ecoles_qs = Ecole.objects.all()
-    if user is not None and not user_is_admin(user):
+    if user is not None and not user_is_superadmin(user):
         ecole_user = user_school(user)
         ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
 

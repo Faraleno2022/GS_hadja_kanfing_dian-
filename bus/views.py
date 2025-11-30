@@ -17,7 +17,7 @@ import csv
 from eleves.models import Eleve
 from .models import AbonnementBus
 from .forms import AbonnementBusForm
-from utilisateurs.utils import user_is_admin, filter_by_user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school
 from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
 from ecole_moderne.pdf_utils import draw_logo_watermark
@@ -27,7 +27,8 @@ from paiements.twilio_utils import send_message_async
 @login_required
 def tableau_bord(request):
     qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     total = qs.count()
@@ -46,7 +47,8 @@ def tableau_bord(request):
 @login_required
 def liste_abonnements(request):
     qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     q = (request.GET.get('q') or '').strip()
@@ -206,7 +208,8 @@ def supprimer_abonnement_bus(request, abo_id):
 @login_required
 def relances(request):
     qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     a_relancer = [a for a in qs if a.est_expire or a.est_proche_expiration or a.statut != AbonnementBus.Statut.ACTIF]
@@ -221,7 +224,8 @@ def relances(request):
 @login_required
 def export_relances_excel(request):
     qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     data = [a for a in qs if a.est_expire or a.est_proche_expiration or a.statut != AbonnementBus.Statut.ACTIF]
@@ -423,7 +427,8 @@ def envoyer_relances_bus(request):
     envoyes = 0
 
     abonnements = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole').filter(id__in=ids)
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         abonnements = filter_by_user_school(abonnements, request.user, 'eleve__classe__ecole')
 
     for abo in abonnements:
@@ -501,7 +506,8 @@ def export_abonnements_breakdown_csv(request, kind: str):
         return HttpResponse('Type invalide', status=400)
 
     qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     q = (request.GET.get('q') or '').strip()

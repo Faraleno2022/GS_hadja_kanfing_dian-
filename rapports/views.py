@@ -22,7 +22,7 @@ from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypeP
 from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
-from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
 from openpyxl.utils import get_column_letter
@@ -195,7 +195,8 @@ def generer_rapport_hebdomadaire(request):
     
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'HEBDOMADAIRE', user=request.user)
     # Branding: si utilisateur restreint à une école, utiliser son logo/nom
-    ecole_ctx = user_school(request.user) if not user_is_admin(request.user) else None
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_semaine, fin_semaine, 'HEBDOMADAIRE', ecole=ecole_ctx)
     
     # Sauvegarde
@@ -236,7 +237,8 @@ def generer_rapport_mensuel(request):
     fin_dt = django_timezone.make_aware(datetime.combine(fin_mois, datetime.max.time()))
     
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'MENSUEL', user=request.user)
-    ecole_ctx = user_school(request.user) if not user_is_admin(request.user) else None
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_mois, fin_mois, 'MENSUEL', ecole=ecole_ctx)
     
     # Sauvegarde
@@ -276,7 +278,8 @@ def generer_rapport_annuel(request):
     fin_dt = django_timezone.make_aware(datetime.combine(fin_annee, datetime.max.time()))
     
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'ANNUEL', user=request.user)
-    ecole_ctx = user_school(request.user) if not user_is_admin(request.user) else None
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_annee, fin_annee, 'ANNUEL', ecole=ecole_ctx)
     
     # Sauvegarde
@@ -532,8 +535,9 @@ def collecter_donnees_journalieres(date_rapport, user=None):
     }
 
     # Restreindre le périmètre des écoles selon l'utilisateur
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
     ecoles_qs = Ecole.objects.all()
-    if user is not None and not user_is_admin(user):
+    if user is not None and not user_is_superadmin(user):
         ecole_user = user_school(user)
         ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
 

@@ -21,7 +21,7 @@ from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve, GrilleTa
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, EcoleForm
 from utilisateurs.forms import SignupInlineForm
 from utilisateurs.models import JournalActivite
-from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 
@@ -123,27 +123,31 @@ def liste_eleves(request):
     )
     
     # Liste des classes pour export (restreinte si besoin)
-    # Admin: uniquement écoles validées. Non-admin: on tente VALIDE puis fallback toutes classes de son école.
-    if user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if user_is_superadmin(request.user):
         classes = (
             Classe.objects.select_related('ecole')
             .filter(ecole__etat='VALIDE')
             .order_by('ecole__nom', 'niveau', 'nom')
         )
     else:
+        # Tous les autres utilisateurs (y compris ADMIN d'école) ne voient que leur école
         user_ecole = user_school(request.user)
-        classes = (
-            Classe.objects.select_related('ecole')
-            .filter(ecole=user_ecole, ecole__etat='VALIDE')
-            .order_by('niveau', 'nom')
-        )
-        # Fallback: si l'école de l'utilisateur n'est pas encore validée, proposer quand même ses classes
-        if user_ecole and not classes.exists():
+        if user_ecole is None:
+            classes = Classe.objects.none()
+        else:
             classes = (
                 Classe.objects.select_related('ecole')
-                .filter(ecole=user_ecole)
+                .filter(ecole=user_ecole, ecole__etat='VALIDE')
                 .order_by('niveau', 'nom')
             )
+            # Fallback: si l'école de l'utilisateur n'est pas encore validée, proposer quand même ses classes
+            if not classes.exists():
+                classes = (
+                    Classe.objects.select_related('ecole')
+                    .filter(ecole=user_ecole)
+                    .order_by('niveau', 'nom')
+                )
 
     context = {
         'page_obj': page_obj,
@@ -1043,13 +1047,18 @@ def export_eleves_classe_excel(request, classe_id):
 @vary_on_cookie
 def export_tous_eleves_pdf(request):
     """Exporte la liste de tous les élèves en PDF."""
-    # Filtrer selon les permissions
-    if user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if user_is_superadmin(request.user):
         eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').all()
     else:
-        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
-            classe__ecole=user_school(request.user)
-        )
+        # Tous les autres utilisateurs (y compris ADMIN d'école) ne voient que leur école
+        ecole = user_school(request.user)
+        if ecole is None:
+            eleves = Eleve.objects.none()
+        else:
+            eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
+                classe__ecole=ecole
+            )
     
     eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
 
@@ -1210,13 +1219,18 @@ def export_tous_eleves_excel(request):
     if Workbook is None or get_column_letter is None:
         return HttpResponse("Erreur: openpyxl n'est pas installé sur le serveur.", status=500)
 
-    # Filtrer selon les permissions
-    if user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if user_is_superadmin(request.user):
         eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').all()
     else:
-        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
-            classe__ecole=user_school(request.user)
-        )
+        # Tous les autres utilisateurs (y compris ADMIN d'école) ne voient que leur école
+        ecole = user_school(request.user)
+        if ecole is None:
+            eleves = Eleve.objects.none()
+        else:
+            eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
+                classe__ecole=ecole
+            )
     
     eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
 
@@ -1488,10 +1502,15 @@ def ajax_classes_par_ecole(request, ecole_id):
 def ajax_statistiques_eleves(request):
     """Vue AJAX pour récupérer les statistiques des élèves"""
     try:
-        if user_is_admin(request.user):
+        # IMPORTANT: Seul le superuser peut voir toutes les écoles
+        if user_is_superadmin(request.user):
             eleves = Eleve.objects.all()
         else:
-            eleves = Eleve.objects.filter(classe__ecole=user_school(request.user))
+            ecole = user_school(request.user)
+            if ecole is None:
+                eleves = Eleve.objects.none()
+            else:
+                eleves = Eleve.objects.filter(classe__ecole=ecole)
         stats = {
             'total_eleves': eleves.count(),
             'eleves_actifs': eleves.filter(statut='ACTIF').count(),
@@ -1516,21 +1535,30 @@ def statistiques_eleves(request):
     from dateutil.relativedelta import relativedelta
     
     # 1. STATISTIQUES GÉNÉRALES
-    if user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if user_is_superadmin(request.user):
         eleves_base = Eleve.objects.all()
         classes_base = Classe.objects.all()
         responsables_base = Responsable.objects.all()
         ecoles_base = Ecole.objects.all()
     else:
+        # Tous les autres utilisateurs (y compris ADMIN d'école) ne voient que leur école
         ecole_u = user_school(request.user)
-        eleves_base = Eleve.objects.filter(classe__ecole=ecole_u)
-        classes_base = Classe.objects.filter(ecole=ecole_u)
-        # Filtrer les responsables par école
-        responsables_base = Responsable.objects.filter(
-            Q(eleves_principal__classe__ecole=ecole_u) |
-            Q(eleves_secondaire__classe__ecole=ecole_u)
-        ).distinct()
-        ecoles_base = Ecole.objects.filter(id=ecole_u.id)
+        if ecole_u is None:
+            # Sécurité: si pas d'école assignée, retourner des querysets vides
+            eleves_base = Eleve.objects.none()
+            classes_base = Classe.objects.none()
+            responsables_base = Responsable.objects.none()
+            ecoles_base = Ecole.objects.none()
+        else:
+            eleves_base = Eleve.objects.filter(classe__ecole=ecole_u)
+            classes_base = Classe.objects.filter(ecole=ecole_u)
+            # Filtrer les responsables par école
+            responsables_base = Responsable.objects.filter(
+                Q(eleves_principal__classe__ecole=ecole_u) |
+                Q(eleves_secondaire__classe__ecole=ecole_u)
+            ).distinct()
+            ecoles_base = Ecole.objects.filter(id=ecole_u.id)
     total_eleves = eleves_base.count()
     stats_generales = {
         'total_eleves': total_eleves,

@@ -16,7 +16,7 @@ import io
 from eleves.models import Eleve
 from .models import AbonnementCantine
 from .forms import AbonnementCantineForm
-from utilisateurs.utils import user_is_admin, filter_by_user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school
 from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
 
@@ -25,7 +25,8 @@ from ecole_moderne.security_decorators import require_school_object
 def tableau_bord_cantine(request):
     """Tableau de bord des abonnements cantine avec alertes"""
     qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     
     # Statistiques générales
@@ -81,7 +82,8 @@ def tableau_bord_cantine(request):
 def liste_abonnements_cantine(request):
     """Liste des abonnements cantine avec filtres et recherche"""
     qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     
     # Recherche
@@ -158,7 +160,8 @@ def creer_abonnement_cantine(request):
                 pass
     
     # Filtrer les élèves par école de l'utilisateur
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         form.fields['eleve'].queryset = filter_by_user_school(
             Eleve.objects.all(), 
             request.user, 
@@ -188,7 +191,8 @@ def modifier_abonnement_cantine(request, pk):
         form = AbonnementCantineForm(instance=abonnement)
     
     # Filtrer les élèves par école de l'utilisateur
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         form.fields['eleve'].queryset = filter_by_user_school(
             Eleve.objects.all(), 
             request.user, 
@@ -227,7 +231,8 @@ def supprimer_abonnement_cantine(request, pk):
 def export_cantine_excel(request):
     """Exporter la liste des abonnements cantine en Excel"""
     qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     
     # Appliquer les mêmes filtres que la liste
@@ -295,7 +300,8 @@ def export_cantine_excel(request):
 def alertes_cantine_json(request):
     """API JSON pour récupérer les alertes cantine (pour dashboard)"""
     qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe')
-    if not user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     
     # Abonnements expirés
@@ -362,8 +368,8 @@ def get_eleve_info_json(request, eleve_id):
     try:
         eleve = Eleve.objects.select_related('classe', 'responsable_principal').get(pk=eleve_id)
         
-        # Vérifier les permissions
-        if not user_is_admin(request.user):
+        # Vérifier les permissions - seul le superuser peut voir toutes les écoles
+        if not user_is_superadmin(request.user):
             eleves_qs = filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole')
             if not eleves_qs.filter(pk=eleve_id).exists():
                 return JsonResponse({'error': 'Permission refusée'}, status=403)

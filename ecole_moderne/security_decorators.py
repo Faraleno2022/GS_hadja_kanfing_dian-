@@ -38,13 +38,13 @@ def require_school_object(model, pk_kwarg: str = 'pk', field_path: str = 'ecole'
     - field_path: chemin vers le champ `Ecole` depuis le modèle (ex: 'eleve__classe__ecole', 'classe__ecole')
 
     Comportement:
-      - Les administrateurs sont exemptés (accès total)
-      - Pour les autres, on filtre le queryset via `filter_by_user_school` et on vérifie que l'objet existe
+      - Seul le superuser a accès total à toutes les écoles
+      - Pour les autres (y compris ADMIN d'école), on filtre le queryset via `filter_by_user_school`
       - Si l'objet n'est pas dans l'école de l'utilisateur ou n'existe pas -> Http404
     """
     from django.shortcuts import get_object_or_404
     from django.http import Http404
-    from utilisateurs.utils import user_is_admin, filter_by_user_school
+    from utilisateurs.utils import user_is_superadmin, filter_by_user_school
 
     def decorator(view_func):
         @functools.wraps(view_func)
@@ -55,8 +55,8 @@ def require_school_object(model, pk_kwarg: str = 'pk', field_path: str = 'ecole'
             if obj_pk is None:
                 return view_func(request, *args, **kwargs)
 
-            # Admin: accès complet
-            if user_is_admin(request.user):
+            # Seul le superuser a accès complet à toutes les écoles
+            if user_is_superadmin(request.user):
                 return view_func(request, *args, **kwargs)
 
             # Restreindre le queryset de l'objet à l'école de l'utilisateur

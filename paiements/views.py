@@ -35,7 +35,7 @@ from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, Re
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
-from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
 from utilisateurs.permissions import has_permission, get_user_permissions, can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
 from .notifications import (
     send_payment_receipt,
@@ -3972,12 +3972,15 @@ def liste_eleves_impayes(request):
     """Affiche la liste des élèves avec des impayés"""
     from .models import ConfigurationPaiement
     
-    # Filtrer selon l'école de l'utilisateur
-    if user_is_admin(request.user):
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if user_is_superadmin(request.user):
         eleves = Eleve.objects.filter(statut='ACTIF')
     else:
         ecole_user = user_school(request.user)
-        eleves = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
+        if ecole_user is None:
+            eleves = Eleve.objects.none()
+        else:
+            eleves = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
     
     # Calculer les impayés pour chaque élève
     eleves_avec_soldes = []

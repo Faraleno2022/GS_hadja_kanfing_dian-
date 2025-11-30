@@ -16,17 +16,21 @@ from .forms import (
     DepenseForm, CategorieDepenseForm, FournisseurForm,
     PieceJustificativeForm, BudgetAnnuelForm
 )
-from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from utilisateurs.permissions import can_add_expenses, can_modify_expenses, can_delete_expenses, can_validate_expenses
 from ecole_moderne.security_decorators import require_school_object
 
 @login_required
 def tableau_bord(request):
     """Tableau de bord principal du module dépenses"""
-    # Base filtrée par école pour non-admin
+    # Base filtrée par école - seul le superuser voit toutes les écoles
     base_qs = Depense.objects.all()
-    if not user_is_admin(request.user):
-        base_qs = base_qs.filter(cree_par__profil__ecole=user_school(request.user))
+    if not user_is_superadmin(request.user):
+        ecole = user_school(request.user)
+        if ecole is None:
+            base_qs = Depense.objects.none()
+        else:
+            base_qs = base_qs.filter(cree_par__profil__ecole=ecole)
     # Statistiques générales
     total_depenses = base_qs.count()
     depenses_validees = base_qs.filter(statut='VALIDEE').count()
@@ -58,11 +62,11 @@ def tableau_bord(request):
     ).count()
     
     # Statistiques par catégorie
-    # Statistiques par catégorie (portée approximée si non-admin)
+    # Statistiques par catégorie (portée approximée si non-superadmin)
     stats_categories = CategorieDepense.objects.filter(actif=True)
     # NOTE: Les annotations globales peuvent inclure des dépenses d'autres écoles.
-    # Pour éviter toute fuite de données, on ne joint pas de totaux précis ici pour les non-admins.
-    if user_is_admin(request.user):
+    # Pour éviter toute fuite de données, on ne joint pas de totaux précis ici pour les non-superadmins.
+    if user_is_superadmin(request.user):
         stats_categories = stats_categories.annotate(
             nb_depenses=Count('depenses'),
             montant_total=Sum('depenses__montant_ttc')
@@ -89,8 +93,13 @@ def liste_depenses(request):
     depenses = Depense.objects.select_related(
         'categorie', 'fournisseur', 'cree_par', 'valide_par'
     ).order_by('-date_creation')
-    if not user_is_admin(request.user):
-        depenses = depenses.filter(cree_par__profil__ecole=user_school(request.user))
+    # IMPORTANT: Seul le superuser peut voir toutes les écoles
+    if not user_is_superadmin(request.user):
+        ecole = user_school(request.user)
+        if ecole is None:
+            depenses = Depense.objects.none()
+        else:
+            depenses = depenses.filter(cree_par__profil__ecole=ecole)
     
     # Filtres
     statut_filtre = request.GET.get('statut')
