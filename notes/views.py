@@ -5904,6 +5904,8 @@ def saisir_notes(request):
     
     if matiere_selectionnee and periode and eleves:
         import json as _json
+        import logging
+        logger = logging.getLogger(__name__)
         notes_map = {}
         
         # Définir les types de périodes
@@ -5916,6 +5918,10 @@ def saisir_notes(request):
         # Récupérer les IDs des élèves de la classe pour filtrer
         eleves_ids = list(eleves.values_list('id', flat=True))
         
+        # DEBUG: Log des paramètres de recherche
+        logger.info(f"[SAISIR_NOTES] Recherche notes: matiere={matiere_selectionnee.id}, periode={periode}, type_note={type_note}")
+        logger.info(f"[SAISIR_NOTES] Année scolaire: {annee_scolaire}, Nb élèves: {len(eleves_ids)}")
+        
         # 1. Chercher dans NoteMensuelle (notes mensuelles importées ou saisies)
         if periode in periodes_mensuelles or type_note == 'mensuelle':
             try:
@@ -5926,9 +5932,17 @@ def saisir_notes(request):
                     eleve_id__in=eleves_ids  # Filtrer par les élèves de la classe
                 )
                 
+                # DEBUG: Compter avant filtre année
+                count_avant = notes_mensuelles_qs.count()
+                logger.info(f"[SAISIR_NOTES] NoteMensuelle avant filtre année: {count_avant}")
+                
                 # Filtrer par année scolaire si disponible
                 if annee_scolaire:
                     notes_mensuelles_qs = notes_mensuelles_qs.filter(annee_scolaire=annee_scolaire)
+                
+                # DEBUG: Compter après filtre année
+                count_apres = notes_mensuelles_qs.count()
+                logger.info(f"[SAISIR_NOTES] NoteMensuelle après filtre année: {count_apres}")
                 
                 notes_mensuelles = notes_mensuelles_qs.select_related('eleve')
                 
@@ -5942,9 +5956,10 @@ def saisir_notes(request):
                         }
                     except Exception:
                         continue
+                
+                logger.info(f"[SAISIR_NOTES] Notes map créé avec {len(notes_map)} entrées")
             except Exception as e:
-                import logging
-                logging.error(f"Erreur récupération NoteMensuelle: {e}")
+                logger.error(f"[SAISIR_NOTES] Erreur récupération NoteMensuelle: {e}")
         
         # 2. Chercher dans CompositionNote (notes trimestrielles/semestrielles importées)
         if periode in periodes_trimestrielles or periode in periodes_semestrielles:
