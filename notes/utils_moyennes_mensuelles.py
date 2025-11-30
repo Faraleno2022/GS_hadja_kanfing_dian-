@@ -3,7 +3,7 @@ Utilitaires pour récupérer les moyennes mensuelles dynamiques
 pour les bulletins trimestriels et semestriels
 """
 from decimal import Decimal
-from .models import NoteMensuelle, Evaluation, NoteEleve
+from .models import NoteMensuelle, CompositionNote, Evaluation, NoteEleve
 
 
 def get_mois_periode(periode_type, periode):
@@ -167,7 +167,29 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
             'absent_composition': False
         }
     """
-    # Chercher les compositions de la période
+    note_composition = None
+    absent_composition = False
+    
+    # MÉTHODE 1: Chercher d'abord dans CompositionNote (notes importées)
+    try:
+        compo_importee = CompositionNote.objects.get(
+            eleve=eleve,
+            matiere=matiere,
+            periode=periode,
+            annee_scolaire=matiere.classe.annee_scolaire
+        )
+        if compo_importee.absent:
+            absent_composition = True
+        elif compo_importee.note is not None:
+            note_composition = float(compo_importee.note)
+            return {
+                'note_composition': note_composition,
+                'absent_composition': absent_composition
+            }
+    except CompositionNote.DoesNotExist:
+        pass
+    
+    # MÉTHODE 2: Si pas trouvé, chercher dans les évaluations
     evaluations_compo = Evaluation.objects.filter(
         matiere=matiere,
         periode=periode,
@@ -176,7 +198,6 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
     
     total_compo = Decimal('0')
     count_compo = 0
-    absent_composition = False
     
     for evaluation in evaluations_compo:
         try:
@@ -191,7 +212,6 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
         except NoteEleve.DoesNotExist:
             pass
     
-    note_composition = None
     if count_compo > 0:
         note_composition = round(float(total_compo / count_compo), 2)
     
