@@ -307,8 +307,8 @@
                     {% if classe_selectionnee and matiere_selectionnee and periode %}
                     <div class="col-md-2">
                         <label class="form-label fw-bold">&nbsp;</label>
-                        <button type="button" class="btn btn-outline-light w-100" onclick="reloadNotes()" title="Recharger les notes dans les champs">
-                            <i class="fas fa-rotate me-2"></i>Recharger les notes
+                        <button type="button" class="btn btn-outline-light w-100" onclick="reloadNotesFromServer()" title="Recharger les notes depuis le serveur (après importation)">
+                            <i class="fas fa-cloud-download-alt me-2"></i>Actualiser
                         </button>
                     </div>
                     {% endif %}
@@ -627,6 +627,17 @@ function applyExistingNotes() {
 function reloadNotes() {
     applyExistingNotes();
     showToast('Notes rechargées dans les champs.', 'success');
+}
+
+// Recharger les notes depuis le serveur (après importation)
+function reloadNotesFromServer() {
+    // Afficher un message de chargement
+    showToast('Actualisation des notes depuis le serveur...', 'success');
+    
+    // Recharger la page pour récupérer les notes importées
+    setTimeout(() => {
+        window.location.reload();
+    }, 500);
 }
 
 document.addEventListener('DOMContentLoaded', function() {

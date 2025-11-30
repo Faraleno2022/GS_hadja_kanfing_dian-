@@ -5902,7 +5902,7 @@ def saisir_notes(request):
     nombre_notes_existantes = 0
     notes_existantes_json = '{}'
     
-    if matiere_selectionnee and periode:
+    if matiere_selectionnee and periode and eleves:
         import json as _json
         notes_map = {}
         
@@ -5913,13 +5913,17 @@ def saisir_notes(request):
         
         annee_scolaire = classe_selectionnee.annee_scolaire if classe_selectionnee else ''
         
+        # Récupérer les IDs des élèves de la classe pour filtrer
+        eleves_ids = list(eleves.values_list('id', flat=True))
+        
         # 1. Chercher dans NoteMensuelle (notes mensuelles importées ou saisies)
         if periode in periodes_mensuelles:
             try:
                 notes_mensuelles = NoteMensuelle.objects.filter(
                     matiere=matiere_selectionnee,
                     mois=periode,
-                    annee_scolaire=annee_scolaire
+                    annee_scolaire=annee_scolaire,
+                    eleve_id__in=eleves_ids  # Filtrer par les élèves de la classe
                 ).select_related('eleve')
                 
                 for n in notes_mensuelles:
@@ -5941,7 +5945,8 @@ def saisir_notes(request):
                 notes_composition = CompositionNote.objects.filter(
                     matiere=matiere_selectionnee,
                     periode=periode,
-                    annee_scolaire=annee_scolaire
+                    annee_scolaire=annee_scolaire,
+                    eleve_id__in=eleves_ids  # Filtrer par les élèves de la classe
                 ).select_related('eleve')
                 
                 for n in notes_composition:
@@ -5961,7 +5966,8 @@ def saisir_notes(request):
         if evaluations.exists():
             try:
                 qs_notes = NoteEleve.objects.filter(
-                    evaluation__in=evaluations
+                    evaluation__in=evaluations,
+                    eleve_id__in=eleves_ids  # Filtrer par les élèves de la classe
                 ).select_related('eleve')
                 
                 for n in qs_notes:
