@@ -714,9 +714,9 @@
     {% endif %}
 
     <!-- Bulletin -->
-    {% if bulletin_data %}
+    {% if bulletin_data and bulletin_data.eleve %}
     <div class="bulletin-container" id="bulletin"
-         data-eleve-id="{{ bulletin_data.eleve.id|default:eleve_selectionne.id }}"
+         data-eleve-id="{{ bulletin_data.eleve.id }}"
          data-classe-id="{{ classe_selectionnee.id }}"
          data-periode="{{ periode_selectionnee }}"
          data-system-type="{{ system_type }}"
