@@ -6256,13 +6256,27 @@ def sauvegarder_notes(request):
         
         # Créer l'évaluation si elle n'existe pas
         if not evaluation_id:
+            # Déterminer le type d'évaluation selon la période
+            if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+                type_eval = 'DEVOIR'
+                titre_eval = f"Note {periode.capitalize()} - {matiere.nom}"
+            elif periode.startswith('TRIMESTRE'):
+                type_eval = 'COMPOSITION'
+                titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
+            else:
+                type_eval = 'COMPOSITION'
+                titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
+            
             evaluation, created = Evaluation.objects.get_or_create(
                 matiere=matiere,
                 periode=periode,
                 defaults={
+                    'titre': titre_eval,
+                    'type_evaluation': type_eval,
                     'date_evaluation': timezone.now().date(),
                     'note_sur': 20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
                     'coefficient': matiere.coefficient,
+                    'cree_par': request.user,
                 }
             )
             logger.info(f"Évaluation {'créée' if created else 'récupérée'}: {evaluation.id}")
