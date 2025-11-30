@@ -771,11 +771,16 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
     
-    # ===== PIED DE PAGE =====
+    # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))
     c.setFont("Helvetica", 6)
-    c.drawCentredString(width/2, 0.8*cm, 
-                       f"© 2025 Myschool. Tous droits réservés. +224 622613559 | faraleno16@gmail.com")
+    # Construire le footer avec les infos de l'école
+    footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
+    if ecole and ecole.telephone:
+        footer_parts.append(f"Tél: {ecole.telephone}")
+    if ecole and ecole.email:
+        footer_parts.append(ecole.email)
+    c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))
     c.drawCentredString(width/2, 0.5*cm, 
                        f"Bulletin généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
     
@@ -1843,8 +1848,14 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
     
-    # ===== PIED DE PAGE =====
+    # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))
     c.setFont("Helvetica", 6)
-    c.drawCentredString(width/2, 0.8*cm, "© 2025 Myschool. Tous droits réservés. +224 622613559 | faraleno16@gmail.com")
+    # Construire le footer avec les infos de l'école
+    footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
+    if ecole and ecole.telephone:
+        footer_parts.append(f"Tél: {ecole.telephone}")
+    if ecole and ecole.email:
+        footer_parts.append(ecole.email)
+    c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))
     c.drawCentredString(width/2, 0.5*cm, f"Bulletin généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
