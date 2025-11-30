@@ -38,43 +38,37 @@ def exporter_resultats_pdf(request):
         
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
         
-        # Calculer les moyennes
-        from .calculs_moyennes import calculer_moyenne_generale_eleve
-        from .calculs_intelligent import formater_rang_intelligent
+        # IMPORTANT: Récupérer les moyennes et rangs depuis la source centralisée
+        # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et bulletins
+        from .utils_rangs import calculer_rangs_classe_periode
         
-        resultats = []
         # Si pas de période spécifiée, utiliser OCTOBRE par défaut
         periode_calcul = periode if periode else 'OCTOBRE'
         
-        # Déterminer le type de système selon la période (dynamique)
-        if periode_calcul in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-            system_type = 'mensuel'
-        elif 'TRIMESTRE' in periode_calcul:
-            system_type = 'trimestriel'
-        elif 'SEMESTRE' in periode_calcul:
-            system_type = 'semestriel'
-        else:
-            system_type = 'mensuel'
+        # Récupérer les rangs et moyennes depuis la source centralisée
+        rangs_dict = calculer_rangs_classe_periode(classe, periode_calcul, use_cache=False)
         
+        # Construire la liste des résultats à partir des données centralisées
+        resultats = []
         for eleve in eleves:
-            result = calculer_moyenne_generale_eleve(eleve, matieres, periode_calcul, system_type)
-            # La fonction retourne un dict avec 'moyenne_generale'
-            if isinstance(result, dict):
-                moyenne = result.get('moyenne_generale', 0) or 0
+            rang_info = rangs_dict.get(eleve.id)
+            if rang_info:
+                resultats.append({
+                    'eleve': eleve,
+                    'moyenne': float(rang_info['moyenne']),
+                    'rang': rang_info['rang'],
+                    'rang_num': rang_info['rang_num']
+                })
             else:
-                moyenne = result or 0
-            resultats.append({'eleve': eleve, 'moyenne': float(moyenne)})
+                resultats.append({
+                    'eleve': eleve,
+                    'moyenne': 0.0,
+                    'rang': '-',
+                    'rang_num': 9999
+                })
         
-        # Trier par moyenne décroissante
-        resultats.sort(key=lambda x: float(x['moyenne']), reverse=True)
-        
-        # Attribuer les rangs
-        rang = 1
-        for i, r in enumerate(resultats):
-            if i > 0 and float(resultats[i-1]['moyenne']) != float(r['moyenne']):
-                rang = i + 1
-            sexe = getattr(r['eleve'], 'sexe', 'M') or 'M'
-            r['rang'] = formater_rang_intelligent(rang, sexe) if r['moyenne'] else '-'
+        # Trier par rang numérique (déjà calculé par utils_rangs)
+        resultats.sort(key=lambda x: x['rang_num'])
         
         # Mettre à jour la période pour l'affichage
         periode = periode_calcul
@@ -246,43 +240,37 @@ def exporter_resultats_excel(request):
         
         eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
         
-        # Calculer les moyennes
-        from .calculs_moyennes import calculer_moyenne_generale_eleve
-        from .calculs_intelligent import formater_rang_intelligent
+        # IMPORTANT: Récupérer les moyennes et rangs depuis la source centralisée
+        # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et bulletins
+        from .utils_rangs import calculer_rangs_classe_periode
         
-        resultats = []
         # Si pas de période spécifiée, utiliser OCTOBRE par défaut
         periode_calcul = periode if periode else 'OCTOBRE'
         
-        # Déterminer le type de système selon la période (dynamique)
-        if periode_calcul in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-            system_type = 'mensuel'
-        elif 'TRIMESTRE' in periode_calcul:
-            system_type = 'trimestriel'
-        elif 'SEMESTRE' in periode_calcul:
-            system_type = 'semestriel'
-        else:
-            system_type = 'mensuel'
+        # Récupérer les rangs et moyennes depuis la source centralisée
+        rangs_dict = calculer_rangs_classe_periode(classe, periode_calcul, use_cache=False)
         
+        # Construire la liste des résultats à partir des données centralisées
+        resultats = []
         for eleve in eleves:
-            result = calculer_moyenne_generale_eleve(eleve, matieres, periode_calcul, system_type)
-            # La fonction retourne un dict avec 'moyenne_generale'
-            if isinstance(result, dict):
-                moyenne = result.get('moyenne_generale', 0) or 0
+            rang_info = rangs_dict.get(eleve.id)
+            if rang_info:
+                resultats.append({
+                    'eleve': eleve,
+                    'moyenne': float(rang_info['moyenne']),
+                    'rang': rang_info['rang'],
+                    'rang_num': rang_info['rang_num']
+                })
             else:
-                moyenne = result or 0
-            resultats.append({'eleve': eleve, 'moyenne': float(moyenne)})
+                resultats.append({
+                    'eleve': eleve,
+                    'moyenne': 0.0,
+                    'rang': '-',
+                    'rang_num': 9999
+                })
         
-        # Trier par moyenne décroissante
-        resultats.sort(key=lambda x: float(x['moyenne']), reverse=True)
-        
-        # Attribuer les rangs
-        rang = 1
-        for i, r in enumerate(resultats):
-            if i > 0 and float(resultats[i-1]['moyenne']) != float(r['moyenne']):
-                rang = i + 1
-            sexe = getattr(r['eleve'], 'sexe', 'M') or 'M'
-            r['rang'] = formater_rang_intelligent(rang, sexe) if r['moyenne'] else '-'
+        # Trier par rang numérique (déjà calculé par utils_rangs)
+        resultats.sort(key=lambda x: x['rang_num'])
         
         # Mettre à jour la période pour l'affichage
         periode = periode_calcul
