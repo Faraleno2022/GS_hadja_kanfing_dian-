@@ -149,11 +149,16 @@
                             <td>
                                 <div class="btn-group btn-group-sm">
                                     <a href="{% url 'paiements:generer_note_rappel_pdf' item.eleve.id %}" 
-                                       class="btn btn-warning" title="Note de rappel">
+                                       class="btn btn-warning" title="Note de rappel PDF">
                                         <i class="fas fa-file-pdf"></i>
                                     </a>
+                                    <button type="button" class="btn btn-success" 
+                                            onclick="envoyerNoteRappelWhatsApp({{ item.eleve.id }}, '{{ item.eleve.nom_complet|escapejs }}')"
+                                            title="Envoyer par WhatsApp">
+                                        <i class="fab fa-whatsapp"></i>
+                                    </button>
                                     <a href="{% url 'paiements:ajouter_paiement_eleve' item.eleve.id %}" 
-                                       class="btn btn-success" title="Enregistrer paiement">
+                                       class="btn btn-primary" title="Enregistrer paiement">
                                         <i class="fas fa-plus"></i>
                                     </a>
                                     <a href="{% url 'paiements:echeancier_eleve' item.eleve.id %}" 
@@ -180,12 +185,70 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Modal WhatsApp pour note de rappel -->
+<div class="modal fade" id="whatsappNoteRappelModal" tabindex="-1" aria-labelledby="whatsappNoteRappelModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: #25D366; color: white;">
+                <h5 class="modal-title" id="whatsappNoteRappelModalLabel">
+                    <i class="fab fa-whatsapp me-2"></i>Envoyer la note de rappel par WhatsApp
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="whatsappNoteRappelContent">
+                    <div class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Chargement...</span>
+                        </div>
+                        <p class="mt-2">Préparation du message...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" id="btnOuvrirWhatsAppNoteRappel" disabled>
+                    <i class="fab fa-whatsapp me-2"></i>Ouvrir WhatsApp
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Appliquer la largeur aux barres de progression
+let whatsappNoteRappelModal;
+let currentWhatsAppLinkNoteRappel = null;
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Appliquer la largeur aux barres de progression
     document.querySelectorAll('.progress-bar[data-width]').forEach(function(bar) {
         var width = bar.getAttribute('data-width');
         bar.style.width = width + '%';
+    });
+    
+    // Initialiser la modal WhatsApp
+    whatsappNoteRappelModal = new bootstrap.Modal(document.getElementById('whatsappNoteRappelModal'));
+    
+    // Gestionnaire pour le bouton d'ouverture WhatsApp
+    document.getElementById('btnOuvrirWhatsAppNoteRappel').addEventListener('click', function() {
+        if (currentWhatsAppLinkNoteRappel) {
+            window.open(currentWhatsAppLinkNoteRappel, '_blank');
+            whatsappNoteRappelModal.hide();
+            
+            // Afficher un message de confirmation
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fab fa-whatsapp me-2"></i>
+                <strong>WhatsApp ouvert !</strong> Le message de rappel a été pré-rempli.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            const container = document.querySelector('.container-fluid');
+            if (container) {
+                container.insertBefore(alertDiv, container.firstChild);
+                window.scrollTo(0, 0);
+            }
+        }
     });
 });
 
@@ -194,6 +257,112 @@ function genererToutesNotes() {
         // TODO: Implémenter la génération groupée
         alert('Fonctionnalité en cours de développement');
     }
+}
+
+function envoyerNoteRappelWhatsApp(eleveId, eleveNom) {
+    // Afficher la modal
+    whatsappNoteRappelModal.show();
+    
+    // Charger l'aperçu
+    chargerApercuWhatsAppNoteRappel(eleveId);
+}
+
+function chargerApercuWhatsAppNoteRappel(eleveId) {
+    const content = document.getElementById('whatsappNoteRappelContent');
+    const btnOuvrir = document.getElementById('btnOuvrirWhatsAppNoteRappel');
+    
+    // Réinitialiser
+    btnOuvrir.disabled = true;
+    currentWhatsAppLinkNoteRappel = null;
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-success" role="status">
+                <span class="visually-hidden">Chargement...</span>
+            </div>
+            <p class="mt-2">Préparation du message...</p>
+        </div>
+    `;
+    
+    // Appel AJAX
+    fetch(`{% url 'paiements:apercu_whatsapp_note_rappel' %}?eleve_id=${eleveId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                afficherApercuWhatsAppNoteRappel(data);
+                if (data.whatsapp_link) {
+                    currentWhatsAppLinkNoteRappel = data.whatsapp_link;
+                    btnOuvrir.disabled = false;
+                }
+            } else {
+                content.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>Erreur:</strong> ${data.error}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <strong>Erreur:</strong> Erreur de connexion
+                </div>
+            `;
+        });
+}
+
+function afficherApercuWhatsAppNoteRappel(data) {
+    const content = document.getElementById('whatsappNoteRappelContent');
+    
+    content.innerHTML = `
+        <div class="row">
+            <div class="col-md-5">
+                <h6><i class="fas fa-exclamation-triangle text-warning me-2"></i>Situation financière</h6>
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <p><strong>Élève:</strong> ${data.eleve_nom}</p>
+                        <p><strong>Classe:</strong> ${data.classe}</p>
+                        <hr>
+                        <p><strong>Frais de scolarité:</strong> ${data.montant_total} GNF</p>
+                        <p><strong>Montant payé:</strong> <span class="text-success">${data.montant_paye} GNF</span></p>
+                        <p class="mb-0"><strong>Reste à payer:</strong> <span class="badge bg-danger fs-6">${data.reste_a_payer} GNF</span></p>
+                    </div>
+                </div>
+                
+                ${data.pdf_url ? `
+                <div class="alert alert-success mt-3">
+                    <i class="fas fa-file-pdf me-2"></i>
+                    <strong>Note de rappel PDF incluse !</strong><br>
+                    <small>Le lien de téléchargement sera inclus dans le message.</small>
+                </div>
+                ` : ''}
+                
+                ${!data.telephone ? `
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Attention:</strong> Aucun numéro WhatsApp trouvé.
+                    <br><small>Veuillez renseigner le numéro du responsable dans la fiche élève.</small>
+                </div>
+                ` : `
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-phone me-2"></i>
+                    <strong>Destinataire:</strong> ${data.telephone}
+                </div>
+                `}
+            </div>
+            
+            <div class="col-md-7">
+                <h6><i class="fab fa-whatsapp me-2"></i>Aperçu du message</h6>
+                <div class="card">
+                    <div class="card-body" style="background: #e7ffdb; font-family: 'Segoe UI', sans-serif; max-height: 350px; overflow-y: auto;">
+                        <div style="white-space: pre-line; font-size: 13px;">${data.message}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 </script>
 {% endblock %}

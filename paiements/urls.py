@@ -2,7 +2,7 @@ from django.urls import path
 from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
 from . import views_rappels
-from .whatsapp_recu import apercu_message_whatsapp_recu
+from .whatsapp_recu import apercu_message_whatsapp_recu, apercu_message_whatsapp_note_rappel
 
 app_name = 'paiements'
 
@@ -78,8 +78,9 @@ urlpatterns = [
     path('rappels/statistiques/', views_rappels.statistiques_rappels, name='statistiques_rappels'),
     path('rappels/supprimer/<int:relance_id>/', views_rappels.supprimer_rappel, name='supprimer_rappel'),
     
-    # WhatsApp - Envoi de reçus
+    # WhatsApp - Envoi de reçus et notes de rappel
     path('whatsapp/apercu-recu/', apercu_message_whatsapp_recu, name='apercu_whatsapp_recu'),
+    path('whatsapp/apercu-note-rappel/', apercu_message_whatsapp_note_rappel, name='apercu_whatsapp_note_rappel'),
 ]
 
 
