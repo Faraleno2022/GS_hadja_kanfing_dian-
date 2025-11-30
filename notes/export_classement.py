@@ -22,13 +22,18 @@ from eleves.models import Eleve, Classe as ClasseEleve
 from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
 
 
-def formater_rang(rang, sexe):
+def formater_rang(rang, sexe=None):
     """
     Formate le rang avec l'accord grammatical selon le sexe
     
+    Règles:
+    - 1er pour les garçons (sexe='M')
+    - 1ère pour les filles (sexe='F')
+    - 2ème, 3ème, 4ème, etc. pour tous les autres rangs (pas de distinction de sexe)
+    
     Args:
         rang: Le numéro de rang (int ou str) ou rang déjà formaté (ex: "1er", "2ème ex")
-        sexe: 'M' pour masculin, 'F' pour féminin
+        sexe: 'M' pour masculin, 'F' pour féminin (utilisé uniquement pour le rang 1)
     
     Returns:
         str: Le rang formaté (ex: "1er", "1ère", "2ème", "3ème", etc.)
@@ -52,19 +57,22 @@ def formater_rang(rang, sexe):
             return rang
         else:
             # Convertir en entier si c'est un nombre
-            rang_num = int(rang)
+            try:
+                rang_num = int(rang)
+            except ValueError:
+                return rang
     else:
         # Si c'est déjà un nombre
         rang_num = int(rang)
     
-    # Cas spécial pour le rang 1
+    # Cas spécial pour le rang 1 - accord selon le sexe
     if rang_num == 1:
         if sexe == 'F':
             return "1ère"
         else:
             return "1er"
     
-    # Pour tous les autres rangs, on utilise "ème"
+    # Pour tous les autres rangs (2, 3, 4, ...), on utilise "ème" sans distinction de sexe
     return f"{rang_num}ème"
 
 
@@ -419,7 +427,7 @@ def _generer_classement_matiere(eleves, classe_note, matiere_id, type_note, peri
         
         classement_data.append({
             'matricule': eleve.matricule or 'N/A',
-            'nom_complet': f"{eleve.nom} {eleve.prenom}",
+            'nom_complet': f"{eleve.prenom} {eleve.nom}",
             'moyenne': note_value,
             'absent': absent,
             'pas_de_notes': pas_de_notes,
@@ -469,7 +477,7 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 'prenom': eleve.prenom,
                 'nom': eleve.nom,
                 'matricule': eleve.matricule or 'N/A',
-                'nom_complet': f"{eleve.nom} {eleve.prenom}",
+                'nom_complet': f"{eleve.prenom} {eleve.nom}",
                 'moyenne': round(moyenne_generale, 2) if moyenne_generale else None,
                 'absent': False,
                 'pas_de_notes': False,
@@ -481,7 +489,7 @@ def _generer_classement_general(eleves, classe_note, type_note, periode):
                 'prenom': eleve.prenom,
                 'nom': eleve.nom,
                 'matricule': eleve.matricule or 'N/A',
-                'nom_complet': f"{eleve.nom} {eleve.prenom}",
+                'nom_complet': f"{eleve.prenom} {eleve.nom}",
                 'moyenne': None,
                 'absent': False,
                 'pas_de_notes': True,
