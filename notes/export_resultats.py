@@ -151,7 +151,9 @@ def exporter_resultats_pdf(request):
         
         # Tableau des résultats
         data = [['Rang', 'Matricule', 'Nom', 'Prénom', 'Moyenne /20', 'Mention']]
-        for r in resultats:
+        lignes_non_admis = []  # Pour stocker les indices des lignes avec moyenne < 10
+        
+        for idx, r in enumerate(resultats):
             moy = r['moyenne']
             if moy >= 16:
                 mention = 'Très Bien'
@@ -163,6 +165,7 @@ def exporter_resultats_pdf(request):
                 mention = 'Passable'
             else:
                 mention = 'Insuffisant'
+                lignes_non_admis.append(idx + 1)  # +1 car la ligne 0 est l'en-tête
             
             data.append([
                 r['rang'], 
@@ -175,7 +178,9 @@ def exporter_resultats_pdf(request):
         
         # Style du tableau
         table = Table(data, colWidths=[2*cm, 3*cm, 5*cm, 5*cm, 3*cm, 3*cm])
-        table.setStyle(TableStyle([
+        
+        # Styles de base
+        style_commands = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -187,7 +192,15 @@ def exporter_resultats_pdf(request):
             ('FONTSIZE', (0, 1), (-1, -1), 10),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
             ('ALIGN', (2, 1), (3, -1), 'LEFT'),
-        ]))
+        ]
+        
+        # Ajouter le style rouge pour les élèves non admis (moyenne < 10)
+        for ligne in lignes_non_admis:
+            # Colonne 4 = Moyenne, Colonne 5 = Mention
+            style_commands.append(('TEXTCOLOR', (4, ligne), (5, ligne), colors.red))
+            style_commands.append(('FONTNAME', (4, ligne), (5, ligne), 'Helvetica-Bold'))
+        
+        table.setStyle(TableStyle(style_commands))
         elements.append(table)
         
         # Statistiques
