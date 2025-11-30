@@ -6646,7 +6646,7 @@ def consulter_notes(request):
                 
                 # Déterminer le type de système selon la période
                 if periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-                    # Système mensuel - utiliser NoteEleve avec Evaluation
+                    # Système mensuel - chercher dans NoteMensuelle ET NoteEleve
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
                         eval_factice = type('EvalFactice', (), {
@@ -6662,104 +6662,129 @@ def consulter_notes(request):
                             'moyenne': None
                         }
                         
-                        # Récupérer les notes mensuelles pour cette période
+                        note_trouvee = False
+                        note_value = None
+                        absent_value = False
+                        
+                        # 1. Chercher d'abord dans NoteMensuelle (notes importées)
                         try:
-                            # Chercher dans les notes standard (Evaluation + Note) au lieu de NoteMensuelle
-                            evaluations_mois = Evaluation.objects.filter(
+                            note_mensuelle = NoteMensuelle.objects.get(
+                                eleve=eleve,
                                 matiere=matiere,
-                                periode=periode_classement
+                                mois=periode_classement,
+                                annee_scolaire=classe_selectionnee.annee_scolaire
                             )
-                            
-                            # Prendre la première évaluation du mois
-                            evaluation_mois = evaluations_mois.first()
-                            
-                            if evaluation_mois:
-                                note_obj = NoteEleve.objects.get(
-                                    eleve=eleve,
-                                    evaluation=evaluation_mois
+                            note_value = note_mensuelle.note
+                            absent_value = note_mensuelle.absent
+                            note_trouvee = True
+                        except NoteMensuelle.DoesNotExist:
+                            pass
+                        
+                        # 2. Si pas trouvé, chercher dans NoteEleve (via Evaluation)
+                        if not note_trouvee:
+                            try:
+                                evaluations_mois = Evaluation.objects.filter(
+                                    matiere=matiere,
+                                    periode=periode_classement
                                 )
+                                evaluation_mois = evaluations_mois.first()
                                 
-                                notes_matiere['notes'].append({
-                                    'evaluation': eval_factice,
-                                    'note': note_obj.note,
-                                    'absent': note_obj.absent if hasattr(note_obj, 'absent') else False,
-                                })
-                                
-                                # Calculer la moyenne pour cette matière
-                                if note_obj.note is not None and not (hasattr(note_obj, 'absent') and note_obj.absent):
-                                    notes_matiere['moyenne'] = float(note_obj.note)
-                                else:
-                                    notes_matiere['moyenne'] = 0.0
-                            else:
-                                # Pas d'évaluation pour ce mois
-                                notes_matiere['notes'].append({
-                                    'evaluation': eval_factice,
-                                    'note': None,
-                                    'absent': False,
-                                })
-                                notes_matiere['moyenne'] = 0.0
-                                
-                        except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
-                            # Pas de note = 0
-                            notes_matiere['notes'].append({
-                                'evaluation': eval_factice,
-                                'note': None,
-                                'absent': False,
-                            })
+                                if evaluation_mois:
+                                    note_obj = NoteEleve.objects.get(
+                                        eleve=eleve,
+                                        evaluation=evaluation_mois
+                                    )
+                                    note_value = note_obj.note
+                                    absent_value = getattr(note_obj, 'absent', False)
+                                    note_trouvee = True
+                            except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
+                                pass
+                        
+                        # Ajouter la note trouvée ou une note vide
+                        notes_matiere['notes'].append({
+                            'evaluation': eval_factice,
+                            'note': note_value,
+                            'absent': absent_value,
+                        })
+                        
+                        # Calculer la moyenne pour cette matière
+                        if note_value is not None and not absent_value:
+                            notes_matiere['moyenne'] = float(note_value)
+                        else:
                             notes_matiere['moyenne'] = 0.0
                         
                         notes_par_matiere[matiere.id] = notes_matiere
                 else:
-                    # Système annuel/trimestriel - utiliser Evaluation et NoteEleve
+                    # Système trimestriel/semestriel - chercher dans CompositionNote ET NoteEleve
+                    periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+                    periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
+                    
                     for matiere in matieres:
-                        # Récupérer toutes les évaluations de cette matière
-                        evaluations = Evaluation.objects.filter(matiere=matiere)
-                        if periode_classement:
-                            evaluations = evaluations.filter(periode=periode_classement)
+                        # Créer une évaluation factice pour l'affichage
+                        eval_factice = type('EvalFactice', (), {
+                            'titre': periode_classement,
+                            'periode': periode_classement,
+                            'coefficient': 1,
+                            'date_evaluation': None
+                        })()
                         
                         notes_matiere = {
-                            'evaluations': [],
+                            'evaluations': [eval_factice],
                             'notes': [],
                             'moyenne': None
                         }
                         
-                        # Calculer la moyenne pondérée par coefficient d'évaluation
-                        total_pondere = Decimal('0')
-                        total_coef_eval = Decimal('0')
+                        note_trouvee = False
+                        note_value = None
+                        absent_value = False
                         
-                        for evaluation in evaluations:
+                        # 1. Chercher d'abord dans CompositionNote (notes importées)
+                        if periode_classement in periodes_trimestrielles or periode_classement in periodes_semestrielles:
                             try:
-                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                                notes_matiere['evaluations'].append(evaluation)
-                                notes_matiere['notes'].append({
-                                    'evaluation': evaluation,
-                                    'note': note_obj.note,
-                                    'absent': note_obj.absent,
-                                })
-                                # Compter les absences comme 0
-                                coef_eval = Decimal(str(evaluation.coefficient or 1))
-                                if note_obj.absent or note_obj.note is None:
-                                    # Absence = 0
-                                    total_pondere += Decimal('0') * coef_eval
-                                else:
-                                    total_pondere += Decimal(str(note_obj.note)) * coef_eval
-                                total_coef_eval += coef_eval
-                            except NoteEleve.DoesNotExist:
-                                notes_matiere['evaluations'].append(evaluation)
-                                notes_matiere['notes'].append({
-                                    'evaluation': evaluation,
-                                    'note': None,
-                                    'absent': False,
-                                })
-                                # Pas de note = 0
-                                coef_eval = Decimal(str(evaluation.coefficient or 1))
-                                total_pondere += Decimal('0') * coef_eval
-                                total_coef_eval += coef_eval
+                                note_compo = CompositionNote.objects.get(
+                                    eleve=eleve,
+                                    matiere=matiere,
+                                    periode=periode_classement,
+                                    annee_scolaire=classe_selectionnee.annee_scolaire
+                                )
+                                note_value = note_compo.note
+                                absent_value = note_compo.absent
+                                note_trouvee = True
+                            except CompositionNote.DoesNotExist:
+                                pass
                         
-                        # Calculer la moyenne pondérée de la matière
-                        if total_coef_eval > 0:
-                            moyenne_matiere = total_pondere / total_coef_eval
-                            notes_matiere['moyenne'] = round(float(moyenne_matiere), 2)
+                        # 2. Si pas trouvé, chercher dans NoteEleve (via Evaluation)
+                        if not note_trouvee:
+                            try:
+                                evaluations = Evaluation.objects.filter(
+                                    matiere=matiere,
+                                    periode=periode_classement
+                                )
+                                evaluation = evaluations.first()
+                                
+                                if evaluation:
+                                    note_obj = NoteEleve.objects.get(
+                                        eleve=eleve,
+                                        evaluation=evaluation
+                                    )
+                                    note_value = note_obj.note
+                                    absent_value = getattr(note_obj, 'absent', False)
+                                    note_trouvee = True
+                            except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
+                                pass
+                        
+                        # Ajouter la note trouvée ou une note vide
+                        notes_matiere['notes'].append({
+                            'evaluation': eval_factice,
+                            'note': note_value,
+                            'absent': absent_value,
+                        })
+                        
+                        # Calculer la moyenne pour cette matière
+                        if note_value is not None and not absent_value:
+                            notes_matiere['moyenne'] = float(note_value)
+                        else:
+                            notes_matiere['moyenne'] = 0.0
                         
                         notes_par_matiere[matiere.id] = notes_matiere
                 
