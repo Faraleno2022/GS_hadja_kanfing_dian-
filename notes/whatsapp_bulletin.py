@@ -253,25 +253,53 @@ class WhatsAppBulletinSender:
         else:
             return None
     
-    def _generer_message_whatsapp(self, eleve, periode, system_type):
-        """Génère le message WhatsApp personnalisé"""
+    def _generer_message_whatsapp(self, eleve, periode, system_type, moyenne=None, rang=None, mention=None):
+        """Génère le message WhatsApp personnalisé avec les infos de l'école"""
         titre_periode = self._get_titre_periode(periode, system_type)
         
-        message = f"""🏫 *École Moderne - Bulletin de Notes*
+        # Récupérer les infos de l'école
+        ecole = eleve.classe.ecole if eleve.classe else None
+        nom_ecole = ecole.nom if ecole else "École"
+        tel_ecole = ecole.telephone if ecole else ""
+        email_ecole = ecole.email if ecole else ""
+        
+        # Construire le message
+        message = f"""🏫 *{nom_ecole} - Bulletin de Notes*
 
-Bonjour,
+Bonjour Cher Parent,
 
-Nous avons le plaisir de vous transmettre le bulletin de notes de votre enfant *{eleve.prenom} {eleve.nom}* pour la période *{titre_periode}*.
+Nous avons le plaisir de vous transmettre les résultats de votre enfant *{eleve.prenom} {eleve.nom}* pour la période *{titre_periode}*."""
 
-📋 Le bulletin est joint à ce message en format PDF.
+        # Ajouter les résultats si disponibles
+        if moyenne is not None:
+            message += f"""
 
-📞 Pour toute question, n'hésitez pas à nous contacter.
+📊 *Résultats:*
+• Moyenne Générale: *{moyenne}/20*"""
+            if rang:
+                message += f"""
+• Rang: *{rang}*"""
+            if mention:
+                message += f"""
+• Mention: *{mention}*"""
 
-🏫 Direction de l'École
-📧 Contact: direction@ecole.com
-📱 Tél: +224 XXX XX XX XX
+        message += f"""
 
-_Message automatique - Ne pas répondre_"""
+📋 Vous pouvez consulter le bulletin complet sur notre plateforme.
+
+📞 Pour toute question, n'hésitez pas à nous contacter."""
+
+        if tel_ecole:
+            message += f"""
+📱 Tél: {tel_ecole}"""
+        if email_ecole:
+            message += f"""
+📧 Email: {email_ecole}"""
+
+        message += """
+
+Cordialement,
+🏫 La Direction"""
 
         return message
     
@@ -387,13 +415,80 @@ def apercu_message_whatsapp(request):
         
         eleve = get_object_or_404(Eleve, id=eleve_id)
         telephone = whatsapp_sender._get_telephone_parent(eleve)
-        message = whatsapp_sender._generer_message_whatsapp(eleve, periode, system_type)
+        
+        # Récupérer les résultats de l'élève depuis utils_rangs
+        moyenne = None
+        rang = None
+        mention = None
+        
+        try:
+            from .models import ClasseNote
+            from .utils_rangs import calculer_rangs_classe_periode
+            
+            # Trouver la ClasseNote correspondante
+            classe_note = ClasseNote.objects.filter(
+                nom=eleve.classe.nom,
+                annee_scolaire=eleve.classe.annee_scolaire,
+                ecole=eleve.classe.ecole
+            ).first()
+            
+            if classe_note and periode:
+                rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=True)
+                rang_info = rangs_dict.get(eleve.id)
+                
+                if rang_info:
+                    moyenne = float(rang_info['moyenne'])
+                    rang = f"{rang_info['rang']}/{rang_info['total_eleves']}"
+                    
+                    # Calculer la mention
+                    if moyenne >= 16:
+                        mention = "Très Bien"
+                    elif moyenne >= 14:
+                        mention = "Bien"
+                    elif moyenne >= 12:
+                        mention = "Assez Bien"
+                    elif moyenne >= 10:
+                        mention = "Passable"
+                    else:
+                        mention = "Insuffisant"
+        except Exception as e:
+            logger.warning(f"Impossible de récupérer les résultats: {e}")
+        
+        # Générer le message avec les résultats
+        message = whatsapp_sender._generer_message_whatsapp(eleve, periode, system_type, moyenne, rang, mention)
+        
+        # Formater le numéro pour WhatsApp (enlever les espaces, ajouter +224 si nécessaire)
+        whatsapp_number = None
+        if telephone:
+            # Nettoyer le numéro
+            clean_number = telephone.replace(' ', '').replace('-', '').replace('.', '')
+            # Ajouter le code pays si nécessaire
+            if not clean_number.startswith('+'):
+                if clean_number.startswith('00'):
+                    clean_number = '+' + clean_number[2:]
+                elif clean_number.startswith('224'):
+                    clean_number = '+' + clean_number
+                else:
+                    clean_number = '+224' + clean_number
+            whatsapp_number = clean_number
+        
+        # Générer le lien WhatsApp
+        import urllib.parse
+        whatsapp_link = None
+        if whatsapp_number:
+            encoded_message = urllib.parse.quote(message)
+            whatsapp_link = f"https://wa.me/{whatsapp_number.replace('+', '')}?text={encoded_message}"
         
         return JsonResponse({
             'success': True,
             'message': message,
             'telephone': telephone,
-            'eleve_nom': f"{eleve.prenom} {eleve.nom}"
+            'whatsapp_number': whatsapp_number,
+            'whatsapp_link': whatsapp_link,
+            'eleve_nom': f"{eleve.prenom} {eleve.nom}",
+            'moyenne': moyenne,
+            'rang': rang,
+            'mention': mention
         })
         
     except Exception as e:

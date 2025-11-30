@@ -1224,7 +1224,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <button type="button" class="btn btn-whatsapp" id="btnConfirmerEnvoi" disabled>
-                    <i class="fab fa-whatsapp me-2"></i>Confirmer l'envoi
+                    <i class="fab fa-whatsapp me-2"></i>Ouvrir WhatsApp
                 </button>
             </div>
         </div>
@@ -1302,6 +1302,9 @@ function chargerApercuWhatsApp() {
 function afficherApercuWhatsApp(data) {
     const content = document.getElementById('whatsappContent');
     
+    // Stocker le lien WhatsApp pour l'utiliser lors de la confirmation
+    window.currentWhatsAppLink = data.whatsapp_link;
+    
     content.innerHTML = `
         <div class="row">
             <div class="col-md-6">
@@ -1309,8 +1312,13 @@ function afficherApercuWhatsApp(data) {
                 <div class="card bg-light">
                     <div class="card-body">
                         <p><strong>Élève:</strong> ${data.eleve_nom}</p>
-                        <p><strong>Téléphone:</strong> ${data.telephone || 'Non renseigné'}</p>
-                        <p class="mb-0"><strong>Période:</strong> ${currentBulletinData.periode}</p>
+                        <p><strong>Téléphone parent:</strong> ${data.telephone || 'Non renseigné'}</p>
+                        ${data.moyenne ? `
+                        <hr>
+                        <p><strong>Moyenne:</strong> <span class="badge ${data.moyenne >= 10 ? 'bg-success' : 'bg-danger'}">${data.moyenne}/20</span></p>
+                        <p><strong>Rang:</strong> ${data.rang || '-'}</p>
+                        <p class="mb-0"><strong>Mention:</strong> ${data.mention || '-'}</p>
+                        ` : ''}
                     </div>
                 </div>
                 
@@ -1318,30 +1326,34 @@ function afficherApercuWhatsApp(data) {
                 <div class="alert alert-warning mt-3">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     <strong>Attention:</strong> Aucun numéro WhatsApp trouvé pour cet élève.
-                    L'envoi ne pourra pas être effectué.
+                    <br><small>Veuillez d'abord renseigner le numéro du responsable dans la fiche élève.</small>
                 </div>
-                ` : ''}
+                ` : `
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Comment ça marche ?</strong><br>
+                    <small>En cliquant sur "Ouvrir WhatsApp", une nouvelle fenêtre s'ouvrira avec le message pré-rempli. Vous n'aurez qu'à cliquer sur "Envoyer".</small>
+                </div>
+                `}
             </div>
             
             <div class="col-md-6">
                 <h6><i class="fab fa-whatsapp me-2"></i>Aperçu du message</h6>
                 <div class="card">
-                    <div class="card-body" style="background: #e7ffdb; font-family: 'Segoe UI', sans-serif;">
-                        <div style="white-space: pre-line; font-size: 14px;">${data.message}</div>
-                        <hr>
-                        <small class="text-muted">
-                            <i class="fas fa-file-pdf me-1"></i>
-                            bulletin_${currentBulletinData.eleve_nom.replace(' ', '_')}_${currentBulletinData.periode}.pdf
-                        </small>
+                    <div class="card-body" style="background: #e7ffdb; font-family: 'Segoe UI', sans-serif; max-height: 300px; overflow-y: auto;">
+                        <div style="white-space: pre-line; font-size: 13px;">${data.message}</div>
                     </div>
                 </div>
             </div>
         </div>
     `;
     
-    // Désactiver le bouton si pas de téléphone
-    if (!data.telephone) {
-        document.getElementById('btnConfirmerEnvoi').disabled = true;
+    // Activer/désactiver le bouton selon la disponibilité du téléphone
+    const btnConfirmer = document.getElementById('btnConfirmerEnvoi');
+    if (!data.telephone || !data.whatsapp_link) {
+        btnConfirmer.disabled = true;
+    } else {
+        btnConfirmer.disabled = false;
     }
 }
 
@@ -1356,66 +1368,35 @@ function afficherErreurWhatsApp(erreur) {
     `;
 }
 
-// Gestionnaire pour le bouton de confirmation
+// Gestionnaire pour le bouton de confirmation - Ouvre WhatsApp Web directement
 document.getElementById('btnConfirmerEnvoi').addEventListener('click', function() {
-    const btn = this;
-    const originalText = btn.innerHTML;
+    if (!window.currentWhatsAppLink) {
+        alert('Erreur: Lien WhatsApp non disponible');
+        return;
+    }
     
-    // Désactiver le bouton et afficher le loading
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Envoi en cours...';
+    // Ouvrir WhatsApp Web dans un nouvel onglet
+    window.open(window.currentWhatsAppLink, '_blank');
     
-    // Préparer les données
-    const formData = new FormData();
-    formData.append('eleve_id', currentBulletinData.eleve_id);
-    formData.append('classe_id', currentBulletinData.classe_id);
-    formData.append('periode', currentBulletinData.periode);
-    formData.append('system_type', currentBulletinData.system_type);
-    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    // Fermer la modal
+    whatsappModal.hide();
     
-    // Envoi AJAX
-    fetch('{% url "notes:envoyer_bulletin_whatsapp" %}', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Succès
-            whatsappModal.hide();
-            
-            // Afficher un message de succès
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-success alert-dismissible fade show';
-            alertDiv.innerHTML = `
-                <i class="fas fa-check-circle me-2"></i>
-                <strong>Bulletin envoyé avec succès !</strong><br>
-                Le bulletin a été envoyé par WhatsApp au numéro ${data.telephone}.
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            // Insérer l'alerte en haut de la page
-            const container = document.querySelector('.container-fluid');
-            container.insertBefore(alertDiv, container.firstChild);
-            
-            // Faire défiler vers le haut
-            window.scrollTo(0, 0);
-            
-        } else {
-            // Erreur
-            alert('Erreur lors de l\'envoi: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Erreur:', error);
-        alert('Erreur de connexion lors de l\'envoi');
-    })
-    .finally(() => {
-        // Restaurer le bouton
-        btn.disabled = false;
-        btn.innerHTML = originalText;
-    });
-
+    // Afficher un message de confirmation
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show';
+    alertDiv.innerHTML = `
+        <i class="fab fa-whatsapp me-2"></i>
+        <strong>WhatsApp ouvert !</strong><br>
+        Le message a été pré-rempli. Cliquez sur "Envoyer" dans WhatsApp pour transmettre le bulletin.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insérer l'alerte en haut de la page
+    const container = document.querySelector('.container-fluid');
+    if (container) {
+        container.insertBefore(alertDiv, container.firstChild);
+        window.scrollTo(0, 0);
+    }
 });
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP0ckR5Q8Zg+UtYRFEs0u9B6L9I7DiIP9N6byN1Nsx3Rp3XIan+FJxuxMxDPZWS9Vyuk3F7S2X3pG4a0dJQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
