@@ -14,6 +14,7 @@ from .views_import import (
 )
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
+from .bulletin_public import bulletin_public_pdf
 
 app_name = 'notes'
 
@@ -67,6 +68,10 @@ urlpatterns = [
     # WhatsApp Bulletin
     path('bulletin/whatsapp/envoyer/', envoyer_bulletin_whatsapp, name='envoyer_bulletin_whatsapp'),
     path('bulletin/whatsapp/apercu/', apercu_message_whatsapp, name='apercu_message_whatsapp'),
+    
+    # Bulletin public (téléchargement sans authentification via token)
+    path('bulletin-public/<int:eleve_id>/<int:classe_note_id>/<str:periode>/', 
+         bulletin_public_pdf, name='bulletin_public_pdf'),
     
     # Export des résultats par classe
     path('exporter-resultats-pdf/', exporter_resultats_pdf, name='exporter_resultats_pdf'),

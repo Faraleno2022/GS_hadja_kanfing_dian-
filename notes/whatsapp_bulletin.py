@@ -465,17 +465,15 @@ def apercu_message_whatsapp(request):
         except Exception as e:
             logger.warning(f"Impossible de récupérer les résultats: {e}")
         
-        # Générer l'URL du PDF du bulletin
+        # Générer l'URL PUBLIQUE du PDF du bulletin (sans authentification requise)
         pdf_url = None
         try:
-            from django.urls import reverse
-            # Construire l'URL absolue du PDF
-            base_url = request.build_absolute_uri('/')[:-1]  # Enlever le / final
+            from .bulletin_public import generer_url_bulletin_public
             if classe_note:
-                pdf_path = reverse('notes:bulletin_intelligent_pdf', args=[eleve.id, classe_note.id, periode])
-                pdf_url = f"{base_url}{pdf_path}"
+                # Utiliser l'URL publique avec token sécurisé
+                pdf_url = generer_url_bulletin_public(request, eleve.id, classe_note.id, periode)
         except Exception as e:
-            logger.warning(f"Impossible de générer l'URL du PDF: {e}")
+            logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
         
         # Générer le message avec les résultats et le lien PDF
         message = whatsapp_sender._generer_message_whatsapp(eleve, periode, system_type, moyenne, rang, mention, pdf_url)
