@@ -251,10 +251,57 @@ document.addEventListener('DOMContentLoaded', function() {
     const matiereSelect = document.getElementById('matiere');
     const evaluationSelect = document.getElementById('evaluation');
     const evaluationGroup = document.getElementById('evaluationGroup');
+    const periodeSelect = document.getElementById('periode');
     const btnTemplate = document.getElementById('btnTemplate');
 
-    // Afficher/masquer le champ évaluation selon le type
+    // Stocker les options de période originales
+    const periodesOriginales = periodeSelect.innerHTML;
+
+    // Filtrer les périodes selon le type d'import
+    function filtrerPeriodes(typeImport) {
+        periodeSelect.innerHTML = '<option value="">-- Sélectionner --</option>';
+        
+        if (typeImport === 'MENSUELLE') {
+            // Seulement les mois
+            periodeSelect.innerHTML += `
+                <optgroup label="Périodes Mensuelles">
+                    <option value="OCTOBRE">Octobre</option>
+                    <option value="NOVEMBRE">Novembre</option>
+                    <option value="DECEMBRE">Décembre</option>
+                    <option value="JANVIER">Janvier</option>
+                    <option value="FEVRIER">Février</option>
+                    <option value="MARS">Mars</option>
+                    <option value="AVRIL">Avril</option>
+                    <option value="MAI">Mai</option>
+                </optgroup>
+            `;
+        } else if (typeImport === 'COMPOSITION') {
+            // Trimestres et Semestres
+            periodeSelect.innerHTML += `
+                <optgroup label="Périodes Trimestrielles">
+                    <option value="TRIMESTRE_1">Trimestre 1</option>
+                    <option value="TRIMESTRE_2">Trimestre 2</option>
+                    <option value="TRIMESTRE_3">Trimestre 3</option>
+                </optgroup>
+                <optgroup label="Périodes Semestrielles">
+                    <option value="SEMESTRE_1">Semestre 1</option>
+                    <option value="SEMESTRE_2">Semestre 2</option>
+                </optgroup>
+            `;
+        } else if (typeImport === 'EVALUATION') {
+            // Toutes les périodes
+            periodeSelect.innerHTML = periodesOriginales;
+        } else {
+            // Par défaut: toutes les périodes
+            periodeSelect.innerHTML = periodesOriginales;
+        }
+    }
+
+    // Afficher/masquer le champ évaluation et filtrer périodes selon le type
     typeImportSelect.addEventListener('change', function() {
+        // Filtrer les périodes
+        filtrerPeriodes(this.value);
+        
         if (this.value === 'EVALUATION') {
             evaluationGroup.style.display = 'block';
             evaluationSelect.required = true;
