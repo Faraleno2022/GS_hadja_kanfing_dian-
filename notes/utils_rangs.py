@@ -116,7 +116,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                     'eleve_id': eleve.id,
                     'prenom': eleve.prenom,
                     'nom': eleve.nom,
-                    'sexe': getattr(eleve, 'sexe', 'M'),
+                    'sexe': getattr(eleve, 'sexe', None) or 'M',  # Gérer le cas où sexe est None ou vide
                     'moyenne': moyenne_generale
                 })
     else:
@@ -203,7 +203,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                     'eleve_id': eleve.id,
                     'prenom': eleve.prenom,
                     'nom': eleve.nom,
-                    'sexe': getattr(eleve, 'sexe', 'M'),
+                    'sexe': getattr(eleve, 'sexe', None) or 'M',  # Gérer le cas où sexe est None ou vide
                     'moyenne': moyenne_generale
                 })
     
