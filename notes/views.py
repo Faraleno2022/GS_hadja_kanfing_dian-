@@ -6629,6 +6629,9 @@ def consulter_notes(request):
                 rang = rang_info['rang'] if rang_info else '-'
                 
                 # Déterminer le type de système selon la période
+                # Import des modèles nécessaires
+                from .models import NoteMensuelle, CompositionNote
+                
                 if periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
                     # Système mensuel - chercher dans NoteMensuelle ET NoteEleve
                     for matiere in matieres:
