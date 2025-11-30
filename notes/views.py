@@ -5917,14 +5917,20 @@ def saisir_notes(request):
         eleves_ids = list(eleves.values_list('id', flat=True))
         
         # 1. Chercher dans NoteMensuelle (notes mensuelles importées ou saisies)
-        if periode in periodes_mensuelles:
+        if periode in periodes_mensuelles or type_note == 'mensuelle':
             try:
-                notes_mensuelles = NoteMensuelle.objects.filter(
+                # Chercher les notes mensuelles pour cette matière et période
+                notes_mensuelles_qs = NoteMensuelle.objects.filter(
                     matiere=matiere_selectionnee,
                     mois=periode,
-                    annee_scolaire=annee_scolaire,
                     eleve_id__in=eleves_ids  # Filtrer par les élèves de la classe
-                ).select_related('eleve')
+                )
+                
+                # Filtrer par année scolaire si disponible
+                if annee_scolaire:
+                    notes_mensuelles_qs = notes_mensuelles_qs.filter(annee_scolaire=annee_scolaire)
+                
+                notes_mensuelles = notes_mensuelles_qs.select_related('eleve')
                 
                 for n in notes_mensuelles:
                     try:
@@ -5936,8 +5942,9 @@ def saisir_notes(request):
                         }
                     except Exception:
                         continue
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.error(f"Erreur récupération NoteMensuelle: {e}")
         
         # 2. Chercher dans CompositionNote (notes trimestrielles/semestrielles importées)
         if periode in periodes_trimestrielles or periode in periodes_semestrielles:

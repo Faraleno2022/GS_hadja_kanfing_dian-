@@ -494,6 +494,11 @@ const periode = '{{ periode|default:"" }}';
 const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id }}{% else %}null{% endif %};
 const anneeScolaire = '{{ classe_selectionnee.annee_scolaire|default:"" }}';
 
+// Debug: afficher les notes existantes dans la console
+console.log('Notes existantes chargées:', notesExistantes);
+console.log('Nombre de notes:', Object.keys(notesExistantes).length);
+console.log('Type note:', typeNote, 'Période:', periode);
+
 // Fonction d'impression PDF - définie en premier pour être toujours disponible
 function imprimerListePDF() {
     const classeIdPDF = '{{ classe_selectionnee.id|default:"" }}';
