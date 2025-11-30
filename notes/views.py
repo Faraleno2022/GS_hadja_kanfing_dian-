@@ -5917,26 +5917,59 @@ def saisir_notes(request):
     notes_deja_saisies = False
     nombre_notes_existantes = 0
     notes_existantes_json = '{}'
-    if matiere_selectionnee and periode and evaluations.exists():
-        qs_notes = NoteEleve.objects.filter(
-            evaluation__in=evaluations
-        ).select_related('eleve')
-        nombre_notes_existantes = qs_notes.count()
+    
+    if matiere_selectionnee and periode:
+        import json as _json
+        notes_map = {}
+        
+        # 1. Chercher d'abord dans NoteMensuelle (notes importées ou saisies directement)
+        periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        if periode in periodes_mensuelles:
+            try:
+                notes_mensuelles = NoteMensuelle.objects.filter(
+                    matiere=matiere_selectionnee,
+                    mois=periode,
+                    annee_scolaire=classe_selectionnee.annee_scolaire if classe_selectionnee else ''
+                ).select_related('eleve')
+                
+                for n in notes_mensuelles:
+                    try:
+                        notes_map[n.eleve_id] = {
+                            'note': float(n.note) if n.note is not None else None,
+                            'absent': bool(n.absent),
+                            'appreciation': None,
+                            'commentaire': None,
+                        }
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        
+        # 2. Chercher aussi dans NoteEleve (via évaluations) - peut écraser les valeurs précédentes
+        if evaluations.exists():
+            try:
+                qs_notes = NoteEleve.objects.filter(
+                    evaluation__in=evaluations
+                ).select_related('eleve')
+                
+                for n in qs_notes:
+                    try:
+                        # Dernière valeur écrase la précédente si plusieurs evals
+                        notes_map[n.eleve_id] = {
+                            'note': float(n.note) if getattr(n, 'note', None) is not None else None,
+                            'absent': bool(getattr(n, 'absent', False)),
+                            'appreciation': getattr(n, 'appreciation_finale', None),
+                            'commentaire': getattr(n, 'commentaire', None),
+                        }
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        
+        nombre_notes_existantes = len(notes_map)
         notes_deja_saisies = nombre_notes_existantes > 0
+        
         try:
-            import json as _json
-            notes_map = {}
-            for n in qs_notes:
-                try:
-                    # Dernière valeur écrase la précédente si plusieurs evals
-                    notes_map[n.eleve_id] = {
-                        'note': float(n.note) if getattr(n, 'note', None) is not None else None,
-                        'absent': bool(getattr(n, 'absent', False)),
-                        'appreciation': getattr(n, 'appreciation_finale', None),
-                        'commentaire': getattr(n, 'commentaire', None),
-                    }
-                except Exception:
-                    continue
             notes_existantes_json = _json.dumps(notes_map)
         except Exception:
             notes_existantes_json = '{}'
