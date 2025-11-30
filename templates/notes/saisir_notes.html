@@ -595,11 +595,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Charger les notes existantes
 function applyExistingNotes() {
+    console.log('[applyExistingNotes] Début application des notes');
+    console.log('[applyExistingNotes] notesExistantes:', notesExistantes);
+    console.log('[applyExistingNotes] Clés:', Object.keys(notesExistantes));
+    
     const rows = document.querySelectorAll('#elevesTableBody tr');
+    console.log('[applyExistingNotes] Nombre de lignes:', rows.length);
+    
+    let notesAppliquees = 0;
     rows.forEach(row => {
         row.classList.remove('no-note');
         const eleveId = row.dataset.eleveId;
-        const noteData = notesExistantes[String(eleveId)] || notesExistantes[parseInt(eleveId)];
+        const noteData = notesExistantes[String(eleveId)] || notesExistantes[parseInt(eleveId)] || notesExistantes[eleveId];
+        
+        if (noteData) {
+            console.log(`[applyExistingNotes] Élève ${eleveId}: note=${noteData.note}, absent=${noteData.absent}`);
+            notesAppliquees++;
+        }
         if (typeNote === 'appreciation') {
             const appreciationSelect = row.querySelector('[data-field="appreciation"]');
             const commentaireInput = row.querySelector('[data-field="commentaire"]');
@@ -627,6 +639,8 @@ function applyExistingNotes() {
             }
         }
     });
+    
+    console.log(`[applyExistingNotes] Terminé: ${notesAppliquees} notes appliquées sur ${rows.length} lignes`);
 }
 
 function reloadNotes() {
