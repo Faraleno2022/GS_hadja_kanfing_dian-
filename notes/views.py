@@ -6596,32 +6596,47 @@ def consulter_notes(request):
     eleves_toutes_notes = []
     niveau_enseignement = 'SECONDAIRE'
     periodes_disponibles = []
+    est_maternelle = False
     
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
-        # Déterminer les périodes disponibles (toutes les périodes possibles)
-        periodes_disponibles = [
-            # Mois
-            ('OCTOBRE', 'Octobre'),
-            ('NOVEMBRE', 'Novembre'),
-            ('DECEMBRE', 'Décembre'),
-            ('JANVIER', 'Janvier'),
-            ('FEVRIER', 'Février'),
-            ('MARS', 'Mars'),
-            ('AVRIL', 'Avril'),
-            ('MAI', 'Mai'),
-            ('JUIN', 'Juin'),
-            # Trimestres
-            ('TRIMESTRE_1', '1er Trimestre'),
-            ('TRIMESTRE_2', '2ème Trimestre'),
-            ('TRIMESTRE_3', '3ème Trimestre'),
-            # Semestres
-            ('SEMESTRE_1', '1er Semestre'),
-            ('SEMESTRE_2', '2ème Semestre'),
-        ]
+        # Détecter le niveau scolaire pour adapter l'interface
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
+        
+        # Déterminer les périodes disponibles selon le niveau
+        if est_maternelle:
+            # Pour la maternelle : uniquement les trimestres (appréciations)
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+            ]
+        else:
+            # Pour les autres niveaux : toutes les périodes possibles
+            periodes_disponibles = [
+                # Mois
+                ('OCTOBRE', 'Octobre'),
+                ('NOVEMBRE', 'Novembre'),
+                ('DECEMBRE', 'Décembre'),
+                ('JANVIER', 'Janvier'),
+                ('FEVRIER', 'Février'),
+                ('MARS', 'Mars'),
+                ('AVRIL', 'Avril'),
+                ('MAI', 'Mai'),
+                ('JUIN', 'Juin'),
+                # Trimestres
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+                # Semestres
+                ('SEMESTRE_1', '1er Semestre'),
+                ('SEMESTRE_2', '2ème Semestre'),
+            ]
         
         # Récupérer les élèves
         try:
@@ -6671,9 +6686,9 @@ def consulter_notes(request):
             periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
             
             # Import des modèles nécessaires (une seule fois)
-            from .models import NoteMensuelle, CompositionNote
+            from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
             
-            # Pour chaque élève, récupérer toutes ses notes pour l'affichage
+            # Pour chaque élève, récupérer toutes ses notes/appréciations pour l'affichage
             for eleve in eleves:
                 notes_par_matiere = {}
                 
@@ -6682,7 +6697,60 @@ def consulter_notes(request):
                 moyenne_generale = float(rang_info['moyenne']) if rang_info else None
                 rang = rang_info['rang'] if rang_info else '-'
                 
-                if periode_classement in periodes_mensuelles:
+                # Pour la maternelle : récupérer les appréciations au lieu des notes
+                if est_maternelle:
+                    for matiere in matieres:
+                        # Créer une évaluation factice pour l'affichage
+                        eval_factice = type('EvalFactice', (), {
+                            'titre': periode_classement,
+                            'periode': periode_classement,
+                            'coefficient': 1,
+                            'date_evaluation': None
+                        })()
+                        
+                        notes_matiere = {
+                            'evaluations': [eval_factice],
+                            'notes': [],
+                            'moyenne': None,
+                            'appreciation': None
+                        }
+                        
+                        appreciation_value = None
+                        commentaire_value = None
+                        absent_value = False
+                        
+                        # Chercher dans AppreciationMaternelle
+                        try:
+                            appreciation_obj = AppreciationMaternelle.objects.get(
+                                eleve=eleve,
+                                matiere=matiere,
+                                trimestre=periode_classement,
+                                annee_scolaire=classe_selectionnee.annee_scolaire
+                            )
+                            appreciation_value = appreciation_obj.appreciation
+                            commentaire_value = appreciation_obj.commentaire
+                            absent_value = appreciation_obj.absent
+                        except AppreciationMaternelle.DoesNotExist:
+                            pass
+                        
+                        # Ajouter l'appréciation trouvée
+                        notes_matiere['notes'].append({
+                            'evaluation': eval_factice,
+                            'note': None,
+                            'appreciation': appreciation_value,
+                            'appreciation_display': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(appreciation_value, '-') if appreciation_value else '-',
+                            'commentaire': commentaire_value,
+                            'absent': absent_value,
+                        })
+                        
+                        notes_matiere['appreciation'] = appreciation_value
+                        notes_par_matiere[matiere.id] = notes_matiere
+                    
+                    # Pour la maternelle, pas de moyenne générale ni de rang
+                    moyenne_generale = None
+                    rang = '-'
+                
+                elif periode_classement in periodes_mensuelles:
                     # Système mensuel - chercher dans NoteMensuelle ET NoteEleve
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
@@ -6876,6 +6944,7 @@ def consulter_notes(request):
         'eleves_toutes_notes': eleves_toutes_notes,
         'evaluations_par_matiere': evaluations_par_matiere,
         'niveau_enseignement': niveau_enseignement,
+        'est_maternelle': est_maternelle,
     }
     
     return render(request, 'notes/consulter_notes.html', context)

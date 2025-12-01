@@ -198,10 +198,17 @@
     {% endif %}
 
     {% if classe_selectionnee %}
+    {% if est_maternelle %}
+    <div class="alert alert-info mb-4">
+        <i class="fas fa-baby me-2"></i>
+        <strong>Classe de Maternelle</strong> - Affichage des appréciations qualitatives (pas de notes numériques ni de classement).
+    </div>
+    {% endif %}
+    
     <!-- Vue Complète: Toutes les matières -->
     <div class="table-card">
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4><i class="fas fa-table me-2"></i>Tableau Récapitulatif Complet - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
+            <h4><i class="fas fa-table me-2"></i>{% if est_maternelle %}Tableau des Appréciations{% else %}Tableau Récapitulatif Complet{% endif %} - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
             <div class="btn-group gap-2">
                 <button class="btn btn-danger btn-sm" onclick="exporterResultatsPDF()">
                     <i class="fas fa-file-pdf me-1"></i>Exporter PDF
@@ -282,11 +289,17 @@
                         <th rowspan="2" class="align-middle">N°</th>
                         <th rowspan="2" class="align-middle">Matricule</th>
                         <th rowspan="2" class="align-middle">Nom Complet</th>
+                        {% if not est_maternelle %}
                         <th rowspan="2" class="align-middle">Rang</th>
                         <th rowspan="2" class="align-middle">Moyenne /20</th>
+                        {% endif %}
                         {% for matiere in matieres %}
                         <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
+                            {% if est_maternelle %}
+                            {{ matiere.nom }}
+                            {% else %}
                             {{ matiere.nom }} (Coef: {{ matiere.coefficient }})
+                            {% endif %}
                         </th>
                         {% endfor %}
                     </tr>
@@ -294,10 +307,12 @@
                         {% for matiere in matieres %}
                             {% for evaluation in evaluations_par_matiere|get_item:matiere.id %}
                             <th class="text-center periode-col" data-matiere-id="{{ matiere.id }}" data-periode="{{ evaluation.periode }}" style="font-size: 0.75rem;">
-                                {{ evaluation.titre|truncatewords:2 }}
+                                {% if est_maternelle %}Appréciation{% else %}{{ evaluation.titre|truncatewords:2 }}{% endif %}
                             </th>
                             {% endfor %}
+                            {% if not est_maternelle %}
                             <th class="text-center bg-light periode-col" data-matiere-id="{{ matiere.id }}" data-periode="moyenne" style="font-size: 0.75rem;">Moy</th>
+                            {% endif %}
                         {% endfor %}
                     </tr>
                 </thead>
@@ -307,6 +322,7 @@
                         <td class="text-center">{{ forloop.counter }}</td>
                         <td><small><strong>{{ eleve_data.eleve.matricule }}</strong></small></td>
                         <td><small>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</small></td>
+                        {% if not est_maternelle %}
                         <td class="text-center">
                             {% if eleve_data.rang %}
                                 {{ eleve_data.rang }}
@@ -321,12 +337,21 @@
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
+                        {% endif %}
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}
                                 <td class="text-center note-cell" data-matiere-id="{{ matiere.id }}" data-periode="{% if note_info.evaluation %}{{ note_info.evaluation.periode }}{% else %}mensuelle{% endif %}">
                                     {% if note_info.absent %}
                                         <span class="text-danger">ABS</span>
+                                    {% elif est_maternelle %}
+                                        {% if note_info.appreciation %}
+                                            <span class="badge {% if note_info.appreciation == 'TRES_BIEN_ACQUIS' %}bg-success{% elif note_info.appreciation == 'BIEN_ACQUIS' %}bg-primary{% elif note_info.appreciation == 'EN_COURS' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                                {{ note_info.appreciation_display }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
                                     {% elif note_info.note is not None %}
                                         {{ note_info.note }}
                                     {% else %}
@@ -334,6 +359,7 @@
                                     {% endif %}
                                 </td>
                                 {% endfor %}
+                                {% if not est_maternelle %}
                                 <td class="text-center bg-light note-cell" data-matiere-id="{{ matiere.id }}" data-periode="moyenne">
                                     {% if notes_matiere.moyenne %}
                                         <strong class="text-primary">{{ notes_matiere.moyenne }}</strong>
@@ -341,6 +367,7 @@
                                         <span class="text-muted">-</span>
                                     {% endif %}
                                 </td>
+                                {% endif %}
                             {% endwith %}
                         {% endfor %}
                     </tr>
