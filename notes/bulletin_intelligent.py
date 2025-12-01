@@ -504,7 +504,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # MATERNELLE/GARDERIE: Afficher les appréciations au lieu des notes
     if est_maternelle:
         _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole)
-        return
+        # Finaliser le PDF pour la maternelle
+        c.showPage()
+        c.save()
+        buffer.seek(0)
+        return buffer
     
     # Déterminer les mois selon la période pour trimestre/semestre
     mois_labels = []
@@ -1070,6 +1074,16 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     c.drawString(1.4*cm, y - 0.6*cm, "• Évaluation qualitative par compétences (pas de notes numériques)")
     c.drawString(1.4*cm, y - 0.9*cm, "• Appréciations : Très Bien Acquis | Bien Acquis | En Cours d'Acquisition | Non Acquis")
     c.drawString(1.4*cm, y - 1.2*cm, "• Suivi individualisé du développement de l'enfant")
+    
+    # ===== PIED DE PAGE =====
+    c.setFillColor(colors.HexColor('#999999'))
+    c.setFont("Helvetica", 6)
+    footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
+    if ecole and ecole.telephone:
+        footer_parts.append(f"Tél: {ecole.telephone}")
+    if ecole and ecole.email:
+        footer_parts.append(ecole.email)
+    c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))
 
 
 def generer_excel(bulletin_data):
@@ -1623,7 +1637,11 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # MATERNELLE/GARDERIE: Afficher les appréciations au lieu des notes
     if est_maternelle:
         _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole)
-        return
+        # Finaliser le PDF pour la maternelle
+        c.showPage()
+        c.save()
+        buffer.seek(0)
+        return buffer
     
     # Déterminer les mois selon la période pour trimestre/semestre
     mois_labels = []
