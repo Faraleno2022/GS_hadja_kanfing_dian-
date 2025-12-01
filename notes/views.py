@@ -6626,6 +6626,11 @@ def consulter_notes(request):
         niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
         est_maternelle = (niveau_detecte == 'MATERNELLE')
         
+        # Pour la maternelle : rediriger automatiquement vers TRIMESTRE_1 si pas de période
+        if est_maternelle and not periode_classement:
+            from django.shortcuts import redirect
+            return redirect(f'/notes/consulter/?classe_id={classe_id}&periode=TRIMESTRE_1')
+        
         # Déterminer les périodes disponibles selon le niveau
         if est_maternelle:
             # Pour la maternelle : uniquement les trimestres (appréciations)
