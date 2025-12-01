@@ -356,11 +356,19 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
     moyennes_pour_rang = []
     
     # Récupérer toutes les appréciations pour ce trimestre et cette classe en une seule requête
+    # D'abord essayer avec l'année scolaire exacte
     toutes_appreciations = AppreciationMaternelle.objects.filter(
         matiere__in=matieres,
         trimestre=trimestre,
         annee_scolaire=classe_note.annee_scolaire
     ).select_related('eleve', 'matiere')
+    
+    # Si aucune appréciation trouvée, essayer sans filtre année scolaire
+    if not toutes_appreciations.exists():
+        toutes_appreciations = AppreciationMaternelle.objects.filter(
+            matiere__in=matieres,
+            trimestre=trimestre
+        ).select_related('eleve', 'matiere')
     
     # Organiser par élève
     appreciations_par_eleve = {}
