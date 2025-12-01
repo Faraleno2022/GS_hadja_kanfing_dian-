@@ -340,8 +340,17 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
     if nb_matieres == 0:
         return {}
     
-    # Déterminer le trimestre
-    trimestre = periode if periode.startswith('TRIMESTRE') else 'TRIMESTRE_1'
+    # Déterminer le trimestre - accepter plusieurs formats
+    if periode.startswith('TRIMESTRE'):
+        trimestre = periode
+    elif periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']:
+        trimestre = 'TRIMESTRE_1'
+    elif periode in ['JANVIER', 'FEVRIER', 'MARS']:
+        trimestre = 'TRIMESTRE_2'
+    elif periode in ['AVRIL', 'MAI', 'JUIN']:
+        trimestre = 'TRIMESTRE_3'
+    else:
+        trimestre = 'TRIMESTRE_1'
     
     # Calculer la moyenne pour chaque élève
     moyennes_pour_rang = []
@@ -350,22 +359,19 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
         total_points = 0
         nb_appreciations = 0
         
-        for matiere in matieres:
-            try:
-                appreciation = AppreciationMaternelle.objects.get(
-                    eleve=eleve,
-                    matiere=matiere,
-                    trimestre=trimestre,
-                    annee_scolaire=classe_note.annee_scolaire
-                )
-                
-                if not appreciation.absent and appreciation.appreciation:
-                    points = POINTS_APPRECIATION.get(appreciation.appreciation, 0)
-                    total_points += points
-                    nb_appreciations += 1
-                    
-            except AppreciationMaternelle.DoesNotExist:
-                continue
+        # Chercher les appréciations pour ce trimestre
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve,
+            matiere__in=matieres,
+            trimestre=trimestre,
+            annee_scolaire=classe_note.annee_scolaire
+        )
+        
+        for appreciation in appreciations:
+            if not appreciation.absent and appreciation.appreciation:
+                points = POINTS_APPRECIATION.get(appreciation.appreciation, 0)
+                total_points += points
+                nb_appreciations += 1
         
         # Calculer la moyenne en pourcentage (sur 100)
         if nb_appreciations > 0:

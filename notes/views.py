@@ -6688,10 +6688,14 @@ def consulter_notes(request):
             if periode_classement:
                 periode_pour_calcul = periode_classement
             else:
-                periode_pour_calcul = 'OCTOBRE'
-                periodes_codes = [p[0] for p in periodes_disponibles]
-                if 'OCTOBRE' not in periodes_codes:
-                    periode_pour_calcul = periodes_disponibles[0][0]
+                # Pour la maternelle, utiliser TRIMESTRE_1 par défaut
+                if est_maternelle:
+                    periode_pour_calcul = 'TRIMESTRE_1'
+                else:
+                    periode_pour_calcul = 'OCTOBRE'
+                    periodes_codes = [p[0] for p in periodes_disponibles]
+                    if 'OCTOBRE' not in periodes_codes:
+                        periode_pour_calcul = periodes_disponibles[0][0]
                 # IMPORTANT: Mettre à jour periode_classement pour la recherche des notes
                 periode_classement = periode_pour_calcul
             
