@@ -156,8 +156,18 @@ class CalculateurBulletinIntelligent:
     
     def generer_bulletin(self):
         """Génère le bulletin complet pour la période en utilisant le module centralisé"""
+        from .calculs_moyennes import detecter_niveau_scolaire
+        
+        # Détecter si c'est une classe de maternelle
+        niveau_detecte = detecter_niveau_scolaire(self.classe_note.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
+        
         # Récupérer toutes les matières
         matieres = MatiereNote.objects.filter(classe=self.classe_note, actif=True)
+        
+        # Pour la maternelle : utiliser les appréciations
+        if est_maternelle:
+            return self._generer_bulletin_maternelle(matieres)
         
         # UTILISER LE MODULE CENTRALISÉ (SOURCE UNIQUE)
         system_type = 'trimestre' if 'TRIMESTRE' in self.periode else 'semestre' if 'SEMESTRE' in self.periode else 'mensuel'
@@ -189,6 +199,93 @@ class CalculateurBulletinIntelligent:
             'rang': rang,
             'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
         }
+    
+    def _generer_bulletin_maternelle(self, matieres):
+        """Génère le bulletin pour la maternelle avec appréciations"""
+        from .models import AppreciationMaternelle
+        from .utils_rangs import calculer_rangs_classe_periode
+        
+        # Récupérer les appréciations pour chaque matière
+        resultats_matieres = []
+        for matiere in matieres:
+            appreciation_data = {
+                'matiere': matiere.nom,
+                'matiere_obj': matiere,
+                'coefficient': 1,
+                'appreciation': None,
+                'appreciation_display': '-',
+                'commentaire': '-',
+                'absent': False
+            }
+            
+            try:
+                app_obj = AppreciationMaternelle.objects.get(
+                    eleve=self.eleve,
+                    matiere=matiere,
+                    trimestre=self.periode,
+                    annee_scolaire=self.classe_note.annee_scolaire
+                )
+                appreciation_data['appreciation'] = app_obj.appreciation
+                appreciation_data['appreciation_display'] = app_obj.get_appreciation_display()
+                appreciation_data['commentaire'] = app_obj.commentaire or self._get_observation_auto(app_obj.appreciation)
+                appreciation_data['absent'] = app_obj.absent
+            except AppreciationMaternelle.DoesNotExist:
+                pass
+            
+            resultats_matieres.append(appreciation_data)
+        
+        # Calculer le rang et taux d'acquisition
+        rangs_dict = calculer_rangs_classe_periode(self.classe_note, self.periode, use_cache=False)
+        rang_info = rangs_dict.get(self.eleve.id)
+        
+        taux_acquisition = None
+        rang = None
+        mention = None
+        appreciation = None
+        
+        if rang_info:
+            taux_acquisition = float(rang_info['moyenne'])
+            rang = f"{rang_info['rang']}/{rang_info['total_eleves']}"
+            
+            # Mention basée sur le taux
+            if taux_acquisition >= 90:
+                mention = 'Excellent'
+            elif taux_acquisition >= 75:
+                mention = 'Très Bien'
+            elif taux_acquisition >= 60:
+                mention = 'Bien'
+            elif taux_acquisition >= 50:
+                mention = 'Assez Bien'
+            else:
+                mention = 'À encourager'
+            
+            appreciation = f"Bon trimestre {self.eleve.prenom}. Continue ainsi !"
+        
+        return {
+            'eleve': f"{self.eleve.prenom} {self.eleve.nom}",
+            'classe': self.classe_note.nom,
+            'periode': self.periode,
+            'niveau': 'MATERNELLE',
+            'serie': None,
+            'section': None,
+            'matieres': resultats_matieres,
+            'moyenne_generale': taux_acquisition,
+            'mention': mention,
+            'appreciation': appreciation,
+            'rang': rang,
+            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count(),
+            'est_maternelle': True
+        }
+    
+    def _get_observation_auto(self, appreciation):
+        """Retourne une observation automatique basée sur l'appréciation"""
+        observations = {
+            'TRES_BIEN_ACQUIS': 'Excellent travail, continue ainsi !',
+            'BIEN_ACQUIS': 'Bon niveau, quelques perfectionnements possibles',
+            'EN_COURS': 'Des progrès à faire, persévère !',
+            'NON_ACQUIS': 'Nécessite un accompagnement renforcé'
+        }
+        return observations.get(appreciation, '-')
     
     def _calculer_rang_eleve(self, moyenne_eleve):
         """Calcule le rang de l'élève dans la classe"""
@@ -808,8 +905,7 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     table_total_width = width - 2.4*cm
     margin_left = 1.2*cm
     
-    # Récupérer les appréciations depuis bulletin_data
-    appreciations = bulletin_data.get('appreciations', [])
+    # Récupérer les matières/appréciations depuis bulletin_data
     matieres = bulletin_data.get('matieres', [])
     
     # En-tête du tableau
@@ -824,27 +920,44 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
         'NON_ACQUIS': 'Non Acquis',
     }
     
-    # Si on a des appréciations, les afficher
-    if appreciations:
-        for app in appreciations:
-            matiere_nom = app.get('matiere', '-')
-            appreciation = app.get('appreciation', '-')
-            commentaire = app.get('commentaire', '')
-            absent = app.get('absent', False)
+    # Observations automatiques
+    OBSERVATIONS_AUTO = {
+        'TRES_BIEN_ACQUIS': 'Excellent travail !',
+        'BIEN_ACQUIS': 'Bon niveau',
+        'EN_COURS': 'Persévère !',
+        'NON_ACQUIS': 'À renforcer',
+    }
+    
+    # Afficher les matières avec leurs appréciations
+    if matieres:
+        for mat in matieres:
+            # Récupérer le nom de la matière
+            matiere_nom = mat.get('matiere', '-')
+            if isinstance(matiere_nom, str):
+                nom = matiere_nom
+            elif hasattr(matiere_nom, 'nom'):
+                nom = matiere_nom.nom
+            else:
+                nom = str(matiere_nom)
+            
+            # Récupérer l'appréciation
+            appreciation = mat.get('appreciation')
+            appreciation_display_val = mat.get('appreciation_display', '-')
+            commentaire = mat.get('commentaire', '')
+            absent = mat.get('absent', False)
             
             if absent:
                 appreciation_display = 'Absent'
+                commentaire = 'Absent(e) lors de l\'évaluation'
+            elif appreciation:
+                appreciation_display = APPRECIATION_DISPLAY.get(appreciation, appreciation_display_val)
+                if not commentaire or commentaire == '-':
+                    commentaire = OBSERVATIONS_AUTO.get(appreciation, '-')
             else:
-                appreciation_display = APPRECIATION_DISPLAY.get(appreciation, appreciation)
+                appreciation_display = '-'
+                commentaire = '-'
             
-            data.append([matiere_nom, appreciation_display, commentaire or '-'])
-    elif matieres:
-        # Sinon, afficher les matières avec un message
-        for matiere in matieres:
-            nom_matiere = str(matiere.get('matiere', '-'))
-            if hasattr(matiere.get('matiere'), 'nom'):
-                nom_matiere = matiere['matiere'].nom
-            data.append([nom_matiere, 'Non évalué', '-'])
+            data.append([nom, appreciation_display, commentaire])
     else:
         data.append(['Aucune activité', '-', '-'])
     
@@ -911,12 +1024,12 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     
     c.setFillColor(colors.black)
     c.setFont("Helvetica", 9)
-    appreciation_generale = bulletin_data.get('appreciation', 'Suivi pédagogique qualitatif - Évaluation par compétences')
-    c.drawString(1.4*cm, y - 1*cm, appreciation_generale)
+    appreciation_generale = bulletin_data.get('appreciation') or 'Bon trimestre. Continue ainsi !'
+    c.drawString(1.4*cm, y - 1*cm, str(appreciation_generale))
     
-    mention = bulletin_data.get('mention', 'Suivi continu')
+    mention = bulletin_data.get('mention') or 'Suivi continu'
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(1.4*cm, y - 1.6*cm, f"Mention : {mention}")
+    c.drawString(1.4*cm, y - 1.6*cm, f"Mention : {str(mention)}")
     
     # ===== SIGNATURES =====
     y -= 3*cm
