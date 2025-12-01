@@ -981,14 +981,20 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
         ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
         ('TOPPADDING', (0, 0), (-1, 0), 8),
         
-        # Corps
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        # Corps - Matière et Appréciation
+        ('FONTNAME', (0, 1), (1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (1, -1), 9),
         ('ALIGN', (1, 1), (1, -1), 'CENTER'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ('LEFTPADDING', (0, 1), (0, -1), 8),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
         ('TOPPADDING', (0, 1), (-1, -1), 6),
+        
+        # Commentaires - Police plus petite pour éviter débordement
+        ('FONTNAME', (2, 1), (2, -1), 'Helvetica'),
+        ('FONTSIZE', (2, 1), (2, -1), 7),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+        ('LEFTPADDING', (2, 1), (2, -1), 4),
         
         # Grille
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
@@ -1015,28 +1021,66 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     table_w, table_h = table.wrap(width, height)
     table.drawOn(c, margin_left, y - table_h)
     
-    # ===== SECTION RÉSULTATS (Appréciation générale) =====
-    y = y - table_h - 1*cm
+    # ===== SECTION RÉSULTATS (Taux, Rang, Appréciation) =====
+    y = y - table_h - 0.8*cm
     
-    # Boîte d'appréciation générale
-    c.setFillColor(BLEU_CLAIR)
-    c.rect(1.2*cm, y - 2*cm, table_total_width, 2*cm, fill=1, stroke=1)
-    
-    c.setFillColor(colors.HexColor('#1976d2'))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1.4*cm, y - 0.4*cm, "APPRÉCIATION GÉNÉRALE")
-    
-    c.setFillColor(colors.black)
-    c.setFont("Helvetica", 9)
-    appreciation_generale = bulletin_data.get('appreciation') or 'Bon trimestre. Continue ainsi !'
-    c.drawString(1.4*cm, y - 1*cm, str(appreciation_generale))
-    
+    # Récupérer les données
+    taux_acquisition = bulletin_data.get('moyenne_generale')
+    rang = bulletin_data.get('rang')
     mention = bulletin_data.get('mention') or 'Suivi continu'
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1.4*cm, y - 1.6*cm, f"Mention : {str(mention)}")
+    
+    # Couleurs des cartes
+    VERT_TAUX = colors.HexColor('#27ae60')
+    BLEU_RANG = colors.HexColor('#3498db')
+    VIOLET_APPRECIATION = colors.HexColor('#9b59b6')
+    
+    # Largeur de chaque carte (3 cartes)
+    card_width = (table_total_width - 0.4*cm) / 3
+    card_height = 1.8*cm
+    
+    # === Carte 1: TAUX D'ACQUISITION ===
+    card_x = margin_left
+    c.setFillColor(VERT_TAUX)
+    c.roundRect(card_x, y - card_height, card_width, card_height, 5, fill=1, stroke=0)
+    
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(card_x + card_width/2, y - 0.4*cm, "TAUX D'ACQUISITION")
+    
+    c.setFont("Helvetica-Bold", 16)
+    taux_str = f"{taux_acquisition:.1f}%" if taux_acquisition else "-"
+    c.drawCentredString(card_x + card_width/2, y - 1.2*cm, taux_str)
+    
+    # === Carte 2: RANG ===
+    card_x = margin_left + card_width + 0.2*cm
+    c.setFillColor(BLEU_RANG)
+    c.roundRect(card_x, y - card_height, card_width, card_height, 5, fill=1, stroke=0)
+    
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(card_x + card_width/2, y - 0.4*cm, "RANG")
+    
+    c.setFont("Helvetica-Bold", 16)
+    rang_str = str(rang) if rang else "-"
+    c.drawCentredString(card_x + card_width/2, y - 1.2*cm, rang_str)
+    
+    # === Carte 3: APPRÉCIATION ===
+    card_x = margin_left + 2*(card_width + 0.2*cm)
+    c.setFillColor(VIOLET_APPRECIATION)
+    c.roundRect(card_x, y - card_height, card_width, card_height, 5, fill=1, stroke=0)
+    
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawCentredString(card_x + card_width/2, y - 0.4*cm, "APPRÉCIATION")
+    
+    c.setFont("Helvetica-Bold", 14)
+    c.drawCentredString(card_x + card_width/2, y - 1.2*cm, str(mention))
+    
+    # Ajuster y pour la suite
+    y = y - card_height - 0.3*cm
     
     # ===== SIGNATURES =====
-    y -= 3*cm
+    y -= 1.5*cm
     
     sig_width = 6*cm
     
