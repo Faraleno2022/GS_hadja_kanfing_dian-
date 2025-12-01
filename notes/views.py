@@ -7459,55 +7459,85 @@ def bulletin_dynamique(request):
             bulletin_data['totaux_colonnes']['mai'] = round(float(totaux_colonnes['mai']), 2) if totaux_colonnes['mai'] > 0 else None
             bulletin_data['totaux_colonnes']['juin'] = round(float(totaux_colonnes['juin']), 2) if totaux_colonnes['juin'] > 0 else None
             
-            # Calculer la moyenne générale (seulement si élève sélectionné)
-            if eleve_selectionne and total_coefficients > 0:
-                moyenne_generale = round(float(total_points / total_coefficients), 2)
-                bulletin_data['moyenne_generale'] = moyenne_generale
+            # Calculer la moyenne générale et le rang
+            if eleve_selectionne:
+                from decimal import Decimal as _Dec
+                from .utils_rangs import calculer_rangs_classe_periode
                 
-                # Essayer d'abord de récupérer depuis le Classement (plus précis)
-                from .models import Classement
-                classement = Classement.objects.filter(
-                    eleve=eleve_selectionne,
-                    classe=classe_selectionnee,
-                    periode=periode,
-                    annee_scolaire=classe_selectionnee.annee_scolaire
-                ).first()
-                
-                if classement:
-                    # Utiliser les données du classement (plus précis)
-                    bulletin_data['moyenne_generale'] = float(classement.moyenne_generale)
-                    bulletin_data['mention'] = classement.mention
-                    bulletin_data['appreciation'] = classement.appreciation
-                    bulletin_data['rang'] = classement.rang_formate
-                    bulletin_data['total_points'] = float(classement.total_points)
-                    bulletin_data['total_coefficients'] = float(classement.total_coefficients)
-                else:
-                    # IMPORTANT: Récupérer depuis la source centralisée (utils_rangs)
-                    # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et PDF
-                    from decimal import Decimal as _Dec
-                    from .utils_rangs import calculer_rangs_classe_periode
-
-                    if periode:
-                        # Récupérer les rangs et moyennes depuis la source centralisée
-                        rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
+                # Pour la maternelle : utiliser le système de calcul basé sur les appréciations
+                if est_maternelle and periode:
+                    rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
+                    rang_info = rangs_dict.get(eleve_selectionne.id)
+                    
+                    if rang_info:
+                        # Taux d'acquisition en pourcentage
+                        taux_acquisition = float(rang_info['moyenne'])
+                        bulletin_data['moyenne_generale'] = taux_acquisition
+                        bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
                         
-                        rang_info = rangs_dict.get(eleve_selectionne.id)
-                        if rang_info:
-                            moyenne_eleve = float(rang_info['moyenne'])
-                            moyenne_dec = _Dec(str(moyenne_eleve))
-                            bulletin_data['moyenne_generale'] = moyenne_eleve
+                        # Appréciation basée sur le taux d'acquisition
+                        if taux_acquisition >= 90:
+                            bulletin_data['mention'] = 'Excellent'
+                        elif taux_acquisition >= 75:
+                            bulletin_data['mention'] = 'Très Bien'
+                        elif taux_acquisition >= 60:
+                            bulletin_data['mention'] = 'Bien'
+                        elif taux_acquisition >= 50:
+                            bulletin_data['mention'] = 'Assez Bien'
+                        else:
+                            bulletin_data['mention'] = 'À encourager'
+                        
+                        bulletin_data['appreciation'] = f"Bon trimestre {eleve_selectionne.prenom}. Continue ainsi !"
+                    else:
+                        bulletin_data['moyenne_generale'] = 0
+                        bulletin_data['rang'] = "-"
+                        bulletin_data['mention'] = 'Non évalué'
+                        bulletin_data['appreciation'] = ''
+                
+                # Pour les autres niveaux : calcul classique
+                elif total_coefficients > 0:
+                    moyenne_generale = round(float(total_points / total_coefficients), 2)
+                    bulletin_data['moyenne_generale'] = moyenne_generale
+                    
+                    # Essayer d'abord de récupérer depuis le Classement (plus précis)
+                    from .models import Classement
+                    classement = Classement.objects.filter(
+                        eleve=eleve_selectionne,
+                        classe=classe_selectionnee,
+                        periode=periode,
+                        annee_scolaire=classe_selectionnee.annee_scolaire
+                    ).first()
+                    
+                    if classement:
+                        # Utiliser les données du classement (plus précis)
+                        bulletin_data['moyenne_generale'] = float(classement.moyenne_generale)
+                        bulletin_data['mention'] = classement.mention
+                        bulletin_data['appreciation'] = classement.appreciation
+                        bulletin_data['rang'] = classement.rang_formate
+                        bulletin_data['total_points'] = float(classement.total_points)
+                        bulletin_data['total_coefficients'] = float(classement.total_coefficients)
+                    else:
+                        # IMPORTANT: Récupérer depuis la source centralisée (utils_rangs)
+                        if periode:
+                            rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
+                            
+                            rang_info = rangs_dict.get(eleve_selectionne.id)
+                            if rang_info:
+                                moyenne_eleve = float(rang_info['moyenne'])
+                                moyenne_dec = _Dec(str(moyenne_eleve))
+                                bulletin_data['moyenne_generale'] = moyenne_eleve
+                                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+                                bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
+                            else:
+                                bulletin_data['mention'] = None
+                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom)
+                                bulletin_data['rang'] = "-"
+                        else:
+                            moyenne_dec = _Dec(str(moyenne_generale))
                             bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
                             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
-                            bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
-                        else:
-                            bulletin_data['mention'] = None
-                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom)
                             bulletin_data['rang'] = "-"
-                    else:
-                        moyenne_dec = _Dec(str(moyenne_generale))
-                        bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
-                        bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
-                        bulletin_data['rang'] = "-"
     
     # Déterminer est_maternelle pour le contexte
     est_maternelle_ctx = False
