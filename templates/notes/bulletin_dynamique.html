@@ -783,7 +783,7 @@
         </div>
         
         <!-- Tableau des notes / appréciations -->
-        {% if niveau_enseignement == 'MATERNELLE' %}
+        {% if niveau_enseignement == 'MATERNELLE' or est_maternelle %}
         <!-- BULLETIN MATERNELLE: Tableau des appréciations -->
         <table class="notes-table">
             <thead>
@@ -1153,8 +1153,8 @@
         {% endif %}
         <!-- Fin du bloc conditionnel MATERNELLE/STANDARD -->
         
-        <!-- NOUVEAU: Légende pour les bulletins trimestriels et semestriels -->
-        {% if system_type in 'trimestre,semestre' and bulletin_data.eleve %}
+        <!-- NOUVEAU: Légende pour les bulletins trimestriels et semestriels (pas pour maternelle) -->
+        {% if system_type in 'trimestre,semestre' and bulletin_data.eleve and not est_maternelle %}
         <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; margin: 10px 0; font-size: 9px;">
             <div style="font-weight: bold; margin-bottom: 4px; color: #495057;">📊 LÉGENDE DU TABLEAU :</div>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px;">
@@ -1261,7 +1261,8 @@
             </div>
         </div>
         
-        <!-- Bloc Explicatif du Système de Calcul -->
+        <!-- Bloc Explicatif du Système de Calcul (pas pour maternelle) -->
+        {% if not est_maternelle %}
         <div class="calcul-explanation-section">
             <h4 style="font-size: 9px; margin: 5px 0 3px 0; padding: 3px; background: #f0f0f0; border-left: 3px solid #0066cc; color: #333;">
                 <i class="fas fa-info-circle" style="margin-right: 3px;"></i>
@@ -1343,6 +1344,8 @@
                 </p>
             </div>
         </div>
+        {% endif %}
+        <!-- Fin bloc explicatif -->
         
         <!-- Footer personnalisé avec infos dynamiques de l'école -->
         <div class="footer-section" style="border-top: 1px solid #ddd; margin-top: 5px; padding-top: 3px; font-size: 7px; text-align: center;">
