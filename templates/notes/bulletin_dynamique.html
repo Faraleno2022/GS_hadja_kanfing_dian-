@@ -1175,16 +1175,46 @@
         {% endif %}
         
         <!-- Résultats -->
-        {% if niveau_enseignement == 'MATERNELLE' %}
-        <!-- Section résultats pour la maternelle (pas de notes numériques) -->
-        <div class="resultats-section" style="justify-content: center;">
-            <div class="resultat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); min-width: 300px;">
-                <h3>ÉVALUATION GLOBALE</h3>
-                <div class="value" style="font-size: 1.2em;">
-                    {% if bulletin_data.appreciation_globale_maternelle %}
-                        {{ bulletin_data.appreciation_globale_maternelle }}
+        {% if niveau_enseignement == 'MATERNELLE' or est_maternelle %}
+        <!-- Section résultats pour la maternelle -->
+        <div class="resultats-section">
+            <div class="resultat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                <h3>TAUX D'ACQUISITION</h3>
+                <div class="value">
+                    {% if bulletin_data.moyenne_generale is not None %}
+                        {{ bulletin_data.moyenne_generale|floatformat:1 }}%
                     {% else %}
-                        Bon trimestre
+                        -
+                    {% endif %}
+                </div>
+            </div>
+            <div class="resultat-card" style="background: linear-gradient(135deg, #007bff 0%, #6610f2 100%);">
+                <h3>RANG</h3>
+                <div class="value">
+                    {% if bulletin_data.rang %}
+                        {{ bulletin_data.rang }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+            </div>
+            <div class="resultat-card" style="background: linear-gradient(135deg, #fd7e14 0%, #e83e8c 100%);">
+                <h3>APPRÉCIATION</h3>
+                <div class="value" style="font-size: 0.9em;">
+                    {% if bulletin_data.moyenne_generale is not None %}
+                        {% if bulletin_data.moyenne_generale >= 90 %}
+                            Excellent
+                        {% elif bulletin_data.moyenne_generale >= 75 %}
+                            Très Bien
+                        {% elif bulletin_data.moyenne_generale >= 60 %}
+                            Bien
+                        {% elif bulletin_data.moyenne_generale >= 50 %}
+                            Assez Bien
+                        {% else %}
+                            À encourager
+                        {% endif %}
+                    {% else %}
+                        -
                     {% endif %}
                 </div>
             </div>

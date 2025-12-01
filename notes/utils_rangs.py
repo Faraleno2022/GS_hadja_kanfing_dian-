@@ -72,9 +72,9 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     est_primaire = (niveau == 'PRIMAIRE')
     est_maternelle = (niveau == 'MATERNELLE')
     
-    # Pour la maternelle, pas de calcul de rangs (appréciations uniquement)
+    # Pour la maternelle, calcul de rangs basé sur les appréciations
     if est_maternelle:
-        return {}
+        return calculer_rangs_maternelle(classe_note, periode, eleves)
     
     # Calculer les moyennes pour chaque élève
     moyennes_pour_rang = []
@@ -299,3 +299,100 @@ def invalider_cache_rangs(classe_note, periode: str = None):
         for p in periodes:
             cache_key = f"rangs_classe_{classe_note.id}_periode_{p}"
             cache.delete(cache_key)
+
+
+def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, dict]:
+    """
+    Calcule les rangs pour les élèves de maternelle basé sur les appréciations.
+    
+    Système de points (invisible pour l'utilisateur):
+    - TRES_BIEN_ACQUIS = 4 points
+    - BIEN_ACQUIS = 3 points
+    - EN_COURS = 2 points
+    - NON_ACQUIS = 1 point
+    - Absent/Non évalué = 0 point
+    
+    La moyenne est affichée en pourcentage (ex: 87.5%)
+    
+    Args:
+        classe_note: Instance de ClasseNote
+        periode: Période (trimestre)
+        eleves: QuerySet des élèves
+        
+    Returns:
+        Dictionnaire {eleve_id: {'rang': '1er', 'rang_num': 1, 'moyenne': Decimal('87.50')}}
+    """
+    from .models import AppreciationMaternelle, MatiereNote
+    
+    # Points par niveau d'appréciation (invisible)
+    POINTS_APPRECIATION = {
+        'TRES_BIEN_ACQUIS': 4,
+        'BIEN_ACQUIS': 3,
+        'EN_COURS': 2,
+        'NON_ACQUIS': 1,
+    }
+    MAX_POINTS = 4  # Maximum possible
+    
+    # Récupérer les matières de la classe
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+    nb_matieres = matieres.count()
+    
+    if nb_matieres == 0:
+        return {}
+    
+    # Déterminer le trimestre
+    trimestre = periode if periode.startswith('TRIMESTRE') else 'TRIMESTRE_1'
+    
+    # Calculer la moyenne pour chaque élève
+    moyennes_pour_rang = []
+    
+    for eleve in eleves:
+        total_points = 0
+        nb_appreciations = 0
+        
+        for matiere in matieres:
+            try:
+                appreciation = AppreciationMaternelle.objects.get(
+                    eleve=eleve,
+                    matiere=matiere,
+                    trimestre=trimestre,
+                    annee_scolaire=classe_note.annee_scolaire
+                )
+                
+                if not appreciation.absent and appreciation.appreciation:
+                    points = POINTS_APPRECIATION.get(appreciation.appreciation, 0)
+                    total_points += points
+                    nb_appreciations += 1
+                    
+            except AppreciationMaternelle.DoesNotExist:
+                continue
+        
+        # Calculer la moyenne en pourcentage (sur 100)
+        if nb_appreciations > 0:
+            moyenne_points = total_points / nb_appreciations
+            moyenne_pourcentage = (moyenne_points / MAX_POINTS) * 100
+            moyenne_pourcentage = round(moyenne_pourcentage, 2)
+            
+            moyennes_pour_rang.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
+                'sexe': getattr(eleve, 'sexe', None) or 'M',
+                'moyenne': Decimal(str(moyenne_pourcentage))
+            })
+    
+    # Calculer les rangs avec la fonction centralisée
+    resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+    
+    # Créer le dictionnaire de résultats
+    rangs_dict = {}
+    for r in resultats_rangs:
+        rangs_dict[r['eleve_id']] = {
+            'rang': r['rang'],
+            'rang_num': r['rang_num'],
+            'moyenne': r['moyenne'],  # Pourcentage d'acquisition
+            'total_eleves': r.get('total_eleves', len(resultats_rangs)),
+            'est_maternelle': True  # Flag pour identifier le type de moyenne
+        }
+    
+    return rangs_dict

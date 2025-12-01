@@ -289,10 +289,8 @@
                         <th rowspan="2" class="align-middle">N°</th>
                         <th rowspan="2" class="align-middle">Matricule</th>
                         <th rowspan="2" class="align-middle">Nom Complet</th>
-                        {% if not est_maternelle %}
                         <th rowspan="2" class="align-middle">Rang</th>
-                        <th rowspan="2" class="align-middle">Moyenne /20</th>
-                        {% endif %}
+                        <th rowspan="2" class="align-middle">{% if est_maternelle %}Acquisition{% else %}Moyenne /20{% endif %}</th>
                         {% for matiere in matieres %}
                         <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
                             {% if est_maternelle %}
@@ -322,7 +320,6 @@
                         <td class="text-center">{{ forloop.counter }}</td>
                         <td><small><strong>{{ eleve_data.eleve.matricule }}</strong></small></td>
                         <td><small>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</small></td>
-                        {% if not est_maternelle %}
                         <td class="text-center">
                             {% if eleve_data.rang %}
                                 {{ eleve_data.rang }}
@@ -332,12 +329,15 @@
                         </td>
                         <td class="text-center">
                             {% if eleve_data.moyenne_generale is not None %}
-                                <strong class="text-primary">{{ eleve_data.moyenne_generale }}</strong>
+                                {% if est_maternelle %}
+                                    <strong class="text-success">{{ eleve_data.moyenne_generale }}%</strong>
+                                {% else %}
+                                    <strong class="text-primary">{{ eleve_data.moyenne_generale }}</strong>
+                                {% endif %}
                             {% else %}
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        {% endif %}
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}
