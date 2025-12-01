@@ -2259,6 +2259,12 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     # IMPORTANT: Récupérer les moyennes et rangs depuis la source centralisée
     # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et bulletins
     from .utils_rangs import calculer_rangs_classe_periode
+    from .calculs_moyennes import detecter_niveau_scolaire
+    
+    # Détecter le niveau scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom) if classe else 'SECONDAIRE'
+    est_maternelle = (niveau_scolaire == 'MATERNELLE')
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
     
     # Récupérer les rangs et moyennes depuis la source centralisée
     rangs_dict = calculer_rangs_classe_periode(classe_note, periode_longue, use_cache=False) if classe_note else {}
@@ -2276,15 +2282,40 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     def mention_for(avg: Decimal | None) -> str:
         if avg is None:
             return ""
-        if avg >= Decimal('16'):
-            return "Très Bien"
-        if avg >= Decimal('14'):
-            return "Bien"
-        if avg >= Decimal('12'):
-            return "Assez Bien"
-        if avg >= Decimal('10'):
-            return "Passable"
-        return "Insuffisant"
+        # Mentions adaptées selon le niveau scolaire
+        if est_maternelle:
+            # Maternelle : taux d'acquisition en %
+            if avg >= Decimal('90'):
+                return "Excellent"
+            if avg >= Decimal('75'):
+                return "Très Bien"
+            if avg >= Decimal('60'):
+                return "Bien"
+            if avg >= Decimal('50'):
+                return "Assez Bien"
+            return "À encourager"
+        elif est_primaire:
+            # Primaire : moyenne sur 10
+            if avg >= Decimal('8'):
+                return "Très Bien"
+            if avg >= Decimal('7'):
+                return "Bien"
+            if avg >= Decimal('6'):
+                return "Assez Bien"
+            if avg >= Decimal('5'):
+                return "Passable"
+            return "Insuffisant"
+        else:
+            # Secondaire : moyenne sur 20
+            if avg >= Decimal('16'):
+                return "Très Bien"
+            if avg >= Decimal('14'):
+                return "Bien"
+            if avg >= Decimal('12'):
+                return "Assez Bien"
+            if avg >= Decimal('10'):
+                return "Passable"
+            return "Insuffisant"
 
     def draw_bulletin_for_student(eleve):
         # Calcul des moyennes pour l'élève
