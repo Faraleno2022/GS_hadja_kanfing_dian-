@@ -5775,8 +5775,9 @@ def saisir_notes(request):
     eleves = []
     evaluations = []
     niveau_enseignement = 'SECONDAIRE'
+    est_maternelle = False
     
-    # Types de notes disponibles (selon le niveau)
+    # Types de notes disponibles par défaut
     types_notes_disponibles = [
         ('mensuelle', 'Note Mensuelle'),
         ('trimestrielle', 'Note Trimestrielle'),
@@ -5792,6 +5793,20 @@ def saisir_notes(request):
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+        
+        # Détecter le niveau scolaire pour adapter l'interface
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
+        
+        # Pour la maternelle : uniquement les appréciations (pas de notes numériques)
+        if est_maternelle:
+            types_notes_disponibles = [
+                ('appreciation', 'Appréciation'),
+            ]
+            # Forcer le type de note à appreciation pour la maternelle
+            if type_note != 'appreciation':
+                type_note = 'appreciation'
         
         # Déterminer les périodes disponibles selon le type de note
         if type_note == 'appreciation':
@@ -6036,6 +6051,7 @@ def saisir_notes(request):
         'types_notes_disponibles': types_notes_disponibles,
         'system_type': system_type,
         'niveau_enseignement': niveau_enseignement,
+        'est_maternelle': est_maternelle,
         'notes_existantes_json': notes_existantes_json,
         'notes_deja_saisies': notes_deja_saisies,
         'nombre_notes_existantes': nombre_notes_existantes,
