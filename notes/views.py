@@ -6512,7 +6512,7 @@ def sauvegarder_notes(request):
             'total': total_notes,
             'message': f'✅ {message}',
             'notes_details': notes_details,
-            'evaluation_id': evaluation.id
+            'evaluation_id': evaluation.id if evaluation else None
         }
         
         if erreurs:
