@@ -355,19 +355,29 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
     # Calculer la moyenne pour chaque élève
     moyennes_pour_rang = []
     
+    # Récupérer toutes les appréciations pour ce trimestre et cette classe en une seule requête
+    toutes_appreciations = AppreciationMaternelle.objects.filter(
+        matiere__in=matieres,
+        trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('eleve', 'matiere')
+    
+    # Organiser par élève
+    appreciations_par_eleve = {}
+    for app in toutes_appreciations:
+        eleve_id = app.eleve_id
+        if eleve_id not in appreciations_par_eleve:
+            appreciations_par_eleve[eleve_id] = []
+        appreciations_par_eleve[eleve_id].append(app)
+    
     for eleve in eleves:
         total_points = 0
         nb_appreciations = 0
         
-        # Chercher les appréciations pour ce trimestre
-        appreciations = AppreciationMaternelle.objects.filter(
-            eleve=eleve,
-            matiere__in=matieres,
-            trimestre=trimestre,
-            annee_scolaire=classe_note.annee_scolaire
-        )
+        # Récupérer les appréciations de cet élève
+        apps_eleve = appreciations_par_eleve.get(eleve.id, [])
         
-        for appreciation in appreciations:
+        for appreciation in apps_eleve:
             if not appreciation.absent and appreciation.appreciation:
                 points = POINTS_APPRECIATION.get(appreciation.appreciation, 0)
                 total_points += points
@@ -385,6 +395,15 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
                 'nom': eleve.nom,
                 'sexe': getattr(eleve, 'sexe', None) or 'M',
                 'moyenne': Decimal(str(moyenne_pourcentage))
+            })
+        else:
+            # Inclure l'élève même sans appréciations (moyenne 0)
+            moyennes_pour_rang.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
+                'sexe': getattr(eleve, 'sexe', None) or 'M',
+                'moyenne': Decimal('0')
             })
     
     # Calculer les rangs avec la fonction centralisée
