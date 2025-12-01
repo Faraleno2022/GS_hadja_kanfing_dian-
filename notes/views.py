@@ -6334,7 +6334,7 @@ def sauvegarder_notes(request):
         if not all([matiere_id, periode]):
             return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
         
-        # Récupérer ou créer l'évaluation
+        # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
         
         # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
@@ -6343,34 +6343,48 @@ def sauvegarder_notes(request):
         if ecole and matiere.classe.ecole != ecole:
             return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
         
-        # Créer l'évaluation si elle n'existe pas
-        if not evaluation_id:
-            # Déterminer le type d'évaluation selon la période
-            if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-                type_eval = 'DEVOIR'
-                titre_eval = f"Note {periode.capitalize()} - {matiere.nom}"
-            elif periode.startswith('TRIMESTRE'):
-                type_eval = 'COMPOSITION'
-                titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
+        # Détecter si c'est une classe de maternelle (appréciations uniquement)
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_detecte = detecter_niveau_scolaire(matiere.classe.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
+        
+        # Vérifier si c'est une sauvegarde d'appréciations
+        est_appreciation = any('appreciation' in note_data for note_data in notes_data)
+        
+        # Pour les appréciations (maternelle), on n'a pas besoin d'évaluation
+        evaluation = None
+        if not est_appreciation and not est_maternelle:
+            # Créer l'évaluation si elle n'existe pas (pour les notes numériques uniquement)
+            if not evaluation_id:
+                # Déterminer le type d'évaluation selon la période
+                if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+                    type_eval = 'DEVOIR'
+                    titre_eval = f"Note {periode.capitalize()} - {matiere.nom}"
+                elif periode.startswith('TRIMESTRE'):
+                    type_eval = 'COMPOSITION'
+                    titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
+                else:
+                    type_eval = 'COMPOSITION'
+                    titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
+                
+                # Utiliser le coefficient de la matière, ou 1 par défaut si None
+                coef = matiere.coefficient if matiere.coefficient is not None else 1
+                
+                evaluation, created = Evaluation.objects.get_or_create(
+                    matiere=matiere,
+                    periode=periode,
+                    defaults={
+                        'titre': titre_eval,
+                        'type_evaluation': type_eval,
+                        'date_evaluation': timezone.now().date(),
+                        'note_sur': 20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
+                        'coefficient': coef,
+                        'cree_par': request.user,
+                    }
+                )
+                logger.info(f"Évaluation {'créée' if created else 'récupérée'}: {evaluation.id}")
             else:
-                type_eval = 'COMPOSITION'
-                titre_eval = f"Composition {periode.replace('_', ' ')} - {matiere.nom}"
-            
-            evaluation, created = Evaluation.objects.get_or_create(
-                matiere=matiere,
-                periode=periode,
-                defaults={
-                    'titre': titre_eval,
-                    'type_evaluation': type_eval,
-                    'date_evaluation': timezone.now().date(),
-                    'note_sur': 20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
-                    'coefficient': matiere.coefficient,
-                    'cree_par': request.user,
-                }
-            )
-            logger.info(f"Évaluation {'créée' if created else 'récupérée'}: {evaluation.id}")
-        else:
-            evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
+                evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
         
         notes_sauvegardees = 0
         notes_modifiees = 0
@@ -6416,7 +6430,11 @@ def sauvegarder_notes(request):
                             }
                         )
                     else:
-                        # Note numérique
+                        # Note numérique - vérifier que l'évaluation existe
+                        if evaluation is None:
+                            erreurs.append(f"{eleve.nom} {eleve.prenom}: Impossible de sauvegarder une note numérique sans évaluation")
+                            continue
+                        
                         note_value = str(note_data.get('note', '')).strip()
                         
                         # Valider la note
