@@ -1429,6 +1429,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     
     # Import pour les détails mensuels (trimestre/semestre)
     from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+    from notes.calculs_moyennes import detecter_niveau_scolaire
     
     # Déterminer le type de période pour les détails mensuels
     periode_type_detail = None
@@ -1437,10 +1438,20 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     elif system_type == 'semestriel':
         periode_type_detail = 'semestre'
     
+    # Détecter si c'est une classe de maternelle
+    est_maternelle = (detecter_niveau_scolaire(classe_note.nom) == 'MATERNELLE')
+    
     for idx, eleve in enumerate(eleves):
         try:
+            # Pour la maternelle, toujours utiliser le calculateur spécifique
+            if est_maternelle:
+                calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
+                bulletin_data = calculateur.generer_bulletin()
+                bulletin_data['matricule'] = eleve.matricule
+                bulletin_data['total_eleves'] = total_eleves
+                bulletin_data['system_type'] = system_type
             # Utiliser les données pré-calculées si disponibles
-            if eleve.id in details_map:
+            elif eleve.id in details_map:
                 details = details_map[eleve.id]
                 matieres_data = details.get('details_matieres', [])
                 
@@ -1681,11 +1692,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # MATERNELLE/GARDERIE: Afficher les appréciations au lieu des notes
     if est_maternelle:
         _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole)
-        # Finaliser le PDF pour la maternelle
-        c.showPage()
-        c.save()
-        buffer.seek(0)
-        return buffer
+        # Ne pas faire c.save() ici - c'est géré par la fonction appelante
+        return
     
     # Déterminer les mois selon la période pour trimestre/semestre
     mois_labels = []
@@ -1702,23 +1710,23 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         elif 'SEMESTRE_2' in periode or '2' in periode:
             mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
     
-    # Adapter les colonnes selon le système ET le niveau (primaire/maternelle = sans COEF ni PTS)
+    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
     if system_type == 'trimestriel' and mois_labels:
-        if est_primaire or est_maternelle:
+        if est_primaire:
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
         else:
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     elif system_type == 'semestriel' and mois_labels:
-        if est_primaire or est_maternelle:
+        if est_primaire:
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
         else:
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     else:
-        if est_primaire or est_maternelle:
+        if est_primaire:
             data = [['MATIÈRE', 'NOTE', 'MOY']]
             nb_cols = 3
         else:
