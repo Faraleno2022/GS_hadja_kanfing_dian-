@@ -70,6 +70,11 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     from .calculs_moyennes import detecter_niveau_scolaire
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
+    est_maternelle = (niveau == 'MATERNELLE')
+    
+    # Pour la maternelle, pas de calcul de rangs (appréciations uniquement)
+    if est_maternelle:
+        return {}
     
     # Calculer les moyennes pour chaque élève
     moyennes_pour_rang = []
@@ -85,7 +90,8 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
             
             for matiere in matieres:
                 # PRIMAIRE: Pas de coefficients (tous égaux à 1)
-                coefficient = Decimal('1') if est_primaire else matiere.coefficient
+                # Aussi gérer le cas où coefficient est None
+                coefficient = Decimal('1') if est_primaire else (matiere.coefficient if matiere.coefficient is not None else Decimal('1'))
                 
                 # Récupérer la note mensuelle pour cette période
                 try:
@@ -180,7 +186,8 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                     pass
                 
                 # PRIMAIRE: Pas de coefficients (tous égaux à 1)
-                coefficient = Decimal('1') if est_primaire else matiere.coefficient
+                # Aussi gérer le cas où coefficient est None
+                coefficient = Decimal('1') if est_primaire else (matiere.coefficient if matiere.coefficient is not None else Decimal('1'))
                 
                 # Calculer la moyenne de la matière selon la formule guinéenne
                 moyenne_matiere = None
