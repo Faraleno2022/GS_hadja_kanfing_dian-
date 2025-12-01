@@ -7146,8 +7146,10 @@ def bulletin_dynamique(request):
             }
             
             # Calculer les totaux des coefficients (même sans élève sélectionné)
+            # Pour la maternelle, les coefficients sont None, donc on utilise 1 par défaut
             for matiere in matieres:
-                total_coefficients += matiere.coefficient
+                coef = matiere.coefficient if matiere.coefficient is not None else Decimal('1')
+                total_coefficients += coef
             
             for matiere in matieres:
                 # Initialiser les variables
