@@ -117,9 +117,11 @@ def exporter_resultats_pdf(request):
             spaceAfter=12
         )
         
-        # Détecter si c'est une classe de maternelle
+        # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
-        est_maternelle = (detecter_niveau_scolaire(classe.nom) == 'MATERNELLE')
+        niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+        est_maternelle = (niveau_scolaire == 'MATERNELLE')
+        est_primaire = (niveau_scolaire == 'PRIMAIRE')
         
         # En-tête simplifié - Nom de l'école uniquement
         nom_ecole = ecole.nom if ecole else "École"
@@ -132,9 +134,11 @@ def exporter_resultats_pdf(request):
         elements.append(Spacer(1, 0.3*cm))
         
         # Tableau des résultats (Prénom avant Nom)
-        # En-tête adapté pour maternelle
+        # En-tête adapté selon le niveau
         if est_maternelle:
             data = [['Rang', 'Matricule', 'Prénom', 'Nom', 'Acquisition (%)', 'Appréciation']]
+        elif est_primaire:
+            data = [['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /10', 'Mention']]
         else:
             data = [['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /20', 'Mention']]
         lignes_non_admis = []  # Pour stocker les indices des lignes avec moyenne < 10
@@ -156,8 +160,21 @@ def exporter_resultats_pdf(request):
                 else:
                     mention = 'À encourager'
                     lignes_non_admis.append(idx + 1)
+            elif est_primaire:
+                # Pour le primaire : mentions sur 10
+                if moy >= 8:
+                    mention = 'Très Bien'
+                elif moy >= 7:
+                    mention = 'Bien'
+                elif moy >= 6:
+                    mention = 'Assez Bien'
+                elif moy >= 5:
+                    mention = 'Passable'
+                else:
+                    mention = 'Insuffisant'
+                    lignes_non_admis.append(idx + 1)
             else:
-                # Pour les autres classes : mentions classiques
+                # Pour le secondaire : mentions sur 20
                 if moy >= 16:
                     mention = 'Très Bien'
                 elif moy >= 14:
@@ -220,9 +237,12 @@ def exporter_resultats_pdf(request):
             if est_maternelle:
                 stats_text = f"Effectif: {len(resultats)} | Taux moyen d'acquisition: {moy_classe:.1f}% | "
                 stats_text += f"Max: {max(moyennes_valides):.1f}% | Min: {min(moyennes_valides):.1f}%"
+            elif est_primaire:
+                stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {moy_classe:.2f}/10 | "
+                stats_text += f"Max: {max(moyennes_valides):.2f}/10 | Min: {min(moyennes_valides):.2f}/10"
             else:
-                stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {moy_classe:.2f} | "
-                stats_text += f"Max: {max(moyennes_valides):.2f} | Min: {min(moyennes_valides):.2f}"
+                stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {moy_classe:.2f}/20 | "
+                stats_text += f"Max: {max(moyennes_valides):.2f}/20 | Min: {min(moyennes_valides):.2f}/20"
             elements.append(Paragraph(stats_text, styles['Normal']))
         
         # Construire le PDF
@@ -366,13 +386,17 @@ def exporter_resultats_excel(request):
         ws['A7'] = f"Période: {periode or 'Année complète'} | Année scolaire: {classe.annee_scolaire}"
         ws['A7'].alignment = center_align
         
-        # Détecter si c'est une classe de maternelle
+        # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
-        est_maternelle = (detecter_niveau_scolaire(classe.nom) == 'MATERNELLE')
+        niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+        est_maternelle = (niveau_scolaire == 'MATERNELLE')
+        est_primaire = (niveau_scolaire == 'PRIMAIRE')
         
         # En-têtes du tableau (décalés à la ligne 9) - Prénom avant Nom
         if est_maternelle:
             headers = ['Rang', 'Matricule', 'Prénom', 'Nom', 'Acquisition (%)', 'Appréciation']
+        elif est_primaire:
+            headers = ['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /10', 'Mention']
         else:
             headers = ['Rang', 'Matricule', 'Prénom', 'Nom', 'Moyenne /20', 'Mention']
         for col, header in enumerate(headers, 1):
@@ -399,7 +423,21 @@ def exporter_resultats_excel(request):
                 else:
                     mention = 'À encourager'
                 moy_display = f"{moy:.1f}%" if moy else '-'
+            elif est_primaire:
+                # Pour le primaire : mentions sur 10
+                if moy >= 8:
+                    mention = 'Très Bien'
+                elif moy >= 7:
+                    mention = 'Bien'
+                elif moy >= 6:
+                    mention = 'Assez Bien'
+                elif moy >= 5:
+                    mention = 'Passable'
+                else:
+                    mention = 'Insuffisant'
+                moy_display = f"{moy:.2f}" if moy else '-'
             else:
+                # Pour le secondaire : mentions sur 20
                 if moy >= 16:
                     mention = 'Très Bien'
                 elif moy >= 14:
@@ -449,10 +487,14 @@ def exporter_resultats_excel(request):
                 ws.cell(row=last_row + 1, column=2, value=f"Taux moyen: {moy_classe:.1f}%")
                 ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.1f}%")
                 ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.1f}%")
+            elif est_primaire:
+                ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {moy_classe:.2f}/10")
+                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}/10")
+                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}/10")
             else:
-                ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {moy_classe:.2f}")
-                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}")
-                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}")
+                ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {moy_classe:.2f}/20")
+                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}/20")
+                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}/20")
         
         # Sauvegarder dans un buffer
         buffer = io.BytesIO()
