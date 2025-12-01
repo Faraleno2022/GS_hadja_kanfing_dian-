@@ -304,12 +304,13 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel')
     }
 
 
-def obtenir_mention_intelligente(moyenne):
+def obtenir_mention_intelligente(moyenne, niveau='SECONDAIRE'):
     """
-    Détermine la mention selon la moyenne
+    Détermine la mention selon la moyenne et le niveau scolaire
     
     Args:
         moyenne: float ou Decimal
+        niveau: str ('MATERNELLE', 'PRIMAIRE', 'SECONDAIRE')
     
     Returns:
         str: Mention correspondante
@@ -319,20 +320,44 @@ def obtenir_mention_intelligente(moyenne):
     
     moyenne = float(moyenne)
     
-    if moyenne >= 18.5:
-        return "Excellent"
-    elif moyenne >= 16.5:
-        return "Très bien"
-    elif moyenne >= 14.5:
-        return "Bien"
-    elif moyenne >= 12.5:
-        return "Assez bien"
-    elif moyenne >= 10.0:
-        return "Passable"
-    elif moyenne >= 9.0:
-        return "Faible"
+    if niveau == 'MATERNELLE':
+        # Maternelle : taux d'acquisition en %
+        if moyenne >= 90:
+            return "Excellent"
+        elif moyenne >= 75:
+            return "Très Bien"
+        elif moyenne >= 60:
+            return "Bien"
+        elif moyenne >= 50:
+            return "Assez Bien"
+        else:
+            return "À encourager"
+    
+    elif niveau == 'PRIMAIRE':
+        # Primaire : moyenne sur 10
+        if moyenne >= 8:
+            return "Très Bien"
+        elif moyenne >= 7:
+            return "Bien"
+        elif moyenne >= 6:
+            return "Assez Bien"
+        elif moyenne >= 5:
+            return "Passable"
+        else:
+            return "Insuffisant"
+    
     else:
-        return "Insuffisant"
+        # Secondaire : moyenne sur 20 (par défaut)
+        if moyenne >= 16:
+            return "Très Bien"
+        elif moyenne >= 14:
+            return "Bien"
+        elif moyenne >= 12:
+            return "Assez Bien"
+        elif moyenne >= 10:
+            return "Passable"
+        else:
+            return "Insuffisant"
 
 
 def obtenir_appreciation_intelligente(moyenne, prenom):

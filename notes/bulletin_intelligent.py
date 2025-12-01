@@ -194,7 +194,7 @@ class CalculateurBulletinIntelligent:
             'section': self.section,
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
-            'mention': obtenir_mention_intelligente(moyenne_generale) if moyenne_generale else None,
+            'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
             'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom) if moyenne_generale else None,
             'rang': rang,
             'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
@@ -1438,8 +1438,9 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     elif system_type == 'semestriel':
         periode_type_detail = 'semestre'
     
-    # Détecter si c'est une classe de maternelle
-    est_maternelle = (detecter_niveau_scolaire(classe_note.nom) == 'MATERNELLE')
+    # Détecter le niveau scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
+    est_maternelle = (niveau_scolaire == 'MATERNELLE')
     
     for idx, eleve in enumerate(eleves):
         try:
@@ -1484,7 +1485,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'total_points': details.get('total_points'),
                     'total_coefficients': details.get('total_coefficients'),
                     'rang': rang_map.get(eleve.id, '-'),
-                    'mention': obtenir_mention_intelligente(details.get('moyenne_generale')),
+                    'mention': obtenir_mention_intelligente(details.get('moyenne_generale'), niveau_scolaire),
                     'matricule': eleve.matricule,
                     'total_eleves': total_eleves,
                 }

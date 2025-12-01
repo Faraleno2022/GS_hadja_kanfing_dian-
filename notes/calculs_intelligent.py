@@ -131,21 +131,36 @@ def calculer_moyenne_generale(notes_matieres: Dict[str, Dict],
     return moyenne_generale.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def obtenir_mention_intelligente(moyenne: Optional[Decimal]) -> str:
+def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECONDAIRE') -> str:
     """
-    Détermine la mention selon la moyenne avec les seuils précis demandés
+    Détermine la mention selon la moyenne avec les seuils adaptés au niveau scolaire
     
-    SYSTÈME INTELLIGENT:
-    - >= 18.5: Excellent
-    - >= 16.5: Très bien
-    - >= 14.5: Bien
-    - >= 12.5: Assez bien
+    SYSTÈME INTELLIGENT PAR NIVEAU:
+    
+    MATERNELLE (Acquisition en %):
+    - >= 90%: Excellent
+    - >= 75%: Très Bien
+    - >= 60%: Bien
+    - >= 50%: Assez Bien
+    - < 50%: À encourager
+    
+    PRIMAIRE (Moyenne /10):
+    - >= 8: Très Bien
+    - >= 7: Bien
+    - >= 6: Assez Bien
+    - >= 5: Passable
+    - < 5: Insuffisant
+    
+    SECONDAIRE (Moyenne /20):
+    - >= 16: Très Bien
+    - >= 14: Bien
+    - >= 12: Assez Bien
     - >= 10: Passable
-    - >= 9: Faible
-    - < 9: Insuffisant
+    - < 10: Insuffisant
     
     Args:
-        moyenne: Moyenne de l'élève
+        moyenne: Moyenne de l'élève (ou taux d'acquisition pour maternelle)
+        niveau: Niveau scolaire ('MATERNELLE', 'PRIMAIRE', 'SECONDAIRE')
         
     Returns:
         Mention appropriée
@@ -153,20 +168,48 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal]) -> str:
     if moyenne is None:
         return "Non évalué"
     
-    if moyenne >= Decimal('18.5'):
-        return "Excellent"
-    elif moyenne >= Decimal('16.5'):
-        return "Très bien"
-    elif moyenne >= Decimal('14.5'):
-        return "Bien"
-    elif moyenne >= Decimal('12.5'):
-        return "Assez bien"
-    elif moyenne >= Decimal('10'):
-        return "Passable"
-    elif moyenne >= Decimal('9'):
-        return "Faible"
+    # Convertir en Decimal si nécessaire
+    if not isinstance(moyenne, Decimal):
+        moyenne = Decimal(str(moyenne))
+    
+    if niveau == 'MATERNELLE':
+        # Maternelle : taux d'acquisition en %
+        if moyenne >= Decimal('90'):
+            return "Excellent"
+        elif moyenne >= Decimal('75'):
+            return "Très Bien"
+        elif moyenne >= Decimal('60'):
+            return "Bien"
+        elif moyenne >= Decimal('50'):
+            return "Assez Bien"
+        else:
+            return "À encourager"
+    
+    elif niveau == 'PRIMAIRE':
+        # Primaire : moyenne sur 10
+        if moyenne >= Decimal('8'):
+            return "Très Bien"
+        elif moyenne >= Decimal('7'):
+            return "Bien"
+        elif moyenne >= Decimal('6'):
+            return "Assez Bien"
+        elif moyenne >= Decimal('5'):
+            return "Passable"
+        else:
+            return "Insuffisant"
+    
     else:
-        return "Insuffisant"
+        # Secondaire : moyenne sur 20 (par défaut)
+        if moyenne >= Decimal('16'):
+            return "Très Bien"
+        elif moyenne >= Decimal('14'):
+            return "Bien"
+        elif moyenne >= Decimal('12'):
+            return "Assez Bien"
+        elif moyenne >= Decimal('10'):
+            return "Passable"
+        else:
+            return "Insuffisant"
 
 
 def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = None) -> str:

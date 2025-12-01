@@ -7150,10 +7150,11 @@ def bulletin_dynamique(request):
                 eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
                 bulletin_data['eleve'] = eleve_selectionne
             
-            # Détecter si c'est une classe de maternelle
+            # Détecter le niveau scolaire
             from .calculs_moyennes import detecter_niveau_scolaire
             niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
             est_maternelle = (niveau_detecte == 'MATERNELLE')
+            est_primaire = (niveau_detecte == 'PRIMAIRE')
             
             # Pour chaque matière, préparer la structure
             total_points = Decimal('0')
@@ -7557,7 +7558,7 @@ def bulletin_dynamique(request):
                                 moyenne_eleve = float(rang_info['moyenne'])
                                 moyenne_dec = _Dec(str(moyenne_eleve))
                                 bulletin_data['moyenne_generale'] = moyenne_eleve
-                                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
                                 bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                                 bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
                             else:
@@ -7566,7 +7567,7 @@ def bulletin_dynamique(request):
                                 bulletin_data['rang'] = "-"
                         else:
                             moyenne_dec = _Dec(str(moyenne_generale))
-                            bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec)
+                            bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
                             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                             bulletin_data['rang'] = "-"
     
