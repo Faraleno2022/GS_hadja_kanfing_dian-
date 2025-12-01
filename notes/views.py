@@ -7092,6 +7092,11 @@ def bulletin_dynamique(request):
                 eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
                 bulletin_data['eleve'] = eleve_selectionne
             
+            # Détecter si c'est une classe de maternelle
+            from .calculs_moyennes import detecter_niveau_scolaire
+            niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
+            est_maternelle = (niveau_detecte == 'MATERNELLE')
+            
             # Pour chaque matière, préparer la structure
             total_points = Decimal('0')
             total_coefficients = Decimal('0')
@@ -7122,9 +7127,28 @@ def bulletin_dynamique(request):
                 moyenne_continue = None
                 note_composition = None
                 moyennes_mensuelles = []
+                appreciation_maternelle = None
+                commentaire_maternelle = None
+                absent_maternelle = False
                 
-                # Si une période est sélectionnée, récupérer les données
-                if periode and eleve_selectionne:
+                # Pour la maternelle : récupérer les appréciations au lieu des notes
+                if est_maternelle and periode and eleve_selectionne:
+                    from .models import AppreciationMaternelle
+                    try:
+                        appreciation_obj = AppreciationMaternelle.objects.get(
+                            eleve=eleve_selectionne,
+                            matiere=matiere,
+                            trimestre=periode,
+                            annee_scolaire=classe_selectionnee.annee_scolaire
+                        )
+                        appreciation_maternelle = appreciation_obj.appreciation
+                        commentaire_maternelle = appreciation_obj.commentaire
+                        absent_maternelle = appreciation_obj.absent
+                    except AppreciationMaternelle.DoesNotExist:
+                        pass
+                
+                # Si une période est sélectionnée, récupérer les données (pour les autres niveaux)
+                elif periode and eleve_selectionne:
                     if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
                         # NOUVEAU: Bulletin annuel - calculer la moyenne des périodes
                         from .calculs_moyennes import calculer_moyenne_annuelle_matiere
@@ -7327,6 +7351,10 @@ def bulletin_dynamique(request):
                     'coefficient': matiere.coefficient,
                     'points': points,
                     'total': points,  # Alias pour compatibilité
+                    # Données spécifiques maternelle
+                    'appreciation': appreciation_maternelle,
+                    'commentaire': commentaire_maternelle,
+                    'absent': absent_maternelle,
                 })
                 
                 # NOUVEAU: Accumuler les totaux par colonne
@@ -7452,6 +7480,13 @@ def bulletin_dynamique(request):
                         bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                         bulletin_data['rang'] = "-"
     
+    # Déterminer est_maternelle pour le contexte
+    est_maternelle_ctx = False
+    if classe_selectionnee:
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_detecte_ctx = detecter_niveau_scolaire(classe_selectionnee.nom)
+        est_maternelle_ctx = (niveau_detecte_ctx == 'MATERNELLE')
+    
     context = {
         'titre_page': 'Bulletin Dynamique',
         'classes': classes,
@@ -7464,6 +7499,7 @@ def bulletin_dynamique(request):
         'periode_selectionnee': periode,  # Alias pour le template
         'system_type': system_type,
         'niveau_enseignement': niveau_enseignement,
+        'est_maternelle': est_maternelle_ctx,
         'bulletin_data': bulletin_data,
         'ecole': ecole,
         'annee_scolaire': classe_selectionnee.annee_scolaire if classe_selectionnee else '',

@@ -66,12 +66,54 @@
         </div>
     </div>
     
-    <!-- Tableau des notes -->
+    <!-- Tableau des notes / appréciations -->
+    {% if est_maternelle %}
+    <!-- BULLETIN MATERNELLE: Tableau des appréciations -->
+    <table class="notes-table">
+        <thead>
+            <tr>
+                <th style="width: 35%;">DOMAINE D'ACTIVITÉ</th>
+                <th style="width: 25%;">APPRÉCIATION</th>
+                <th style="width: 40%;">OBSERVATIONS</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for matiere_note in bulletin_data.matieres_notes %}
+            <tr>
+                <td class="matiere-col">{{ matiere_note.matiere.nom }}</td>
+                <td style="text-align: center;">
+                    {% if matiere_note.absent %}
+                        <span style="color: red; font-weight: bold;">ABSENT</span>
+                    {% elif matiere_note.appreciation %}
+                        {% if matiere_note.appreciation == 'TRES_BIEN_ACQUIS' %}
+                            <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Très Bien Acquis</span>
+                        {% elif matiere_note.appreciation == 'BIEN_ACQUIS' %}
+                            <span style="background: #007bff; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Bien Acquis</span>
+                        {% elif matiere_note.appreciation == 'EN_COURS' %}
+                            <span style="background: #ffc107; color: #212529; padding: 2px 8px; border-radius: 4px; font-weight: bold;">En Cours</span>
+                        {% elif matiere_note.appreciation == 'NON_ACQUIS' %}
+                            <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Non Acquis</span>
+                        {% else %}
+                            <span style="color: #999;">-</span>
+                        {% endif %}
+                    {% else %}
+                        <span style="color: #999;">-</span>
+                    {% endif %}
+                </td>
+                <td style="font-size: 0.85em; color: #555;">
+                    {{ matiere_note.commentaire|default:"-" }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <!-- BULLETIN STANDARD: Tableau des notes -->
     <table class="notes-table">
         <thead>
             <tr>
                 <th rowspan="2">MATIÈRE</th>
-                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
+                {% if niveau_enseignement != 'PRIMAIRE' %}
                 <th rowspan="2">COEF</th>
                 {% endif %}
                 {% if system_type == 'mensuel' %}
@@ -86,7 +128,7 @@
                     <th colspan="2">SEMESTRES</th>
                 {% endif %}
                 <th rowspan="2">MOY</th>
-                {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
+                {% if niveau_enseignement != 'PRIMAIRE' %}
                 <th rowspan="2">PTS</th>
                 {% endif %}
             </tr>
@@ -247,6 +289,8 @@
             </tr>
         </tfoot>
     </table>
+    {% endif %}
+    <!-- Fin du bloc conditionnel MATERNELLE/STANDARD -->
     
     <!-- NOUVEAU: Légende pour les bulletins trimestriels et semestriels -->
     {% if system_type in 'trimestre,semestre' and bulletin_data.eleve %}
@@ -270,6 +314,22 @@
     {% endif %}
     
     <!-- Résultats -->
+    {% if est_maternelle %}
+    <!-- Section résultats pour la maternelle (pas de notes numériques) -->
+    <div class="resultats-section" style="justify-content: center;">
+        <div class="resultat-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); min-width: 300px;">
+            <h3>ÉVALUATION GLOBALE</h3>
+            <div class="value" style="font-size: 1.2em;">
+                {% if bulletin_data.appreciation_globale_maternelle %}
+                    {{ bulletin_data.appreciation_globale_maternelle }}
+                {% else %}
+                    Bon trimestre
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Section résultats standard -->
     <div class="resultats-section">
         <div class="resultat-card">
             <h3>MOYENNE GÉNÉRALE</h3>
@@ -286,6 +346,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
     
     <!-- Appréciation -->
     <div class="appreciation-section">
