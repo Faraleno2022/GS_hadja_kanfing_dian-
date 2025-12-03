@@ -133,11 +133,11 @@
                 {% if system_type == 'mensuel' %}
                     <th rowspan="2">NOTE</th>
                 {% elif system_type == 'trimestre' %}
-                    <!-- NOUVEAU: Affichage dynamique des mois du trimestre -->
-                    <th colspan="5">DÉTAILS TRIMESTRIEL</th>
+                    <!-- Trimestre: 2 mois + Moy.C + Compo = 4 colonnes -->
+                    <th colspan="4">DÉTAILS TRIMESTRIEL</th>
                 {% elif system_type == 'semestre' %}
-                    <!-- NOUVEAU: Affichage dynamique des mois du semestre -->
-                    <th colspan="7">DÉTAILS SEMESTRIEL</th>
+                    <!-- Semestre: 4 mois + Moy.C + Compo = 6 colonnes -->
+                    <th colspan="6">DÉTAILS SEMESTRIEL</th>
                 {% elif system_type == 'annuel' %}
                     <th colspan="2">SEMESTRES</th>
                 {% endif %}
@@ -148,22 +148,24 @@
             </tr>
             <tr>
                 {% if system_type == 'trimestre' %}
-                    <!-- Colonnes pour trimestre: 3 mois + moyenne continue + composition -->
+                    <!-- Colonnes pour trimestre: 2 mois + moyenne continue + composition -->
+                    <!-- Le dernier mois (Déc/Mars/Juin) = Composition -->
                     {% if bulletin_data.periode == 'TRIMESTRE_1' %}
-                        <th>Oct.</th><th>Nov.</th><th>Déc.</th>
+                        <th>Oct.</th><th>Nov.</th>
                     {% elif bulletin_data.periode == 'TRIMESTRE_2' %}
-                        <th>Jan.</th><th>Fév.</th><th>Mars</th>
+                        <th>Jan.</th><th>Fév.</th>
                     {% elif bulletin_data.periode == 'TRIMESTRE_3' %}
-                        <th>Avr.</th><th>Mai</th><th>Juin</th>
+                        <th>Avr.</th><th>Mai</th>
                     {% endif %}
                     <th>Moy. Cont.</th>
                     <th>Compo</th>
                 {% elif system_type == 'semestre' %}
-                    <!-- Colonnes pour semestre: 5 mois + moyenne continue + composition -->
+                    <!-- Colonnes pour semestre: 4 mois + moyenne continue + composition -->
+                    <!-- Le dernier mois (Fév/Juil) = Composition -->
                     {% if bulletin_data.periode == 'SEMESTRE_1' %}
-                        <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th><th>Fév.</th>
+                        <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th>
                     {% elif bulletin_data.periode == 'SEMESTRE_2' %}
-                        <th>Mars</th><th>Avr.</th><th>Mai</th><th>Juin</th><th>Juil.</th>
+                        <th>Mars</th><th>Avr.</th><th>Mai</th><th>Juin</th>
                     {% endif %}
                     <th>Moy. Cont.</th>
                     <th>Compo</th>
