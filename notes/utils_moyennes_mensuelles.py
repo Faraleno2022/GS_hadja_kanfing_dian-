@@ -6,32 +6,54 @@ from decimal import Decimal
 from .models import NoteMensuelle, CompositionNote, Evaluation, NoteEleve
 
 
-def get_mois_periode(periode_type, periode):
+def get_mois_periode(periode_type, periode, inclure_dernier_mois=True):
     """
     Retourne la liste des mois qui composent une période
+    
+    IMPORTANT: Le dernier mois de chaque période correspond à la COMPOSITION
+    - Trimestre 1: Oct, Nov + Compo (Déc = Composition)
+    - Trimestre 2: Jan, Fév + Compo (Mars = Composition)
+    - Trimestre 3: Avr, Mai + Compo (Juin = Composition)
+    - Semestre 1: Oct, Nov, Déc, Jan + Compo (Fév = Composition)
+    - Semestre 2: Mars, Avr, Mai, Juin + Compo (Juil = Composition)
     
     Args:
         periode_type: 'trimestre' ou 'semestre'
         periode: 'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3', 'SEMESTRE_1', 'SEMESTRE_2'
+        inclure_dernier_mois: Si False, exclut le dernier mois (qui est la composition)
     
     Returns:
-        list: Liste des mois (ex: ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'])
+        list: Liste des mois (ex: ['OCTOBRE', 'NOVEMBRE'] pour T1 sans dernier mois)
     """
+    mois = []
+    
     if periode_type == 'trimestre':
         if periode == 'TRIMESTRE_1':
-            return ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+            mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
         elif periode == 'TRIMESTRE_2':
-            return ['JANVIER', 'FEVRIER', 'MARS']
+            mois = ['JANVIER', 'FEVRIER', 'MARS']
         elif periode == 'TRIMESTRE_3':
-            return ['AVRIL', 'MAI', 'JUIN']
+            mois = ['AVRIL', 'MAI', 'JUIN']
     
     elif periode_type == 'semestre':
         if periode == 'SEMESTRE_1':
-            return ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+            mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
         elif periode == 'SEMESTRE_2':
-            return ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+            mois = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
     
-    return []
+    # Si on n'inclut pas le dernier mois (qui est la composition)
+    if not inclure_dernier_mois and mois:
+        return mois[:-1]
+    
+    return mois
+
+
+def get_mois_pour_moyenne_continue(periode_type, periode):
+    """
+    Retourne les mois à utiliser pour calculer la moyenne continue
+    (tous les mois SAUF le dernier qui est la composition)
+    """
+    return get_mois_periode(periode_type, periode, inclure_dernier_mois=False)
 
 
 def get_libelle_mois(mois):
@@ -57,6 +79,9 @@ def calculer_moyennes_mensuelles_matiere(eleve, matiere, periode_type, periode):
     """
     Calcule les moyennes mensuelles d'une matière pour une période donnée
     
+    IMPORTANT: Le dernier mois de chaque période est la COMPOSITION, donc on ne l'inclut pas
+    dans les moyennes mensuelles (il sera récupéré séparément via calculer_composition_periode)
+    
     Args:
         eleve: Instance Eleve
         matiere: Instance MatiereNote
@@ -70,11 +95,12 @@ def calculer_moyennes_mensuelles_matiere(eleve, matiere, periode_type, periode):
                 {'mois': 'NOVEMBRE', 'libelle': 'Nov.', 'moyenne': None, 'absent': True},
                 ...
             ],
-            'moyenne_continue': 14.2,  # Moyenne des mois non absents
+            'moyenne_continue': 14.2,  # Moyenne des mois non absents (hors composition)
             'nb_mois_evalues': 2
         }
     """
-    mois_periode = get_mois_periode(periode_type, periode)
+    # Récupérer les mois SANS le dernier (qui est la composition)
+    mois_periode = get_mois_pour_moyenne_continue(periode_type, periode)
     moyennes_mensuelles = []
     total_moyennes = Decimal('0')
     nb_mois_evalues = 0
@@ -155,6 +181,13 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
     """
     Calcule la note de composition pour une période
     
+    IMPORTANT: La composition correspond au DERNIER MOIS de chaque période:
+    - Trimestre 1: Décembre
+    - Trimestre 2: Mars
+    - Trimestre 3: Juin
+    - Semestre 1: Février
+    - Semestre 2: Juillet
+    
     Args:
         eleve: Instance Eleve
         matiere: Instance MatiereNote
@@ -169,6 +202,10 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
     """
     note_composition = None
     absent_composition = False
+    
+    # Déterminer le mois de composition (dernier mois de la période)
+    mois_complets = get_mois_periode(periode_type, periode, inclure_dernier_mois=True)
+    mois_composition = mois_complets[-1] if mois_complets else None
     
     # MÉTHODE 1: Chercher d'abord dans CompositionNote (notes importées)
     try:
@@ -189,7 +226,27 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
     except CompositionNote.DoesNotExist:
         pass
     
-    # MÉTHODE 2: Si pas trouvé, chercher dans les évaluations
+    # MÉTHODE 2: Chercher dans NoteMensuelle du dernier mois (qui est la composition)
+    if mois_composition:
+        try:
+            note_mensuelle = NoteMensuelle.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                mois=mois_composition,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if note_mensuelle.absent:
+                absent_composition = True
+            elif note_mensuelle.note is not None:
+                note_composition = float(note_mensuelle.note)
+                return {
+                    'note_composition': note_composition,
+                    'absent_composition': absent_composition
+                }
+        except NoteMensuelle.DoesNotExist:
+            pass
+    
+    # MÉTHODE 3: Chercher dans les évaluations de type COMPOSITION/EXAMEN
     evaluations_compo = Evaluation.objects.filter(
         matiere=matiere,
         periode=periode,
@@ -214,6 +271,35 @@ def calculer_composition_periode(eleve, matiere, periode_type, periode):
     
     if count_compo > 0:
         note_composition = round(float(total_compo / count_compo), 2)
+        return {
+            'note_composition': note_composition,
+            'absent_composition': absent_composition
+        }
+    
+    # MÉTHODE 4: Chercher dans les évaluations du dernier mois
+    if mois_composition:
+        evaluations_mois = Evaluation.objects.filter(
+            matiere=matiere,
+            periode=mois_composition
+        )
+        
+        total_notes = Decimal('0')
+        count_notes = 0
+        
+        for evaluation in evaluations_mois:
+            try:
+                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                if note_obj.absent:
+                    absent_composition = True
+                elif note_obj.note is not None:
+                    note_sur_20 = (note_obj.note / evaluation.note_sur) * 20
+                    total_notes += Decimal(str(note_sur_20))
+                    count_notes += 1
+            except NoteEleve.DoesNotExist:
+                pass
+        
+        if count_notes > 0:
+            note_composition = round(float(total_notes / count_notes), 2)
     
     return {
         'note_composition': note_composition,

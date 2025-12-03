@@ -511,36 +511,38 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         return buffer
     
     # Déterminer les mois selon la période pour trimestre/semestre
+    # IMPORTANT: Le dernier mois est remplacé par "Compo" (composition)
     mois_labels = []
     if system_type_indiv == 'trimestriel':
         if 'TRIMESTRE_1' in periode or '1' in periode:
-            mois_labels = ['Oct.', 'Nov.', 'Déc.']
+            mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
         elif 'TRIMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Jan.', 'Fév.', 'Mars']
+            mois_labels = ['Jan.', 'Fév.']  # Mars = Compo
         elif 'TRIMESTRE_3' in periode or '3' in periode:
-            mois_labels = ['Avr.', 'Mai', 'Juin']
+            mois_labels = ['Avr.', 'Mai']   # Juin = Compo
     elif system_type_indiv == 'semestriel':
         if 'SEMESTRE_1' in periode or '1' in periode:
-            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.', 'Fév.']
+            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
         elif 'SEMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
+            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin']   # Juil. = Compo
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
+    # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | PTS
     if system_type_indiv == 'trimestriel' and mois_labels:
         if est_primaire:
-            # Primaire Trimestre: MATIÈRE | M1 | M2 | M3 | Moy.C | Compo | MOY | PTS (sans COEF)
+            # Primaire Trimestre: MATIÈRE | M1 | M2 | Moy.C | Compo | MOY | PTS (sans COEF)
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
-            # Trimestre: MATIÈRE | COEF | M1 | M2 | M3 | Moy.C | Compo | MOY | PTS
+            # Trimestre: MATIÈRE | COEF | M1 | M2 | Moy.C | Compo | MOY | PTS
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     elif system_type_indiv == 'semestriel' and mois_labels:
         if est_primaire:
-            # Primaire Semestre: MATIÈRE | M1..M5 | Moy.C | Compo | MOY | PTS (sans COEF)
+            # Primaire Semestre: MATIÈRE | M1..M4 | Moy.C | Compo | MOY | PTS (sans COEF)
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
-            # Semestre: MATIÈRE | COEF | M1..M5 | Moy.C | Compo | MOY | PTS
+            # Semestre: MATIÈRE | COEF | M1..M4 | Moy.C | Compo | MOY | PTS
             header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
@@ -1697,21 +1699,23 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         return
     
     # Déterminer les mois selon la période pour trimestre/semestre
+    # IMPORTANT: Le dernier mois est remplacé par "Compo" (composition)
     mois_labels = []
     if system_type == 'trimestriel':
         if 'TRIMESTRE_1' in periode or '1' in periode:
-            mois_labels = ['Oct.', 'Nov.', 'Déc.']
+            mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
         elif 'TRIMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Jan.', 'Fév.', 'Mars']
+            mois_labels = ['Jan.', 'Fév.']  # Mars = Compo
         elif 'TRIMESTRE_3' in periode or '3' in periode:
-            mois_labels = ['Avr.', 'Mai', 'Juin']
+            mois_labels = ['Avr.', 'Mai']   # Juin = Compo
     elif system_type == 'semestriel':
         if 'SEMESTRE_1' in periode or '1' in periode:
-            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.', 'Fév.']
+            mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
         elif 'SEMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin', 'Juil.']
+            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin']   # Juil. = Compo
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
+    # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | [PTS]
     if system_type == 'trimestriel' and mois_labels:
         if est_primaire:
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
