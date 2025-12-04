@@ -425,12 +425,14 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Titre du bulletin
     y_header -= 0.6*cm
     c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {bulletin_data['periode'].upper()}")
+    periode_libelle = _formater_periode_libelle(bulletin_data.get('periode', ''))
+    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {periode_libelle}")
     
-    # Année scolaire (petite, à droite)
+    # Année scolaire dynamique
+    annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.5*cm, y_header, "Année Scolaire 2024-2025")
+    c.drawRightString(width - 1.5*cm, y_header, f"Année Scolaire {annee_scolaire}")
     
     # ===== LIGNE DE SÉPARATION NOIRE =====
     y_header -= 0.4*cm
@@ -450,9 +452,12 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     # Première ligne: PRÉNOM, NOM, MATRICULE (Prénom avant Nom)
     # Deuxième ligne: CLASSE, PÉRIODE, EFFECTIF
+    # Formater la période pour l'affichage
+    periode_info_indiv = _formater_periode_libelle(bulletin_data.get('periode', '-'))
+    
     info_data = [
         [('PRÉNOM', prenom.title()), ('NOM', nom.upper()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
-        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
+        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', periode_info_indiv), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
     ]
     
     # Largeur totale alignée avec la ligne (de 1.2cm à width-1.2cm)
@@ -511,20 +516,22 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         return buffer
     
     # Déterminer les mois selon la période pour trimestre/semestre
-    # IMPORTANT: Le dernier mois est remplacé par "Compo" (composition)
+    # SYSTÈME GUINÉEN: Le dernier mois de chaque période = Composition
+    # Trimestres: T1(Oct,Nov,Déc), T2(Jan,Fév,Mars), T3(Avr,Mai,Juin)
+    # Semestres: S1(Oct,Nov,Déc,Jan,Fév), S2(Mars,Avr,Mai,Juin)
     mois_labels = []
     if system_type_indiv == 'trimestriel':
-        if 'TRIMESTRE_1' in periode or '1' in periode:
+        if 'TRIMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
-        elif 'TRIMESTRE_2' in periode or '2' in periode:
+        elif 'TRIMESTRE_2' in periode:
             mois_labels = ['Jan.', 'Fév.']  # Mars = Compo
-        elif 'TRIMESTRE_3' in periode or '3' in periode:
+        elif 'TRIMESTRE_3' in periode:
             mois_labels = ['Avr.', 'Mai']   # Juin = Compo
     elif system_type_indiv == 'semestriel':
-        if 'SEMESTRE_1' in periode or '1' in periode:
+        if 'SEMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
-        elif 'SEMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin']   # Juil. = Compo
+        elif 'SEMESTRE_2' in periode:
+            mois_labels = ['Mars', 'Avr.', 'Mai']   # Juin = Compo
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
     # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | PTS
