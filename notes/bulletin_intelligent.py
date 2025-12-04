@@ -1529,6 +1529,20 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     return response
 
 
+def _formater_periode_libelle(periode):
+    """Convertit le code période en libellé lisible"""
+    mapping = {
+        'TRIMESTRE_1': '1ER TRIMESTRE',
+        'TRIMESTRE_2': '2ÈME TRIMESTRE', 
+        'TRIMESTRE_3': '3ÈME TRIMESTRE',
+        'SEMESTRE_1': '1ER SEMESTRE',
+        'SEMESTRE_2': '2ÈME SEMESTRE',
+        'ANNUEL_TRIM': 'ANNUEL',
+        'ANNUEL_SEM': 'ANNUEL',
+    }
+    return mapping.get(periode, periode.upper().replace('_', ' '))
+
+
 def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None):
     """Dessine un bulletin sur la page courante du canvas - fonction interne optimisée"""
     width, height = A4
@@ -1627,11 +1641,14 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     y_header -= 0.6*cm
     c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {bulletin_data['periode'].upper()}")
+    periode_libelle = _formater_periode_libelle(bulletin_data.get('periode', ''))
+    c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {periode_libelle}")
     
+    # Récupérer l'année scolaire depuis l'école ou utiliser l'année courante
+    annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.2*cm, y_header, "Année Scolaire 2024-2025")
+    c.drawRightString(width - 1.2*cm, y_header, f"Année Scolaire {annee_scolaire}")
     
     # Ligne de séparation
     y_header -= 0.4*cm
@@ -1648,9 +1665,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     prenom = parties[0] if len(parties) > 0 else ''
     nom = parties[1] if len(parties) > 1 else ''
     
+    # Formater la période pour l'affichage dans les infos élève
+    periode_info = _formater_periode_libelle(bulletin_data.get('periode', '-'))
+    
     info_data = [
         [('PRÉNOM', prenom.title()), ('NOM', nom.upper()), ('MATRICULE', bulletin_data.get('matricule', '-'))],
-        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', bulletin_data.get('periode', '-')), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
+        [('CLASSE', bulletin_data.get('classe', '-')), ('PÉRIODE', periode_info), ('EFFECTIF', f"{bulletin_data.get('total_eleves', '-')} élèves")],
     ]
     
     info_total_width = width - 2.4*cm
@@ -1699,20 +1719,22 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         return
     
     # Déterminer les mois selon la période pour trimestre/semestre
-    # IMPORTANT: Le dernier mois est remplacé par "Compo" (composition)
+    # SYSTÈME GUINÉEN: Le dernier mois de chaque période = Composition
+    # Trimestres: T1(Oct,Nov,Déc), T2(Jan,Fév,Mars), T3(Avr,Mai,Juin)
+    # Semestres: S1(Oct,Nov,Déc,Jan,Fév), S2(Mars,Avr,Mai,Juin)
     mois_labels = []
     if system_type == 'trimestriel':
-        if 'TRIMESTRE_1' in periode or '1' in periode:
+        if 'TRIMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
-        elif 'TRIMESTRE_2' in periode or '2' in periode:
+        elif 'TRIMESTRE_2' in periode:
             mois_labels = ['Jan.', 'Fév.']  # Mars = Compo
-        elif 'TRIMESTRE_3' in periode or '3' in periode:
+        elif 'TRIMESTRE_3' in periode:
             mois_labels = ['Avr.', 'Mai']   # Juin = Compo
     elif system_type == 'semestriel':
-        if 'SEMESTRE_1' in periode or '1' in periode:
+        if 'SEMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
-        elif 'SEMESTRE_2' in periode or '2' in periode:
-            mois_labels = ['Mars', 'Avr.', 'Mai', 'Juin']   # Juil. = Compo
+        elif 'SEMESTRE_2' in periode:
+            mois_labels = ['Mars', 'Avr.', 'Mai']   # Juin = Compo
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
     # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | [PTS]
