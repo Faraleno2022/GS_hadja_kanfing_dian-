@@ -849,15 +849,15 @@
                     {% if system_type == 'mensuel' %}
                         <th rowspan="2">NOTE</th>
                     {% elif system_type == 'trimestre' %}
-                        <!-- Trimestre: T1/T2 = 2 mois, T3 = 1 mois (Mai = Compo) -->
-                        {% if periode == 'TRIMESTRE_3' %}
-                        <th colspan="3">DÉTAILS TRIMESTRIEL</th>
-                        {% else %}
+                        <!-- Trimestre: 2 mois + Moy.C + Compo = 4 colonnes -->
                         <th colspan="4">DÉTAILS TRIMESTRIEL</th>
-                        {% endif %}
                     {% elif system_type == 'semestre' %}
-                        <!-- Semestre: S1 = 3 mois, S2 = 3 mois (Mai = Compo) -->
+                        <!-- Semestre: S1=4 mois, S2=3 mois + Moy.C + Compo -->
+                        {% if periode == 'SEMESTRE_1' %}
+                        <th colspan="6">DÉTAILS SEMESTRIEL</th>
+                        {% else %}
                         <th colspan="5">DÉTAILS SEMESTRIEL</th>
+                        {% endif %}
                     {% elif system_type == 'annuel_trimestriel' %}
                         <!-- Bulletin annuel basé sur les trimestres -->
                         <th colspan="4">MOYENNES TRIMESTRIELLES</th>
@@ -872,22 +872,22 @@
                 </tr>
                 <tr>
                     {% if system_type == 'trimestre' %}
-                        <!-- Système guinéen: T1=Oct,Nov+Déc(compo), T2=Jan,Fév+Mars(compo), T3=Avr+Mai(compo) -->
+                        <!-- Système guinéen: T1=Oct,Nov+Déc(compo), T2=Jan,Fév+Mars(compo), T3=Avr,Mai+Juin(compo) -->
                         {% if periode == 'TRIMESTRE_1' %}
                             <th>Oct.</th><th>Nov.</th>
                         {% elif periode == 'TRIMESTRE_2' %}
                             <th>Jan.</th><th>Fév.</th>
                         {% elif periode == 'TRIMESTRE_3' %}
-                            <th>Avr.</th>
+                            <th>Avr.</th><th>Mai</th>
                         {% endif %}
                         <th>Moy. Cont.</th>
                         <th>Compo</th>
                     {% elif system_type == 'semestre' %}
-                        <!-- Système guinéen: S1=Oct,Nov,Déc+Jan(compo), S2=Fév,Mars,Avr+Mai(compo) -->
+                        <!-- Système guinéen: S1=Oct,Nov,Déc,Jan+Fév(compo), S2=Mars,Avr,Mai+Juin(compo) -->
                         {% if periode == 'SEMESTRE_1' %}
-                            <th>Oct.</th><th>Nov.</th><th>Déc.</th>
+                            <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th>
                         {% elif periode == 'SEMESTRE_2' %}
-                            <th>Fév.</th><th>Mars</th><th>Avr.</th>
+                            <th>Mars</th><th>Avr.</th><th>Mai</th>
                         {% endif %}
                         <th>Moy. Cont.</th>
                         <th>Compo</th>
@@ -1039,7 +1039,7 @@
                         <td style="background: #f1f3f4; text-align: center; font-size: 10px; color: #666;">-</td>
                         
                     {% elif system_type == 'trimestre' %}
-                        <!-- Système guinéen: T1=Oct,Nov, T2=Jan,Fév, T3=Avr (Mai=Compo) -->
+                        <!-- Système guinéen: T1=Oct,Nov, T2=Jan,Fév, T3=Avr,Mai -->
                         {% if periode == 'TRIMESTRE_1' %}
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.octobre %}{{ bulletin_data.totaux_colonnes.octobre|floatformat:2 }}{% else %}-{% endif %}
@@ -1058,6 +1058,9 @@
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.avril %}{{ bulletin_data.totaux_colonnes.avril|floatformat:2 }}{% else %}-{% endif %}
                         </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.mai %}{{ bulletin_data.totaux_colonnes.mai|floatformat:2 }}{% else %}-{% endif %}
+                        </td>
                         {% endif %}
                         <td style="background: #d1ecf1; text-align: center; font-weight: bold; color: #0c5460; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.moyenne_continue %}{{ bulletin_data.totaux_colonnes.moyenne_continue|floatformat:2 }}{% else %}-{% endif %}
@@ -1067,7 +1070,7 @@
                         </td>
                         
                     {% elif system_type == 'semestre' %}
-                        <!-- Système guinéen: S1=Oct,Nov,Déc (Jan=Compo), S2=Fév,Mars,Avr (Mai=Compo) -->
+                        <!-- Système guinéen: S1=Oct,Nov,Déc,Jan (Fév=Compo), S2=Mars,Avr,Mai (Juin=Compo) -->
                         {% if periode == 'SEMESTRE_1' %}
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.octobre %}{{ bulletin_data.totaux_colonnes.octobre|floatformat:2 }}{% else %}-{% endif %}
@@ -1078,15 +1081,18 @@
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.decembre %}{{ bulletin_data.totaux_colonnes.decembre|floatformat:2 }}{% else %}-{% endif %}
                         </td>
-                        {% elif periode == 'SEMESTRE_2' %}
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
-                            {% if bulletin_data.totaux_colonnes.fevrier %}{{ bulletin_data.totaux_colonnes.fevrier|floatformat:2 }}{% else %}-{% endif %}
+                            {% if bulletin_data.totaux_colonnes.janvier %}{{ bulletin_data.totaux_colonnes.janvier|floatformat:2 }}{% else %}-{% endif %}
                         </td>
+                        {% elif periode == 'SEMESTRE_2' %}
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.mars %}{{ bulletin_data.totaux_colonnes.mars|floatformat:2 }}{% else %}-{% endif %}
                         </td>
                         <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
                             {% if bulletin_data.totaux_colonnes.avril %}{{ bulletin_data.totaux_colonnes.avril|floatformat:2 }}{% else %}-{% endif %}
+                        </td>
+                        <td style="background: #fff3cd; text-align: center; font-weight: bold; color: #856404; font-size: 10px;">
+                            {% if bulletin_data.totaux_colonnes.mai %}{{ bulletin_data.totaux_colonnes.mai|floatformat:2 }}{% else %}-{% endif %}
                         </td>
                         {% endif %}
                         <td style="background: #d1ecf1; text-align: center; font-weight: bold; color: #0c5460; font-size: 10px;">
