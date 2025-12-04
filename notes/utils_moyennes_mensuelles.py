@@ -10,12 +10,17 @@ def get_mois_periode(periode_type, periode, inclure_dernier_mois=True):
     """
     Retourne la liste des mois qui composent une période
     
-    IMPORTANT: Le dernier mois de chaque période correspond à la COMPOSITION
+    SYSTÈME SCOLAIRE GUINÉEN:
+    - Année scolaire: Octobre → Mai (8 mois)
+    - Compositions de fin d'année: Mai
+    - Juin/Juillet: Examens nationaux (hors système)
+    
+    STRUCTURE DES PÉRIODES:
     - Trimestre 1: Oct, Nov + Compo (Déc = Composition)
     - Trimestre 2: Jan, Fév + Compo (Mars = Composition)
-    - Trimestre 3: Avr, Mai + Compo (Juin = Composition)
-    - Semestre 1: Oct, Nov, Déc, Jan + Compo (Fév = Composition)
-    - Semestre 2: Mars, Avr, Mai, Juin + Compo (Juil = Composition)
+    - Trimestre 3: Avr + Compo (Mai = Composition de fin d'année)
+    - Semestre 1: Oct, Nov, Déc + Compo (Jan = Composition)
+    - Semestre 2: Fév, Mars, Avr + Compo (Mai = Composition de fin d'année)
     
     Args:
         periode_type: 'trimestre' ou 'semestre'
@@ -29,17 +34,22 @@ def get_mois_periode(periode_type, periode, inclure_dernier_mois=True):
     
     if periode_type == 'trimestre':
         if periode == 'TRIMESTRE_1':
+            # Oct, Nov + Compo en Déc
             mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
         elif periode == 'TRIMESTRE_2':
+            # Jan, Fév + Compo en Mars
             mois = ['JANVIER', 'FEVRIER', 'MARS']
         elif periode == 'TRIMESTRE_3':
-            mois = ['AVRIL', 'MAI', 'JUIN']
+            # Avr + Compo en Mai (fin d'année)
+            mois = ['AVRIL', 'MAI']
     
     elif periode_type == 'semestre':
         if periode == 'SEMESTRE_1':
-            mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+            # Oct, Nov, Déc + Compo en Jan
+            mois = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
         elif periode == 'SEMESTRE_2':
-            mois = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+            # Fév, Mars, Avr + Compo en Mai (fin d'année)
+            mois = ['FEVRIER', 'MARS', 'AVRIL', 'MAI']
     
     # Si on n'inclut pas le dernier mois (qui est la composition)
     if not inclure_dernier_mois and mois:
