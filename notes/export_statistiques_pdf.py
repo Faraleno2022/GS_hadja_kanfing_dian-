@@ -85,8 +85,9 @@ def _calculer_statistiques_classe(classe_note, periode):
     for eleve in eleves:
         total_points = Decimal('0')
         total_coefficients = Decimal('0')
-        has_notes = False
+        has_any_notes = False  # L'élève a-t-il au moins une note dans une matière?
         notes_par_matiere = {}
+        matieres_sans_notes = []  # Pour le suivi des matières sans notes
         
         for matiere in matieres:
             coef = Decimal('1') if est_primaire else (matiere.coefficient or Decimal('1'))
@@ -103,15 +104,26 @@ def _calculer_statistiques_classe(classe_note, periode):
                 except NoteEleve.DoesNotExist:
                     pass
             
+            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent
+            # Si pas de notes dans une matière = 0 (l'élève ne doit pas être favorisé)
             if notes_matiere:
                 moyenne_matiere = sum(notes_matiere) / len(notes_matiere)
-                has_notes = True
-                total_points += Decimal(str(moyenne_matiere)) * coef
-                total_coefficients += coef
+                has_any_notes = True
                 notes_par_matiere[matiere.id] = moyenne_matiere
                 stats_matieres[matiere.id]['notes'].append(moyenne_matiere)
+            else:
+                # Matière sans notes = 0 pour ne pas favoriser l'élève
+                moyenne_matiere = 0.0
+                matieres_sans_notes.append(matiere.nom)
+                notes_par_matiere[matiere.id] = 0.0  # Marquer comme 0
+            
+            # Toutes les matières comptent dans le calcul
+            total_points += Decimal(str(moyenne_matiere)) * coef
+            total_coefficients += coef
         
-        if has_notes and total_coefficients > 0:
+        # Inclure l'élève s'il a au moins une note OU si on veut inclure tous les élèves
+        # Pour être équitable, on inclut tous les élèves avec des coefficients > 0
+        if total_coefficients > 0:
             moyenne_generale = float(total_points / total_coefficients)
             
             # Classifier l'élève
@@ -136,7 +148,9 @@ def _calculer_statistiques_classe(classe_note, periode):
                 'moyenne': round(moyenne_generale, 2),
                 'categorie': categorie,
                 'mention': mention,
-                'notes_matieres': notes_par_matiere
+                'notes_matieres': notes_par_matiere,
+                'matieres_sans_notes': matieres_sans_notes,  # Liste des matières sans notes
+                'nb_matieres_sans_notes': len(matieres_sans_notes)
             })
     
     # Trier par moyenne décroissante
@@ -858,6 +872,7 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
     """Génère le contenu d'une lettre aux parents"""
     eleve = eleve_data['eleve']
     moyenne = eleve_data['moyenne']
+    matieres_sans_notes = eleve_data.get('matieres_sans_notes', [])
     
     # Déterminer le niveau de gravité
     if moyenne < 6:
@@ -870,24 +885,48 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         niveau = 'preoccupant'
         urgence = 'À NOTER'
     
+    # Construire le constat
+    constat = f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/20, "
+    constat += f"ce qui le/la place en situation de {'grande difficulté' if moyenne < 8 else 'difficulté'}."
+    
+    # Ajouter l'alerte sur les matières sans notes
+    if matieres_sans_notes:
+        constat += f"\n\nATTENTION: {eleve.prenom} n'a pas de notes dans {len(matieres_sans_notes)} matière(s): "
+        constat += ", ".join(matieres_sans_notes[:5])
+        if len(matieres_sans_notes) > 5:
+            constat += f" et {len(matieres_sans_notes) - 5} autre(s)"
+        constat += ". Ces matières sont comptées comme 0/20 dans le calcul de la moyenne."
+    
+    consequences = [
+        "Risque de redoublement si la situation ne s'améliore pas",
+        "Accumulation de lacunes pouvant compromettre la suite de la scolarité",
+        "Perte de confiance et de motivation possible"
+    ]
+    
+    # Ajouter conséquence spécifique si matières sans notes
+    if matieres_sans_notes:
+        consequences.insert(0, f"Les {len(matieres_sans_notes)} matière(s) sans notes pénalisent fortement la moyenne")
+    
+    demandes = [
+        "Vérifier quotidiennement les devoirs et leçons",
+        "Assurer un environnement calme et propice au travail à la maison",
+        "Limiter les distractions (téléphone, télévision, jeux vidéo)",
+        "Encourager et valoriser les efforts, même minimes",
+        "Vous présenter à l'école pour un entretien avec le professeur principal"
+    ]
+    
+    # Ajouter demande spécifique si matières sans notes
+    if matieres_sans_notes:
+        demandes.insert(0, "S'assurer que votre enfant participe à TOUTES les évaluations")
+    
     lettre = {
         'objet': f"[{urgence}] Situation scolaire de {eleve.prenom} {eleve.nom}",
         'intro': f"Nous vous informons que votre enfant {eleve.prenom} {eleve.nom}, "
                 f"élève en classe de {classe_nom}, rencontre actuellement des difficultés scolaires importantes.",
-        'constat': f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/20, "
-                  f"ce qui le/la place en situation de {'grande difficulté' if moyenne < 8 else 'difficulté'}.",
-        'consequences': [
-            "Risque de redoublement si la situation ne s'améliore pas",
-            "Accumulation de lacunes pouvant compromettre la suite de la scolarité",
-            "Perte de confiance et de motivation possible"
-        ],
-        'demandes': [
-            "Vérifier quotidiennement les devoirs et leçons",
-            "Assurer un environnement calme et propice au travail à la maison",
-            "Limiter les distractions (téléphone, télévision, jeux vidéo)",
-            "Encourager et valoriser les efforts, même minimes",
-            "Vous présenter à l'école pour un entretien avec le professeur principal"
-        ],
+        'constat': constat,
+        'consequences': consequences,
+        'demandes': demandes,
+        'matieres_sans_notes': matieres_sans_notes,
         'conclusion': "Nous restons à votre disposition pour tout entretien. "
                      "Votre implication est essentielle pour aider votre enfant à surmonter ces difficultés."
     }
@@ -899,25 +938,45 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
     """Génère le contenu d'une lettre à l'élève"""
     eleve = eleve_data['eleve']
     moyenne = eleve_data['moyenne']
+    matieres_sans_notes = eleve_data.get('matieres_sans_notes', [])
+    
+    # Construire le constat
+    constat = f"Tes résultats de ce {periode} montrent que tu rencontres des difficultés. "
+    constat += f"Ta moyenne de {moyenne:.2f}/20 n'est pas à la hauteur de ce que tu peux accomplir."
+    
+    # Ajouter l'alerte sur les matières sans notes
+    if matieres_sans_notes:
+        constat += f"\n\nATTENTION: Tu n'as pas de notes dans {len(matieres_sans_notes)} matière(s): "
+        constat += ", ".join(matieres_sans_notes[:3])
+        if len(matieres_sans_notes) > 3:
+            constat += f" et {len(matieres_sans_notes) - 3} autre(s)"
+        constat += ". Ces matières comptent comme 0/20 et font baisser ta moyenne!"
+    
+    conseils = [
+        "Organise ton temps de travail avec un planning régulier",
+        "N'hésite pas à poser des questions en classe quand tu ne comprends pas",
+        "Revois tes leçons chaque soir, même 15-20 minutes",
+        "Travaille en groupe avec des camarades qui peuvent t'aider",
+        "Participe aux séances de soutien scolaire proposées",
+        "Fixe-toi des petits objectifs atteignables chaque semaine"
+    ]
+    
+    # Ajouter conseil spécifique si matières sans notes
+    if matieres_sans_notes:
+        conseils.insert(0, "IMPORTANT: Participe à TOUTES les évaluations, même si tu n'es pas sûr(e) de toi")
+        conseils.insert(1, f"Rattrape tes notes manquantes en: {', '.join(matieres_sans_notes[:3])}")
     
     lettre = {
         'titre': f"Message personnel pour {eleve.prenom}",
         'intro': f"Cher(e) {eleve.prenom},",
-        'constat': f"Tes résultats de ce {periode} montrent que tu rencontres des difficultés. "
-                  f"Ta moyenne de {moyenne:.2f}/20 n'est pas à la hauteur de ce que tu peux accomplir.",
+        'constat': constat,
         'encouragements': [
             "Chaque élève peut progresser avec de la volonté et du travail",
             "Tes difficultés actuelles ne définissent pas ton avenir",
             "Tes enseignants croient en toi et sont là pour t'aider"
         ],
-        'conseils': [
-            "Organise ton temps de travail avec un planning régulier",
-            "N'hésite pas à poser des questions en classe quand tu ne comprends pas",
-            "Revois tes leçons chaque soir, même 15-20 minutes",
-            "Travaille en groupe avec des camarades qui peuvent t'aider",
-            "Participe aux séances de soutien scolaire proposées",
-            "Fixe-toi des petits objectifs atteignables chaque semaine"
-        ],
+        'conseils': conseils,
+        'matieres_sans_notes': matieres_sans_notes,
         'conclusion': "Nous sommes convaincus que tu peux t'améliorer. "
                      "L'important est de ne pas baisser les bras et de demander de l'aide quand tu en as besoin."
     }

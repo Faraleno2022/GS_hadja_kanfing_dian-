@@ -1729,15 +1729,18 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
         moy_cours = course_month_avg(eleve, mat, annee_scolaire, mois)
         moy_compo = compo_month_avg(eleve, mat, annee_scolaire, mois)
         moy_mois = monthly_avg(eleve, mat, annee_scolaire, mois, mode='weighted')
-        if moy_mois is not None:
-            somme_moyennes_coef += moy_mois * Decimal(mat.coefficient or 1)
-            somme_coef_matieres += Decimal(mat.coefficient or 1)
+        
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+        moy_mois_calcul = moy_mois if moy_mois is not None else Decimal('0')
+        somme_moyennes_coef += moy_mois_calcul * Decimal(mat.coefficient or 1)
+        somme_coef_matieres += Decimal(mat.coefficient or 1)
+        
         lignes.append({
             'matiere': mat.nom,
             'coef_matiere': mat.coefficient,
             'moy_cours': moy_cours,
             'moy_compo': moy_compo,
-            'moy_mois': moy_mois,
+            'moy_mois': moy_mois,  # Garder None pour affichage
         })
 
     moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
@@ -1745,53 +1748,53 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     # Calcul du rang de l'élève dans la classe
     rang_str = "-"
     total_eleves = 0
-    if moyenne_generale is not None:
-        # Récupérer tous les élèves de la classe
-        eleves_classe = Eleve.objects.filter(classe=classe).select_related('classe')
-        moyennes_classe = []
+    # Récupérer tous les élèves de la classe
+    eleves_classe = Eleve.objects.filter(classe=classe).select_related('classe')
+    moyennes_classe = []
+    
+    for e in eleves_classe:
+        somme_e = Decimal('0')
+        somme_coef_e = Decimal('0')
         
-        for e in eleves_classe:
-            somme_e = Decimal('0')
-            somme_coef_e = Decimal('0')
-            
-            for mat in matieres:
-                # Utiliser monthly_avg pour calculer la moyenne mensuelle
-                moy_mois_e = monthly_avg(e, mat, annee_scolaire, mois, mode='weighted')
-                if moy_mois_e is not None:
-                    somme_e += moy_mois_e * Decimal(mat.coefficient or 1)
-                    somme_coef_e += Decimal(mat.coefficient or 1)
-            
-            if somme_coef_e > 0:
-                moy_gen_e = (somme_e / somme_coef_e).quantize(Decimal('0.01'))
-                moyennes_classe.append((e.id, moy_gen_e))
+        for mat in matieres:
+            # Utiliser monthly_avg pour calculer la moyenne mensuelle
+            moy_mois_e = monthly_avg(e, mat, annee_scolaire, mois, mode='weighted')
+            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+            moy_mois_e_calcul = moy_mois_e if moy_mois_e is not None else Decimal('0')
+            somme_e += moy_mois_e_calcul * Decimal(mat.coefficient or 1)
+            somme_coef_e += Decimal(mat.coefficient or 1)
         
-        # Calculer les rangs avec calculer_rang_intelligent
-        from .calculs_intelligent import calculer_rang_intelligent
+        if somme_coef_e > 0:
+            moy_gen_e = (somme_e / somme_coef_e).quantize(Decimal('0.01'))
+            moyennes_classe.append((e.id, moy_gen_e))
+    
+    # Calculer les rangs avec calculer_rang_intelligent
+    from .calculs_intelligent import calculer_rang_intelligent
+    
+    total_eleves = len(moyennes_classe)
+    rang_str = "-"
+    
+    if moyennes_classe:
+        # Préparer les données pour calculer_rang_intelligent
+        moyennes_pour_rang = []
+        for eid, moy in moyennes_classe:
+            e_obj = eleves_classe.get(id=eid)
+            moyennes_pour_rang.append({
+                'eleve_id': eid,
+                'prenom': e_obj.prenom,
+                'nom': e_obj.nom,
+                'sexe': getattr(e_obj, 'sexe', 'M'),
+                'moyenne': moy
+            })
         
-        total_eleves = len(moyennes_classe)
-        rang_str = "-"
+        # Calculer les rangs
+        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
         
-        if moyennes_classe:
-            # Préparer les données pour calculer_rang_intelligent
-            moyennes_pour_rang = []
-            for eid, moy in moyennes_classe:
-                e_obj = eleves_classe.get(id=eid)
-                moyennes_pour_rang.append({
-                    'eleve_id': eid,
-                    'prenom': e_obj.prenom,
-                    'nom': e_obj.nom,
-                    'sexe': getattr(e_obj, 'sexe', 'M'),
-                    'moyenne': moy
-                })
-            
-            # Calculer les rangs
-            resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
-            
-            # Trouver le rang de notre élève
-            for r in resultats_rangs:
-                if r['eleve_id'] == eleve.id:
-                    rang_str = r.get('rang', '-')
-                    break
+        # Trouver le rang de notre élève
+        for r in resultats_rangs:
+            if r['eleve_id'] == eleve.id:
+                rang_str = r.get('rang', '-')
+                break
 
     # PDF
     try:
@@ -1995,15 +1998,18 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
         moy_cours = semester_course_avg(eleve, mat, annee_scolaire, semestre)
         moy_compo = semester_compo_avg(eleve, mat, annee_scolaire, semestre)
         moy_sem = semester_avg(eleve, mat, annee_scolaire, semestre, mode='weighted')
-        if moy_sem is not None:
-            somme_moyennes_coef += moy_sem * Decimal(mat.coefficient or 1)
-            somme_coef_matieres += Decimal(mat.coefficient or 1)
+        
+        # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+        moy_sem_calcul = moy_sem if moy_sem is not None else Decimal('0')
+        somme_moyennes_coef += moy_sem_calcul * Decimal(mat.coefficient or 1)
+        somme_coef_matieres += Decimal(mat.coefficient or 1)
+        
         lignes.append({
             'matiere': mat.nom,
             'coef_matiere': mat.coefficient,
             'moy_cours': moy_cours,
             'moy_compo': moy_compo,
-            'moy_sem': moy_sem,
+            'moy_sem': moy_sem,  # Garder None pour affichage
         })
 
     moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
@@ -3120,10 +3126,10 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
                 cc = Decimal(ev.coefficient or 1)
                 num += Decimal(nn.note) * cc
                 den += cc
-            if den > 0:
-                moy_mat_e = (num/den)
-                s_num += moy_mat_e * Decimal(mat.coefficient or 1)
-                s_den += Decimal(mat.coefficient or 1)
+            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+            moy_mat_e = (num/den) if den > 0 else Decimal('0')
+            s_num += moy_mat_e * Decimal(mat.coefficient or 1)
+            s_den += Decimal(mat.coefficient or 1)
         if s_den > 0:
             moyenne_generale_map[e.id] = (s_num / s_den).quantize(Decimal('0.01'))
 
@@ -7262,18 +7268,18 @@ def bulletin_dynamique(request):
                 # Calculer les points
                 # PRIMAIRE: Pas de coefficients (tous égaux à 1)
                 # SECONDAIRE (Collège/Lycée): Avec coefficients
-                points = None
-                if moyenne_matiere is not None:
-                    if est_primaire:
-                        # Primaire: coefficient = 1 pour toutes les matières
-                        coefficient_effectif = Decimal('1')
-                    else:
-                        # Secondaire: utiliser le coefficient de la matière
-                        coefficient_effectif = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
-                    
-                    points = round(moyenne_matiere * float(coefficient_effectif), 2)
-                    total_points += Decimal(str(moyenne_matiere)) * coefficient_effectif
-                    total_coefficients += coefficient_effectif
+                # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
+                if est_primaire:
+                    # Primaire: coefficient = 1 pour toutes les matières
+                    coefficient_effectif = Decimal('1')
+                else:
+                    # Secondaire: utiliser le coefficient de la matière
+                    coefficient_effectif = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
+                
+                # Si pas de notes, compter comme 0 (ne pas favoriser l'élève)
+                moyenne_matiere_calcul = moyenne_matiere if moyenne_matiere is not None else 0.0
+                points = round(moyenne_matiere_calcul * float(coefficient_effectif), 2)
+                total_points += Decimal(str(moyenne_matiere_calcul)) * coefficient_effectif
                 
                 # Préparer les notes pour l'affichage
                 notes_matiere = []
