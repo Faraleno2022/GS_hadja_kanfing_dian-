@@ -7030,7 +7030,21 @@ def bulletin_dynamique(request):
     classe_id = request.GET.get('classe_id')
     eleve_id = request.GET.get('eleve_id')
     periode = request.GET.get('periode', '')
-    system_type = request.GET.get('system_type', 'trimestre')  # mensuel, trimestre, semestre, annuel
+    system_type = request.GET.get('system_type', 'trimestre')  # mensuel, trimestre, semestre, annuel_trimestriel, annuel_semestriel
+    
+    # Valider que la période correspond au system_type sélectionné
+    # Si la période ne correspond pas, la réinitialiser
+    if periode:
+        periodes_valides = {
+            'mensuel': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+            'trimestre': ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'],
+            'semestre': ['SEMESTRE_1', 'SEMESTRE_2'],
+            'annuel_trimestriel': ['ANNUEL_TRIM'],
+            'annuel_semestriel': ['ANNUEL_SEM'],
+            'annuel': ['ANNUEL_TRIM'],
+        }
+        if system_type in periodes_valides and periode not in periodes_valides.get(system_type, []):
+            periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
     
     classe_selectionnee = None
     eleves = []
@@ -7210,115 +7224,19 @@ def bulletin_dynamique(request):
                 
                 # Si une période est sélectionnée, récupérer les données (pour les autres niveaux)
                 elif periode and eleve_selectionne:
-                    if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
-                        # NOUVEAU: Bulletin annuel - calculer la moyenne des périodes
-                        from .calculs_moyennes import calculer_moyenne_annuelle_matiere
-                        
-                        result_annuel = calculer_moyenne_annuelle_matiere(
-                            eleve_selectionne, matiere, system_type
-                        )
-                        
-                        # La moyenne annuelle devient la moyenne de la matière
-                        moyenne_continue = result_annuel['moyenne_annuelle']
-                        note_composition = None  # Pas de composition pour le bulletin annuel
-                        
-                        # Préparer les moyennes par période pour l'affichage
-                        moyennes_mensuelles = []
-                        if system_type == 'annuel_trimestriel':
-                            periodes_labels = [
-                                ('TRIMESTRE_1', '1er Trim.'),
-                                ('TRIMESTRE_2', '2ème Trim.'),
-                                ('TRIMESTRE_3', '3ème Trim.'),
-                            ]
-                        else:
-                            periodes_labels = [
-                                ('SEMESTRE_1', '1er Sem.'),
-                                ('SEMESTRE_2', '2ème Sem.'),
-                            ]
-                        
-                        for code, label in periodes_labels:
-                            moy_periode = result_annuel['moyennes_periodes'].get(code)
-                            moyennes_mensuelles.append({
-                                'libelle': label,
-                                'moyenne': moy_periode,
-                                'absent': moy_periode is None
-                            })
-                        
-                    elif system_type in ['trimestre', 'semestre']:
-                        # NOUVEAU: Utiliser les moyennes mensuelles détaillées
-                        from .utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
-                        
-                        data_matiere = calculer_bulletin_avec_details_mensuels(
-                            eleve_selectionne, matiere, system_type, periode
-                        )
-                        
-                        moyenne_continue = data_matiere['moyenne_continue']
-                        note_composition = data_matiere['note_composition']
-                        moyennes_mensuelles = data_matiere['moyennes_mensuelles']
-                        
-                    elif system_type == 'mensuel':
-                        # Pour les bulletins mensuels, utiliser NoteEleve avec Evaluation
-                        evaluations = Evaluation.objects.filter(
-                            matiere=matiere,
-                            periode=periode
-                        )
-                        
-                        if evaluations.exists():
-                            # Prendre la première évaluation de la période
-                            evaluation = evaluations.first()
-                            try:
-                                note_obj = NoteEleve.objects.get(
-                                    eleve=eleve_selectionne,
-                                    evaluation=evaluation
-                                )
-                                if not (hasattr(note_obj, 'absent') and note_obj.absent) and note_obj.note is not None:
-                                    moyenne_continue = float(note_obj.note)
-                            except NoteEleve.DoesNotExist:
-                                pass
-                    else:
-                        # ANCIEN: Système annuel ou autres - garder l'ancien calcul
-                        # Chercher les évaluations de cette matière
-                        evaluations = Evaluation.objects.filter(
-                            matiere=matiere,
-                            periode=periode
-                        ).order_by('date_evaluation')
-                        
-                        # Si pas d'évaluation trouvée, chercher par nom de matière
-                        if not evaluations.exists():
-                            from django.db.models import Q
-                            evaluations = Evaluation.objects.filter(
-                                Q(matiere__nom=matiere.nom) &
-                                Q(matiere__classe=classe_selectionnee) &
-                                Q(periode=periode)
-                            ).order_by('date_evaluation')
-                        
-                        # Séparer devoirs/contrôles (moyenne continue) et compositions
-                        total_devoirs = Decimal('0')
-                        count_devoirs = 0
-                        total_compo = Decimal('0')
-                        count_compo = 0
-                        
-                        for evaluation in evaluations:
-                            try:
-                                note_obj = NoteEleve.objects.get(eleve=eleve_selectionne, evaluation=evaluation)
-                                if note_obj.note is not None and not note_obj.absent:
-                                    # Déterminer le type d'évaluation
-                                    if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                        total_compo += Decimal(str(note_obj.note))
-                                        count_compo += 1
-                                    else:
-                                        # DEVOIR, CONTROLE, INTERROGATION
-                                        total_devoirs += Decimal(str(note_obj.note))
-                                        count_devoirs += 1
-                            except NoteEleve.DoesNotExist:
-                                pass
-                        
-                        # Calculer les moyennes
-                        if count_devoirs > 0:
-                            moyenne_continue = round(float(total_devoirs / count_devoirs), 2)
-                        
-                        if count_compo > 0:
-                            note_composition = round(float(total_compo / count_compo), 2)
+                    # ============================================================
+                    # UTILISER LA FONCTION CENTRALISÉE INTELLIGENTE
+                    # Elle gère tous les types: mensuel, trimestre, semestre, annuel
+                    # ============================================================
+                    from .calculs_moyennes import calculer_bulletin_intelligent
+                    
+                    result_intelligent = calculer_bulletin_intelligent(
+                        eleve_selectionne, matiere, periode, system_type
+                    )
+                    
+                    moyenne_continue = result_intelligent['moyenne_continue']
+                    note_composition = result_intelligent['note_composition']
+                    moyennes_mensuelles = result_intelligent['moyennes_mensuelles']
                 
                 # Calculer la moyenne de la matière selon le système guinéen
                 # Si trimestre/semestre: moyenne = (moyenne_continue + composition) / 2 (poids égal)
@@ -7342,11 +7260,20 @@ def bulletin_dynamique(request):
                     moyenne_matiere = moyenne_continue
                 
                 # Calculer les points
+                # PRIMAIRE: Pas de coefficients (tous égaux à 1)
+                # SECONDAIRE (Collège/Lycée): Avec coefficients
                 points = None
                 if moyenne_matiere is not None:
-                    points = round(moyenne_matiere * float(matiere.coefficient), 2)
-                    total_points += Decimal(str(moyenne_matiere)) * matiere.coefficient
-                    total_coefficients += matiere.coefficient
+                    if est_primaire:
+                        # Primaire: coefficient = 1 pour toutes les matières
+                        coefficient_effectif = Decimal('1')
+                    else:
+                        # Secondaire: utiliser le coefficient de la matière
+                        coefficient_effectif = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
+                    
+                    points = round(moyenne_matiere * float(coefficient_effectif), 2)
+                    total_points += Decimal(str(moyenne_matiere)) * coefficient_effectif
+                    total_coefficients += coefficient_effectif
                 
                 # Préparer les notes pour l'affichage
                 notes_matiere = []
@@ -7402,6 +7329,11 @@ def bulletin_dynamique(request):
                         {'note': moyenne_continue, 'absent': False, 'libelle': 'Moyenne', 'type': 'mensuelle'}
                     ]
                 
+                # Déterminer le coefficient à afficher
+                # PRIMAIRE: coefficient = 1 (pas de pondération)
+                # SECONDAIRE: coefficient réel de la matière
+                coefficient_affiche = 1 if est_primaire else (matiere.coefficient if matiere.coefficient else 1)
+                
                 bulletin_data['matieres_notes'].append({
                     'matiere': matiere,
                     'notes': notes_matiere,
@@ -7409,13 +7341,15 @@ def bulletin_dynamique(request):
                     'moyenne_continue': moyenne_continue,
                     'note_composition': note_composition,
                     'moyenne': moyenne_matiere,
-                    'coefficient': matiere.coefficient,
+                    'coefficient': coefficient_affiche,
                     'points': points,
                     'total': points,  # Alias pour compatibilité
                     # Données spécifiques maternelle
                     'appreciation': appreciation_maternelle,
                     'commentaire': commentaire_maternelle,
                     'absent': absent_maternelle,
+                    # Indicateur de niveau pour le template
+                    'est_primaire': est_primaire,
                 })
                 
                 # NOUVEAU: Accumuler les totaux par colonne
@@ -7571,12 +7505,14 @@ def bulletin_dynamique(request):
                             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
                             bulletin_data['rang'] = "-"
     
-    # Déterminer est_maternelle pour le contexte
+    # Déterminer est_maternelle et est_primaire pour le contexte
     est_maternelle_ctx = False
+    est_primaire_ctx = False
     if classe_selectionnee:
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_detecte_ctx = detecter_niveau_scolaire(classe_selectionnee.nom)
         est_maternelle_ctx = (niveau_detecte_ctx == 'MATERNELLE')
+        est_primaire_ctx = (niveau_detecte_ctx == 'PRIMAIRE')
     
     context = {
         'titre_page': 'Bulletin Dynamique',
@@ -7591,6 +7527,7 @@ def bulletin_dynamique(request):
         'system_type': system_type,
         'niveau_enseignement': niveau_enseignement,
         'est_maternelle': est_maternelle_ctx,
+        'est_primaire': est_primaire_ctx,  # NOUVEAU: Pour masquer les coefficients en primaire
         'bulletin_data': bulletin_data,
         'ecole': ecole,
         'annee_scolaire': classe_selectionnee.annee_scolaire if classe_selectionnee else '',

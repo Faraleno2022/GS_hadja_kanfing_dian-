@@ -18,8 +18,14 @@ from django.utils import timezone
 from decimal import Decimal
 
 from eleves.models import Eleve, Classe as ClasseEleve
-from .models import MatiereNote, NoteEleve, Evaluation
-from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
+from .models import MatiereNote, NoteEleve, Evaluation, ClasseNote
+from .calculs_moyennes import (
+    calculer_moyenne_generale_eleve, 
+    calculer_classement_classe,
+    calculer_moyenne_annuelle_matiere,
+    detecter_niveau_scolaire,
+    calculer_bulletin_intelligent
+)
 from paiements.models import Relance
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,7 @@ class WhatsAppBulletinSender:
     def generer_bulletin_pdf(self, eleve_id, classe_id, periode, system_type='trimestre'):
         """
         Génère le bulletin HTML pour un élève (alternative au PDF)
+        Supporte les bulletins mensuels, trimestriels, semestriels et annuels.
         
         Returns:
             tuple: (file_path, filename) ou (None, None) si erreur
@@ -42,102 +49,128 @@ class WhatsAppBulletinSender:
             eleve = get_object_or_404(Eleve, id=eleve_id)
             classe_eleve = get_object_or_404(ClasseEleve, id=classe_id)
             
-            # Récupérer les matières et notes (approche simplifiée)
-            # Éviter les filtres complexes qui causent des erreurs
+            # Essayer de récupérer la ClasseNote correspondante
+            classe_note = None
             try:
-                matieres = MatiereNote.objects.filter(classe__nom=classe_eleve.nom, actif=True)
+                classe_note = ClasseNote.objects.filter(nom=classe_eleve.nom).first()
             except:
-                # Si le filtre échoue, essayer une approche plus simple
-                matieres = MatiereNote.objects.filter(actif=True)[:10]  # Limiter pour éviter trop de données
+                pass
+            
+            # Récupérer les matières
+            try:
+                if classe_note:
+                    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+                else:
+                    matieres = MatiereNote.objects.filter(classe__nom=classe_eleve.nom, actif=True).order_by('nom')
+            except:
+                matieres = MatiereNote.objects.filter(actif=True)[:10]
             
             if not matieres.exists():
                 logger.error(f"Aucune matière trouvée pour la classe {classe_eleve.nom}")
                 return None, None
             
-            # Calculer les données du bulletin (simplifié)
-            # Utiliser une approche simplifiée pour éviter les dépendances complexes
-            details_matieres = []
-            total_points = 0
-            total_coefficients = 0
+            # Détecter le niveau scolaire
+            niveau_detecte = detecter_niveau_scolaire(classe_eleve.nom)
+            est_primaire = (niveau_detecte == 'PRIMAIRE')
+            est_maternelle = (niveau_detecte == 'MATERNELLE')
+            
+            # Calculer les données du bulletin avec la fonction centralisée
+            matieres_notes = []
+            total_points = Decimal('0')
+            total_coefficients = Decimal('0')
             
             for matiere in matieres:
-                # Récupérer les notes de l'élève pour cette matière et période
-                # NoteEleve utilise evaluation et non matiere
-                notes = NoteEleve.objects.filter(
-                    eleve=eleve,
-                    evaluation__matiere=matiere,
-                    evaluation__periode=periode
-                )
+                # Utiliser la fonction centralisée intelligente
+                result = calculer_bulletin_intelligent(eleve, matiere, periode, system_type)
                 
-                if notes.exists():
-                    # Calculer la moyenne pour cette matière
-                    somme_notes = 0
-                    count_notes = 0
-                    for note_obj in notes:
-                        if note_obj.note is not None and not note_obj.absent:
-                            somme_notes += float(note_obj.note)
-                            count_notes += 1
-                    
-                    if count_notes > 0:
-                        moyenne_matiere = round(somme_notes / count_notes, 2)
-                        points = moyenne_matiere * matiere.coefficient
-                        total_points += points
-                        total_coefficients += matiere.coefficient
-                        
-                        details_matieres.append({
-                            'matiere': matiere,
-                            'moyenne': moyenne_matiere,
-                            'coefficient': matiere.coefficient,
-                            'points': points,
-                            'notes_count': count_notes
-                        })
-                    else:
-                        details_matieres.append({
-                            'matiere': matiere,
-                            'moyenne': None,
-                            'coefficient': matiere.coefficient,
-                            'points': 0,
-                            'notes_count': 0
-                        })
-                else:
-                    details_matieres.append({
-                        'matiere': matiere,
-                        'moyenne': None,
-                        'coefficient': matiere.coefficient,
-                        'points': 0,
-                        'notes_count': 0
-                    })
+                coefficient_effectif = Decimal(str(result['coefficient']))
+                
+                # Accumuler les totaux
+                if result['moyenne'] is not None:
+                    total_points += Decimal(str(result['moyenne'])) * coefficient_effectif
+                    total_coefficients += coefficient_effectif
+                
+                matieres_notes.append({
+                    'matiere': matiere,
+                    'moyenne': result['moyenne'],
+                    'moyenne_continue': result['moyenne_continue'],
+                    'note_composition': result['note_composition'],
+                    'moyennes_mensuelles': result['moyennes_mensuelles'],
+                    'coefficient': result['coefficient'],
+                    'points': result['points'],
+                })
             
-            # Calculer la moyenne générale
-            moyenne_generale = round(total_points / total_coefficients, 2) if total_coefficients > 0 else None
+            # Calculer la moyenne générale (pour bulletins non-annuels)
+            moyenne_generale = None
+            if total_coefficients > 0:
+                moyenne_generale = round(float(total_points / total_coefficients), 2)
             
-            # Calculer le classement (simplifié)
-            rang_eleve = "N/A"  # Pour le moment, on ne calcule pas le classement complexe
+            # CALCUL UNIQUE: Utiliser UNE SEULE SOURCE pour garantir la cohérence moyenne/rang
+            from notes.calculs_moyennes import calculer_classement_classe, obtenir_mention_intelligente
+            from notes.bulletin_intelligent import formater_rang_intelligent
+            
+            eleves_classe = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF'))
+            total_eleves = len(eleves_classe)
+            
+            # Le classement calcule les moyennes ET les rangs avec la même source
+            classement_result = calculer_classement_classe(eleves_classe, matieres, periode, system_type)
+            rang_map = classement_result.get('rang_map', {})
+            details_map = classement_result.get('details_par_eleve', {})
+            
+            # Récupérer les données de l'élève depuis le classement (MÊME SOURCE)
+            if eleve.id in details_map:
+                details_eleve = details_map[eleve.id]
+                moyenne_generale = details_eleve.get('moyenne_generale')
+                total_points = Decimal(str(details_eleve.get('total_points', 0)))
+                total_coefficients = Decimal(str(details_eleve.get('total_coefficients', 0)))
+            
+            # Récupérer le rang de l'élève (MÊME SOURCE que la moyenne)
+            rang_brut = rang_map.get(eleve.id, '-')
+            if rang_brut and rang_brut != '-':
+                sexe = getattr(eleve, 'sexe', 'M')
+                rang_eleve = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+            else:
+                rang_eleve = "-"
+            
+            # Calculer la mention basée sur la moyenne (cohérente)
+            mention = obtenir_mention_intelligente(moyenne_generale, niveau_detecte) if moyenne_generale else 'N/A'
             
             # Préparer les données pour le template
             bulletin_data = {
                 'eleve': eleve,
                 'moyenne_generale': moyenne_generale,
-                'details_matieres': details_matieres,
+                'matieres_notes': matieres_notes,
+                'total_points': float(total_points),
+                'total_coefficients': float(total_coefficients),
                 'rang': rang_eleve,
-                'mention': 'N/A',  # TODO: calculer selon la moyenne
-                'appreciation': 'Bon travail. Continuez vos efforts.',  # TODO: calculer selon la moyenne
-                'effectif': Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').count(),
+                'mention': mention,
+                'appreciation': 'Bon travail. Continuez vos efforts.',
+                'effectif': total_eleves,
                 'titre_periode': self._get_titre_periode(periode, system_type)
             }
             
             # Récupérer l'école
-            user_profil = getattr(eleve.classe.ecole, 'profil', None) if eleve.classe else None
             ecole = eleve.classe.ecole if eleve.classe else None
+            
+            # Déterminer niveau_enseignement
+            niveau_enseignement = 'SECONDAIRE'
+            if est_maternelle:
+                niveau_enseignement = 'MATERNELLE'
+            elif est_primaire:
+                niveau_enseignement = 'PRIMAIRE'
             
             # Préparer le contexte pour le template
             context = {
                 'bulletin_data': bulletin_data,
-                'classe_selectionnee': classe_eleve,
+                'classe_selectionnee': classe_note or classe_eleve,
                 'periode_selectionnee': periode,
+                'periode': periode,
                 'system_type': system_type,
+                'niveau_enseignement': niveau_enseignement,
+                'est_primaire': est_primaire,
+                'est_maternelle': est_maternelle,
                 'ecole': ecole,
-                'annee_scolaire': classe_eleve.annee_scolaire if classe_eleve else timezone.now().year,
+                'annee_scolaire': classe_eleve.annee_scolaire if hasattr(classe_eleve, 'annee_scolaire') else timezone.now().year,
             }
             
             # Générer le HTML
@@ -146,14 +179,10 @@ class WhatsAppBulletinSender:
             # Créer un fichier temporaire HTML
             with tempfile.NamedTemporaryFile(delete=False, suffix='.html', prefix='bulletin_') as temp_file:
                 temp_path = temp_file.name
-                
-                # Écrire le HTML dans le fichier
                 temp_file.write(html_string.encode('utf-8'))
                 temp_file.flush()
-                
                 self.temp_files.append(temp_path)
                 
-                # Nom du fichier
                 filename = f"bulletin_{eleve.prenom}_{eleve.nom}_{periode}.html"
                 filename = filename.replace(' ', '_').replace('/', '_')
                 

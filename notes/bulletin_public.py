@@ -122,12 +122,17 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
         eleve = get_object_or_404(Eleve, id=eleve_id)
         classe_note = get_object_or_404(ClasseNote, id=classe_note_id)
         
-        # Déterminer le système
+        # Déterminer le système et le type de système pour l'affichage
         systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
-        
-        # Déterminer le type de système pour l'affichage
         system_type = 'mensuel'
-        if 'TRIMESTRE' in periode:
+        
+        if 'ANNUEL_TRIM' in periode:
+            system_type = 'annuel_trimestriel'
+            systeme = 'TRIMESTRE'
+        elif 'ANNUEL_SEM' in periode:
+            system_type = 'annuel_semestriel'
+            systeme = 'SEMESTRE'
+        elif 'TRIMESTRE' in periode:
             system_type = 'trimestriel'
         elif 'SEMESTRE' in periode:
             system_type = 'semestriel'
@@ -140,28 +145,79 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
         bulletin_data['system_type'] = system_type
         bulletin_data['periode'] = periode
         
-        # Pour trimestre/semestre, enrichir avec les moyennes mensuelles détaillées
-        if system_type in ['trimestriel', 'semestriel']:
-            from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+        # Enrichir avec les données détaillées selon le type de système
+        from notes.calculs_moyennes import calculer_bulletin_intelligent
+        
+        matieres_enrichies = []
+        for mat_data in bulletin_data.get('matieres', []):
+            mat_obj = mat_data.get('matiere')
+            if mat_obj:
+                try:
+                    # Utiliser la fonction centralisée intelligente
+                    result = calculer_bulletin_intelligent(eleve, mat_obj, periode, system_type)
+                    mat_data['moyennes_mensuelles'] = result.get('moyennes_mensuelles', [])
+                    mat_data['note_composition'] = result.get('note_composition')
+                    mat_data['moyenne_continue'] = result.get('moyenne_continue')
+                    mat_data['moyenne'] = result.get('moyenne')
+                    mat_data['points'] = result.get('points')
+                except:
+                    pass
+            matieres_enrichies.append(mat_data)
+        
+        bulletin_data['matieres'] = matieres_enrichies
+        
+        # ===== RECALCULER LA MOYENNE GÉNÉRALE ET LE RANG POUR BULLETINS ANNUELS =====
+        # IMPORTANT: Utiliser UNE SEULE SOURCE pour garantir la cohérence moyenne/rang
+        if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+            from notes.calculs_moyennes import (
+                calculer_classement_classe, 
+                detecter_niveau_scolaire,
+                obtenir_mention_intelligente
+            )
+            from notes.models import MatiereNote
+            from notes.bulletin_intelligent import formater_rang_intelligent
+            from eleves.models import Classe as ClasseEleve
             
-            periode_type_detail = 'trimestre' if system_type == 'trimestriel' else 'semestre'
-            matieres_enrichies = []
+            # Récupérer les matières de la classe
+            matieres = MatiereNote.objects.filter(classe=classe_note)
             
-            for mat_data in bulletin_data.get('matieres', []):
-                mat_obj = mat_data.get('matiere')
-                if mat_obj:
-                    try:
-                        details_mensuels = calculer_bulletin_avec_details_mensuels(
-                            eleve, mat_obj, periode_type_detail, periode
-                        )
-                        mat_data['moyennes_mensuelles'] = details_mensuels.get('moyennes_mensuelles', [])
-                        mat_data['note_composition'] = details_mensuels.get('note_composition')
-                        mat_data['moyenne_continue'] = details_mensuels.get('moyenne_continue')
-                    except:
-                        pass
-                matieres_enrichies.append(mat_data)
+            # Récupérer tous les élèves de la classe
+            classe_eleve = ClasseEleve.objects.filter(
+                nom=classe_note.nom,
+                annee_scolaire=classe_note.annee_scolaire,
+                ecole=classe_note.ecole
+            ).first()
             
-            bulletin_data['matieres'] = matieres_enrichies
+            if classe_eleve:
+                from eleves.models import Eleve as EleveModel
+                eleves_classe = list(EleveModel.objects.filter(classe=classe_eleve, statut='ACTIF'))
+                total_eleves = len(eleves_classe)
+                bulletin_data['total_eleves'] = total_eleves
+                
+                # CALCUL UNIQUE: Le classement calcule les moyennes ET les rangs avec la même source
+                classement_result = calculer_classement_classe(eleves_classe, matieres, periode, system_type)
+                rang_map = classement_result.get('rang_map', {})
+                details_map = classement_result.get('details_par_eleve', {})
+                
+                # Récupérer les données de l'élève depuis le classement (MÊME SOURCE)
+                if eleve.id in details_map:
+                    details_eleve = details_map[eleve.id]
+                    bulletin_data['moyenne_generale'] = details_eleve.get('moyenne_generale')
+                    bulletin_data['total_points'] = details_eleve.get('total_points', 0)
+                    bulletin_data['total_coefficients'] = details_eleve.get('total_coefficients', 0)
+                
+                # Récupérer le rang de l'élève (MÊME SOURCE que la moyenne)
+                rang_brut = rang_map.get(eleve.id, '-')
+                if rang_brut and rang_brut != '-':
+                    sexe = getattr(eleve, 'sexe', 'M')
+                    bulletin_data['rang'] = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                else:
+                    bulletin_data['rang'] = '-'
+            
+            # Calculer la mention basée sur la moyenne (cohérente)
+            niveau = detecter_niveau_scolaire(classe_note.nom)
+            if bulletin_data.get('moyenne_generale'):
+                bulletin_data['mention'] = obtenir_mention_intelligente(bulletin_data['moyenne_generale'], niveau)
         
         # Chemin du logo
         ecole = eleve.classe.ecole if eleve.classe else None

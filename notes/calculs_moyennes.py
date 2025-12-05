@@ -74,14 +74,16 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
         # SYSTÈMES TRIMESTRIEL/SEMESTRIEL: Calculer la moyenne des mois de la période
         # Déterminer les mois de la période
         mois_periode = []
-        if system_type == 'trimestriel':
+        # Accepter les deux variantes: 'trimestre' et 'trimestriel'
+        if system_type in ['trimestriel', 'trimestre']:
             if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
                 mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
             elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
                 mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
             elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
                 mois_periode = ['AVRIL', 'MAI', 'JUIN']
-        elif system_type == 'semestriel':
+        # Accepter les deux variantes: 'semestre' et 'semestriel'
+        elif system_type in ['semestriel', 'semestre']:
             if 'SEMESTRE_1' in periode or periode == '1er Semestre':
                 mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
             elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
@@ -253,7 +255,7 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel')
         eleves: QuerySet d'Eleve
         matieres: QuerySet de MatiereNote
         periode: Période
-        system_type: Type de système
+        system_type: Type de système ('mensuel', 'trimestriel', 'semestriel', 'annuel_trimestriel', 'annuel_semestriel')
     
     Returns:
         dict avec:
@@ -267,7 +269,11 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel')
     
     # Calculer la moyenne de chaque élève
     for eleve in eleves:
-        result = calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type)
+        # Pour les bulletins annuels, utiliser la fonction spécifique
+        if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+            result = calculer_moyenne_generale_annuelle(eleve, matieres, system_type)
+        else:
+            result = calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type)
         
         if result['moyenne_generale'] is not None:
             moyennes_par_eleve[eleve.id] = result['moyenne_generale']
@@ -574,3 +580,278 @@ def calculer_moyenne_generale_annuelle(eleve, matieres, system_type='annuel_trim
         'niveau': niveau,
         'appreciations_only': False,
     }
+
+
+def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
+    """
+    Fonction centralisée intelligente pour calculer les données d'une matière
+    selon le type de système sélectionné.
+    
+    SOURCES DE DONNÉES:
+    - MENSUEL: NoteMensuelle (note du mois sélectionné)
+    - TRIMESTRIEL: NoteMensuelle (moyenne des mois du trimestre) + CompositionNote
+    - SEMESTRIEL: NoteMensuelle (moyenne des mois du semestre) + CompositionNote
+    - ANNUEL_TRIMESTRIEL: Moyenne des 3 trimestres (T1+T2+T3)/3
+    - ANNUEL_SEMESTRIEL: Moyenne des 2 semestres (S1+S2)/2
+    
+    FORMULES:
+    - Mensuel: Moyenne = Note du mois
+    - Trimestriel/Semestriel: Moyenne = (Moyenne Continue + Composition) / 2
+    - Annuel Trimestriel: Moyenne = (Moy T1 + Moy T2 + Moy T3) / 3
+    - Annuel Semestriel: Moyenne = (Moy S1 + Moy S2) / 2
+    
+    Args:
+        eleve: Instance Eleve
+        matiere: Instance MatiereNote
+        periode: Code de la période (ex: 'OCTOBRE', 'TRIMESTRE_1', 'ANNUEL_TRIM')
+        system_type: Type de système ('mensuel', 'trimestre', 'semestre', 'annuel_trimestriel', 'annuel_semestriel')
+    
+    Returns:
+        dict avec toutes les données nécessaires pour l'affichage du bulletin
+    """
+    # Détecter le niveau scolaire pour les coefficients
+    niveau = detecter_niveau_scolaire(matiere.classe.nom if hasattr(matiere.classe, 'nom') else '')
+    est_primaire = (niveau == 'PRIMAIRE')
+    
+    # Déterminer le coefficient effectif
+    if est_primaire:
+        coefficient_effectif = Decimal('1')
+    else:
+        coefficient_effectif = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
+    
+    # Initialiser les résultats
+    result = {
+        'matiere': matiere,
+        'moyenne_continue': None,
+        'note_composition': None,
+        'moyenne': None,
+        'moyennes_mensuelles': [],  # Pour affichage détaillé
+        'coefficient': float(coefficient_effectif),
+        'points': None,
+        'niveau': niveau,
+        'est_primaire': est_primaire,
+    }
+    
+    # ============================================================
+    # SYSTÈME MENSUEL: Note du mois uniquement
+    # ============================================================
+    if system_type == 'mensuel':
+        try:
+            note_mensuelle = NoteMensuelle.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                mois=periode,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if not note_mensuelle.absent and note_mensuelle.note is not None:
+                result['moyenne_continue'] = float(note_mensuelle.note)
+                result['moyenne'] = float(note_mensuelle.note)
+        except NoteMensuelle.DoesNotExist:
+            pass
+    
+    # ============================================================
+    # SYSTÈME TRIMESTRIEL: Moyenne des mois + Composition
+    # ============================================================
+    elif system_type in ['trimestre', 'trimestriel']:
+        # Déterminer les mois du trimestre
+        mois_mapping = {
+            'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE'],  # Décembre = Composition
+            'TRIMESTRE_2': ['JANVIER', 'FEVRIER'],   # Mars = Composition
+            'TRIMESTRE_3': ['AVRIL', 'MAI'],         # Juin = Composition
+        }
+        mois_periode = mois_mapping.get(periode, [])
+        
+        # Calculer la moyenne continue des mois
+        if mois_periode:
+            total_notes = Decimal('0')
+            count_notes = 0
+            moyennes_detail = []
+            
+            for mois in mois_periode:
+                try:
+                    note_mensuelle = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=mois,
+                        annee_scolaire=matiere.classe.annee_scolaire
+                    )
+                    if not note_mensuelle.absent and note_mensuelle.note is not None:
+                        total_notes += Decimal(str(note_mensuelle.note))
+                        count_notes += 1
+                        moyennes_detail.append({
+                            'libelle': mois[:3] + '.',
+                            'moyenne': float(note_mensuelle.note),
+                            'absent': False
+                        })
+                    else:
+                        moyennes_detail.append({
+                            'libelle': mois[:3] + '.',
+                            'moyenne': None,
+                            'absent': True
+                        })
+                except NoteMensuelle.DoesNotExist:
+                    moyennes_detail.append({
+                        'libelle': mois[:3] + '.',
+                        'moyenne': None,
+                        'absent': True
+                    })
+            
+            result['moyennes_mensuelles'] = moyennes_detail
+            
+            if count_notes > 0:
+                result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
+        
+        # Récupérer la note de composition
+        try:
+            compo = CompositionNote.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                periode=periode,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if not compo.absent and compo.note is not None:
+                result['note_composition'] = float(compo.note)
+        except CompositionNote.DoesNotExist:
+            pass
+        
+        # Calculer la moyenne finale: (Moyenne Continue + Composition) / 2
+        if result['moyenne_continue'] is not None and result['note_composition'] is not None:
+            result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
+        elif result['note_composition'] is not None:
+            result['moyenne'] = result['note_composition']
+        elif result['moyenne_continue'] is not None:
+            result['moyenne'] = result['moyenne_continue']
+    
+    # ============================================================
+    # SYSTÈME SEMESTRIEL: Moyenne des mois + Composition
+    # ============================================================
+    elif system_type in ['semestre', 'semestriel']:
+        # Déterminer les mois du semestre
+        mois_mapping = {
+            'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],  # Février = Composition
+            'SEMESTRE_2': ['MARS', 'AVRIL', 'MAI'],                        # Juin = Composition
+        }
+        mois_periode = mois_mapping.get(periode, [])
+        
+        # Calculer la moyenne continue des mois
+        if mois_periode:
+            total_notes = Decimal('0')
+            count_notes = 0
+            moyennes_detail = []
+            
+            for mois in mois_periode:
+                try:
+                    note_mensuelle = NoteMensuelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=mois,
+                        annee_scolaire=matiere.classe.annee_scolaire
+                    )
+                    if not note_mensuelle.absent and note_mensuelle.note is not None:
+                        total_notes += Decimal(str(note_mensuelle.note))
+                        count_notes += 1
+                        moyennes_detail.append({
+                            'libelle': mois[:3] + '.',
+                            'moyenne': float(note_mensuelle.note),
+                            'absent': False
+                        })
+                    else:
+                        moyennes_detail.append({
+                            'libelle': mois[:3] + '.',
+                            'moyenne': None,
+                            'absent': True
+                        })
+                except NoteMensuelle.DoesNotExist:
+                    moyennes_detail.append({
+                        'libelle': mois[:3] + '.',
+                        'moyenne': None,
+                        'absent': True
+                    })
+            
+            result['moyennes_mensuelles'] = moyennes_detail
+            
+            if count_notes > 0:
+                result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
+        
+        # Récupérer la note de composition
+        try:
+            compo = CompositionNote.objects.get(
+                eleve=eleve,
+                matiere=matiere,
+                periode=periode,
+                annee_scolaire=matiere.classe.annee_scolaire
+            )
+            if not compo.absent and compo.note is not None:
+                result['note_composition'] = float(compo.note)
+        except CompositionNote.DoesNotExist:
+            pass
+        
+        # Calculer la moyenne finale: (Moyenne Continue + Composition) / 2
+        if result['moyenne_continue'] is not None and result['note_composition'] is not None:
+            result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
+        elif result['note_composition'] is not None:
+            result['moyenne'] = result['note_composition']
+        elif result['moyenne_continue'] is not None:
+            result['moyenne'] = result['moyenne_continue']
+    
+    # ============================================================
+    # SYSTÈME ANNUEL TRIMESTRIEL: (T1 + T2 + T3) / 3
+    # ============================================================
+    elif system_type == 'annuel_trimestriel':
+        periodes_trim = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        labels_trim = ['1er Trim.', '2ème Trim.', '3ème Trim.']
+        moyennes_periodes = []
+        
+        for i, periode_code in enumerate(periodes_trim):
+            # Utiliser la fonction existante pour calculer la moyenne du trimestre
+            result_trim = calculer_moyenne_matiere(eleve, matiere, periode_code, 'trimestre')
+            moy_trim = result_trim['moyenne_matiere']
+            
+            moyennes_periodes.append({
+                'libelle': labels_trim[i],
+                'moyenne': moy_trim,
+                'absent': moy_trim is None
+            })
+        
+        result['moyennes_mensuelles'] = moyennes_periodes
+        
+        # Calculer la moyenne annuelle: (T1 + T2 + T3) / 3
+        moyennes_valides = [m['moyenne'] for m in moyennes_periodes if m['moyenne'] is not None]
+        if moyennes_valides:
+            result['moyenne'] = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+            result['moyenne_continue'] = result['moyenne']  # Pour compatibilité
+    
+    # ============================================================
+    # SYSTÈME ANNUEL SEMESTRIEL: (S1 + S2) / 2
+    # ============================================================
+    elif system_type == 'annuel_semestriel':
+        periodes_sem = ['SEMESTRE_1', 'SEMESTRE_2']
+        labels_sem = ['1er Sem.', '2ème Sem.']
+        moyennes_periodes = []
+        
+        for i, periode_code in enumerate(periodes_sem):
+            # Utiliser la fonction existante pour calculer la moyenne du semestre
+            result_sem = calculer_moyenne_matiere(eleve, matiere, periode_code, 'semestre')
+            moy_sem = result_sem['moyenne_matiere']
+            
+            moyennes_periodes.append({
+                'libelle': labels_sem[i],
+                'moyenne': moy_sem,
+                'absent': moy_sem is None
+            })
+        
+        result['moyennes_mensuelles'] = moyennes_periodes
+        
+        # Calculer la moyenne annuelle: (S1 + S2) / 2
+        moyennes_valides = [m['moyenne'] for m in moyennes_periodes if m['moyenne'] is not None]
+        if moyennes_valides:
+            result['moyenne'] = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+            result['moyenne_continue'] = result['moyenne']  # Pour compatibilité
+    
+    # ============================================================
+    # CALCULER LES POINTS
+    # ============================================================
+    if result['moyenne'] is not None:
+        result['points'] = round(result['moyenne'] * float(coefficient_effectif), 2)
+    
+    return result

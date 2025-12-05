@@ -520,6 +520,8 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Trimestres: T1(Oct,Nov,Déc), T2(Jan,Fév,Mars), T3(Avr,Mai,Juin)
     # Semestres: S1(Oct,Nov,Déc,Jan,Fév), S2(Mars,Avr,Mai,Juin)
     mois_labels = []
+    periodes_labels = []  # Pour bulletin annuel
+    
     if system_type_indiv == 'trimestriel':
         if 'TRIMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
@@ -532,10 +534,24 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
         elif 'SEMESTRE_2' in periode:
             mois_labels = ['Mars', 'Avr.', 'Mai']   # Juin = Compo
+    elif system_type_indiv == 'annuel_trimestriel':
+        # Bulletin annuel basé sur les trimestres
+        periodes_labels = ['1er Trim.', '2ème Trim.', '3ème Trim.']
+    elif system_type_indiv == 'annuel_semestriel':
+        # Bulletin annuel basé sur les semestres
+        periodes_labels = ['1er Sem.', '2ème Sem.']
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
     # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | PTS
-    if system_type_indiv == 'trimestriel' and mois_labels:
+    if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # BULLETIN ANNUEL: MATIÈRE | [COEF] | T1/S1 | T2/S2 | [T3] | Moy. Ann. | PTS
+        if est_primaire:
+            header = ['MATIÈRE'] + periodes_labels + ['Moy. Ann.', 'PTS']
+        else:
+            header = ['MATIÈRE', 'COEF'] + periodes_labels + ['Moy. Ann.', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    elif system_type_indiv == 'trimestriel' and mois_labels:
         if est_primaire:
             # Primaire Trimestre: MATIÈRE | M1 | M2 | Moy.C | Compo | MOY | PTS (sans COEF)
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
@@ -573,14 +589,22 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         if hasattr(matiere.get('matiere'), 'nom'):
             nom_matiere = matiere['matiere'].nom
         
-        coef = float(matiere.get('coefficient', 1))
+        # PRIMAIRE: coefficient = 1 (pas de pondération)
+        # SECONDAIRE (Collège/Lycée): coefficient réel de la matière
+        coef_brut = float(matiere.get('coefficient', 1))
+        coef = 1.0 if est_primaire else coef_brut
+        
         moy_continue = matiere.get('moyenne_continue')
         note_compo = matiere.get('note_composition')
         moyenne = matiere.get('moyenne') or matiere.get('moyenne_calculee')
         points = matiere.get('points')
         
+        # Recalculer les points avec le bon coefficient
         if points is None and moyenne:
             points = moyenne * coef
+        elif est_primaire and moyenne:
+            # Forcer le recalcul pour primaire (coef=1)
+            points = moyenne * 1.0
         
         # Récupérer les moyennes mensuelles si disponibles
         moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
@@ -592,7 +616,31 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         if points:
             total_points += points
         
-        if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+        if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+            # BULLETIN ANNUEL: Construire la ligne avec les moyennes par période
+            if est_primaire:
+                row = [nom_matiere]  # Sans COEF pour primaire
+            else:
+                row = [nom_matiere, f"{coef:.0f}"]
+            
+            # Ajouter les moyennes par période (T1, T2, T3 ou S1, S2)
+            for i, periode_label in enumerate(periodes_labels):
+                note_periode = '-'
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_per = moyennes_mensuelles[i]
+                    if isinstance(moy_per, dict):
+                        val = moy_per.get('moyenne')
+                        if val is not None:
+                            note_periode = f"{val:.2f}"
+                    elif moy_per is not None:
+                        note_periode = f"{moy_per:.2f}"
+                row.append(note_periode)
+            
+            # Ajouter Moy. Annuelle et PTS
+            row.append(f"{moyenne:.2f}" if moyenne else '-')
+            row.append(f"{points:.2f}" if points else '-')
+            data.append(row)
+        elif system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
             # Construire la ligne avec les détails mensuels
             if est_primaire:
                 row = [nom_matiere]  # Sans COEF pour primaire
@@ -630,7 +678,17 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
     # Ligne TOTAL
-    if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+    if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # BULLETIN ANNUEL: Ligne total
+        if est_primaire:
+            total_row = ['TOTAL']  # Sans COEF pour primaire
+        else:
+            total_row = ['TOTAL', f"{total_coef:.0f}"]
+        total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
+        total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
+        total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
+        data.append(total_row)
+    elif system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
         if est_primaire:
             total_row = ['TOTAL']  # Sans COEF pour primaire
         else:
@@ -648,7 +706,13 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
     # Calculer les largeurs de colonnes
-    if system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
+    if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # Bulletin annuel: MATIÈRE 25%, reste divisé équitablement
+        col_matiere = table_total_width * 0.22
+        nb_autres_cols = nb_cols - 1
+        col_autres = (table_total_width - col_matiere) / nb_autres_cols
+        col_widths = [col_matiere] + [col_autres] * nb_autres_cols
+    elif system_type_indiv in ['trimestriel', 'semestriel'] and mois_labels:
         col_matiere = table_total_width * 0.22
         nb_autres_cols = nb_cols - 1
         col_autres = (table_total_width - col_matiere) / nb_autres_cols
@@ -854,7 +918,23 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Texte pour les points (différent pour primaire)
     points_text = "• Points : Moyenne (pas de coefficient pour le primaire)" if est_primaire else "• Points : Moyenne × Coefficient"
     
-    if system_type_indiv == 'trimestriel':
+    if system_type_indiv == 'annuel_trimestriel':
+        titre_systeme = "MÉTHODE DE CALCUL - BULLETIN ANNUEL (TRIMESTRES)" if not est_primaire else "MÉTHODE DE CALCUL - BULLETIN ANNUEL (PRIMAIRE)"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• T1, T2, T3 : Moyennes des 1er, 2ème et 3ème trimestres")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moy. Ann. : (T1 + T2 + T3) / 3 (moyenne des 3 trimestres)")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    elif system_type_indiv == 'annuel_semestriel':
+        titre_systeme = "MÉTHODE DE CALCUL - BULLETIN ANNUEL (SEMESTRES)" if not est_primaire else "MÉTHODE DE CALCUL - BULLETIN ANNUEL (PRIMAIRE)"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• S1, S2 : Moyennes des 1er et 2ème semestres")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moy. Ann. : (S1 + S2) / 2 (moyenne des 2 semestres)")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    elif system_type_indiv == 'trimestriel':
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
         c.setFillColor(colors.HexColor('#333333'))
@@ -1275,12 +1355,18 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     eleve = get_object_or_404(Eleve, pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
     
-    # Déterminer le système
+    # Déterminer le système et le type de système pour l'affichage
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
-    
-    # Déterminer le type de système pour l'affichage
     system_type = 'mensuel'
-    if 'TRIMESTRE' in periode:
+    
+    # Détecter le type de bulletin (mensuel, trimestriel, semestriel, annuel)
+    if 'ANNUEL_TRIM' in periode:
+        system_type = 'annuel_trimestriel'
+        systeme = 'TRIMESTRE'
+    elif 'ANNUEL_SEM' in periode:
+        system_type = 'annuel_semestriel'
+        systeme = 'SEMESTRE'
+    elif 'TRIMESTRE' in periode:
         system_type = 'trimestriel'
     elif 'SEMESTRE' in periode:
         system_type = 'semestriel'
@@ -1293,28 +1379,75 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     bulletin_data['system_type'] = system_type
     bulletin_data['periode'] = periode
     
-    # Pour trimestre/semestre, enrichir avec les moyennes mensuelles détaillées
-    if system_type in ['trimestriel', 'semestriel']:
-        from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
+    # Enrichir avec les données détaillées selon le type de système
+    from notes.calculs_moyennes import calculer_bulletin_intelligent
+    
+    matieres_enrichies = []
+    for mat_data in bulletin_data.get('matieres', []):
+        mat_obj = mat_data.get('matiere')
+        if mat_obj:
+            try:
+                # Utiliser la fonction centralisée intelligente
+                result = calculer_bulletin_intelligent(eleve, mat_obj, periode, system_type)
+                mat_data['moyennes_mensuelles'] = result.get('moyennes_mensuelles', [])
+                mat_data['note_composition'] = result.get('note_composition')
+                mat_data['moyenne_continue'] = result.get('moyenne_continue')
+                mat_data['moyenne'] = result.get('moyenne')
+                mat_data['points'] = result.get('points')
+            except:
+                pass
+        matieres_enrichies.append(mat_data)
+    
+    bulletin_data['matieres'] = matieres_enrichies
+    
+    # ===== RECALCULER LA MOYENNE GÉNÉRALE ET LES TOTAUX POUR BULLETINS ANNUELS =====
+    # IMPORTANT: Utiliser UNE SEULE SOURCE pour garantir la cohérence moyenne/rang
+    if system_type in ['annuel_trimestriel', 'annuel_semestriel']:
+        from notes.calculs_moyennes import calculer_classement_classe, detecter_niveau_scolaire
+        from eleves.models import Classe as ClasseEleve
         
-        periode_type_detail = 'trimestre' if system_type == 'trimestriel' else 'semestre'
-        matieres_enrichies = []
+        # Récupérer les matières de la classe
+        matieres = MatiereNote.objects.filter(classe=classe_note)
         
-        for mat_data in bulletin_data.get('matieres', []):
-            mat_obj = mat_data.get('matiere')
-            if mat_obj:
-                try:
-                    details_mensuels = calculer_bulletin_avec_details_mensuels(
-                        eleve, mat_obj, periode_type_detail, periode
-                    )
-                    mat_data['moyennes_mensuelles'] = details_mensuels.get('moyennes_mensuelles', [])
-                    mat_data['note_composition'] = details_mensuels.get('note_composition')
-                    mat_data['moyenne_continue'] = details_mensuels.get('moyenne_continue')
-                except:
-                    pass
-            matieres_enrichies.append(mat_data)
+        # Récupérer tous les élèves de la classe
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire,
+            ecole=classe_note.ecole
+        ).first()
         
-        bulletin_data['matieres'] = matieres_enrichies
+        if classe_eleve:
+            eleves_classe = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF'))
+            total_eleves = len(eleves_classe)
+            bulletin_data['total_eleves'] = total_eleves
+            
+            # CALCUL UNIQUE: Le classement calcule les moyennes ET les rangs avec la même source
+            classement_result = calculer_classement_classe(eleves_classe, matieres, periode, system_type)
+            rang_map = classement_result.get('rang_map', {})
+            details_map = classement_result.get('details_par_eleve', {})
+            
+            # Récupérer les données de l'élève depuis le classement (MÊME SOURCE)
+            if eleve.id in details_map:
+                details_eleve = details_map[eleve.id]
+                bulletin_data['moyenne_generale'] = details_eleve.get('moyenne_generale')
+                bulletin_data['total_points'] = details_eleve.get('total_points', 0)
+                bulletin_data['total_coefficients'] = details_eleve.get('total_coefficients', 0)
+            
+            # Récupérer le rang de l'élève (MÊME SOURCE que la moyenne)
+            rang_brut = rang_map.get(eleve.id, '-')
+            
+            # Formater le rang avec accord grammatical
+            if rang_brut and rang_brut != '-':
+                sexe = getattr(eleve, 'sexe', 'M')
+                rang_formate = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                bulletin_data['rang'] = rang_formate
+            else:
+                bulletin_data['rang'] = '-'
+        
+        # Calculer la mention basée sur la moyenne (cohérente)
+        niveau = detecter_niveau_scolaire(classe_note.nom)
+        if bulletin_data.get('moyenne_generale'):
+            bulletin_data['mention'] = obtenir_mention_intelligente(bulletin_data['moyenne_generale'], niveau)
     
     # Chemin du logo
     ecole = eleve.classe.ecole
@@ -1392,8 +1525,21 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     if not eleves:
         return HttpResponse("Aucun élève dans cette classe", status=404)
     
-    # Déterminer le système
+    # Déterminer le système et le type de système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
+    system_type = 'mensuel'
+    
+    # Détecter le type de bulletin (mensuel, trimestriel, semestriel, annuel)
+    if 'ANNUEL_TRIM' in periode:
+        system_type = 'annuel_trimestriel'
+        systeme = 'TRIMESTRE'
+    elif 'ANNUEL_SEM' in periode:
+        system_type = 'annuel_semestriel'
+        systeme = 'SEMESTRE'
+    elif 'TRIMESTRE' in periode:
+        system_type = 'trimestriel'
+    elif 'SEMESTRE' in periode:
+        system_type = 'semestriel'
     
     # Chemin du logo
     ecole = classe_note.ecole
@@ -1406,13 +1552,6 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     
     # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
     matieres = MatiereNote.objects.filter(classe=classe_note)
-    
-    # Déterminer le type de système
-    system_type = 'mensuel'
-    if 'TRIMESTRE' in periode:
-        system_type = 'trimestriel'
-    elif 'SEMESTRE' in periode:
-        system_type = 'semestriel'
     
     # Calculer le classement une seule fois pour toute la classe
     classement_result = calculer_classement_classe(eleves, matieres, periode, system_type)
@@ -1436,16 +1575,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     
-    # Import pour les détails mensuels (trimestre/semestre)
-    from notes.utils_moyennes_mensuelles import calculer_bulletin_avec_details_mensuels
-    from notes.calculs_moyennes import detecter_niveau_scolaire
-    
-    # Déterminer le type de période pour les détails mensuels
-    periode_type_detail = None
-    if system_type == 'trimestriel':
-        periode_type_detail = 'trimestre'
-    elif system_type == 'semestriel':
-        periode_type_detail = 'semestre'
+    # Import pour les détails mensuels et la fonction centralisée
+    from notes.calculs_moyennes import detecter_niveau_scolaire, calculer_bulletin_intelligent
     
     # Détecter le niveau scolaire
     niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
@@ -1465,24 +1596,32 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 details = details_map[eleve.id]
                 matieres_data = details.get('details_matieres', [])
                 
-                # Pour trimestre/semestre, enrichir avec les moyennes mensuelles détaillées
-                if periode_type_detail and matieres:
+                # Enrichir avec les données détaillées (fonctionne pour tous les types)
+                if matieres:
                     matieres_enrichies = []
                     for mat_data in matieres_data:
                         mat_obj = mat_data.get('matiere')
                         if mat_obj:
-                            # Récupérer les détails mensuels
+                            # Utiliser la fonction centralisée intelligente
                             try:
-                                details_mensuels = calculer_bulletin_avec_details_mensuels(
-                                    eleve, mat_obj, periode_type_detail, periode
-                                )
-                                mat_data['moyennes_mensuelles'] = details_mensuels.get('moyennes_mensuelles', [])
-                                mat_data['note_composition'] = details_mensuels.get('note_composition')
-                                mat_data['moyenne_continue'] = details_mensuels.get('moyenne_continue')
+                                result = calculer_bulletin_intelligent(eleve, mat_obj, periode, system_type)
+                                mat_data['moyennes_mensuelles'] = result.get('moyennes_mensuelles', [])
+                                mat_data['note_composition'] = result.get('note_composition')
+                                mat_data['moyenne_continue'] = result.get('moyenne_continue')
+                                mat_data['moyenne'] = result.get('moyenne')
+                                mat_data['points'] = result.get('points')
                             except:
                                 pass
                         matieres_enrichies.append(mat_data)
                     matieres_data = matieres_enrichies
+                
+                # Récupérer et formater le rang avec accord grammatical
+                rang_brut = rang_map.get(eleve.id, '-')
+                if rang_brut and rang_brut != '-':
+                    sexe = getattr(eleve, 'sexe', 'M')
+                    rang_formate = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                else:
+                    rang_formate = '-'
                 
                 bulletin_data = {
                     'eleve': f"{eleve.prenom} {eleve.nom}",
@@ -1493,7 +1632,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'moyenne_generale': details.get('moyenne_generale'),
                     'total_points': details.get('total_points'),
                     'total_coefficients': details.get('total_coefficients'),
-                    'rang': rang_map.get(eleve.id, '-'),
+                    'rang': rang_formate,
                     'mention': obtenir_mention_intelligente(details.get('moyenne_generale'), niveau_scolaire),
                     'matricule': eleve.matricule,
                     'total_eleves': total_eleves,
@@ -1502,7 +1641,15 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 # Fallback: calculer si pas dans le cache
                 calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
                 bulletin_data = calculateur.generer_bulletin()
-                bulletin_data['rang'] = rang_map.get(eleve.id, '-')
+                
+                # Formater le rang avec accord grammatical
+                rang_brut = rang_map.get(eleve.id, '-')
+                if rang_brut and rang_brut != '-':
+                    sexe = getattr(eleve, 'sexe', 'M')
+                    bulletin_data['rang'] = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                else:
+                    bulletin_data['rang'] = '-'
+                
                 bulletin_data['matricule'] = eleve.matricule
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
@@ -1730,6 +1877,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # Trimestres: T1(Oct,Nov,Déc), T2(Jan,Fév,Mars), T3(Avr,Mai,Juin)
     # Semestres: S1(Oct,Nov,Déc,Jan,Fév), S2(Mars,Avr,Mai,Juin)
     mois_labels = []
+    periodes_labels = []  # Pour bulletin annuel
+    
     if system_type == 'trimestriel':
         if 'TRIMESTRE_1' in periode:
             mois_labels = ['Oct.', 'Nov.']  # Déc. = Compo
@@ -1742,10 +1891,24 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             mois_labels = ['Oct.', 'Nov.', 'Déc.', 'Jan.']  # Fév. = Compo
         elif 'SEMESTRE_2' in periode:
             mois_labels = ['Mars', 'Avr.', 'Mai']   # Juin = Compo
+    elif system_type == 'annuel_trimestriel':
+        # Bulletin annuel basé sur les trimestres
+        periodes_labels = ['1er Trim.', '2ème Trim.', '3ème Trim.']
+    elif system_type == 'annuel_semestriel':
+        # Bulletin annuel basé sur les semestres
+        periodes_labels = ['1er Sem.', '2ème Sem.']
     
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
     # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | [PTS]
-    if system_type == 'trimestriel' and mois_labels:
+    if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # BULLETIN ANNUEL: MATIÈRE | [COEF] | T1/S1 | T2/S2 | [T3] | Moy. Ann. | [PTS]
+        if est_primaire:
+            header = ['MATIÈRE'] + periodes_labels + ['Moy. Ann.']
+        else:
+            header = ['MATIÈRE', 'COEF'] + periodes_labels + ['Moy. Ann.', 'PTS']
+        data = [header]
+        nb_cols = len(header)
+    elif system_type == 'trimestriel' and mois_labels:
         if est_primaire:
             header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
         else:
@@ -1777,14 +1940,22 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         if hasattr(matiere.get('matiere'), 'nom'):
             nom_matiere = matiere['matiere'].nom
         
-        coef = float(matiere.get('coefficient', 1))
+        # PRIMAIRE: coefficient = 1 (pas de pondération)
+        # SECONDAIRE (Collège/Lycée): coefficient réel de la matière
+        coef_brut = float(matiere.get('coefficient', 1))
+        coef = 1.0 if est_primaire else coef_brut
+        
         moy_continue = matiere.get('moyenne_continue')
         note_compo = matiere.get('note_composition')
         moyenne = matiere.get('moyenne') or matiere.get('moyenne_calculee')
         points = matiere.get('points')
         
+        # Recalculer les points avec le bon coefficient
         if points is None and moyenne:
             points = moyenne * coef
+        elif est_primaire and moyenne:
+            # Forcer le recalcul pour primaire (coef=1)
+            points = moyenne * 1.0
         
         # Récupérer les moyennes mensuelles si disponibles
         moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
@@ -1796,7 +1967,32 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         if points:
             total_points += points
         
-        if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+        if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+            # BULLETIN ANNUEL: Construire la ligne avec les moyennes par période
+            if est_primaire or est_maternelle:
+                row = [nom_matiere]  # Sans COEF pour primaire/maternelle
+            else:
+                row = [nom_matiere, f"{coef:.0f}"]
+            
+            # Ajouter les moyennes par période (T1, T2, T3 ou S1, S2)
+            for i, periode_label in enumerate(periodes_labels):
+                note_periode = '-'
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_per = moyennes_mensuelles[i]
+                    if isinstance(moy_per, dict):
+                        val = moy_per.get('moyenne')
+                        if val is not None:
+                            note_periode = f"{val:.2f}"
+                    elif moy_per is not None:
+                        note_periode = f"{moy_per:.2f}"
+                row.append(note_periode)
+            
+            # Ajouter Moy. Annuelle (et PTS seulement pour collège/lycée)
+            row.append(f"{moyenne:.2f}" if moyenne else '-')
+            if not (est_primaire or est_maternelle):
+                row.append(f"{points:.2f}" if points else '-')
+            data.append(row)
+        elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
             # Construire la ligne avec les détails mensuels
             if est_primaire or est_maternelle:
                 row = [nom_matiere]  # Sans COEF pour primaire/maternelle
@@ -1834,7 +2030,18 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
     # Ligne TOTAL
-    if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+    if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # BULLETIN ANNUEL: Ligne total
+        if est_primaire or est_maternelle:
+            total_row = ['TOTAL']
+        else:
+            total_row = ['TOTAL', f"{total_coef:.0f}"]
+        total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
+        total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
+        if not (est_primaire or est_maternelle):
+            total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
+        data.append(total_row)
+    elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
         if est_primaire or est_maternelle:
             total_row = ['TOTAL']
         else:
@@ -1852,7 +2059,13 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
     # Calculer les largeurs de colonnes
-    if system_type in ['trimestriel', 'semestriel'] and mois_labels:
+    if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
+        # Bulletin annuel: MATIÈRE 25%, reste divisé équitablement
+        col_matiere = table_total_width * 0.22
+        nb_autres_cols = nb_cols - 1
+        col_autres = (table_total_width - col_matiere) / nb_autres_cols
+        col_widths = [col_matiere] + [col_autres] * nb_autres_cols
+    elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
         # Répartition: MATIÈRE 25%, reste divisé équitablement
         col_matiere = table_total_width * 0.22
         nb_autres_cols = nb_cols - 1
@@ -2041,7 +2254,23 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     points_text = "• Points : Moyenne (pas de coefficient pour le primaire)" if est_primaire else "• Points : Moyenne × Coefficient"
     
     # Adapter le texte selon le système
-    if system_type == 'trimestriel':
+    if system_type == 'annuel_trimestriel':
+        titre_systeme = "MÉTHODE DE CALCUL - BULLETIN ANNUEL (TRIMESTRES)" if not est_primaire else "MÉTHODE DE CALCUL - BULLETIN ANNUEL (PRIMAIRE)"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• T1, T2, T3 : Moyennes des 1er, 2ème et 3ème trimestres")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moy. Ann. : (T1 + T2 + T3) / 3 (moyenne des 3 trimestres)")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    elif system_type == 'annuel_semestriel':
+        titre_systeme = "MÉTHODE DE CALCUL - BULLETIN ANNUEL (SEMESTRES)" if not est_primaire else "MÉTHODE DE CALCUL - BULLETIN ANNUEL (PRIMAIRE)"
+        c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
+        c.setFillColor(colors.HexColor('#333333'))
+        c.setFont("Helvetica", 7)
+        c.drawString(1.4*cm, y - 0.6*cm, "• S1, S2 : Moyennes des 1er et 2ème semestres")
+        c.drawString(1.4*cm, y - 0.9*cm, "• Moy. Ann. : (S1 + S2) / 2 (moyenne des 2 semestres)")
+        c.drawString(1.4*cm, y - 1.2*cm, points_text)
+    elif system_type == 'trimestriel':
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME TRIMESTRIEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
         c.setFillColor(colors.HexColor('#333333'))

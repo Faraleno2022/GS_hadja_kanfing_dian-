@@ -125,6 +125,34 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                     'sexe': getattr(eleve, 'sexe', None) or 'M',  # Gérer le cas où sexe est None ou vide
                     'moyenne': moyenne_generale
                 })
+    elif periode in ['ANNUEL_TRIM', 'ANNUEL_SEM']:
+        # BULLETIN ANNUEL - Calculer la moyenne des périodes (T1+T2+T3)/3 ou (S1+S2)/2
+        from .calculs_moyennes import calculer_moyenne_generale_annuelle
+        
+        system_type = 'annuel_trimestriel' if periode == 'ANNUEL_TRIM' else 'annuel_semestriel'
+        
+        for eleve in eleves:
+            result = calculer_moyenne_generale_annuelle(eleve, matieres, system_type)
+            moyenne_generale = result.get('moyenne_generale')
+            
+            if moyenne_generale is not None:
+                moyennes_pour_rang.append({
+                    'eleve_id': eleve.id,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'sexe': getattr(eleve, 'sexe', None) or 'M',
+                    'moyenne': Decimal(str(moyenne_generale))
+                })
+            else:
+                # Pas de notes = moyenne 0
+                moyennes_pour_rang.append({
+                    'eleve_id': eleve.id,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'sexe': getattr(eleve, 'sexe', None) or 'M',
+                    'moyenne': Decimal('0')
+                })
+    
     else:
         # Système trimestriel/semestriel - utiliser NoteMensuelle + CompositionNote
         from .models import NoteMensuelle, CompositionNote

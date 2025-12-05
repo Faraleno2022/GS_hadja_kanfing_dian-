@@ -52,9 +52,21 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3"><i class="fas fa-chart-bar me-2"></i>Statistiques</h1>
-        <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
-            <i class="fas fa-arrow-left me-2"></i>Retour
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            {% if classe_selectionnee and periode and stats_generales %}
+            <a href="{% url 'notes:exporter_statistiques_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}" 
+               class="btn btn-danger" title="Exporter le rapport statistique complet en PDF">
+                <i class="fas fa-file-pdf me-2"></i>Rapport Complet PDF
+            </a>
+            <a href="{% url 'notes:exporter_conseils_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}" 
+               class="btn btn-warning text-dark" title="Télécharger les conseils et prises de décision en PDF">
+                <i class="fas fa-lightbulb me-2"></i>Conseils & Décisions PDF
+            </a>
+            {% endif %}
+            <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Retour
+            </a>
+        </div>
     </div>
 
     <!-- Sélection de classe -->
@@ -188,6 +200,113 @@
                         <td class="text-center">{{ stat.max }}/20</td>
                         <td class="text-center">{{ stat.min }}/20</td>
                         <td class="text-center">{{ stat.nb_eleves }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Élèves en difficulté -->
+    {% if eleves_non_admis %}
+    <div class="chart-container border-danger" style="border-left: 4px solid #dc3545;">
+        <h5 class="mb-4 text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Élèves en difficulté ({{ eleves_non_admis|length }} élève(s) - Moyenne < 10/20)</h5>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-danger">
+                    <tr>
+                        <th>Matricule</th>
+                        <th>Nom & Prénom</th>
+                        <th class="text-center">Moyenne</th>
+                        <th class="text-center">Écart</th>
+                        <th>Action recommandée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve_data in eleves_non_admis %}
+                    <tr>
+                        <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
+                        <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge bg-danger fs-6">{{ eleve_data.moyenne }}/20</span>
+                        </td>
+                        <td class="text-center text-danger">
+                            <strong>-{{ eleve_data.moyenne|add:"-10"|floatformat:2|cut:"-" }} pts</strong>
+                        </td>
+                        <td><small class="text-muted">Soutien scolaire urgent</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="alert alert-danger mt-3 mb-0">
+            <i class="fas fa-lightbulb me-2"></i>
+            <strong>Recommandation :</strong> Organiser des cours de rattrapage, convoquer les parents, et mettre en place un suivi personnalisé.
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Élèves à surveiller -->
+    {% if eleves_a_suivre %}
+    <div class="chart-container border-warning" style="border-left: 4px solid #ffc107;">
+        <h5 class="mb-4 text-warning"><i class="fas fa-eye me-2"></i>Élèves à surveiller ({{ eleves_a_suivre|length }} élève(s) - Moyenne 10-12/20)</h5>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-warning">
+                    <tr>
+                        <th>Matricule</th>
+                        <th>Nom & Prénom</th>
+                        <th class="text-center">Moyenne</th>
+                        <th>Action recommandée</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve_data in eleves_a_suivre %}
+                    <tr>
+                        <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
+                        <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge bg-warning text-dark fs-6">{{ eleve_data.moyenne }}/20</span>
+                        </td>
+                        <td><small class="text-muted">Accompagnement personnalisé</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Élèves excellents -->
+    {% if eleves_excellents %}
+    <div class="chart-container border-success" style="border-left: 4px solid #28a745;">
+        <h5 class="mb-4 text-success"><i class="fas fa-star me-2"></i>Élèves excellents ({{ eleves_excellents|length }} élève(s) - Moyenne ≥ 14/20)</h5>
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead class="table-success">
+                    <tr>
+                        <th>Matricule</th>
+                        <th>Nom & Prénom</th>
+                        <th class="text-center">Moyenne</th>
+                        <th class="text-center">Mention</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eleve_data in eleves_excellents %}
+                    <tr>
+                        <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
+                        <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
+                        <td class="text-center">
+                            <span class="badge {% if eleve_data.moyenne >= 16 %}bg-success{% else %}bg-info{% endif %} fs-6">{{ eleve_data.moyenne }}/20</span>
+                        </td>
+                        <td class="text-center">
+                            {% if eleve_data.moyenne >= 16 %}
+                                <span class="badge bg-success">Excellent</span>
+                            {% else %}
+                                <span class="badge bg-info">Très Bien</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
