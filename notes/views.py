@@ -946,10 +946,19 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c.setFillColor(colors.black)
     y -= 16
 
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
+    
     # Tableau entêtes
     c.setFont('Helvetica-Bold', 12)
-    headers = ["Matière", "Coef.", "Moyenne /20", "Moy. classe"]
-    colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
+    if est_primaire_ou_maternelle:
+        headers = ["Matière", "Moyenne /20", "Moy. classe"]
+        colw = [9*cm, 4*cm, 4*cm]
+    else:
+        headers = ["Matière", "Coef.", "Moyenne /20", "Moy. classe"]
+        colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
     x = margin
     for i, htxt in enumerate(headers):
         c.drawString(x, y, htxt)
@@ -972,9 +981,10 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
-        c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+        if not est_primaire_ou_maternelle:
+            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
         moy_txt = '-' if row['moyenne'] is None else f"{row['moyenne']}"
-        c.drawString(x, y, moy_txt); x += colw[2]
+        c.drawString(x, y, moy_txt); x += colw[1] if est_primaire_ou_maternelle else colw[2]
         # moyenne de classe
         mc = moyennes_classe_par_matiere.get(next((m.id for m in matieres if m.nom == row['matiere']), None), None)
         mc_txt = '-' if mc is None else f"{mc}"
@@ -1129,6 +1139,11 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
+    
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -1241,8 +1256,12 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
 
         # Entêtes
         c.setFont('Helvetica-Bold', 12)
-        headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. mois"]
-        colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
+        if est_primaire_ou_maternelle:
+            headers = ["Matière", "Moy. cours", "Moy. compo", "Moy. mois"]
+            colw = [8*cm, 3.5*cm, 3.5*cm, 3.5*cm]
+        else:
+            headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. mois"]
+            colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
         x = margin
         for i, htxt in enumerate(headers):
             c.drawString(x, y, htxt); x += colw[i]
@@ -1259,9 +1278,10 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
                     pass
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
-            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-            c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[2]
-            c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[3]
+            if not est_primaire_ou_maternelle:
+                c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+            c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
+            c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[2] if est_primaire_ou_maternelle else colw[3]
             c.drawString(x, y, '-' if row['moy_mois'] is None else f"{row['moy_mois']}")
             y -= 14
         y -= 6; c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
@@ -1377,6 +1397,11 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
+    
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -1487,8 +1512,12 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
 
         # Entêtes
         c.setFont('Helvetica-Bold', 12)
-        headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", f"Moy. S{semestre}"]
-        colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
+        if est_primaire_ou_maternelle:
+            headers = ["Matière", "Moy. cours", "Moy. compo", f"Moy. S{semestre}"]
+            colw = [8*cm, 3.5*cm, 3.5*cm, 3.5*cm]
+        else:
+            headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", f"Moy. S{semestre}"]
+            colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
         x = margin
         for i, htxt in enumerate(headers):
             c.drawString(x, y, htxt); x += colw[i]
@@ -1505,9 +1534,10 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
                     pass
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
-            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-            c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[2]
-            c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[3]
+            if not est_primaire_ou_maternelle:
+                c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+            c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
+            c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[2] if est_primaire_ou_maternelle else colw[3]
             c.drawString(x, y, '-' if row['moy_sem'] is None else f"{row['moy_sem']}")
             y -= 14
         y -= 6; c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
@@ -1834,10 +1864,19 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
+    
     # Entêtes colonnes
     c.setFont('Helvetica-Bold', 12)
-    headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. mois"]
-    colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
+    if est_primaire_ou_maternelle:
+        headers = ["Matière", "Moy. cours", "Moy. compo", "Moy. mois"]
+        colw = [8*cm, 3.5*cm, 3.5*cm, 3.5*cm]
+    else:
+        headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. mois"]
+        colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
     x = margin
     for i, htxt in enumerate(headers):
         c.drawString(x, y, htxt); x += colw[i]
@@ -1856,9 +1895,10 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
-        c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-        c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[2]
-        c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[3]
+        if not est_primaire_ou_maternelle:
+            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+        c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
+        c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[2] if est_primaire_ou_maternelle else colw[3]
         c.drawString(x, y, '-' if row['moy_mois'] is None else f"{row['moy_mois']}")
         y -= 14
 
@@ -2049,10 +2089,19 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {annee_scolaire or ''}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
+    
     # Entêtes colonnes
     c.setFont('Helvetica-Bold', 12)
-    headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. S{}".format(semestre)]
-    colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
+    if est_primaire_ou_maternelle:
+        headers = ["Matière", "Moy. cours", "Moy. compo", "Moy. S{}".format(semestre)]
+        colw = [8*cm, 3.5*cm, 3.5*cm, 3.5*cm]
+    else:
+        headers = ["Matière", "Coef.", "Moy. cours", "Moy. compo", "Moy. S{}".format(semestre)]
+        colw = [7.5*cm, 2.0*cm, 3.0*cm, 3.0*cm, 3.0*cm]
     x = margin
     for i, htxt in enumerate(headers):
         c.drawString(x, y, htxt); x += colw[i]
@@ -2071,9 +2120,10 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
-        c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-        c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[2]
-        c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[3]
+        if not est_primaire_ou_maternelle:
+            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+        c.drawString(x, y, '-' if row['moy_cours'] is None else f"{row['moy_cours']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
+        c.drawString(x, y, '-' if row['moy_compo'] is None else f"{row['moy_compo']}"); x += colw[2] if est_primaire_ou_maternelle else colw[3]
         c.drawString(x, y, '-' if row['moy_sem'] is None else f"{row['moy_sem']}")
         y -= 14
 
@@ -2271,6 +2321,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     niveau_scolaire = detecter_niveau_scolaire(classe.nom) if classe else 'SECONDAIRE'
     est_maternelle = (niveau_scolaire == 'MATERNELLE')
     est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    est_primaire_ou_maternelle = est_primaire or est_maternelle
     
     # Récupérer les rangs et moyennes depuis la source centralisée
     rangs_dict = calculer_rangs_classe_periode(classe_note, periode_longue, use_cache=False) if classe_note else {}
@@ -2378,8 +2429,12 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         y -= 16
 
         c.setFont('Helvetica-Bold', 12)
-        headers = ["Matière", "Coef.", "Moyenne /20", "Moy. classe"]
-        colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
+        if est_primaire_ou_maternelle:
+            headers = ["Matière", "Moyenne /20", "Moy. classe"]
+            colw = [9*cm, 4*cm, 4*cm]
+        else:
+            headers = ["Matière", "Coef.", "Moyenne /20", "Moy. classe"]
+            colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
         x = margin
         for i, htxt in enumerate(headers):
             c.drawString(x, y, htxt); x += colw[i]
@@ -2400,9 +2455,10 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
                 y = height - margin
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
-            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+            if not est_primaire_ou_maternelle:
+                c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
             moy_txt = '-' if row['moyenne'] is None else f"{row['moyenne']}"
-            c.drawString(x, y, moy_txt); x += colw[2]
+            c.drawString(x, y, moy_txt); x += colw[1] if est_primaire_ou_maternelle else colw[2]
             mc = moyennes_classe_par_matiere.get(next((m.id for m in matieres if m.nom == row['matiere']), None), None)
             mc_txt = '-' if mc is None else f"{mc}"
             c.drawString(x, y, mc_txt)
@@ -3180,9 +3236,18 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}"); y -= 12
     c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
+    
     c.setFont('Helvetica-Bold', 12)
-    headers = ["Matière", "Coef.", "Moy. annuelle", "Moy. classe"]
-    colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
+    if est_primaire_ou_maternelle:
+        headers = ["Matière", "Moy. annuelle", "Moy. classe"]
+        colw = [9*cm, 4*cm, 4*cm]
+    else:
+        headers = ["Matière", "Coef.", "Moy. annuelle", "Moy. classe"]
+        colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
     x = margin
     for i, h in enumerate(headers): c.drawString(x, y, h); x += colw[i]
     y -= 14; c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
@@ -3198,8 +3263,9 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
             y = height - margin
         x = margin
         c.drawString(x, y, row['matiere']); x += colw[0]
-        c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-        c.drawString(x, y, '-' if row['moyenne'] is None else f"{row['moyenne']}"); x += colw[2]
+        if not est_primaire_ou_maternelle:
+            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+        c.drawString(x, y, '-' if row['moyenne'] is None else f"{row['moyenne']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
         mc = moyennes_classe_par_matiere.get(next((m.id for m in matieres if m.nom == row['matiere']), None), None)
         c.drawString(x, y, '-' if mc is None else f"{mc}")
         y -= 14
@@ -3335,6 +3401,11 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom','prenom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
     evals_by_matiere = _collect_evals_all_trimestres(classe, matieres)
+    
+    # Détecter le niveau scolaire pour masquer les coefficients en primaire/maternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire_ou_maternelle = niveau_scolaire in ['PRIMAIRE', 'MATERNELLE']
 
     try:
         from reportlab.lib.pagesizes import A4
@@ -3418,8 +3489,12 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
 
         c.setFont('Helvetica-Bold', 12)
-        headers = ["Matière", "Coef.", "Moy. annuelle", "Moy. classe"]
-        colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
+        if est_primaire_ou_maternelle:
+            headers = ["Matière", "Moy. annuelle", "Moy. classe"]
+            colw = [9*cm, 4*cm, 4*cm]
+        else:
+            headers = ["Matière", "Coef.", "Moy. annuelle", "Moy. classe"]
+            colw = [8*cm, 2.2*cm, 3.2*cm, 3.2*cm]
         x = margin
         for i, h in enumerate(headers): c.drawString(x, y, h); x += colw[i]
         y -= 14; c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
@@ -3457,8 +3532,9 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
                 y = height - margin
             x = margin
             c.drawString(x, y, row['matiere']); x += colw[0]
-            c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
-            c.drawString(x, y, '-' if row['moyenne'] is None else f"{row['moyenne']}"); x += colw[2]
+            if not est_primaire_ou_maternelle:
+                c.drawString(x, y, str(row['coef_matiere'])); x += colw[1]
+            c.drawString(x, y, '-' if row['moyenne'] is None else f"{row['moyenne']}"); x += colw[1] if est_primaire_ou_maternelle else colw[2]
             mc = moyennes_classe_par_matiere.get(next((m.id for m in matieres if m.nom == row['matiere']), None), None)
             c.drawString(x, y, '-' if mc is None else f"{mc}")
             y -= 14

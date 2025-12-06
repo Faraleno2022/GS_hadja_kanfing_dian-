@@ -843,7 +843,7 @@
             <thead>
                 <tr>
                     <th rowspan="2">MATIÈRE</th>
-                    {% if niveau_enseignement != 'PRIMAIRE' %}
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <th rowspan="2">COEF</th>
                     {% endif %}
                     {% if system_type == 'mensuel' %}
@@ -866,7 +866,7 @@
                         <th colspan="2">MOYENNES SEMESTRIELLES</th>
                     {% endif %}
                     <th rowspan="2">MOY</th>
-                    {% if niveau_enseignement != 'PRIMAIRE' %}
+                    {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
                     <th rowspan="2">PTS</th>
                     {% endif %}
                 </tr>
