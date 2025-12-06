@@ -410,11 +410,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c.drawCentredString(width/2 - 0.9*cm, y_header, "-")
     c.drawCentredString(width/2 + 0.9*cm, y_header, "-")
     
-    # MPU-A
+    # MEPU-A
     y_header -= 0.45*cm
     c.setFillColor(colors.black)
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(width/2, y_header, "MPU-A")
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(width/2, y_header, "Ministère de l'Enseignement Pré-Universitaire et de l'Alphabétisation (MEPU-A)")
     
     # Nom de l'école
     y_header -= 0.5*cm
@@ -1785,8 +1785,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     c.drawCentredString(width/2 + 0.9*cm, y_header, "-")
     
     y_header -= 0.45*cm
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(width/2, y_header, "MPU-A")
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(width/2, y_header, "Ministère de l'Enseignement Pré-Universitaire et de l'Alphabétisation (MEPU-A)")
     
     y_header -= 0.5*cm
     c.setFont("Helvetica-Bold", 10)
