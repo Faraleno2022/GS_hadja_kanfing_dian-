@@ -7138,7 +7138,9 @@ def bulletin_dynamique(request):
     
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
-        niveau_enseignement = classe_selectionnee.niveau_enseignement
+        # Utiliser detecter_niveau_scolaire pour une détection cohérente avec les bulletins PDF
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
         # Déterminer les périodes disponibles selon le système
