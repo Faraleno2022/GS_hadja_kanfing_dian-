@@ -76,6 +76,25 @@
         font-weight: 600;
     }
     
+    .note-input.has-value {
+        background: #dcfce7;
+        border-color: #16a34a;
+        font-weight: 600;
+    }
+    
+    .note-label-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        margin-left: 5px;
+    }
+    
+    .note-label-badge.imported {
+        background: #16a34a;
+        color: white;
+    }
+    
     .save-btn {
         background: #16a34a;
         color: white;
@@ -223,6 +242,15 @@
             </div>
         </div>
         
+        <!-- Indicateur de notes existantes -->
+        {% if notes_mensuelles %}
+        <div class="alert alert-success mb-4">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>Notes existantes détectées!</strong> Les notes importées sont pré-remplies ci-dessous.
+            <span class="badge bg-success ms-2">{{ notes_mensuelles|length }} note(s) trouvée(s)</span>
+        </div>
+        {% endif %}
+        
         <!-- Sélection du type de note -->
         <div class="mb-4">
             <label class="form-label fw-bold">Type de Note à Saisir:</label>
@@ -254,9 +282,16 @@
                 <div class="row g-3">
                     {% for mois_code, mois_label in mois_list %}
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">{{ mois_label }}</label>
+                        <label class="form-label fw-bold">
+                            {{ mois_label }}
+                            {% with note_val=notes_mensuelles|get_item:mois_code %}
+                            {% if note_val %}
+                            <span class="note-label-badge imported" title="Note importée">✓</span>
+                            {% endif %}
+                            {% endwith %}
+                        </label>
                         <input type="number" 
-                               class="note-input" 
+                               class="note-input {% if notes_mensuelles|get_item:mois_code %}has-value{% endif %}" 
                                id="note_{{ mois_code }}"
                                step="0.01" 
                                min="0" 

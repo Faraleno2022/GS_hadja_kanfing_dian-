@@ -7808,14 +7808,265 @@ def imprimer_tableau_notes_html(request):
 
 @login_required
 def saisie_notes_simple(request):
-    """Saisie notes simple"""
-    return render(request, 'notes/saisie_notes_simple.html', {'titre_page': 'Saisie Notes Simple'})
+    """Saisie notes simple - Système Guinéen avec chargement des notes importées"""
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    
+    ecole = _get_ecole(request)
+    
+    # Récupérer les classes disponibles
+    classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom') if ecole else ClasseNote.objects.none()
+    
+    # Paramètres de recherche
+    classe_id = request.GET.get('classe_id')
+    eleve_id = request.GET.get('eleve_id')
+    matiere_id = request.GET.get('matiere_id')
+    
+    classe_selectionnee = None
+    eleve_selectionne = None
+    matiere_selectionnee = None
+    eleves = []
+    matieres = []
+    notes_mensuelles = {}
+    compositions = {}
+    appreciations = {}
+    niveau_enseignement = 'PRIMAIRE'
+    system_type = 'trimestre'
+    
+    # Liste des mois
+    mois_list = [
+        ('OCTOBRE', 'Octobre'),
+        ('NOVEMBRE', 'Novembre'),
+        ('DECEMBRE', 'Décembre'),
+        ('JANVIER', 'Janvier'),
+        ('FEVRIER', 'Février'),
+        ('MARS', 'Mars'),
+        ('AVRIL', 'Avril'),
+        ('MAI', 'Mai'),
+        ('JUIN', 'Juin'),
+    ]
+    
+    if classe_id:
+        classe_selectionnee = ClasseNote.objects.filter(id=classe_id, ecole=ecole).first()
+        
+        if classe_selectionnee:
+            # Détecter le niveau d'enseignement
+            niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
+            
+            # Récupérer les élèves de la classe
+            classe_eleve = ClasseEleve.objects.filter(
+                nom=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire,
+                ecole=ecole
+            ).first()
+            
+            if classe_eleve:
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+            
+            # Récupérer les matières
+            matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
+    
+    if eleve_id and classe_selectionnee:
+        eleve_selectionne = Eleve.objects.filter(id=eleve_id).first()
+    
+    if matiere_id and classe_selectionnee:
+        matiere_selectionnee = MatiereNote.objects.filter(id=matiere_id, classe=classe_selectionnee).first()
+    
+    # Charger les notes existantes (importées ou saisies)
+    if eleve_selectionne and matiere_selectionnee:
+        # Charger les notes mensuelles depuis NoteMensuelle
+        notes_mensuelles_qs = NoteMensuelle.objects.filter(
+            eleve=eleve_selectionne,
+            matiere=matiere_selectionnee,
+            annee_scolaire=classe_selectionnee.annee_scolaire
+        )
+        
+        for nm in notes_mensuelles_qs:
+            if nm.note is not None:
+                notes_mensuelles[nm.mois] = float(nm.note)
+            elif nm.absent:
+                notes_mensuelles[nm.mois] = 'ABS'
+        
+        # Charger les compositions
+        compositions_qs = CompositionNote.objects.filter(
+            eleve=eleve_selectionne,
+            matiere=matiere_selectionnee,
+            annee_scolaire=classe_selectionnee.annee_scolaire
+        )
+        
+        for comp in compositions_qs:
+            if comp.note is not None:
+                if 'TRIMESTRE_1' in comp.periode or 'SEMESTRE_1' in comp.periode:
+                    compositions['composition1'] = float(comp.note)
+                elif 'TRIMESTRE_2' in comp.periode or 'SEMESTRE_2' in comp.periode:
+                    compositions['composition2'] = float(comp.note)
+                elif 'TRIMESTRE_3' in comp.periode:
+                    compositions['composition3'] = float(comp.note)
+        
+        # Charger les appréciations maternelle
+        if niveau_enseignement == 'MATERNELLE':
+            appreciations_qs = AppreciationMaternelle.objects.filter(
+                eleve=eleve_selectionne,
+                matiere=matiere_selectionnee,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            )
+            
+            for app in appreciations_qs:
+                if 'TRIMESTRE_1' in app.trimestre:
+                    appreciations['appreciation1'] = app.appreciation
+                elif 'TRIMESTRE_2' in app.trimestre:
+                    appreciations['appreciation2'] = app.appreciation
+                elif 'TRIMESTRE_3' in app.trimestre:
+                    appreciations['appreciation3'] = app.appreciation
+    
+    # Compter les notes existantes pour afficher un indicateur
+    notes_existantes_count = 0
+    if classe_selectionnee and matiere_selectionnee:
+        notes_existantes_count = NoteMensuelle.objects.filter(
+            matiere=matiere_selectionnee,
+            annee_scolaire=classe_selectionnee.annee_scolaire
+        ).exclude(note__isnull=True).count()
+    
+    context = {
+        'titre_page': 'Saisie Notes - Système Guinéen',
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'eleves': eleves,
+        'eleve_selectionne': eleve_selectionne,
+        'matieres': matieres,
+        'matiere_selectionnee': matiere_selectionnee,
+        'notes_mensuelles': notes_mensuelles,
+        'composition1': compositions.get('composition1'),
+        'composition2': compositions.get('composition2'),
+        'composition3': compositions.get('composition3'),
+        'appreciation1': appreciations.get('appreciation1'),
+        'appreciation2': appreciations.get('appreciation2'),
+        'appreciation3': appreciations.get('appreciation3'),
+        'niveau_enseignement': niveau_enseignement,
+        'system_type': system_type,
+        'mois_list': mois_list,
+        'notes_existantes_count': notes_existantes_count,
+    }
+    
+    return render(request, 'notes/saisie_notes_simple.html', context)
 
 @login_required
 def sauvegarder_notes_guineen(request):
-    """Sauvegarder notes guinéen"""
+    """Sauvegarder notes guinéen - Notes mensuelles et compositions"""
     from django.http import JsonResponse
-    return JsonResponse({'success': True, 'message': 'Fonction en cours de développement'})
+    from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
+    from eleves.models import Eleve
+    import json
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        eleve_id = data.get('eleve_id')
+        matiere_id = data.get('matiere_id')
+        annee_scolaire = data.get('annee_scolaire')
+        notes_mois = data.get('notes_mois', {})  # Format: {mois: {note: X, absent: bool}}
+        compositions = data.get('compositions', {})  # Format: {compositionX: {note: X, absent: bool}}
+        
+        eleve = Eleve.objects.get(id=eleve_id)
+        matiere = MatiereNote.objects.get(id=matiere_id)
+        
+        # Utiliser l'année scolaire de la matière si non fournie
+        if not annee_scolaire:
+            annee_scolaire = matiere.classe.annee_scolaire
+        
+        saved_count = 0
+        updated_count = 0
+        
+        # Sauvegarder les notes mensuelles
+        for mois, note_data in notes_mois.items():
+            if note_data is not None:
+                try:
+                    note_value = note_data.get('note') if isinstance(note_data, dict) else note_data
+                    absent = note_data.get('absent', False) if isinstance(note_data, dict) else False
+                    
+                    if note_value is not None and note_value != '':
+                        note_decimal = Decimal(str(note_value))
+                        obj, created = NoteMensuelle.objects.update_or_create(
+                            eleve=eleve,
+                            matiere=matiere,
+                            mois=mois.upper(),
+                            annee_scolaire=annee_scolaire,
+                            defaults={
+                                'note': note_decimal,
+                                'absent': absent
+                            }
+                        )
+                        if created:
+                            saved_count += 1
+                        else:
+                            updated_count += 1
+                except (ValueError, InvalidOperation):
+                    continue
+        
+        # Sauvegarder les compositions
+        periode_mapping = {
+            'composition1': 'TRIMESTRE_1',
+            'composition2': 'TRIMESTRE_2',
+            'composition3': 'TRIMESTRE_3',
+        }
+        
+        for key, comp_data in compositions.items():
+            if comp_data is not None and key in periode_mapping:
+                try:
+                    note_value = comp_data.get('note') if isinstance(comp_data, dict) else comp_data
+                    absent = comp_data.get('absent', False) if isinstance(comp_data, dict) else False
+                    
+                    if note_value is not None and note_value != '':
+                        note_decimal = Decimal(str(note_value))
+                        obj, created = CompositionNote.objects.update_or_create(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode_mapping[key],
+                            annee_scolaire=annee_scolaire,
+                            defaults={
+                                'note': note_decimal,
+                                'absent': absent
+                            }
+                        )
+                        if created:
+                            saved_count += 1
+                        else:
+                            updated_count += 1
+                except (ValueError, InvalidOperation):
+                    continue
+        
+        # Invalider le cache des rangs
+        from django.core.cache import cache
+        try:
+            # Essayer d'invalider le cache avec pattern
+            cache_key = f"rangs_classe_{matiere.classe.id}_*"
+            if hasattr(cache, 'delete_pattern'):
+                cache.delete_pattern(cache_key)
+            else:
+                # Sinon, invalider les clés connues
+                for periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+                    cache.delete(f"rangs_classe_{matiere.classe.id}_periode_{periode}")
+        except Exception:
+            pass
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{saved_count} note(s) créée(s), {updated_count} mise(s) à jour',
+            'saved': saved_count,
+            'updated': updated_count
+        })
+        
+    except Eleve.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Élève non trouvé'}, status=404)
+    except MatiereNote.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Matière non trouvée'}, status=404)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 @login_required
 def imprimer_tableau_notes_pdf(request):
