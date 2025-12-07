@@ -833,63 +833,22 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
                 total_den += cc
         moyennes_classe_par_matiere[mat.id] = (total_num / total_den).quantize(Decimal('0.01')) if total_den > 0 else None
 
-    # Classement (rang): calculer la moyenne générale de tous les élèves
-    eleves_classe = Eleve.objects.filter(classe=classe).only('id')
-    moyennes_generales = []  # list of (eleve_id, moyenne_generale)
-    for e in eleves_classe:
-        # Filtrer par matières de la période (evaluation__classe n'existe pas)
-        notes_by_eval_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode=periode_longue)}
-        s_num = Decimal('0'); s_den = Decimal('0')
-        for mat in matieres:
-            evals = evals_by_matiere.get(mat.id, [])
-            # moyenne matière élève
-            num = Decimal('0'); den = Decimal('0')
-            for ev in evals:
-                nn = notes_by_eval_e.get(ev.id)
-                cc = Decimal(ev.coefficient or 1)
-                if not nn or nn.note is None:
-                    # Absence ou note manquante = 0
-                    num += Decimal('0') * cc
-                else:
-                    num += Decimal(nn.note) * cc
-                den += cc
-            if den > 0:
-                moy_mat_e = (num / den)
-                s_num += moy_mat_e * Decimal(mat.coefficient or 1)
-                s_den += Decimal(mat.coefficient or 1)
-        if s_den > 0:
-            mg = (s_num / s_den)
-        else:
-            mg = None
-        if mg is not None:
-            moyennes_generales.append((e.id, mg))
-    # Calculer les rangs avec calculer_rang_intelligent
-    from .calculs_intelligent import calculer_rang_intelligent
+    # IMPORTANT: Utiliser la source centralisée pour garantir la cohérence
+    # entre bulletins PDF, bulletins affichés et classements
+    from .utils_rangs import calculer_rangs_classe_periode
     
     rang = None
-    total_eleves_ayant_moyenne = len(moyennes_generales)
+    total_eleves_ayant_moyenne = 0
     
-    if moyennes_generales:
-        # Préparer les données pour calculer_rang_intelligent
-        moyennes_pour_rang = []
-        for eid, mg in moyennes_generales:
-            e_obj = eleves.get(id=eid)
-            moyennes_pour_rang.append({
-                'eleve_id': eid,
-                'prenom': e_obj.prenom,
-                'nom': e_obj.nom,
-                'sexe': getattr(e_obj, 'sexe', 'M'),
-                'moyenne': mg
-            })
+    if classe_note:
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode_longue, use_cache=False)
+        total_eleves_ayant_moyenne = len(rangs_dict)
         
-        # Calculer les rangs
-        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
-        
-        # Trouver le rang de notre élève
-        for r in resultats_rangs:
-            if r['eleve_id'] == eleve.id:
-                rang = r.get('rang_num')
-                break
+        rang_info = rangs_dict.get(eleve.id)
+        if rang_info:
+            rang = rang_info.get('rang_num')
+            # Utiliser la moyenne de la source centralisée pour cohérence
+            moyenne_generale = rang_info.get('moyenne', moyenne_generale)
 
     # Mention selon barème simple (modifiable)
     def mention_for(avg: Decimal | None) -> str:
@@ -1775,56 +1734,37 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
 
     moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
 
-    # Calcul du rang de l'élève dans la classe
+    # IMPORTANT: Utiliser la source centralisée pour garantir la cohérence
+    # entre bulletins PDF, bulletins affichés et classements
+    from .utils_rangs import calculer_rangs_classe_periode
+    from .models import ClasseNote
+    
+    # Trouver la ClasseNote correspondante
+    classe_note = ClasseNote.objects.filter(
+        nom=classe.nom,
+        annee_scolaire=classe.annee_scolaire,
+        ecole=classe.ecole
+    ).first()
+    
+    # Convertir le mois en période
+    mois_mapping = {
+        1: 'JANVIER', 2: 'FEVRIER', 3: 'MARS', 4: 'AVRIL', 5: 'MAI', 6: 'JUIN',
+        7: 'JUILLET', 8: 'AOUT', 9: 'SEPTEMBRE', 10: 'OCTOBRE', 11: 'NOVEMBRE', 12: 'DECEMBRE'
+    }
+    periode = mois_mapping.get(mois, 'OCTOBRE')
+    
     rang_str = "-"
     total_eleves = 0
-    # Récupérer tous les élèves de la classe
-    eleves_classe = Eleve.objects.filter(classe=classe).select_related('classe')
-    moyennes_classe = []
     
-    for e in eleves_classe:
-        somme_e = Decimal('0')
-        somme_coef_e = Decimal('0')
+    if classe_note:
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
+        total_eleves = len(rangs_dict)
         
-        for mat in matieres:
-            # Utiliser monthly_avg pour calculer la moyenne mensuelle
-            moy_mois_e = monthly_avg(e, mat, annee_scolaire, mois, mode='weighted')
-            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
-            moy_mois_e_calcul = moy_mois_e if moy_mois_e is not None else Decimal('0')
-            somme_e += moy_mois_e_calcul * Decimal(mat.coefficient or 1)
-            somme_coef_e += Decimal(mat.coefficient or 1)
-        
-        if somme_coef_e > 0:
-            moy_gen_e = (somme_e / somme_coef_e).quantize(Decimal('0.01'))
-            moyennes_classe.append((e.id, moy_gen_e))
-    
-    # Calculer les rangs avec calculer_rang_intelligent
-    from .calculs_intelligent import calculer_rang_intelligent
-    
-    total_eleves = len(moyennes_classe)
-    rang_str = "-"
-    
-    if moyennes_classe:
-        # Préparer les données pour calculer_rang_intelligent
-        moyennes_pour_rang = []
-        for eid, moy in moyennes_classe:
-            e_obj = eleves_classe.get(id=eid)
-            moyennes_pour_rang.append({
-                'eleve_id': eid,
-                'prenom': e_obj.prenom,
-                'nom': e_obj.nom,
-                'sexe': getattr(e_obj, 'sexe', 'M'),
-                'moyenne': moy
-            })
-        
-        # Calculer les rangs
-        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
-        
-        # Trouver le rang de notre élève
-        for r in resultats_rangs:
-            if r['eleve_id'] == eleve.id:
-                rang_str = r.get('rang', '-')
-                break
+        rang_info = rangs_dict.get(eleve.id)
+        if rang_info:
+            rang_str = rang_info.get('rang', '-')
+            # Utiliser la moyenne de la source centralisée pour cohérence
+            moyenne_generale = rang_info.get('moyenne', moyenne_generale)
 
     # PDF
     try:
@@ -3165,39 +3105,23 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
                 tden += cc
         moyennes_classe_par_matiere[mat.id] = (tnum/tden).quantize(Decimal('0.01')) if tden > 0 else None
 
-    # Classement annuel
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe), request.user, 'classe__ecole')
-    moyenne_generale_map: dict[int, Decimal] = {}
-    for e in eleves:
-        # Filtrer les notes par matières et par toutes les périodes trimestrielles
-        notes_e = {n.evaluation_id: n for n in NoteEleve.objects.filter(eleve=e, evaluation__matiere__in=[m.id for m in matieres], evaluation__periode__in=['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'])}
-        s_num = Decimal('0'); s_den = Decimal('0')
-        for mat in matieres:
-            evals = evals_by_matiere.get(mat.id, [])
-            num = Decimal('0'); den = Decimal('0')
-            for ev in evals:
-                nn = notes_e.get(ev.id)
-                if not nn or nn.note is None:
-                    continue
-                cc = Decimal(ev.coefficient or 1)
-                num += Decimal(nn.note) * cc
-                den += cc
-            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent (sans notes = 0)
-            moy_mat_e = (num/den) if den > 0 else Decimal('0')
-            s_num += moy_mat_e * Decimal(mat.coefficient or 1)
-            s_den += Decimal(mat.coefficient or 1)
-        if s_den > 0:
-            moyenne_generale_map[e.id] = (s_num / s_den).quantize(Decimal('0.01'))
-
-    # Classement (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
-    # Récupérer les matricules pour le tri secondaire
-    matricules_map = {e.id: e.matricule for e in eleves}
-    classement = sorted(
-        moyenne_generale_map.items(), 
-        key=lambda t: (-float(t[1]), matricules_map.get(t[0], ""))
-    )
-    rang_map: dict[int, int] = {eid: idx for idx, (eid, _) in enumerate(classement, start=1)}
-    rang = rang_map.get(eleve.id)
+    # IMPORTANT: Utiliser la source centralisée pour garantir la cohérence
+    # entre bulletins PDF, bulletins affichés et classements
+    from .utils_rangs import calculer_rangs_classe_periode
+    
+    rang = None
+    classement = []
+    
+    if classe_note:
+        # Utiliser ANNUEL_TRIM pour le bulletin annuel basé sur les trimestres
+        rangs_dict = calculer_rangs_classe_periode(classe_note, 'ANNUEL_TRIM', use_cache=False)
+        classement = list(rangs_dict.keys())
+        
+        rang_info = rangs_dict.get(eleve.id)
+        if rang_info:
+            rang = rang_info.get('rang_num')
+            # Utiliser la moyenne de la source centralisée pour cohérence
+            moyenne_generale = rang_info.get('moyenne', moyenne_generale)
 
     def mention_for(avg: Decimal | None) -> str:
         if avg is None:
