@@ -14,6 +14,7 @@ from .views_import import (
 )
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
+from .export_notes_complet import exporter_notes_complet_pdf, exporter_notes_complet_excel
 from .bulletin_public import bulletin_public_pdf
 from .export_statistiques_pdf import exporter_statistiques_pdf, exporter_conseils_pdf
 
@@ -77,6 +78,10 @@ urlpatterns = [
     # Export des résultats par classe
     path('exporter-resultats-pdf/', exporter_resultats_pdf, name='exporter_resultats_pdf'),
     path('exporter-resultats-excel/', exporter_resultats_excel, name='exporter_resultats_excel'),
+    
+    # Export complet des notes par matière
+    path('exporter-notes-complet-pdf/', exporter_notes_complet_pdf, name='exporter_notes_complet_pdf'),
+    path('exporter-notes-complet-excel/', exporter_notes_complet_excel, name='exporter_notes_complet_excel'),
     
     # Export des statistiques en PDF avec graphiques et recommandations
     path('exporter-statistiques-pdf/', exporter_statistiques_pdf, name='exporter_statistiques_pdf'),

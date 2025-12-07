@@ -210,12 +210,34 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4><i class="fas fa-table me-2"></i>{% if est_maternelle %}Tableau des Appréciations{% else %}Tableau Récapitulatif Complet{% endif %} - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
             <div class="btn-group gap-2">
-                <button class="btn btn-danger btn-sm" onclick="exporterResultatsPDF()">
-                    <i class="fas fa-file-pdf me-1"></i>Exporter PDF
-                </button>
-                <button class="btn btn-success btn-sm" onclick="exporterResultatsExcel()">
-                    <i class="fas fa-file-excel me-1"></i>Exporter Excel
-                </button>
+                <!-- Export complet avec toutes les notes par matière -->
+                <div class="dropdown">
+                    <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-table me-1"></i>Exporter Notes Complètes
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="exporterNotesCompletExcel(); return false;">
+                            <i class="fas fa-file-excel text-success me-2"></i>Excel (toutes les notes)
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterNotesCompletPDF(); return false;">
+                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF (toutes les notes)
+                        </a></li>
+                    </ul>
+                </div>
+                <!-- Export classement simple -->
+                <div class="dropdown">
+                    <button class="btn btn-warning btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-trophy me-1"></i>Exporter Classement
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="exporterResultatsExcel(); return false;">
+                            <i class="fas fa-file-excel text-success me-2"></i>Excel (classement)
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="exporterResultatsPDF(); return false;">
+                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF (classement)
+                        </a></li>
+                    </ul>
+                </div>
                 <button class="btn btn-outline-secondary btn-sm" onclick="imprimerTableauNotes()">
                     <i class="fas fa-print me-1"></i>Imprimer
                 </button>
@@ -635,6 +657,52 @@ function exporterResultatsExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+}
+
+// Fonction pour exporter les notes complètes en Excel (toutes les matières)
+function exporterNotesCompletExcel() {
+    const classeId = "{{ classe_selectionnee.id|default:'' }}";
+    const periodeSelect = document.getElementById('periode');
+    const periode = periodeSelect ? periodeSelect.value : 'OCTOBRE';
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    if (!periode) {
+        alert('Veuillez sélectionner une période');
+        return;
+    }
+    
+    let url = "{% url 'notes:exporter_notes_complet_excel' %}?classe_id=" + classeId + "&periode=" + encodeURIComponent(periode);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'notes_completes.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// Fonction pour exporter les notes complètes en PDF (toutes les matières)
+function exporterNotesCompletPDF() {
+    const classeId = "{{ classe_selectionnee.id|default:'' }}";
+    const periodeSelect = document.getElementById('periode');
+    const periode = periodeSelect ? periodeSelect.value : 'OCTOBRE';
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    if (!periode) {
+        alert('Veuillez sélectionner une période');
+        return;
+    }
+    
+    let url = "{% url 'notes:exporter_notes_complet_pdf' %}?classe_id=" + classeId + "&periode=" + encodeURIComponent(periode);
+    window.open(url, '_blank');
 }
 
 </script>
