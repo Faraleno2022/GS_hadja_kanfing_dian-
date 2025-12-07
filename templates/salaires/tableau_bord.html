@@ -244,8 +244,11 @@
                     <a href="{% url 'salaires:liste_enseignants' %}" class="btn btn-outline-primary quick-action-btn">
                         <i class="fas fa-users"></i> Gérer les Enseignants
                     </a>
-                    <a href="{% url 'salaires:liste_presences' %}" class="btn btn-success quick-action-btn">
-                        <i class="fas fa-user-check"></i> Pointage des Présences
+                    <a href="{% url 'salaires:pointer_presence' %}" class="btn btn-success quick-action-btn">
+                        <i class="fas fa-user-check"></i> Pointer Présence
+                    </a>
+                    <a href="{% url 'salaires:liste_presences' %}" class="btn btn-outline-success quick-action-btn">
+                        <i class="fas fa-list-alt"></i> Voir les Pointages
                     </a>
                     <a href="{% url 'salaires:etats_salaire' %}" class="btn btn-outline-success quick-action-btn">
                         <i class="fas fa-calculator"></i> Calculer les Salaires
