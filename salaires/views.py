@@ -1060,49 +1060,51 @@ def fiche_paie_pdf(request, etat_id):
     except Exception:
         pass
 
-    # Titre - Nom de l'école centré + coordonnées
+    # En-tête: Nom de l'école et coordonnées (à droite du logo)
+    y_header = height - 2*cm
     try:
-        p.setFont('Helvetica-Bold', 14)
-        p.drawCentredString(width/2, height-2.2*cm, f"FICHE DE PAIE – {etat.periode.mois:02d}/{etat.periode.annee}")
-        # Nom d'école et coordonnées sous le titre
         if ecole_fp is not None:
-            yinfo = height - 2.9*cm
-            p.setFont('Helvetica-Bold', 11)
-            p.drawCentredString(width/2, yinfo, f"{getattr(ecole_fp, 'nom', '')}")
+            # Nom de l'école en gras
+            p.setFont('Helvetica-Bold', 14)
+            p.drawString(6*cm, y_header, f"{getattr(ecole_fp, 'nom', '')}")
+            y_header -= 0.5*cm
+            
+            # Coordonnées en plus petit
             p.setFont('Helvetica', 9)
-            yinfo -= 12
             adr = getattr(ecole_fp, 'adresse', '') or ''
             tel = getattr(ecole_fp, 'telephone', '') or ''
             email = getattr(ecole_fp, 'email', '') or ''
             dirc = getattr(ecole_fp, 'directeur', '') or ''
+            
             if adr:
-                p.drawCentredString(width/2, yinfo, f"Adresse: {adr}")
-                yinfo -= 12
-            # Afficher téléphone et email sur des lignes séparées
+                p.drawString(6*cm, y_header, f"Adresse: {adr}")
+                y_header -= 0.4*cm
             if tel:
-                p.drawCentredString(width/2, yinfo, f"Tél: {tel}")
-                yinfo -= 12
+                p.drawString(6*cm, y_header, f"Tél: {tel}")
+                y_header -= 0.4*cm
             if email:
-                p.drawCentredString(width/2, yinfo, f"Email: {email}")
-                yinfo -= 12
+                p.drawString(6*cm, y_header, f"Email: {email}")
+                y_header -= 0.4*cm
             if dirc:
-                p.drawCentredString(width/2, yinfo, f"Directeur: {dirc}")
+                p.drawString(6*cm, y_header, f"Directeur: {dirc}")
     except Exception:
         pass
     
-    # Sous-titre FICHE DE PAIE centré
+    # Ligne de séparation
+    p.setStrokeColor(colors.grey)
+    p.line(2*cm, height - 4.5*cm, width - 2*cm, height - 4.5*cm)
+    
+    # Titre FICHE DE PAIE centré
     p.setFont("Helvetica-Bold", 16)
-    fiche_text = "FICHE DE PAIE"
-    fiche_width = p.stringWidth(fiche_text, "Helvetica-Bold", 16)
-    p.drawString((width - fiche_width) / 2, height-3*cm, fiche_text)
+    fiche_text = f"FICHE DE PAIE - {etat.periode.mois:02d}/{etat.periode.annee}"
+    p.drawCentredString(width/2, height - 5.2*cm, fiche_text)
     
     # Informations période
-    p.setFont("Helvetica", 12)
-    p.drawString(6*cm, height-3.5*cm, f"Période: {etat.periode.mois}/{etat.periode.annee}")
-    p.drawString(6*cm, height-4*cm, f"Date d'édition: {datetime.now().strftime('%d/%m/%Y')}")
+    p.setFont("Helvetica", 10)
+    p.drawString(2*cm, height - 5.8*cm, f"Date d'édition: {datetime.now().strftime('%d/%m/%Y')}")
     
     # Informations enseignant
-    y_pos = height - 6*cm
+    y_pos = height - 6.5*cm
     p.setFont("Helvetica-Bold", 12)
     p.drawString(2*cm, y_pos, "INFORMATIONS ENSEIGNANT")
     
