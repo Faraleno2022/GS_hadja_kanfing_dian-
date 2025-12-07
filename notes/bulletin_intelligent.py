@@ -818,7 +818,9 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c.drawCentredString(start_x + col_width/2, y - 0.35*cm, "MOYENNE GÉNÉRALE")
     c.setFont("Helvetica-Bold", 16)
     moy_gen = bulletin_data.get('moyenne_generale')
-    moy_str = f"{moy_gen:.2f}/20" if moy_gen else '-'
+    # Primaire = notation sur 10, Secondaire = notation sur 20
+    base_notation = 10 if est_primaire else 20
+    moy_str = f"{moy_gen:.2f}/{base_notation}" if moy_gen else '-'
     c.drawCentredString(start_x + col_width/2, y - 1*cm, moy_str)
     
     # RANG
@@ -2160,7 +2162,9 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     c.drawCentredString(start_x + col_width/2, y - 0.35*cm, "MOYENNE GÉNÉRALE")
     c.setFont("Helvetica-Bold", 16)
     moy_gen = bulletin_data.get('moyenne_generale')
-    moy_str = f"{moy_gen:.2f}/20" if moy_gen else '-'
+    # Primaire = notation sur 10, Secondaire = notation sur 20
+    base_notation = 10 if est_primaire else 20
+    moy_str = f"{moy_gen:.2f}/{base_notation}" if moy_gen else '-'
     c.drawCentredString(start_x + col_width/2, y - 1*cm, moy_str)
     
     # RANG

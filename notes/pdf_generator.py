@@ -11,6 +11,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
 from django.http import HttpResponse
 import os
+from .calculs_moyennes import detecter_niveau_scolaire
 
 
 def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
@@ -73,6 +74,11 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     elements.append(info_table)
     elements.append(Spacer(1, 0.5*cm))
     
+    # Détecter le niveau scolaire pour la notation
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    base_notation = 10 if est_primaire else 20
+    
     # Tableau des notes
     notes_data = [['Matière', 'Coef.', 'Moyenne', 'Points', 'Appréciation']]
     
@@ -96,7 +102,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
         notes_data.append([
             note_matiere['matiere'].nom,
             str(coef),
-            f"{moyenne}/20",
+            f"{moyenne}/{base_notation}",
             str(points),
             appreciation
         ])
@@ -117,7 +123,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     notes_data.append([
         'MOYENNE GÉNÉRALE',
         str(eleve_data['total_coefficients']),
-        f"{moyenne_generale}/20",
+        f"{moyenne_generale}/{base_notation}",
         str(eleve_data['total_points']),
         appreciation_generale
     ])
@@ -255,6 +261,11 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     elements.append(info_table)
     elements.append(Spacer(1, 0.5*cm))
     
+    # Détecter le niveau scolaire pour la notation
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    base_notation = 10 if est_primaire else 20
+    
     # Tableau des notes
     notes_data = [['Matière', 'Coef.', 'Moyenne', 'Points', 'Appréciation']]
     
@@ -278,7 +289,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
         notes_data.append([
             note_matiere['matiere'].nom,
             str(coef),
-            f"{moyenne}/20",
+            f"{moyenne}/{base_notation}",
             str(points),
             appreciation
         ])
@@ -299,7 +310,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     notes_data.append([
         'MOYENNE GÉNÉRALE',
         str(eleve_data['total_coefficients']),
-        f"{moyenne_generale}/20",
+        f"{moyenne_generale}/{base_notation}",
         str(eleve_data['total_points']),
         appreciation_generale
     ])
