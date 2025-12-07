@@ -113,6 +113,7 @@ INSTALLED_APPS = [
     'bus',
     'notes',
     'abonnements',
+    'chatbot',
 ]
 
 # =================== Middleware ===================

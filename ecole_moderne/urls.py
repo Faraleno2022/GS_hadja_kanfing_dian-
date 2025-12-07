@@ -39,6 +39,7 @@ urlpatterns = [
     path('bus/', include('bus.urls')),
     path('notes/', include('notes.urls')),
     path('abonnements/', include('abonnements.urls')),
+    path('chatbot/', include('chatbot.urls')),
 ]
 
 # Servir les fichiers STATIC et MEDIA en développement

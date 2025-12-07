@@ -264,6 +264,10 @@
                                 <li><a class="dropdown-item" href="{% url 'notes:bulletin_guineen' %}">
                                     <i class="fas fa-graduation-cap text-success me-1"></i>Bulletin Guinéen
                                 </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{% url 'chatbot:home' %}">
+                                    <i class="fas fa-robot text-info me-1"></i>Chatbot Révision
+                                </a></li>
                             </ul>
                         </li>
                         {% endif %}
@@ -361,6 +365,11 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'notes:tableau_bord' %}">
                                 <i class="fas fa-book me-1"></i>Notes
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'chatbot:home' %}">
+                                <i class="fas fa-robot me-1"></i>Chatbot
                             </a>
                         </li>
                     {% endif %}
