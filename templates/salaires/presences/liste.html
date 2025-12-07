@@ -147,7 +147,7 @@
                             </td>
                             <td>{{ presence.heure_arrivee|time:"H:i"|default:"-" }}</td>
                             <td>{{ presence.heure_depart|time:"H:i"|default:"-" }}</td>
-                            <td>{{ presence.heures_travaillees|default:"-" }}h</td>
+                            <td>{% if presence.heures_travaillees %}{{ presence.heures_travaillees|floatformat:2 }}h{% else %}-{% endif %}</td>
                             <td>
                                 {% if presence.justifie %}
                                 <i class="fas fa-check-circle text-success"></i>
