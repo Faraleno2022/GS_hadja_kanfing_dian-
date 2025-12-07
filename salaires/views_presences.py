@@ -80,11 +80,18 @@ def pointer_presence(request):
     user_school_obj = user_school(request.user)
     
     if request.method == 'POST':
-        date_pointage = request.POST.get('date')
+        date_pointage_str = request.POST.get('date')
         enseignants_ids = request.POST.getlist('enseignants')
         
-        if not date_pointage or not enseignants_ids:
+        if not date_pointage_str or not enseignants_ids:
             messages.error(request, "Veuillez sélectionner une date et au moins un enseignant.")
+            return redirect('salaires:pointer_presence')
+        
+        # Convertir la date string en objet date
+        try:
+            date_pointage = datetime.strptime(date_pointage_str, '%Y-%m-%d').date()
+        except ValueError:
+            messages.error(request, "Format de date invalide.")
             return redirect('salaires:pointer_presence')
         
         count_created = 0
@@ -92,11 +99,34 @@ def pointer_presence(request):
         
         for ens_id in enseignants_ids:
             statut = request.POST.get(f'statut_{ens_id}', 'PRESENT')
-            heure_arrivee = request.POST.get(f'heure_arrivee_{ens_id}') or None
-            heure_depart = request.POST.get(f'heure_depart_{ens_id}') or None
-            heures_travaillees = request.POST.get(f'heures_travaillees_{ens_id}') or None
+            heure_arrivee_str = request.POST.get(f'heure_arrivee_{ens_id}') or None
+            heure_depart_str = request.POST.get(f'heure_depart_{ens_id}') or None
+            heures_travaillees_str = request.POST.get(f'heures_travaillees_{ens_id}') or None
             observations = request.POST.get(f'observations_{ens_id}', '')
             justifie = request.POST.get(f'justifie_{ens_id}') == 'on'
+            
+            # Convertir les heures en objets time
+            heure_arrivee = None
+            heure_depart = None
+            heures_travaillees = None
+            
+            if heure_arrivee_str:
+                try:
+                    heure_arrivee = datetime.strptime(heure_arrivee_str, '%H:%M').time()
+                except ValueError:
+                    pass
+            
+            if heure_depart_str:
+                try:
+                    heure_depart = datetime.strptime(heure_depart_str, '%H:%M').time()
+                except ValueError:
+                    pass
+            
+            if heures_travaillees_str:
+                try:
+                    heures_travaillees = Decimal(heures_travaillees_str)
+                except:
+                    pass
             
             # Créer ou mettre à jour la présence
             presence, created = PresenceEnseignant.objects.update_or_create(
@@ -106,7 +136,7 @@ def pointer_presence(request):
                     'statut': statut,
                     'heure_arrivee': heure_arrivee,
                     'heure_depart': heure_depart,
-                    'heures_travaillees': heures_travaillees if heures_travaillees else None,
+                    'heures_travaillees': heures_travaillees,
                     'observations': observations,
                     'justifie': justifie,
                     'pointe_par': request.user,
