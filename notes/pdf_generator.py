@@ -82,22 +82,40 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     # Tableau des notes
     notes_data = [['Matière', 'Coef.', 'Moyenne', 'Points', 'Appréciation']]
     
+    # Fonction pour obtenir l'appréciation selon le niveau
+    def get_appreciation(note, est_primaire):
+        if est_primaire:
+            # Seuils pour primaire (sur 10)
+            if note >= 8:
+                return 'Très bien'
+            elif note >= 7:
+                return 'Bien'
+            elif note >= 6:
+                return 'Assez bien'
+            elif note >= 5:
+                return 'Passable'
+            else:
+                return 'Insuffisant'
+        else:
+            # Seuils pour secondaire (sur 20)
+            if note >= 16:
+                return 'Excellent'
+            elif note >= 14:
+                return 'Très bien'
+            elif note >= 12:
+                return 'Bien'
+            elif note >= 10:
+                return 'Assez bien'
+            else:
+                return 'Insuffisant'
+    
     for note_matiere in eleve_data['notes_matieres']:
         moyenne = note_matiere['moyenne']
         coef = note_matiere['coefficient']
         points = round(moyenne * coef, 2)
         
-        # Appréciation
-        if moyenne >= 16:
-            appreciation = 'Excellent'
-        elif moyenne >= 14:
-            appreciation = 'Très bien'
-        elif moyenne >= 12:
-            appreciation = 'Bien'
-        elif moyenne >= 10:
-            appreciation = 'Assez bien'
-        else:
-            appreciation = 'Insuffisant'
+        # Appréciation adaptée au niveau
+        appreciation = get_appreciation(moyenne, est_primaire)
         
         notes_data.append([
             note_matiere['matiere'].nom,
@@ -109,16 +127,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     
     # Ligne de total
     moyenne_generale = eleve_data['moyenne_generale']
-    if moyenne_generale >= 16:
-        appreciation_generale = 'Excellent'
-    elif moyenne_generale >= 14:
-        appreciation_generale = 'Très bien'
-    elif moyenne_generale >= 12:
-        appreciation_generale = 'Bien'
-    elif moyenne_generale >= 10:
-        appreciation_generale = 'Assez bien'
-    else:
-        appreciation_generale = 'Insuffisant'
+    appreciation_generale = get_appreciation(moyenne_generale, est_primaire)
     
     notes_data.append([
         'MOYENNE GÉNÉRALE',
@@ -269,22 +278,40 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     # Tableau des notes
     notes_data = [['Matière', 'Coef.', 'Moyenne', 'Points', 'Appréciation']]
     
+    # Fonction pour obtenir l'appréciation selon le niveau
+    def get_appreciation(note, est_primaire):
+        if est_primaire:
+            # Seuils pour primaire (sur 10)
+            if note >= 8:
+                return 'Très bien'
+            elif note >= 7:
+                return 'Bien'
+            elif note >= 6:
+                return 'Assez bien'
+            elif note >= 5:
+                return 'Passable'
+            else:
+                return 'Insuffisant'
+        else:
+            # Seuils pour secondaire (sur 20)
+            if note >= 16:
+                return 'Excellent'
+            elif note >= 14:
+                return 'Très bien'
+            elif note >= 12:
+                return 'Bien'
+            elif note >= 10:
+                return 'Assez bien'
+            else:
+                return 'Insuffisant'
+    
     for note_matiere in eleve_data['notes_matieres']:
         moyenne = note_matiere['moyenne']
         coef = note_matiere['coefficient']
         points = round(moyenne * coef, 2)
         
-        # Appréciation
-        if moyenne >= 16:
-            appreciation = 'Excellent'
-        elif moyenne >= 14:
-            appreciation = 'Très bien'
-        elif moyenne >= 12:
-            appreciation = 'Bien'
-        elif moyenne >= 10:
-            appreciation = 'Assez bien'
-        else:
-            appreciation = 'Insuffisant'
+        # Appréciation adaptée au niveau
+        appreciation = get_appreciation(moyenne, est_primaire)
         
         notes_data.append([
             note_matiere['matiere'].nom,
@@ -296,16 +323,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     
     # Ligne de total
     moyenne_generale = eleve_data['moyenne_generale']
-    if moyenne_generale >= 16:
-        appreciation_generale = 'Excellent'
-    elif moyenne_generale >= 14:
-        appreciation_generale = 'Très bien'
-    elif moyenne_generale >= 12:
-        appreciation_generale = 'Bien'
-    elif moyenne_generale >= 10:
-        appreciation_generale = 'Assez bien'
-    else:
-        appreciation_generale = 'Insuffisant'
+    appreciation_generale = get_appreciation(moyenne_generale, est_primaire)
     
     notes_data.append([
         'MOYENNE GÉNÉRALE',
