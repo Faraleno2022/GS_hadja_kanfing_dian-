@@ -499,7 +499,7 @@ class PresenceEnseignant(models.Model):
     
     def save(self, *args, **kwargs):
         # Calcul automatique des heures travaillées si arrivée et départ fournis
-        if self.heure_arrivee and self.heure_depart and not self.heures_travaillees:
+        if self.heure_arrivee and self.heure_depart:
             from datetime import datetime, timedelta
             arrivee = datetime.combine(self.date, self.heure_arrivee)
             depart = datetime.combine(self.date, self.heure_depart)
@@ -509,7 +509,12 @@ class PresenceEnseignant(models.Model):
                 depart += timedelta(days=1)
             
             delta = depart - arrivee
-            self.heures_travaillees = Decimal(str(delta.total_seconds() / 3600))
+            # Toujours recalculer les heures travaillées
+            self.heures_travaillees = Decimal(str(round(delta.total_seconds() / 3600, 2)))
+        elif not self.heure_arrivee or not self.heure_depart:
+            # Si pas d'heures d'arrivée/départ, mettre à 0 si non défini
+            if self.heures_travaillees is None:
+                self.heures_travaillees = Decimal('0')
         
         super().save(*args, **kwargs)
     
