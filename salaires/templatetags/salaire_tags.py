@@ -28,3 +28,10 @@ def stats_periode(periode):
         'payes': etats.filter(paye=True).count(),
         'en_attente': etats.filter(valide=False, paye=False).count(),
     }
+
+@register.filter
+def get_item(dictionary, key):
+    """Récupère un élément d'un dictionnaire par sa clé"""
+    if dictionary is None:
+        return None
+    return dictionary.get(key)
