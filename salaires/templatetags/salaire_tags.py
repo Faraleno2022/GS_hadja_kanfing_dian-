@@ -35,3 +35,21 @@ def get_item(dictionary, key):
     if dictionary is None:
         return None
     return dictionary.get(key)
+
+@register.filter
+def sum_attr(items, attr):
+    """Somme les valeurs d'un attribut dans une liste de dictionnaires"""
+    if not items:
+        return 0
+    total = 0
+    for item in items:
+        if isinstance(item, dict):
+            val = item.get(attr, 0)
+        else:
+            val = getattr(item, attr, 0)
+        if val is not None:
+            try:
+                total += val
+            except (TypeError, ValueError):
+                pass
+    return total
