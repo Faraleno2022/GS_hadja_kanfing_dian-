@@ -31,7 +31,8 @@ from ecole_moderne.security_decorators import delete_permission_required, requir
 # Importer les vues de présence
 from .views_presences import (
     liste_presences, pointer_presence, modifier_presence,
-    supprimer_presence, rapport_presences, export_presences_csv
+    supprimer_presence, rapport_presences, export_presences_csv,
+    export_presences_excel
 )
 
 def _ecole_utilisateur(request):

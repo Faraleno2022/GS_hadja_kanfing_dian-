@@ -48,4 +48,5 @@ urlpatterns = [
     path('presences/<int:presence_id>/supprimer/', views.supprimer_presence, name='supprimer_presence'),
     path('presences/rapport/', views.rapport_presences, name='rapport_presences'),
     path('presences/export/csv/', views.export_presences_csv, name='export_presences_csv'),
+    path('presences/export/excel/', views.export_presences_excel, name='export_presences_excel'),
 ]
