@@ -251,6 +251,12 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 TWILIO_ENABLED = os.getenv("TWILIO_ENABLED", "false").lower() in {"1", "true", "yes"}
 PHONE_VERIFY_TTL_SECONDS = int(os.environ.get('PHONE_VERIFY_TTL_SECONDS', 4 * 3600))
 
+# =================== Configuration IA Chatbot ===================
+# Token HuggingFace pour l'API IA (obtenir sur https://huggingface.co/settings/tokens)
+HF_TOKEN = os.environ.get('HF_TOKEN', '')
+# Modèle à utiliser (DeepSeek via HuggingFace Router)
+HF_MODEL = os.environ.get('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
+
 # =================== Paramètres de sécurité ===================
 BLOCK_SUPERUSER_PUBLIC_LOGIN = os.environ.get('BLOCK_SUPERUSER_PUBLIC_LOGIN', 'true').lower() == 'true'
 ADMIN_WHITELIST_IPS = [ip.strip() for ip in os.environ.get('ADMIN_WHITELIST_IPS', '').split(',') if ip.strip()]

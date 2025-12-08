@@ -1,12 +1,16 @@
 """
 Moteur de recherche pour le chatbot éducatif
 Recherche dans les documents uploadés pour répondre aux questions
+Intégration IA avec DeepSeek via HuggingFace
 """
 import re
 import unicodedata
+import logging
 from difflib import SequenceMatcher
 from django.db.models import Q
 from .models import DocumentCours, RecherchePopulaire
+
+logger = logging.getLogger(__name__)
 
 
 def normaliser_texte(texte):
@@ -171,26 +175,68 @@ def rechercher_dans_documents(question, matiere_id=None, niveau=None, limite=5):
     return resultats[:limite]
 
 
-def generer_reponse(question, resultats):
+def generer_reponse(question, resultats, utiliser_ia=True):
     """
     Génère une réponse formatée basée sur les résultats de recherche
+    Utilise l'IA DeepSeek si disponible
     
     Args:
         question: La question originale
         resultats: Liste des résultats de recherche
+        utiliser_ia: Activer/désactiver l'IA (défaut: True)
     
     Returns:
         Dictionnaire avec la réponse et les métadonnées
     """
+    # Préparer les contextes des documents
+    contextes = []
+    for res in resultats[:3]:
+        doc = res['document']
+        passage = res['passage']
+        if passage:
+            contextes.append(f"[{doc.titre} - {doc.matiere.nom}]\n{passage}")
+    
+    # Essayer d'utiliser l'IA
+    reponse_ia = None
+    if utiliser_ia and (resultats or True):  # Toujours essayer l'IA
+        try:
+            from .ai_service import generer_reponse_ia
+            matiere = resultats[0]['document'].matiere.nom if resultats else None
+            reponse_ia = generer_reponse_ia(question, contextes, matiere)
+        except Exception as e:
+            logger.warning(f"Erreur IA, fallback mode classique: {e}")
+    
+    # Si l'IA a répondu
+    if reponse_ia:
+        confiance = 90 if resultats else 70
+        
+        # Ajouter les sources si disponibles
+        if resultats:
+            sources = "\n\n📚 **Sources consultées:**\n"
+            for res in resultats[:3]:
+                doc = res['document']
+                sources += f"- {doc.titre} ({doc.matiere.nom})\n"
+            reponse_ia += sources
+        
+        return {
+            'reponse': reponse_ia,
+            'documents': [r['document'] for r in resultats] if resultats else [],
+            'confiance': confiance,
+            'suggestions': generer_suggestions(question, resultats),
+            'mode': 'ia'
+        }
+    
+    # Fallback: Mode classique sans IA
     if not resultats:
         return {
             'reponse': "Je n'ai pas trouvé d'information pertinente dans les documents disponibles pour répondre à votre question. Essayez de reformuler votre question ou de sélectionner une matière spécifique.",
             'documents': [],
             'confiance': 0,
-            'suggestions': []
+            'suggestions': [],
+            'mode': 'classique'
         }
     
-    # Construire la réponse
+    # Construire la réponse classique
     meilleur_resultat = resultats[0]
     
     if meilleur_resultat['score'] >= 20:
@@ -221,7 +267,8 @@ def generer_reponse(question, resultats):
         'reponse': reponse,
         'documents': [r['document'] for r in resultats],
         'confiance': confiance,
-        'suggestions': generer_suggestions(question, resultats)
+        'suggestions': generer_suggestions(question, resultats),
+        'mode': 'classique'
     }
 
 
