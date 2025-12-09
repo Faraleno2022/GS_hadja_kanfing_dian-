@@ -212,13 +212,14 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
             return "Insuffisant"
 
 
-def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = None) -> str:
+def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = None, niveau: str = 'SECONDAIRE') -> str:
     """
     Génère une appréciation dynamique et personnalisée selon la moyenne
     
     Args:
         moyenne: Moyenne de l'élève
         prenom: Prénom de l'élève pour personnaliser
+        niveau: 'PRIMAIRE' (sur 10), 'SECONDAIRE' (sur 20), ou 'MATERNELLE'
         
     Returns:
         Appréciation du conseil de classe
@@ -229,27 +230,33 @@ def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = 
     # Personnalisation avec le prénom si disponible
     nom = prenom if prenom else "L'élève"
     
-    if moyenne >= Decimal('18.5'):
+    # Pour le primaire (notation sur 10), convertir en équivalent sur 20
+    if niveau == 'PRIMAIRE':
+        moyenne_ref = moyenne * 2  # Convertir sur 20 pour comparer
+    else:
+        moyenne_ref = moyenne
+    
+    if moyenne_ref >= Decimal('18.5'):
         return f"Excellent travail ! {nom} est brillant(e) et exemplaire. Le conseil félicite chaleureusement."
-    elif moyenne >= Decimal('17'):
+    elif moyenne_ref >= Decimal('17'):
         return f"Travail remarquable ! {nom} fait preuve d'excellence. Félicitations du conseil."
-    elif moyenne >= Decimal('16.5'):
+    elif moyenne_ref >= Decimal('16.5'):
         return f"Très bon travail. {nom} est un(e) élève sérieux(se) et appliqué(e). Félicitations."
-    elif moyenne >= Decimal('15'):
+    elif moyenne_ref >= Decimal('15'):
         return f"Bon travail. {nom} obtient de bons résultats. Continuez ainsi."
-    elif moyenne >= Decimal('14.5'):
+    elif moyenne_ref >= Decimal('14.5'):
         return f"Travail satisfaisant. {nom} a de bonnes capacités. Persévérez."
-    elif moyenne >= Decimal('13'):
+    elif moyenne_ref >= Decimal('13'):
         return f"Résultats corrects. {nom} peut progresser avec plus de régularité."
-    elif moyenne >= Decimal('12.5'):
+    elif moyenne_ref >= Decimal('12.5'):
         return f"Résultats moyens mais encourageants. {nom} doit intensifier ses efforts."
-    elif moyenne >= Decimal('11'):
+    elif moyenne_ref >= Decimal('11'):
         return f"Résultats fragiles. {nom} doit travailler davantage pour progresser."
-    elif moyenne >= Decimal('10'):
+    elif moyenne_ref >= Decimal('10'):
         return f"Résultats justes passables. {nom} doit redoubler d'efforts dans toutes les matières."
-    elif moyenne >= Decimal('9'):
+    elif moyenne_ref >= Decimal('9'):
         return f"Résultats faibles et préoccupants. Un travail soutenu est indispensable."
-    elif moyenne >= Decimal('7'):
+    elif moyenne_ref >= Decimal('7'):
         return f"Résultats insuffisants. {nom} doit impérativement se ressaisir."
     else:
         return f"Résultats très insuffisants. Une remise en question complète est nécessaire."

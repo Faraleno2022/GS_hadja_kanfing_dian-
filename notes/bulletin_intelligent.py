@@ -195,7 +195,7 @@ class CalculateurBulletinIntelligent:
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
             'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
-            'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom) if moyenne_generale else None,
+            'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom, self.niveau) if moyenne_generale else None,
             'rang': rang,
             'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
         }

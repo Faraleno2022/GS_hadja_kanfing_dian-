@@ -632,13 +632,14 @@ def obtenir_mention_intelligente(moyenne, niveau='SECONDAIRE'):
             return "Insuffisant"
 
 
-def obtenir_appreciation_intelligente(moyenne, prenom):
+def obtenir_appreciation_intelligente(moyenne, prenom, niveau='SECONDAIRE'):
     """
     Génère une appréciation personnalisée selon la moyenne
     
     Args:
         moyenne: float ou Decimal
         prenom: str
+        niveau: 'PRIMAIRE' (sur 10), 'SECONDAIRE' (sur 20), ou 'MATERNELLE'
     
     Returns:
         str: Appréciation personnalisée
@@ -648,17 +649,23 @@ def obtenir_appreciation_intelligente(moyenne, prenom):
     
     moyenne = float(moyenne)
     
-    if moyenne >= 18.5:
+    # Pour le primaire (notation sur 10), convertir en équivalent sur 20
+    if niveau == 'PRIMAIRE':
+        moyenne_ref = moyenne * 2
+    else:
+        moyenne_ref = moyenne
+    
+    if moyenne_ref >= 18.5:
         return f"Excellent travail {prenom}! Continue sur cette lancée exceptionnelle."
-    elif moyenne >= 16.5:
+    elif moyenne_ref >= 16.5:
         return f"Très bon travail {prenom}! Tes efforts sont remarquables."
-    elif moyenne >= 14.5:
+    elif moyenne_ref >= 14.5:
         return f"Bon travail {prenom}! Continue ainsi."
-    elif moyenne >= 12.5:
+    elif moyenne_ref >= 12.5:
         return f"Travail assez satisfaisant {prenom}. Tu peux faire mieux."
-    elif moyenne >= 10.0:
+    elif moyenne_ref >= 10.0:
         return f"{prenom}, travail passable. Plus d'efforts sont nécessaires."
-    elif moyenne >= 9.0:
+    elif moyenne_ref >= 9.0:
         return f"{prenom}, résultats faibles. Il faut redoubler d'efforts."
     else:
         return f"{prenom}, résultats insuffisants. Un travail sérieux s'impose."

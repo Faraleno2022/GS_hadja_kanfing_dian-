@@ -7463,16 +7463,16 @@ def bulletin_dynamique(request):
                                 moyenne_dec = _Dec(str(moyenne_eleve))
                                 bulletin_data['moyenne_generale'] = moyenne_eleve
                                 bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
-                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom, niveau_detecte)
                                 bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
                             else:
                                 bulletin_data['mention'] = None
-                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom)
+                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom, niveau_detecte)
                                 bulletin_data['rang'] = "-"
                         else:
                             moyenne_dec = _Dec(str(moyenne_generale))
                             bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
-                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom)
+                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom, niveau_detecte)
                             bulletin_data['rang'] = "-"
     
     # Déterminer est_maternelle et est_primaire pour le contexte
