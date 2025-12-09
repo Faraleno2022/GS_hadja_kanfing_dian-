@@ -730,25 +730,49 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     table = Table(data, colWidths=col_widths)
     
+    # Adapter la taille de police selon le nombre de matières pour éviter le chevauchement
+    nb_matieres = len(data) - 2  # -2 pour en-tête et ligne TOTAL
+    if nb_matieres > 15:
+        # Beaucoup de matières: police très petite et padding réduit
+        font_header = 7
+        font_body = 6
+        font_total = 7
+        padding_top = 2
+        padding_bottom = 2
+    elif nb_matieres > 12:
+        # Nombreuses matières: police petite
+        font_header = 8
+        font_body = 7
+        font_total = 8
+        padding_top = 3
+        padding_bottom = 3
+    else:
+        # Normal
+        font_header = 9
+        font_body = 8
+        font_total = 9
+        padding_top = 4
+        padding_bottom = 4
+    
     # Style du tableau - base
     style = [
         # En-tête bleu
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 0), (-1, 0), font_header),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('TOPPADDING', (0, 0), (-1, 0), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), padding_bottom + 2),
+        ('TOPPADDING', (0, 0), (-1, 0), padding_top + 2),
         
         # Corps
         ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -2), 8),
+        ('FONTSIZE', (0, 1), (-1, -2), font_body),
         ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ('LEFTPADDING', (0, 1), (0, -1), 5),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-        ('TOPPADDING', (0, 1), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), padding_bottom),
+        ('TOPPADDING', (0, 1), (-1, -1), padding_top),
         
         # Grille
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
@@ -760,7 +784,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
         ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9),
+        ('FONTSIZE', (0, -1), (-1, -1), font_total),
     ]
     
     # Colonnes MOY et PTS avec couleurs (position varie selon le système et le niveau)
@@ -831,8 +855,10 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c.setFont("Helvetica-Bold", 8)
     c.drawCentredString(rang_x + col_width/2, y - 0.35*cm, "RANG")
     c.setFont("Helvetica-Bold", 16)
-    rang = bulletin_data.get('rang', '-')
-    c.drawCentredString(rang_x + col_width/2, y - 1*cm, str(rang))
+    rang = bulletin_data.get('rang')
+    # Afficher "-" si rang est None ou vide
+    rang_str = str(rang) if rang is not None else '-'
+    c.drawCentredString(rang_x + col_width/2, y - 1*cm, rang_str)
     
     # MENTION (avec badge coloré)
     mention_x = start_x + 2*(col_width + 0.2*cm)
