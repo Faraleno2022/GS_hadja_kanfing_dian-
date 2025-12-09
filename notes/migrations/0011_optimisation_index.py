@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('eleves', '0009_alter_eleve_date_naissance'),
-        ('notes', '0011_classement'),
+        ('notes', '0010_classement'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
