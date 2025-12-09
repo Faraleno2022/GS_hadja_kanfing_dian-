@@ -884,7 +884,13 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Oblique", 8)
-    appreciation = bulletin_data.get('appreciation') or 'Bon travail. Continuez vos efforts.'
+    # Utiliser l'appréciation intelligente si non fournie
+    appreciation = bulletin_data.get('appreciation')
+    if not appreciation:
+        moyenne_gen = bulletin_data.get('moyenne_generale')
+        niveau = bulletin_data.get('niveau_scolaire', 'SECONDAIRE')
+        eleve_nom = bulletin_data.get('eleve', '').split()[0] if bulletin_data.get('eleve') else 'L\'élève'
+        appreciation = obtenir_appreciation_intelligente(moyenne_gen, eleve_nom, niveau) if moyenne_gen else 'Aucune note disponible pour cette période.'
     if appreciation and len(appreciation) > 100:
         appreciation = appreciation[:97] + '...'
     c.drawString(1.4*cm, y - 0.85*cm, appreciation)
@@ -971,7 +977,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         c.drawString(1.4*cm, y - 0.9*cm, "• Moyenne : Égale à la note du cours pour le système mensuel")
         c.drawString(1.4*cm, y - 1.2*cm, points_text)
     
-    c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
+    # Adapter les mentions selon le niveau scolaire
+    if est_primaire:
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Faible ≥4.5 | Insuffisant <4.5")
+    else:
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Faible ≥9 | Insuffisant <9")
     
     # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))
@@ -1642,19 +1652,22 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 else:
                     rang_formate = '-'
                 
+                moyenne_gen = details.get('moyenne_generale')
                 bulletin_data = {
                     'eleve': f"{eleve.prenom} {eleve.nom}",
                     'classe': classe_note.nom,
                     'periode': periode,
                     'system_type': system_type,
                     'matieres': matieres_data,
-                    'moyenne_generale': details.get('moyenne_generale'),
+                    'moyenne_generale': moyenne_gen,
                     'total_points': details.get('total_points'),
                     'total_coefficients': details.get('total_coefficients'),
                     'rang': rang_formate,
-                    'mention': obtenir_mention_intelligente(details.get('moyenne_generale'), niveau_scolaire),
+                    'mention': obtenir_mention_intelligente(moyenne_gen, niveau_scolaire),
+                    'appreciation': obtenir_appreciation_intelligente(moyenne_gen, eleve.prenom, niveau_scolaire) if moyenne_gen else None,
                     'matricule': eleve.matricule,
                     'total_eleves': total_eleves,
+                    'niveau_scolaire': niveau_scolaire,
                 }
             else:
                 # Fallback: calculer si pas dans le cache
@@ -2233,7 +2246,13 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Oblique", 8)
-    appreciation = bulletin_data.get('appreciation') or 'Bon travail. Continuez vos efforts.'
+    # Utiliser l'appréciation intelligente si non fournie
+    appreciation = bulletin_data.get('appreciation')
+    if not appreciation:
+        moyenne_gen = bulletin_data.get('moyenne_generale')
+        niveau = bulletin_data.get('niveau_scolaire', 'SECONDAIRE')
+        eleve_nom = bulletin_data.get('eleve', '').split()[0] if bulletin_data.get('eleve') else 'L\'élève'
+        appreciation = obtenir_appreciation_intelligente(moyenne_gen, eleve_nom, niveau) if moyenne_gen else 'Aucune note disponible pour cette période.'
     if appreciation and len(appreciation) > 100:
         appreciation = appreciation[:97] + '...'
     c.drawString(1.4*cm, y - 0.85*cm, appreciation)
@@ -2316,7 +2335,11 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         c.drawString(1.4*cm, y - 0.9*cm, "• Moyenne : Égale à la note du cours pour le système mensuel")
         c.drawString(1.4*cm, y - 1.2*cm, points_text)
     
-    c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18.5 | Très bien ≥16.5 | Bien ≥14.5 | Assez bien ≥12.5 | Passable ≥10 | Insuffisant <10")
+    # Adapter les mentions selon le niveau scolaire
+    if est_primaire:
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Faible ≥4.5 | Insuffisant <4.5")
+    else:
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Faible ≥9 | Insuffisant <9")
     
     # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))
