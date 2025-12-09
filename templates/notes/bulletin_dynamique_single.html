@@ -383,7 +383,7 @@
     <div class="resultats-section">
         <div class="resultat-card">
             <h3>MOYENNE GÉNÉRALE</h3>
-            <div class="value">{{ bulletin_data.moyenne_generale|floatformat:2 }}/20</div>
+            <div class="value">{{ bulletin_data.moyenne_generale|floatformat:2 }}/{{ base_notation|default:"20" }}</div>
         </div>
         <div class="resultat-card">
             <h3>RANG</h3>

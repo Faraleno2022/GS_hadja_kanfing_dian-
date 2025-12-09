@@ -7522,6 +7522,9 @@ def bulletin_dynamique(request):
         est_maternelle_ctx = (niveau_detecte_ctx == 'MATERNELLE')
         est_primaire_ctx = (niveau_detecte_ctx == 'PRIMAIRE')
     
+    # Base de notation: 10 pour primaire, 20 pour secondaire
+    base_notation = 10 if est_primaire_ctx else 20
+    
     context = {
         'titre_page': 'Bulletin Dynamique',
         'classes': classes,
@@ -7536,6 +7539,7 @@ def bulletin_dynamique(request):
         'niveau_enseignement': niveau_enseignement,
         'est_maternelle': est_maternelle_ctx,
         'est_primaire': est_primaire_ctx,  # NOUVEAU: Pour masquer les coefficients en primaire
+        'base_notation': base_notation,  # 10 pour primaire, 20 pour secondaire
         'bulletin_data': bulletin_data,
         'ecole': ecole,
         'annee_scolaire': classe_selectionnee.annee_scolaire if classe_selectionnee else '',

@@ -475,7 +475,7 @@
         <div class="results-grid">
             <div class="result-card">
                 <div class="result-label">Moyenne Générale</div>
-                <div class="result-value">{{ bulletin.moyenne_generale|floatformat:2 }}/20</div>
+                <div class="result-value">{{ bulletin.moyenne_generale|floatformat:2 }}/{{ base_notation|default:"20" }}</div>
             </div>
             
             <div class="result-card">

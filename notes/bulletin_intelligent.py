@@ -1338,6 +1338,11 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
     
+    # Détecter le niveau scolaire (primaire ou secondaire)
+    niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    base_notation = 10 if est_primaire else 20
+    
     # Calculer le bulletin
     calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
     bulletin_data = calculateur.generer_bulletin()
@@ -1346,7 +1351,9 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
         'bulletin': bulletin_data,
         'eleve': eleve,
         'classe_note': classe_note,
-        'periode': periode
+        'periode': periode,
+        'est_primaire': est_primaire,
+        'base_notation': base_notation
     })
 
 
