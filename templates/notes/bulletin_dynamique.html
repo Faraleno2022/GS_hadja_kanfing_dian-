@@ -1338,13 +1338,23 @@
                 {% endif %}
                 <p style="margin: 3px 0 2px 0; color: #333; border-top: 1px dashed #ccc; padding-top: 2px;">
                     <strong>📋 Mentions :</strong> 
-                    <span style="color: #146c43;">Excellent ≥18.5</span> | 
-                    <span style="color: #28a745;">Très bien ≥16.5</span> | 
-                    <span style="color: #17a2b8;">Bien ≥14.5</span> | 
-                    <span style="color: #ffc107;">Assez bien ≥12.5</span> | 
+                    {% if est_primaire %}
+                    <span style="color: #146c43;">Excellent ≥9</span> | 
+                    <span style="color: #28a745;">Très bien ≥8</span> | 
+                    <span style="color: #17a2b8;">Bien ≥7</span> | 
+                    <span style="color: #ffc107;">Assez bien ≥6</span> | 
+                    <span style="color: #fd7e14;">Passable ≥5</span> | 
+                    <span style="color: #dc3545;">Faible ≥4.5</span> | 
+                    <span style="color: #8b0000;">Insuffisant <4.5</span>
+                    {% else %}
+                    <span style="color: #146c43;">Excellent ≥18</span> | 
+                    <span style="color: #28a745;">Très bien ≥16</span> | 
+                    <span style="color: #17a2b8;">Bien ≥14</span> | 
+                    <span style="color: #ffc107;">Assez bien ≥12</span> | 
                     <span style="color: #fd7e14;">Passable ≥10</span> | 
                     <span style="color: #dc3545;">Faible ≥9</span> | 
                     <span style="color: #8b0000;">Insuffisant <9</span>
+                    {% endif %}
                 </p>
             </div>
         </div>

@@ -187,7 +187,9 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
     
     elif niveau == 'PRIMAIRE':
         # Primaire : moyenne sur 10
-        if moyenne >= Decimal('8'):
+        if moyenne >= Decimal('9'):
+            return "Excellent"
+        elif moyenne >= Decimal('8'):
             return "Très Bien"
         elif moyenne >= Decimal('7'):
             return "Bien"
@@ -195,12 +197,16 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
             return "Assez Bien"
         elif moyenne >= Decimal('5'):
             return "Passable"
+        elif moyenne >= Decimal('4.5'):
+            return "Faible"
         else:
             return "Insuffisant"
     
     else:
         # Secondaire : moyenne sur 20 (par défaut)
-        if moyenne >= Decimal('16'):
+        if moyenne >= Decimal('18'):
+            return "Excellent"
+        elif moyenne >= Decimal('16'):
             return "Très Bien"
         elif moyenne >= Decimal('14'):
             return "Bien"
@@ -208,6 +214,8 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
             return "Assez Bien"
         elif moyenne >= Decimal('10'):
             return "Passable"
+        elif moyenne >= Decimal('9'):
+            return "Faible"
         else:
             return "Insuffisant"
 
