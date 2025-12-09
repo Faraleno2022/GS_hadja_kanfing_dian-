@@ -278,11 +278,35 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     Returns:
         dict {eleve_id: {'moyenne_generale': float, 'details_matieres': list, ...}}
     """
-    if not eleves.exists() or not matieres.exists():
+    # Gérer le cas où matieres est une liste au lieu d'un QuerySet
+    matieres_is_list = isinstance(matieres, list)
+    eleves_is_list = isinstance(eleves, list)
+    
+    # Vérifier si les données sont vides
+    if matieres_is_list:
+        if not matieres:
+            return {}
+        matieres_ids = [m.id for m in matieres]
+        classe = matieres[0].classe if matieres else None
+    else:
+        if not matieres.exists():
+            return {}
+        matieres_ids = list(matieres.values_list('id', flat=True))
+        classe = matieres.first().classe
+    
+    if eleves_is_list:
+        if not eleves:
+            return {}
+        eleves_ids = [e.id for e in eleves]
+    else:
+        if not eleves.exists():
+            return {}
+        eleves_ids = list(eleves.values_list('id', flat=True))
+    
+    if not classe:
         return {}
     
     # Détecter le niveau scolaire
-    classe = matieres.first().classe
     niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
     est_primaire = (niveau == 'PRIMAIRE')
     
@@ -296,10 +320,6 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
             'niveau': niveau,
             'appreciations_only': True
         } for eleve in eleves}
-    
-    # Pré-charger les IDs
-    eleves_ids = list(eleves.values_list('id', flat=True))
-    matieres_ids = list(matieres.values_list('id', flat=True))
     annee_scolaire = classe.annee_scolaire
     
     # Créer un dictionnaire des coefficients
@@ -470,19 +490,27 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
             - rang_map: dict {eleve_id: rang}
             - details_par_eleve: dict {eleve_id: dict complet des calculs}
     """
-    # Générer une clé de cache basée sur les paramètres
-    if matieres.exists():
-        classe_id = matieres.first().classe_id
-        cache_key = f"classement_classe_{classe_id}_periode_{periode}_type_{system_type}"
-        
-        # Vérifier le cache
-        if use_cache:
-            cached_result = cache.get(cache_key)
-            if cached_result is not None:
-                logger.debug(f"Cache HIT pour classement {cache_key}")
-                return cached_result
+    # Gérer le cas où matieres est une liste au lieu d'un QuerySet
+    if isinstance(matieres, list):
+        if matieres:
+            classe_id = matieres[0].classe_id
+            cache_key = f"classement_classe_{classe_id}_periode_{periode}_type_{system_type}"
+        else:
+            cache_key = None
     else:
-        cache_key = None
+        # Générer une clé de cache basée sur les paramètres
+        if matieres.exists():
+            classe_id = matieres.first().classe_id
+            cache_key = f"classement_classe_{classe_id}_periode_{periode}_type_{system_type}"
+        else:
+            cache_key = None
+    
+    # Vérifier le cache
+    if cache_key and use_cache:
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            logger.debug(f"Cache HIT pour classement {cache_key}")
+            return cached_result
     
     start_time = time.time()
     
