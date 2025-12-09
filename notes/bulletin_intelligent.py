@@ -288,37 +288,21 @@ class CalculateurBulletinIntelligent:
         return observations.get(appreciation, '-')
     
     def _calculer_rang_eleve(self, moyenne_eleve):
-        """Calcule le rang de l'élève dans la classe"""
+        """
+        Calcule le rang de l'élève dans la classe.
+        
+        OPTIMISATION: Utilise le cache centralisé des rangs pour éviter
+        de recalculer les moyennes de tous les élèves à chaque appel.
+        """
         if not moyenne_eleve:
             return None
         
-        # Récupérer tous les élèves de la classe
-        eleves = Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF')
+        # OPTIMISATION: Utiliser le cache centralisé des rangs
+        from .utils_rangs import get_rang_eleve
         
-        # Récupérer les matières de la classe
-        matieres = MatiereNote.objects.filter(classe=self.classe_note)
-        
-        moyennes_eleves = []
-        for eleve in eleves:
-            # Utiliser directement calculer_moyenne_generale_eleve pour éviter la récursion
-            result = calculer_moyenne_generale_eleve(eleve, matieres, self.periode)
-            moyenne = result.get('moyenne_generale') if isinstance(result, dict) else result
-            
-            if moyenne:
-                moyennes_eleves.append({
-                    'eleve_id': eleve.id,
-                    'prenom': eleve.prenom,
-                    'sexe': eleve.sexe,
-                    'moyenne': moyenne
-                })
-        
-        # Calculer les rangs avec accord grammatical
-        eleves_classes = calculer_rang(moyennes_eleves)
-        
-        # Trouver le rang de notre élève
-        for e in eleves_classes:
-            if e['eleve_id'] == self.eleve.id:
-                return e['rang']
+        rang_info = get_rang_eleve(self.classe_note, self.periode, self.eleve.id)
+        if rang_info:
+            return rang_info['rang']
         
         return None
 

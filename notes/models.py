@@ -191,6 +191,12 @@ class NoteMensuelle(models.Model):
         verbose_name_plural = "Notes mensuelles"
         ordering = ['eleve', 'matiere', 'mois']
         unique_together = ['eleve', 'matiere', 'mois', 'annee_scolaire']
+        # OPTIMISATION: Index pour les requêtes en lot
+        indexes = [
+            models.Index(fields=['annee_scolaire', 'mois']),
+            models.Index(fields=['eleve', 'annee_scolaire']),
+            models.Index(fields=['matiere', 'annee_scolaire']),
+        ]
     
     def __str__(self):
         if self.absent:
@@ -226,6 +232,12 @@ class CompositionNote(models.Model):
         verbose_name_plural = "Notes de composition"
         ordering = ['eleve', 'matiere', 'periode']
         unique_together = ['eleve', 'matiere', 'periode', 'annee_scolaire']
+        # OPTIMISATION: Index pour les requêtes en lot
+        indexes = [
+            models.Index(fields=['annee_scolaire', 'periode']),
+            models.Index(fields=['eleve', 'annee_scolaire']),
+            models.Index(fields=['matiere', 'annee_scolaire']),
+        ]
     
     def __str__(self):
         if self.absent:
