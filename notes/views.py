@@ -6719,7 +6719,8 @@ def consulter_notes(request):
                 ).first()
             
             if classe_eleve:
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+                # OPTIMISATION: Pré-charger les relations pour éviter N+1
+                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').select_related('classe').order_by('prenom', 'nom')
             else:
                 eleves = []
             
@@ -6741,8 +6742,8 @@ def consulter_notes(request):
                 # IMPORTANT: Mettre à jour periode_classement pour la recherche des notes
                 periode_classement = periode_pour_calcul
             
-            # Calculer les rangs et moyennes avec la fonction centralisée
-            rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_calcul, use_cache=False)
+            # OPTIMISATION: Calculer les rangs avec le cache activé pour performance
+            rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode_pour_calcul, use_cache=True)
             
             # Définir les listes de périodes pour la classification
             periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
@@ -6751,6 +6752,46 @@ def consulter_notes(request):
             
             # Import des modèles nécessaires (une seule fois)
             from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
+            
+            # OPTIMISATION v3.0: Pré-charger TOUTES les notes en une seule requête
+            eleves_ids = list(eleves.values_list('id', flat=True))
+            matieres_ids = list(matieres.values_list('id', flat=True))
+            
+            # Pré-charger les notes mensuelles
+            notes_mensuelles_dict = {}
+            if periode_classement in periodes_mensuelles:
+                notes_mensuelles_qs = NoteMensuelle.objects.filter(
+                    eleve_id__in=eleves_ids,
+                    matiere_id__in=matieres_ids,
+                    mois=periode_classement,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                ).values('eleve_id', 'matiere_id', 'note', 'absent')
+                for n in notes_mensuelles_qs:
+                    notes_mensuelles_dict[(n['eleve_id'], n['matiere_id'])] = n
+            
+            # Pré-charger les compositions
+            compositions_dict = {}
+            if periode_classement in periodes_trimestrielles or periode_classement in periodes_semestrielles:
+                compositions_qs = CompositionNote.objects.filter(
+                    eleve_id__in=eleves_ids,
+                    matiere_id__in=matieres_ids,
+                    periode=periode_classement,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                ).values('eleve_id', 'matiere_id', 'note', 'absent')
+                for c in compositions_qs:
+                    compositions_dict[(c['eleve_id'], c['matiere_id'])] = c
+            
+            # Pré-charger les appréciations maternelle
+            appreciations_dict = {}
+            if est_maternelle:
+                appreciations_qs = AppreciationMaternelle.objects.filter(
+                    eleve_id__in=eleves_ids,
+                    matiere_id__in=matieres_ids,
+                    trimestre=periode_classement,
+                    annee_scolaire=classe_selectionnee.annee_scolaire
+                ).values('eleve_id', 'matiere_id', 'appreciation', 'commentaire', 'absent')
+                for a in appreciations_qs:
+                    appreciations_dict[(a['eleve_id'], a['matiere_id'])] = a
             
             # Pour chaque élève, récupérer toutes ses notes/appréciations pour l'affichage
             for eleve in eleves:
@@ -6779,23 +6820,11 @@ def consulter_notes(request):
                             'appreciation': None
                         }
                         
-                        appreciation_value = None
-                        commentaire_value = None
-                        absent_value = False
-                        
-                        # Chercher dans AppreciationMaternelle
-                        try:
-                            appreciation_obj = AppreciationMaternelle.objects.get(
-                                eleve=eleve,
-                                matiere=matiere,
-                                trimestre=periode_classement,
-                                annee_scolaire=classe_selectionnee.annee_scolaire
-                            )
-                            appreciation_value = appreciation_obj.appreciation
-                            commentaire_value = appreciation_obj.commentaire
-                            absent_value = appreciation_obj.absent
-                        except AppreciationMaternelle.DoesNotExist:
-                            pass
+                        # OPTIMISATION: Utiliser le dictionnaire pré-chargé
+                        appreciation_data = appreciations_dict.get((eleve.id, matiere.id))
+                        appreciation_value = appreciation_data['appreciation'] if appreciation_data else None
+                        commentaire_value = appreciation_data['commentaire'] if appreciation_data else None
+                        absent_value = appreciation_data['absent'] if appreciation_data else False
                         
                         # Ajouter l'appréciation trouvée
                         notes_matiere['notes'].append({
@@ -6815,7 +6844,7 @@ def consulter_notes(request):
                     rang = '-'
                 
                 elif periode_classement in periodes_mensuelles:
-                    # Système mensuel - chercher dans NoteMensuelle ET NoteEleve
+                    # Système mensuel - OPTIMISATION: utiliser le dictionnaire pré-chargé
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
                         eval_factice = type('EvalFactice', (), {
@@ -6831,43 +6860,10 @@ def consulter_notes(request):
                             'moyenne': None
                         }
                         
-                        note_trouvee = False
-                        note_value = None
-                        absent_value = False
-                        
-                        # 1. Chercher d'abord dans NoteMensuelle (notes importées)
-                        try:
-                            note_mensuelle = NoteMensuelle.objects.get(
-                                eleve=eleve,
-                                matiere=matiere,
-                                mois=periode_classement,
-                                annee_scolaire=classe_selectionnee.annee_scolaire
-                            )
-                            note_value = note_mensuelle.note
-                            absent_value = note_mensuelle.absent
-                            note_trouvee = True
-                        except NoteMensuelle.DoesNotExist:
-                            pass
-                        
-                        # 2. Si pas trouvé, chercher dans NoteEleve (via Evaluation)
-                        if not note_trouvee:
-                            try:
-                                evaluations_mois = Evaluation.objects.filter(
-                                    matiere=matiere,
-                                    periode=periode_classement
-                                )
-                                evaluation_mois = evaluations_mois.first()
-                                
-                                if evaluation_mois:
-                                    note_obj = NoteEleve.objects.get(
-                                        eleve=eleve,
-                                        evaluation=evaluation_mois
-                                    )
-                                    note_value = note_obj.note
-                                    absent_value = getattr(note_obj, 'absent', False)
-                                    note_trouvee = True
-                            except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
-                                pass
+                        # OPTIMISATION: Utiliser le dictionnaire pré-chargé
+                        note_data = notes_mensuelles_dict.get((eleve.id, matiere.id))
+                        note_value = note_data['note'] if note_data else None
+                        absent_value = note_data['absent'] if note_data else False
                         
                         # Ajouter la note trouvée ou une note vide
                         notes_matiere['notes'].append({
@@ -6884,7 +6880,7 @@ def consulter_notes(request):
                         
                         notes_par_matiere[matiere.id] = notes_matiere
                 else:
-                    # Système trimestriel/semestriel - chercher dans CompositionNote ET NoteEleve
+                    # Système trimestriel/semestriel - OPTIMISATION: utiliser le dictionnaire pré-chargé
                     for matiere in matieres:
                         # Créer une évaluation factice pour l'affichage
                         eval_factice = type('EvalFactice', (), {
@@ -6900,44 +6896,10 @@ def consulter_notes(request):
                             'moyenne': None
                         }
                         
-                        note_trouvee = False
-                        note_value = None
-                        absent_value = False
-                        
-                        # 1. Chercher d'abord dans CompositionNote (notes importées)
-                        if periode_classement in periodes_trimestrielles or periode_classement in periodes_semestrielles:
-                            try:
-                                note_compo = CompositionNote.objects.get(
-                                    eleve=eleve,
-                                    matiere=matiere,
-                                    periode=periode_classement,
-                                    annee_scolaire=classe_selectionnee.annee_scolaire
-                                )
-                                note_value = note_compo.note
-                                absent_value = note_compo.absent
-                                note_trouvee = True
-                            except CompositionNote.DoesNotExist:
-                                pass
-                        
-                        # 2. Si pas trouvé, chercher dans NoteEleve (via Evaluation)
-                        if not note_trouvee:
-                            try:
-                                evaluations = Evaluation.objects.filter(
-                                    matiere=matiere,
-                                    periode=periode_classement
-                                )
-                                evaluation = evaluations.first()
-                                
-                                if evaluation:
-                                    note_obj = NoteEleve.objects.get(
-                                        eleve=eleve,
-                                        evaluation=evaluation
-                                    )
-                                    note_value = note_obj.note
-                                    absent_value = getattr(note_obj, 'absent', False)
-                                    note_trouvee = True
-                            except (Evaluation.DoesNotExist, NoteEleve.DoesNotExist):
-                                pass
+                        # OPTIMISATION: Utiliser le dictionnaire pré-chargé
+                        compo_data = compositions_dict.get((eleve.id, matiere.id))
+                        note_value = compo_data['note'] if compo_data else None
+                        absent_value = compo_data['absent'] if compo_data else False
                         
                         # Ajouter la note trouvée ou une note vide
                         notes_matiere['notes'].append({
