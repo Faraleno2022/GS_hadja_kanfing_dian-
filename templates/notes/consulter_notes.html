@@ -309,10 +309,10 @@
                         <th rowspan="2" class="align-middle">Matricule</th>
                         <th rowspan="2" class="align-middle">Nom Complet</th>
                         <th rowspan="2" class="align-middle">Rang</th>
-                        <th rowspan="2" class="align-middle">{% if est_maternelle %}Acquisition{% else %}Moyenne /20{% endif %}</th>
+                        <th rowspan="2" class="align-middle">{% if est_maternelle %}Acquisition{% elif est_primaire %}Moyenne /10{% else %}Moyenne /20{% endif %}</th>
                         {% for matiere in matieres %}
                         <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
-                            {% if est_maternelle %}
+                            {% if est_maternelle or est_primaire %}
                             {{ matiere.nom }}
                             {% else %}
                             {{ matiere.nom }} (Coef: {{ matiere.coefficient }})

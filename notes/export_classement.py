@@ -19,7 +19,7 @@ from reportlab.pdfbase import pdfmetrics
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
 from eleves.models import Eleve, Classe as ClasseEleve
-from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe
+from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe, detecter_niveau_scolaire
 
 
 def formater_rang(rang, sexe=None):
@@ -188,6 +188,10 @@ def exporter_classement_classe(request):
             eleves, classe_note, type_note, periode
         )
     
+    # Détecter le niveau scolaire pour adapter l'affichage
+    niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    
     # Créer le fichier Excel
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -219,8 +223,9 @@ def exporter_classement_classe(request):
     date_cell.font = Font(italic=True, size=10)
     ws.row_dimensions[2].height = 20
     
-    # En-têtes
-    headers = ['Rang', 'Matricule', 'Nom Complet', 'Moyenne /20']
+    # En-têtes (adapter selon le niveau)
+    moyenne_header = 'Moyenne /10' if est_primaire else 'Moyenne /20'
+    headers = ['Rang', 'Matricule', 'Nom Complet', moyenne_header]
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_num)
         cell.value = header
@@ -789,6 +794,10 @@ def exporter_classement_classe_pdf(request):
             eleves, classe_note, type_note, periode
         )
     
+    # Détecter le niveau scolaire pour adapter l'affichage
+    niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    
     # Créer le PDF
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -847,10 +856,11 @@ def exporter_classement_classe_pdf(request):
     c.setFillColorRGB(0.2, 0.3, 0.4)
     c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
     
-    # Texte des en-têtes
+    # Texte des en-têtes (adapter selon le niveau)
     c.setFillColorRGB(1, 1, 1)
     c.setFont('Helvetica-Bold', 10)
-    headers = ['Rang', 'Matricule', 'Nom Complet', 'Moyenne /20']
+    moyenne_header = 'Moyenne /10' if est_primaire else 'Moyenne /20'
+    headers = ['Rang', 'Matricule', 'Nom Complet', moyenne_header]
     for i, header in enumerate(headers):
         c.drawString(col_x[i] + 0.2*cm, y - 10, header)
     
@@ -995,10 +1005,12 @@ def exporter_classement_classe_pdf(request):
         note_max = max(moyennes)
         note_min = min(moyennes)
         
+        # Adapter le format selon le niveau
+        base_note = '/10' if est_primaire else '/20'
         stats.extend([
-            f"Moyenne de classe: {moyenne_classe:.2f}/20",
-            f"Note maximale: {note_max:.2f}/20",
-            f"Note minimale: {note_min:.2f}/20",
+            f"Moyenne de classe: {moyenne_classe:.2f}{base_note}",
+            f"Note maximale: {note_max:.2f}{base_note}",
+            f"Note minimale: {note_min:.2f}{base_note}",
         ])
     
     for stat in stats:
