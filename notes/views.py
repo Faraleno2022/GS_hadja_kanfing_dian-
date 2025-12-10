@@ -6652,6 +6652,7 @@ def consulter_notes(request):
     niveau_enseignement = 'SECONDAIRE'
     periodes_disponibles = []
     est_maternelle = False
+    est_primaire = False
     
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
@@ -6662,6 +6663,7 @@ def consulter_notes(request):
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
         est_maternelle = (niveau_detecte == 'MATERNELLE')
+        est_primaire = (niveau_detecte == 'PRIMAIRE')
         
         # Pour la maternelle : rediriger automatiquement vers TRIMESTRE_1 si pas de période
         if est_maternelle and not periode_classement:
@@ -6971,6 +6973,7 @@ def consulter_notes(request):
         'evaluations_par_matiere': evaluations_par_matiere,
         'niveau_enseignement': niveau_enseignement,
         'est_maternelle': est_maternelle,
+        'est_primaire': est_primaire,
     }
     
     return render(request, 'notes/consulter_notes.html', context)
