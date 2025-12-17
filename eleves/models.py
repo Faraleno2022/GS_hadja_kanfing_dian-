@@ -381,18 +381,19 @@ class Eleve(models.Model):
     nom = models.CharField(max_length=100, verbose_name="Nom")
     sexe = models.CharField(max_length=1, choices=SEXE_CHOICES, verbose_name="Sexe")
     date_naissance = models.DateField(verbose_name="Date de naissance", blank=True, null=True)
-    lieu_naissance = models.CharField(max_length=100, verbose_name="Lieu de naissance")
+    lieu_naissance = models.CharField(max_length=100, verbose_name="Lieu de naissance", blank=True, null=True)
     photo = models.ImageField(upload_to='eleves/photos/', blank=True, null=True, verbose_name="Photo")
     
     # Scolarité
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
-    date_inscription = models.DateField(verbose_name="Date d'inscription")
+    date_inscription = models.DateField(verbose_name="Date d'inscription", blank=True, null=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
     
     # Responsables
     responsable_principal = models.ForeignKey(
-        Responsable, on_delete=models.CASCADE, 
-        related_name='eleves_principal', verbose_name="Responsable principal"
+        Responsable, on_delete=models.SET_NULL, 
+        related_name='eleves_principal', verbose_name="Responsable principal",
+        blank=True, null=True
     )
     responsable_secondaire = models.ForeignKey(
         Responsable, on_delete=models.SET_NULL, 
