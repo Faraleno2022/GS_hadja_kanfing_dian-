@@ -105,7 +105,7 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
             elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
                 mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
         
-        # Calculer la moyenne des notes mensuelles
+        # Calculer la moyenne des notes mensuelles (si elles existent)
         if mois_periode:
             total_notes = Decimal('0')
             count_notes = 0
@@ -127,7 +127,7 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
             if count_notes > 0:
                 moyenne_continue = round(float(total_notes / count_notes), 2)
         
-        # Récupérer la note de composition
+        # Récupérer la note de composition (TOUJOURS chercher, même sans notes mensuelles)
         try:
             compo = CompositionNote.objects.get(
                 eleve=eleve,
@@ -141,15 +141,18 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
             pass
     
     # Calculer la moyenne de la matière selon le système
+    # LOGIQUE ADAPTATIVE: Si pas de notes mensuelles, utiliser uniquement la composition
     moyenne_matiere = None
     if system_type == 'mensuel':
         moyenne_matiere = moyenne_continue
     elif moyenne_continue is not None and note_composition is not None:
-        # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+        # CAS 1: Les deux existent → Formule : (Moyenne Continue + Composition) / 2
         moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
     elif note_composition is not None:
+        # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
         moyenne_matiere = note_composition
     elif moyenne_continue is not None:
+        # CAS 3: Seulement notes mensuelles (pas de composition) → Utiliser directement
         moyenne_matiere = moyenne_continue
     
     # Calculer les points (avec validation du coefficient)
@@ -423,14 +426,18 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                     note_composition = float(compo_data['note'])
             
             # Calculer la moyenne de la matière
+            # LOGIQUE ADAPTATIVE: Gère les écoles sans notes mensuelles
             moyenne_matiere = None
             if system_type == 'mensuel':
                 moyenne_matiere = moyenne_continue
             elif moyenne_continue is not None and note_composition is not None:
+                # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
                 moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
             elif note_composition is not None:
+                # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
                 moyenne_matiere = note_composition
             elif moyenne_continue is not None:
+                # CAS 3: Seulement notes mensuelles → Utiliser directement
                 moyenne_matiere = moyenne_continue
             
             # Valeur pour le calcul (0 si None)
@@ -987,7 +994,10 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         except CompositionNote.DoesNotExist:
             pass
         
-        # Calculer la moyenne finale: (Moyenne Continue + Composition) / 2
+        # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
+        # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
+        # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
+        # CAS 3: Seulement notes mensuelles → Utiliser directement
         if result['moyenne_continue'] is not None and result['note_composition'] is not None:
             result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
         elif result['note_composition'] is not None:
@@ -1059,7 +1069,10 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         except CompositionNote.DoesNotExist:
             pass
         
-        # Calculer la moyenne finale: (Moyenne Continue + Composition) / 2
+        # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
+        # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
+        # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
+        # CAS 3: Seulement notes mensuelles → Utiliser directement
         if result['moyenne_continue'] is not None and result['note_composition'] is not None:
             result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
         elif result['note_composition'] is not None:
