@@ -169,8 +169,7 @@ class EleveForm(forms.ModelForm):
             }, format='%Y-%m-%d'),
             'lieu_naissance': forms.TextInput(attrs={
                 'class': 'form-control',
-                'placeholder': 'Lieu de naissance',
-                'required': True
+                'placeholder': 'Lieu de naissance (optionnel)'
             }),
             'photo': forms.FileInput(attrs={
                 'class': 'form-control',
@@ -186,12 +185,10 @@ class EleveForm(forms.ModelForm):
                 # Ne pas forcer "required" en HTML pour éviter les blocages côté navigateur
             }, format='%Y-%m-%d'),
             'statut': forms.Select(attrs={
-                'class': 'form-select',
-                'required': True
+                'class': 'form-select'
             }),
             'responsable_principal': forms.Select(attrs={
-                'class': 'form-select',
-                'required': True
+                'class': 'form-select'
             }),
             'responsable_secondaire': forms.Select(attrs={
                 'class': 'form-select'
@@ -204,17 +201,25 @@ class EleveForm(forms.ModelForm):
         self._current_user = kwargs.pop('user', None) or kwargs.pop('utilisateur', None)
         super().__init__(*args, **kwargs)
         
-        # Définir la date d'inscription par défaut à aujourd'hui
+        # Définir la date d'inscription par défaut à aujourd'hui (optionnel)
         if not self.instance.pk:
-            # En création: proposer aujourd'hui par défaut et rendre le champ requis
+            # En création: proposer aujourd'hui par défaut mais ne pas rendre obligatoire
             self.fields['date_inscription'].initial = date.today()
-            self.fields['date_inscription'].required = True
+            self.fields['date_inscription'].required = False
         else:
             # En modification: ne pas rendre obligatoire et garder la valeur existante
             self.fields['date_inscription'].required = False
             # Forcer la valeur initiale à celle de l'instance pour éviter les faux changements
             if self.instance.date_inscription:
                 self.fields['date_inscription'].initial = self.instance.date_inscription
+        
+        # Rendre les champs facultatifs sauf: sexe, prenom, nom, classe
+        # Ces 4 champs restent obligatoires
+        champs_obligatoires = ['sexe', 'prenom', 'nom', 'classe']
+        champs_facultatifs = ['date_naissance', 'lieu_naissance', 'photo', 'date_inscription', 'statut']
+        for field_name in champs_facultatifs:
+            if field_name in self.fields:
+                self.fields[field_name].required = False
         
         # Filtrer les classes aux écoles validées par défaut
         try:

@@ -91,6 +91,7 @@ def chat_interface(request, matiere_id=None):
         'conversation': conversation,
         'messages_chat': messages_chat,
         'documents_count': documents.count(),
+        'niveaux': DocumentCours.NIVEAU_CHOICES,
         'page_title': f'Chat - {matiere_selectionnee.nom}' if matiere_selectionnee else 'Chat Révision',
     }
     return render(request, 'chatbot/chat.html', context)
@@ -318,7 +319,11 @@ def ajouter_document(request):
                     messages.success(request, f"Document '{titre}' ajouté avec succès!")
                 else:
                     messages.warning(request, f"Document ajouté mais l'extraction du contenu a échoué. Vérifiez le format du fichier.")
-                
+
+                # Redirection : si une URL "next" est fournie (par exemple depuis le chatbot), l'utiliser
+                next_url = request.POST.get('next')
+                if next_url:
+                    return redirect(next_url)
                 return redirect('chatbot:gestion_documents')
                 
             except Matiere.DoesNotExist:

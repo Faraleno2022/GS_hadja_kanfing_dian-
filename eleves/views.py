@@ -611,10 +611,8 @@ def ajouter_eleve(request):
                     responsable_principal_form.add_error(field, "Ce champ est obligatoire.")
                     resp_principal_valide = False
         
-        # Vérification responsable principal
-        if form_valide and not creer_resp_principal and not form.cleaned_data.get('responsable_principal'):
-            form.add_error('responsable_principal', 'Un responsable principal est obligatoire.')
-            form_valide = False
+        # Responsable principal maintenant optionnel - pas de validation obligatoire
+        # Les écoles peuvent ajouter des élèves sans responsable si nécessaire
         
         if form_valide and resp_principal_valide and resp_secondaire_valide:
             # Transaction atomique pour performance maximale
