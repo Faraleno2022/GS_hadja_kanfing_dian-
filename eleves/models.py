@@ -516,26 +516,35 @@ class Eleve(models.Model):
                         if m_ec:
                             prefix_ecole = m_ec.group(1)
 
-                # 2) Calculer le prochain numéro dans la classe, quel que soit le préfixe
+                # 2) Calculer le prochain numéro en cherchant GLOBALEMENT tous les matricules avec ce code
+                #    pour éviter les conflits UNIQUE (le matricule est unique dans toute la base)
                 motif = rf"^(?:.*/)?{re.escape(code)}-(\d+)$"
                 next_num = 1
-                # Parcourir les matricules de la classe contenant le code, triés récents d'abord
-                for e in classe_qs.filter(matricule__contains=f"{code}-").order_by('-id'):
+                # Chercher dans TOUS les élèves (pas seulement la classe) pour éviter les conflits
+                all_with_code = Eleve.objects.filter(matricule__contains=f"{code}-")
+                for e in all_with_code.order_by('-id'):
                     m = re.match(motif, e.matricule)
                     if m:
                         try:
-                            next_num = int(m.group(1)) + 1
-                            break
+                            num_found = int(m.group(1))
+                            if num_found >= next_num:
+                                next_num = num_found + 1
                         except Exception:
                             continue
 
                 # 3) Générer un candidat avec ou sans préfixe école détecté, en évitant les collisions
-                for _ in range(10):
+                #    Augmenter le nombre de tentatives et utiliser une approche plus robuste
+                max_attempts = 1000
+                for _ in range(max_attempts):
                     candidat = f"{prefix_ecole}{code}-{next_num:03d}"
                     if not Eleve.objects.filter(matricule=candidat).exists():
                         self.matricule = candidat
                         break
                     next_num += 1
+                else:
+                    # Si toutes les tentatives échouent, utiliser un UUID pour garantir l'unicité
+                    import uuid
+                    self.matricule = f"{prefix_ecole}{code}-{uuid.uuid4().hex[:6].upper()}"
 
         # Si changement de classe, libérer temporairement le matricule avant réaffectation
         # pour éviter les conflits UNIQUE
