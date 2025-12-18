@@ -253,14 +253,14 @@ class EleveForm(forms.ModelForm):
             if self._current_user and not user_is_admin(self._current_user):
                 ecole = user_school(self._current_user)
                 if ecole:
-                    qs_base = Responsable.objects
-                    qs_filtre = qs_base.filter(
-                        eleves_principal__classe__ecole=ecole
-                    ).union(
-                        qs_base.filter(eleves_secondaire__classe__ecole=ecole)
-                    )
-                    self.fields['responsable_principal'].queryset = qs_filtre.distinct().order_by('nom', 'prenom')
-                    self.fields['responsable_secondaire'].queryset = qs_filtre.distinct().order_by('nom', 'prenom')
+                    from django.db.models import Q
+                    # Utiliser Q objects au lieu de union() pour permettre order_by()
+                    qs_filtre = Responsable.objects.filter(
+                        Q(eleves_principal__classe__ecole=ecole) | 
+                        Q(eleves_secondaire__classe__ecole=ecole)
+                    ).distinct().order_by('nom', 'prenom')
+                    self.fields['responsable_principal'].queryset = qs_filtre
+                    self.fields['responsable_secondaire'].queryset = qs_filtre
                 else:
                     # Si l'utilisateur n'a pas d'école associée, ne proposer aucun responsable existant
                     self.fields['responsable_principal'].queryset = Responsable.objects.none()
