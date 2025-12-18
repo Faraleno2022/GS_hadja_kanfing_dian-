@@ -89,13 +89,13 @@ def generer_template_eleves(classe_id=None):
             'Matricule',  # Optionnel - sera généré si vide
             'Prénom',  # Obligatoire
             'Nom',  # Obligatoire
-            'Sexe',  # M ou F
-            'Date de Naissance',  # Format: JJ/MM/AAAA
-            'Lieu de Naissance',  # Obligatoire
-            'Nom du Père/Tuteur',  # Obligatoire
-            'Prénom du Père/Tuteur',  # Obligatoire
-            'Téléphone Principal',  # Obligatoire
-            'Adresse',  # Obligatoire
+            'Sexe',  # M ou F - Obligatoire
+            'Date de Naissance',  # Optionnel - Format: JJ/MM/AAAA
+            'Lieu de Naissance',  # Optionnel
+            'Nom du Père/Tuteur',  # Optionnel
+            'Prénom du Père/Tuteur',  # Optionnel
+            'Téléphone Principal',  # Optionnel
+            'Adresse',  # Optionnel
             'Nom de la Mère',  # Optionnel
             'Prénom de la Mère',  # Optionnel
             'Téléphone Secondaire',  # Optionnel
@@ -144,10 +144,8 @@ class ImportElevesValidator:
         """
         Valide le fichier importé
         """
-        # Vérifier les colonnes requises
-        colonnes_requises = ['Prénom', 'Nom', 'Sexe', 'Date de Naissance', 
-                           'Lieu de Naissance', 'Nom du Père/Tuteur', 
-                           'Prénom du Père/Tuteur', 'Téléphone Principal', 'Adresse']
+        # Vérifier les colonnes requises (seuls Prénom, Nom et Sexe sont obligatoires)
+        colonnes_requises = ['Prénom', 'Nom', 'Sexe']
         
         colonnes_manquantes = []
         for col in colonnes_requises:
@@ -169,10 +167,8 @@ class ImportElevesValidator:
         """
         Valide une ligne du fichier
         """
-        # Vérifier les champs obligatoires
-        champs_obligatoires = ['Prénom', 'Nom', 'Sexe', 'Date de Naissance', 
-                              'Lieu de Naissance', 'Nom du Père/Tuteur', 
-                              'Prénom du Père/Tuteur', 'Téléphone Principal', 'Adresse']
+        # Vérifier les champs obligatoires (seuls Prénom, Nom et Sexe sont obligatoires)
+        champs_obligatoires = ['Prénom', 'Nom', 'Sexe']
         
         for champ in champs_obligatoires:
             if pd.isna(row.get(champ)) or str(row.get(champ)).strip() == '':
@@ -364,21 +360,30 @@ class ImportElevesProcessor:
         else:
             matricule = str(matricule).strip()
         
-        # Gérer le responsable principal
-        responsable, nouveau_resp = self._preparer_responsable(row, responsables_dict)
+        # Gérer le responsable principal (optionnel)
+        responsable = None
+        nouveau_resp = None
+        if (row.get('Téléphone Principal') and not pd.isna(row.get('Téléphone Principal')) and 
+            str(row.get('Téléphone Principal')).strip() != ''):
+            responsable, nouveau_resp = self._preparer_responsable(row, responsables_dict)
         
-        # Gérer le responsable secondaire (mère)
+        # Gérer le responsable secondaire (mère) - optionnel
         responsable_secondaire = None
         nouveau_resp2 = None
         if row.get('Nom de la Mère') and not pd.isna(row.get('Nom de la Mère')):
             responsable_secondaire, nouveau_resp2 = self._preparer_responsable_secondaire(row, responsables_dict)
         
-        # Formater la date de naissance
+        # Formater la date de naissance (optionnel)
         date_naissance = self._formater_date(row.get('Date de Naissance'))
         
         # Vérifier si l'élève existe déjà
         key = f"{str(row['Prénom']).strip()}_{str(row['Nom']).strip()}".lower()
         eleve_existant = eleves_existants.get(key)
+        
+        # Gérer lieu de naissance (optionnel)
+        lieu_naissance = None
+        if row.get('Lieu de Naissance') and not pd.isna(row.get('Lieu de Naissance')):
+            lieu_naissance = str(row['Lieu de Naissance']).strip()
         
         if eleve_existant:
             # Modifier
@@ -386,7 +391,7 @@ class ImportElevesProcessor:
             eleve_existant.nom = str(row['Nom']).strip().upper()
             eleve_existant.sexe = str(row['Sexe']).upper()
             eleve_existant.date_naissance = date_naissance
-            eleve_existant.lieu_naissance = str(row['Lieu de Naissance']).strip()
+            eleve_existant.lieu_naissance = lieu_naissance
             eleve_existant.responsable_principal = responsable
             eleve_existant.responsable_secondaire = responsable_secondaire
             eleve_existant.statut = 'ACTIF'
@@ -400,7 +405,7 @@ class ImportElevesProcessor:
                 nom=str(row['Nom']).strip().upper(),
                 sexe=str(row['Sexe']).upper(),
                 date_naissance=date_naissance,
-                lieu_naissance=str(row['Lieu de Naissance']).strip(),
+                lieu_naissance=lieu_naissance,
                 classe=classe,
                 date_inscription=datetime.now().date(),
                 statut='ACTIF'
