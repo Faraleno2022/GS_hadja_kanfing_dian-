@@ -1577,10 +1577,14 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
         logo_path = ecole.logo.path
     
     # ===== OPTIMISATION: Pré-calculer le classement pour tous les élèves =====
-    from notes.calculs_moyennes import calculer_classement_classe
+    from notes.calculs_moyennes import calculer_classement_classe, detecter_notes_mensuelles_classe
     
     # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
     matieres = MatiereNote.objects.filter(classe=classe_note)
+    
+    # Détecter si la classe a des notes mensuelles ou seulement des compositions
+    detection_notes = detecter_notes_mensuelles_classe(classe_note, periode)
+    has_notes_mensuelles = detection_notes['has_notes_mensuelles']
     
     # Calculer le classement une seule fois pour toute la classe
     classement_result = calculer_classement_classe(eleves, matieres, periode, system_type)
@@ -1668,6 +1672,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'matricule': eleve.matricule,
                     'total_eleves': total_eleves,
                     'niveau_scolaire': niveau_scolaire,
+                    'has_notes_mensuelles': has_notes_mensuelles,  # Pour masquer colonnes mensuelles si seulement compositions
                 }
             else:
                 # Fallback: calculer si pas dans le cache
@@ -1685,6 +1690,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 bulletin_data['matricule'] = eleve.matricule
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
+                bulletin_data['has_notes_mensuelles'] = has_notes_mensuelles
             
             # Dessiner le bulletin sur la page courante (passer le logo pré-chargé)
             _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader)
@@ -1930,8 +1936,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         # Bulletin annuel basé sur les semestres
         periodes_labels = ['1er Sem.', '2ème Sem.']
     
+    # Détecter si des notes mensuelles existent (pour masquer les colonnes si seulement compositions)
+    has_notes_mensuelles = bulletin_data.get('has_notes_mensuelles', True)  # Par défaut True
+    
     # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
     # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | [PTS]
+    # Si pas de notes mensuelles: MATIÈRE | [COEF] | Compo | MOY | [PTS]
     if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
         # BULLETIN ANNUEL: MATIÈRE | [COEF] | T1/S1 | T2/S2 | [T3] | Moy. Ann. | [PTS]
         if est_primaire:
@@ -1940,18 +1950,34 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             header = ['MATIÈRE', 'COEF'] + periodes_labels + ['Moy. Ann.', 'PTS']
         data = [header]
         nb_cols = len(header)
-    elif system_type == 'trimestriel' and mois_labels:
-        if est_primaire:
-            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
+    elif system_type == 'trimestriel':
+        if has_notes_mensuelles and mois_labels:
+            # Avec notes mensuelles: afficher toutes les colonnes
+            if est_primaire:
+                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
+            else:
+                header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
-            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+            # Sans notes mensuelles: afficher seulement Compo et MOY
+            if est_primaire:
+                header = ['MATIÈRE', 'Compo', 'MOY']
+            else:
+                header = ['MATIÈRE', 'COEF', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
-    elif system_type == 'semestriel' and mois_labels:
-        if est_primaire:
-            header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
+    elif system_type == 'semestriel':
+        if has_notes_mensuelles and mois_labels:
+            # Avec notes mensuelles: afficher toutes les colonnes
+            if est_primaire:
+                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
+            else:
+                header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
-            header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+            # Sans notes mensuelles: afficher seulement Compo et MOY
+            if est_primaire:
+                header = ['MATIÈRE', 'Compo', 'MOY']
+            else:
+                header = ['MATIÈRE', 'COEF', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     else:
@@ -2024,28 +2050,31 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             if not (est_primaire or est_maternelle):
                 row.append(f"{points:.2f}" if points else '-')
             data.append(row)
-        elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
-            # Construire la ligne avec les détails mensuels
+        elif system_type in ['trimestriel', 'semestriel']:
+            # Construire la ligne selon le mode de saisie
             if est_primaire or est_maternelle:
                 row = [nom_matiere]  # Sans COEF pour primaire/maternelle
             else:
                 row = [nom_matiere, f"{coef:.0f}"]
             
-            # Ajouter les notes mensuelles
-            for i, mois_label in enumerate(mois_labels):
-                note_mois = '-'
-                if moyennes_mensuelles and i < len(moyennes_mensuelles):
-                    moy_mens = moyennes_mensuelles[i]
-                    if isinstance(moy_mens, dict):
-                        val = moy_mens.get('moyenne')
-                        if val is not None:
-                            note_mois = f"{val:.2f}"
-                    elif moy_mens is not None:
-                        note_mois = f"{moy_mens:.2f}"
-                row.append(note_mois)
+            if has_notes_mensuelles and mois_labels:
+                # Ajouter les notes mensuelles
+                for i, mois_label in enumerate(mois_labels):
+                    note_mois = '-'
+                    if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                        moy_mens = moyennes_mensuelles[i]
+                        if isinstance(moy_mens, dict):
+                            val = moy_mens.get('moyenne')
+                            if val is not None:
+                                note_mois = f"{val:.2f}"
+                        elif moy_mens is not None:
+                            note_mois = f"{moy_mens:.2f}"
+                    row.append(note_mois)
+                
+                # Ajouter Moy.C, Compo, MOY (et PTS seulement pour collège/lycée)
+                row.append(f"{moy_continue:.2f}" if moy_continue else '-')
             
-            # Ajouter Moy.C, Compo, MOY (et PTS seulement pour collège/lycée)
-            row.append(f"{moy_continue:.2f}" if moy_continue else '-')
+            # Compo et MOY sont toujours affichés
             row.append(f"{note_compo:.2f}" if note_compo else '-')
             row.append(f"{moyenne:.2f}" if moyenne else '-')
             if not (est_primaire or est_maternelle):
@@ -2073,13 +2102,17 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
         data.append(total_row)
-    elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
+    elif system_type in ['trimestriel', 'semestriel']:
         if est_primaire or est_maternelle:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
-        total_row += ['-', '-']  # Moy.C et Compo
+        
+        if has_notes_mensuelles and mois_labels:
+            total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
+            total_row.append('-')  # Moy.C
+        
+        total_row.append('-')  # Compo
         total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")
@@ -2097,9 +2130,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         nb_autres_cols = nb_cols - 1
         col_autres = (table_total_width - col_matiere) / nb_autres_cols
         col_widths = [col_matiere] + [col_autres] * nb_autres_cols
-    elif system_type in ['trimestriel', 'semestriel'] and mois_labels:
-        # Répartition: MATIÈRE 25%, reste divisé équitablement
-        col_matiere = table_total_width * 0.22
+    elif system_type in ['trimestriel', 'semestriel']:
+        # Répartition: MATIÈRE 25-35%, reste divisé équitablement
+        if has_notes_mensuelles and mois_labels:
+            col_matiere = table_total_width * 0.22
+        else:
+            col_matiere = table_total_width * 0.35  # Plus large si moins de colonnes
         nb_autres_cols = nb_cols - 1
         col_autres = (table_total_width - col_matiere) / nb_autres_cols
         col_widths = [col_matiere] + [col_autres] * nb_autres_cols
