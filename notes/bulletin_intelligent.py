@@ -528,13 +528,13 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Détecter si des notes mensuelles existent (pour masquer les colonnes si seulement compositions)
     has_notes_mensuelles = bulletin_data.get('has_notes_mensuelles', True)  # Par défaut True
     
-    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF)
-    # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | PTS
-    # Si pas de notes mensuelles: MATIÈRE | [COEF] | Compo | MOY | PTS
+    # Adapter les colonnes selon le système ET le niveau (primaire = sans COEF ni PTS)
+    # Structure: MATIÈRE | [COEF] | Mois1 | Mois2 | [Mois...] | Moy.C | Compo | MOY | [PTS]
+    # Si pas de notes mensuelles: MATIÈRE | [COEF] | Compo | MOY | [PTS]
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
-        # BULLETIN ANNUEL: MATIÈRE | [COEF] | T1/S1 | T2/S2 | [T3] | Moy. Ann. | PTS
+        # BULLETIN ANNUEL: MATIÈRE | [COEF] | T1/S1 | T2/S2 | [T3] | Moy. Ann. | [PTS]
         if est_primaire:
-            header = ['MATIÈRE'] + periodes_labels + ['Moy. Ann.', 'PTS']
+            header = ['MATIÈRE'] + periodes_labels + ['Moy. Ann.']
         else:
             header = ['MATIÈRE', 'COEF'] + periodes_labels + ['Moy. Ann.', 'PTS']
         data = [header]
@@ -543,13 +543,13 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         if has_notes_mensuelles and mois_labels:
             # Avec notes mensuelles: toutes les colonnes
             if est_primaire:
-                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
             else:
                 header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
             # Sans notes mensuelles: colonnes simplifiées
             if est_primaire:
-                header = ['MATIÈRE', 'Compo', 'MOY', 'PTS']
+                header = ['MATIÈRE', 'Compo', 'MOY']
             else:
                 header = ['MATIÈRE', 'COEF', 'Compo', 'MOY', 'PTS']
         data = [header]
@@ -558,22 +558,22 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         if has_notes_mensuelles and mois_labels:
             # Avec notes mensuelles: toutes les colonnes
             if est_primaire:
-                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
+                header = ['MATIÈRE'] + mois_labels + ['Moy.C', 'Compo', 'MOY']
             else:
                 header = ['MATIÈRE', 'COEF'] + mois_labels + ['Moy.C', 'Compo', 'MOY', 'PTS']
         else:
             # Sans notes mensuelles: colonnes simplifiées
             if est_primaire:
-                header = ['MATIÈRE', 'Compo', 'MOY', 'PTS']
+                header = ['MATIÈRE', 'Compo', 'MOY']
             else:
                 header = ['MATIÈRE', 'COEF', 'Compo', 'MOY', 'PTS']
         data = [header]
         nb_cols = len(header)
     else:
         if est_primaire:
-            # Primaire Mensuel: MATIÈRE | NOTE | MOY | PTS (sans COEF)
-            data = [['MATIÈRE', 'NOTE', 'MOY', 'PTS']]
-            nb_cols = 4
+            # Primaire Mensuel: MATIÈRE | NOTE | MOY (sans COEF ni PTS)
+            data = [['MATIÈRE', 'NOTE', 'MOY']]
+            nb_cols = 3
         else:
             # Système mensuel: MATIÈRE | COEF | NOTE | MOY | PTS
             data = [['MATIÈRE', 'COEF', 'NOTE', 'MOY', 'PTS']]
@@ -636,9 +636,10 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                         note_periode = f"{moy_per:.2f}"
                 row.append(note_periode)
             
-            # Ajouter Moy. Annuelle et PTS
+            # Ajouter Moy. Annuelle (et PTS seulement pour collège/lycée)
             row.append(f"{moyenne:.2f}" if moyenne else '-')
-            row.append(f"{points:.2f}" if points else '-')
+            if not est_primaire:
+                row.append(f"{points:.2f}" if points else '-')
             data.append(row)
         elif system_type_indiv in ['trimestriel', 'semestriel']:
             # Construire la ligne selon le mode de saisie
@@ -664,10 +665,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                 # Ajouter Moy.C (seulement si notes mensuelles)
                 row.append(f"{moy_continue:.2f}" if moy_continue else '-')
             
-            # Compo, MOY, PTS sont toujours affichés
+            # Compo et MOY sont toujours affichés (PTS seulement pour collège/lycée)
             row.append(f"{note_compo:.2f}" if note_compo else '-')
             row.append(f"{moyenne:.2f}" if moyenne else '-')
-            row.append(f"{points:.2f}" if points else '-')
+            if not est_primaire:
+                row.append(f"{points:.2f}" if points else '-')
             data.append(row)
         else:
             # Mensuel
@@ -675,8 +677,8 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             moyenne_str = f"{moyenne:.2f}" if moyenne else '-'
             points_str = f"{points:.2f}" if points else '-'
             if est_primaire:
-                # Primaire: sans COEF
-                data.append([nom_matiere, cours_str, moyenne_str, points_str])
+                # Primaire: sans COEF ni PTS
+                data.append([nom_matiere, cours_str, moyenne_str])
             else:
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
@@ -684,16 +686,17 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
         # BULLETIN ANNUEL: Ligne total
         if est_primaire:
-            total_row = ['TOTAL']  # Sans COEF pour primaire
+            total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
         total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
-        total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
+        if not est_primaire:
+            total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
         data.append(total_row)
     elif system_type_indiv in ['trimestriel', 'semestriel']:
         if est_primaire:
-            total_row = ['TOTAL']  # Sans COEF pour primaire
+            total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         
@@ -703,12 +706,13 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         
         total_row.append('-')  # Compo
         total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
-        total_row.append(f"{total_points:.2f}")
+        if not est_primaire:
+            total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     else:
         if est_primaire:
-            # Primaire: sans COEF
-            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+            # Primaire: sans COEF ni PTS
+            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
         else:
             data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
