@@ -318,11 +318,31 @@
                 {% if system_type == 'mensuel' %}
                     <td></td>
                 {% elif system_type == 'trimestre' %}
-                    <!-- 3 mois + moyenne continue + composition = 5 colonnes -->
-                    <td colspan="5"></td>
+                    {% if has_notes_mensuelles %}
+                        <!-- Avec notes mensuelles: 2 mois + Moy.C + Compo = 4 colonnes -->
+                        <td colspan="4"></td>
+                    {% else %}
+                        <!-- Sans notes mensuelles: Compo seul = 1 colonne -->
+                        <td></td>
+                    {% endif %}
                 {% elif system_type == 'semestre' %}
-                    <!-- 5 mois + moyenne continue + composition = 7 colonnes -->
-                    <td colspan="7"></td>
+                    {% if has_notes_mensuelles %}
+                        <!-- Avec notes mensuelles: 3-4 mois + Moy.C + Compo -->
+                        {% if bulletin_data.periode == 'SEMESTRE_1' %}
+                            <td colspan="6"></td>
+                        {% else %}
+                            <td colspan="5"></td>
+                        {% endif %}
+                    {% else %}
+                        <!-- Sans notes mensuelles: Compo seul = 1 colonne -->
+                        <td></td>
+                    {% endif %}
+                {% elif system_type == 'annuel_trimestriel' or system_type == 'annuel' %}
+                    <!-- 3 trimestres = 3 colonnes -->
+                    <td colspan="3"></td>
+                {% elif system_type == 'annuel_semestriel' %}
+                    <!-- 2 semestres = 2 colonnes -->
+                    <td colspan="2"></td>
                 {% else %}
                     <td colspan="2"></td>
                 {% endif %}
@@ -353,8 +373,10 @@
     <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; margin: 10px 0; font-size: 9px;">
         <div style="font-weight: bold; margin-bottom: 4px; color: #495057;">📊 LÉGENDE DU TABLEAU :</div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 5px;">
+            {% if has_notes_mensuelles %}
             <div><span style="color: #2c5aa0; font-weight: bold;">■</span> Notes mensuelles</div>
             <div><span style="background: #e8f4fd; padding: 1px 3px;">■</span> Moyenne continue</div>
+            {% endif %}
             <div><span style="background: #fff3cd; padding: 1px 3px;">■</span> Composition</div>
             <div><span style="background: #d4edda; padding: 1px 3px;">■</span> Moyenne finale</div>
             {% if niveau_enseignement != 'PRIMAIRE' and niveau_enseignement != 'MATERNELLE' %}
@@ -363,8 +385,12 @@
             <div><span style="color: red; font-weight: bold;">ABS</span> = Absent</div>
         </div>
         <div style="margin-top: 4px; font-style: italic; color: #6c757d;">
+            {% if has_notes_mensuelles %}
             💡 La moyenne continue est calculée à partir des notes mensuelles disponibles. 
             La moyenne finale = (Moyenne continue + Composition) ÷ 2
+            {% else %}
+            💡 La moyenne finale est calculée directement à partir de la note de composition.
+            {% endif %}
         </div>
     </div>
     {% endif %}
