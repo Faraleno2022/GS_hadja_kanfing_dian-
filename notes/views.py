@@ -6934,28 +6934,43 @@ def consulter_notes(request):
     eleves_avec_rang.sort(key=lambda x: x['moyenne_generale'], reverse=True)
     eleves_toutes_notes = eleves_avec_rang + eleves_sans_rang
     
-    # Récupérer toutes les évaluations pour les en-têtes
+    # Récupérer les évaluations pour les en-têtes (simplifiées)
     evaluations_par_matiere = {}
+    periodes_mensuelles_list = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+    periodes_trimestrielles_list = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+    periodes_semestrielles_list = ['SEMESTRE_1', 'SEMESTRE_2']
+    
     for matiere in matieres:
-        # Filtrer les évaluations selon la période sélectionnée
-        evaluations = Evaluation.objects.filter(matiere=matiere)
-        
-        # Si une période spécifique est sélectionnée, filtrer les évaluations
-        if periode_classement and periode_classement not in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-            # Pour les trimestres/semestres, filtrer par période
-            evaluations = evaluations.filter(periode=periode_classement)
-        elif periode_classement in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-            # Pour les mois, ajouter une évaluation factice pour l'affichage
+        if periode_classement in periodes_mensuelles_list:
+            # Pour les mois: une seule colonne "Note"
             eval_factice = type('EvalFactice', (), {
                 'id': f'mensuel_{matiere.id}',
-                'titre': periode_classement,
+                'titre': 'Note',
                 'periode': periode_classement,
                 'coefficient': 1,
                 'date_evaluation': None
             })()
-            evaluations = [eval_factice]
-        
-        evaluations_par_matiere[matiere.id] = evaluations
+            evaluations_par_matiere[matiere.id] = [eval_factice]
+        elif periode_classement in periodes_trimestrielles_list or periode_classement in periodes_semestrielles_list:
+            # Pour les trimestres/semestres: une seule colonne "Compo"
+            eval_factice = type('EvalFactice', (), {
+                'id': f'compo_{matiere.id}',
+                'titre': 'Compo',
+                'periode': periode_classement,
+                'coefficient': 1,
+                'date_evaluation': None
+            })()
+            evaluations_par_matiere[matiere.id] = [eval_factice]
+        else:
+            # Par défaut: une colonne générique
+            eval_factice = type('EvalFactice', (), {
+                'id': f'note_{matiere.id}',
+                'titre': 'Note',
+                'periode': periode_classement or 'OCTOBRE',
+                'coefficient': 1,
+                'date_evaluation': None
+            })()
+            evaluations_par_matiere[matiere.id] = [eval_factice]
     
     # Garder la période sélectionnée (ne pas écraser avec la première période)
     periode_selectionnee = request.GET.get('periode', '')
