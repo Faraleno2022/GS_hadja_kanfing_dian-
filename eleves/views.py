@@ -1446,7 +1446,7 @@ def supprimer_eleve(request, eleve_id):
 def gestion_classes(request):
     """Vue pour gérer les classes"""
     classes = Classe.objects.select_related('ecole').annotate(
-        nombre_eleves=Count('eleves')
+        eleves_count=Count('eleves')
     ).order_by('ecole__nom', 'niveau', 'nom')
     if not user_is_admin(request.user):
         classes = classes.filter(ecole=user_school(request.user))
@@ -1454,7 +1454,7 @@ def gestion_classes(request):
     # Statistiques
     stats = {
         'total_classes': classes.count(),
-        'total_eleves': sum(c.nombre_eleves for c in classes),
+        'total_eleves': sum(c.eleves_count for c in classes),
         'classes_par_ecole': {}
     }
     
@@ -1465,7 +1465,7 @@ def gestion_classes(request):
         classes_ecole = classes.filter(ecole=ecole)
         stats['classes_par_ecole'][ecole.nom] = {
             'nombre_classes': classes_ecole.count(),
-            'nombre_eleves': sum(c.nombre_eleves for c in classes_ecole)
+            'nombre_eleves': sum(c.eleves_count for c in classes_ecole)
         }
     
     context = {
