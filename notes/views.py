@@ -14,7 +14,7 @@ from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote
 from eleves.models import Eleve
 from decimal import Decimal
 from django.http import HttpResponse, JsonResponse
