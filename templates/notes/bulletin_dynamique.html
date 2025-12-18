@@ -849,14 +849,25 @@
                     {% if system_type == 'mensuel' %}
                         <th rowspan="2">NOTE</th>
                     {% elif system_type == 'trimestre' %}
-                        <!-- Trimestre: 2 mois + Moy.C + Compo = 4 colonnes -->
-                        <th colspan="4">DÉTAILS TRIMESTRIEL</th>
-                    {% elif system_type == 'semestre' %}
-                        <!-- Semestre: S1=4 mois, S2=3 mois + Moy.C + Compo -->
-                        {% if periode == 'SEMESTRE_1' %}
-                        <th colspan="6">DÉTAILS SEMESTRIEL</th>
+                        <!-- Trimestre: colonnes adaptatives selon mode de saisie -->
+                        {% if has_notes_mensuelles %}
+                            <!-- 2 mois + Moy.C + Compo = 4 colonnes -->
+                            <th colspan="4">DÉTAILS TRIMESTRIEL</th>
                         {% else %}
-                        <th colspan="5">DÉTAILS SEMESTRIEL</th>
+                            <!-- Composition seule = 1 colonne -->
+                            <th colspan="1">COMPOSITION</th>
+                        {% endif %}
+                    {% elif system_type == 'semestre' %}
+                        <!-- Semestre: colonnes adaptatives selon mode de saisie -->
+                        {% if has_notes_mensuelles %}
+                            {% if periode == 'SEMESTRE_1' %}
+                            <th colspan="6">DÉTAILS SEMESTRIEL</th>
+                            {% else %}
+                            <th colspan="5">DÉTAILS SEMESTRIEL</th>
+                            {% endif %}
+                        {% else %}
+                            <!-- Composition seule = 1 colonne -->
+                            <th colspan="1">COMPOSITION</th>
                         {% endif %}
                     {% elif system_type == 'annuel_trimestriel' %}
                         <!-- Bulletin annuel basé sur les trimestres: 3 colonnes (T1, T2, T3) -->
@@ -873,23 +884,27 @@
                 <tr>
                     {% if system_type == 'trimestre' %}
                         <!-- Système guinéen: T1=Oct,Nov+Déc(compo), T2=Jan,Fév+Mars(compo), T3=Avr,Mai+Juin(compo) -->
-                        {% if periode == 'TRIMESTRE_1' %}
-                            <th>Oct.</th><th>Nov.</th>
-                        {% elif periode == 'TRIMESTRE_2' %}
-                            <th>Jan.</th><th>Fév.</th>
-                        {% elif periode == 'TRIMESTRE_3' %}
-                            <th>Avr.</th><th>Mai</th>
+                        {% if has_notes_mensuelles %}
+                            {% if periode == 'TRIMESTRE_1' %}
+                                <th>Oct.</th><th>Nov.</th>
+                            {% elif periode == 'TRIMESTRE_2' %}
+                                <th>Jan.</th><th>Fév.</th>
+                            {% elif periode == 'TRIMESTRE_3' %}
+                                <th>Avr.</th><th>Mai</th>
+                            {% endif %}
+                            <th>Moy. Cont.</th>
                         {% endif %}
-                        <th>Moy. Cont.</th>
                         <th>Compo</th>
                     {% elif system_type == 'semestre' %}
                         <!-- Système guinéen: S1=Oct,Nov,Déc,Jan+Fév(compo), S2=Mars,Avr,Mai+Juin(compo) -->
-                        {% if periode == 'SEMESTRE_1' %}
-                            <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th>
-                        {% elif periode == 'SEMESTRE_2' %}
-                            <th>Mars</th><th>Avr.</th><th>Mai</th>
+                        {% if has_notes_mensuelles %}
+                            {% if periode == 'SEMESTRE_1' %}
+                                <th>Oct.</th><th>Nov.</th><th>Déc.</th><th>Jan.</th>
+                            {% elif periode == 'SEMESTRE_2' %}
+                                <th>Mars</th><th>Avr.</th><th>Mai</th>
+                            {% endif %}
+                            <th>Moy. Cont.</th>
                         {% endif %}
-                        <th>Moy. Cont.</th>
                         <th>Compo</th>
                     {% elif system_type == 'annuel_trimestriel' %}
                         <!-- Colonnes pour bulletin annuel trimestriel: T1 + T2 + T3 (MOY et PTS sont déjà en rowspan="2") -->
@@ -923,38 +938,44 @@
                             {% endif %}
                         </td>
                     {% elif system_type in 'trimestre,semestre' %}
-                        <!-- NOUVEAU: Affichage détaillé des moyennes mensuelles -->
-                        {% if matiere_note.moyennes_mensuelles %}
-                            {% for moy_mens in matiere_note.moyennes_mensuelles %}
-                                <td>
-                                    {% if moy_mens.absent %}
-                                        <span style="color: red; font-weight: bold;">ABS</span>
-                                    {% elif moy_mens.moyenne is not None %}
-                                        <span style="color: #2c5aa0; font-weight: bold;">{{ moy_mens.moyenne|floatformat:2 }}</span>
+                        {% if has_notes_mensuelles %}
+                            <!-- Affichage détaillé des moyennes mensuelles -->
+                            {% if matiere_note.moyennes_mensuelles %}
+                                {% for moy_mens in matiere_note.moyennes_mensuelles %}
+                                    <td>
+                                        {% if moy_mens.absent %}
+                                            <span style="color: red; font-weight: bold;">ABS</span>
+                                        {% elif moy_mens.moyenne is not None %}
+                                            <span style="color: #2c5aa0; font-weight: bold;">{{ moy_mens.moyenne|floatformat:2 }}</span>
+                                        {% else %}
+                                            <span style="color: #999;">-</span>
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                            {% else %}
+                                <!-- Si pas de détails mensuels, afficher des colonnes vides -->
+                                {% if system_type == 'trimestre' %}
+                                    <td>-</td><td>-</td>
+                                {% elif system_type == 'semestre' %}
+                                    {% if periode == 'SEMESTRE_1' %}
+                                        <td>-</td><td>-</td><td>-</td><td>-</td>
                                     {% else %}
-                                        <span style="color: #999;">-</span>
+                                        <td>-</td><td>-</td><td>-</td>
                                     {% endif %}
-                                </td>
-                            {% endfor %}
-                        {% else %}
-                            <!-- Si pas de détails mensuels, afficher des colonnes vides -->
-                            {% if system_type == 'trimestre' %}
-                                <td>-</td><td>-</td><td>-</td>
-                            {% elif system_type == 'semestre' %}
-                                <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+                                {% endif %}
                             {% endif %}
+                            
+                            <!-- Moyenne continue calculée -->
+                            <td style="background: #e8f4fd; font-weight: bold;">
+                                {% if matiere_note.moyenne_continue %}
+                                    {{ matiere_note.moyenne_continue|floatformat:2 }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                         {% endif %}
                         
-                        <!-- Moyenne continue calculée -->
-                        <td style="background: #e8f4fd; font-weight: bold;">
-                            {% if matiere_note.moyenne_continue %}
-                                {{ matiere_note.moyenne_continue|floatformat:2 }}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        
-                        <!-- Composition -->
+                        <!-- Composition (toujours affichée) -->
                         <td style="background: #fff3cd; font-weight: bold;">
                             {% if matiere_note.note_composition %}
                                 {{ matiere_note.note_composition|floatformat:2 }}

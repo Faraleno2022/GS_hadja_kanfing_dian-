@@ -23,6 +23,106 @@ CACHE_TIMEOUT_MOYENNES = 600  # 10 minutes
 CACHE_TIMEOUT_CLASSEMENT = 600  # 10 minutes
 
 
+def detecter_notes_mensuelles_classe(classe_note, periode=None):
+    """
+    Détecte si une classe a des notes mensuelles saisies.
+    Utile pour masquer les colonnes mensuelles sur le bulletin si seulement des compositions.
+    
+    Args:
+        classe_note: Instance ClasseNote
+        periode: Période spécifique (optionnel, ex: 'TRIMESTRE_1')
+    
+    Returns:
+        dict avec:
+            - has_notes_mensuelles: bool - True si des notes mensuelles existent
+            - has_compositions: bool - True si des compositions existent
+            - mode_saisie: str - 'mensuel', 'composition_seule', 'mixte'
+    """
+    from .models import NoteMensuelle, CompositionNote, MatiereNote
+    from eleves.models import Eleve, Classe as ClasseEleve
+    
+    # Récupérer les élèves de la classe
+    classe_eleve = ClasseEleve.objects.filter(
+        nom__iexact=classe_note.nom,
+        annee_scolaire=classe_note.annee_scolaire,
+        ecole=classe_note.ecole
+    ).first()
+    
+    if not classe_eleve:
+        return {'has_notes_mensuelles': False, 'has_compositions': False, 'mode_saisie': 'aucun'}
+    
+    eleves_ids = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').values_list('id', flat=True))
+    matieres_ids = list(MatiereNote.objects.filter(classe=classe_note, actif=True).values_list('id', flat=True))
+    
+    if not eleves_ids or not matieres_ids:
+        return {'has_notes_mensuelles': False, 'has_compositions': False, 'mode_saisie': 'aucun'}
+    
+    # Déterminer les mois à vérifier selon la période
+    mois_a_verifier = []
+    periodes_compo = []
+    
+    if periode:
+        if periode == 'TRIMESTRE_1':
+            mois_a_verifier = ['OCTOBRE', 'NOVEMBRE']
+            periodes_compo = ['TRIMESTRE_1']
+        elif periode == 'TRIMESTRE_2':
+            mois_a_verifier = ['JANVIER', 'FEVRIER']
+            periodes_compo = ['TRIMESTRE_2']
+        elif periode == 'TRIMESTRE_3':
+            mois_a_verifier = ['AVRIL', 'MAI']
+            periodes_compo = ['TRIMESTRE_3']
+        elif periode == 'SEMESTRE_1':
+            mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
+            periodes_compo = ['SEMESTRE_1']
+        elif periode == 'SEMESTRE_2':
+            mois_a_verifier = ['MARS', 'AVRIL', 'MAI']
+            periodes_compo = ['SEMESTRE_2']
+        elif periode == 'ANNUEL_TRIM':
+            mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'JANVIER', 'FEVRIER', 'AVRIL', 'MAI']
+            periodes_compo = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        elif periode == 'ANNUEL_SEM':
+            mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'MARS', 'AVRIL', 'MAI']
+            periodes_compo = ['SEMESTRE_1', 'SEMESTRE_2']
+    else:
+        # Vérifier tous les mois
+        mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        periodes_compo = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3', 'SEMESTRE_1', 'SEMESTRE_2']
+    
+    # Vérifier les notes mensuelles
+    has_notes_mensuelles = NoteMensuelle.objects.filter(
+        eleve_id__in=eleves_ids,
+        matiere_id__in=matieres_ids,
+        mois__in=mois_a_verifier,
+        annee_scolaire=classe_note.annee_scolaire,
+        note__isnull=False
+    ).exists()
+    
+    # Vérifier les compositions
+    has_compositions = CompositionNote.objects.filter(
+        eleve_id__in=eleves_ids,
+        matiere_id__in=matieres_ids,
+        periode__in=periodes_compo,
+        annee_scolaire=classe_note.annee_scolaire,
+        note__isnull=False
+    ).exists()
+    
+    # Déterminer le mode de saisie
+    if has_notes_mensuelles and has_compositions:
+        mode_saisie = 'mixte'
+    elif has_compositions:
+        mode_saisie = 'composition_seule'
+    elif has_notes_mensuelles:
+        mode_saisie = 'mensuel'
+    else:
+        mode_saisie = 'aucun'
+    
+    return {
+        'has_notes_mensuelles': has_notes_mensuelles,
+        'has_compositions': has_compositions,
+        'mode_saisie': mode_saisie
+    }
+
+
 def detecter_niveau_scolaire(classe_nom):
     """
     Détecte le niveau scolaire à partir du nom de la classe

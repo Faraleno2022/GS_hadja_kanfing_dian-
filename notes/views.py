@@ -7481,11 +7481,21 @@ def bulletin_dynamique(request):
     # Déterminer est_maternelle et est_primaire pour le contexte
     est_maternelle_ctx = False
     est_primaire_ctx = False
+    mode_saisie_notes = 'mixte'  # Par défaut: notes mensuelles + compositions
+    has_notes_mensuelles = True
+    has_compositions = True
+    
     if classe_selectionnee:
-        from .calculs_moyennes import detecter_niveau_scolaire
+        from .calculs_moyennes import detecter_niveau_scolaire, detecter_notes_mensuelles_classe
         niveau_detecte_ctx = detecter_niveau_scolaire(classe_selectionnee.nom)
         est_maternelle_ctx = (niveau_detecte_ctx == 'MATERNELLE')
         est_primaire_ctx = (niveau_detecte_ctx == 'PRIMAIRE')
+        
+        # Détecter le mode de saisie des notes (mensuel, composition_seule, mixte)
+        detection_result = detecter_notes_mensuelles_classe(classe_selectionnee, periode)
+        mode_saisie_notes = detection_result['mode_saisie']
+        has_notes_mensuelles = detection_result['has_notes_mensuelles']
+        has_compositions = detection_result['has_compositions']
     
     # Base de notation: 10 pour primaire, 20 pour secondaire
     base_notation = 10 if est_primaire_ctx else 20
@@ -7508,6 +7518,10 @@ def bulletin_dynamique(request):
         'bulletin_data': bulletin_data,
         'ecole': ecole,
         'annee_scolaire': classe_selectionnee.annee_scolaire if classe_selectionnee else '',
+        # NOUVEAU: Mode de saisie pour masquer colonnes mensuelles si seulement compositions
+        'mode_saisie_notes': mode_saisie_notes,
+        'has_notes_mensuelles': has_notes_mensuelles,
+        'has_compositions': has_compositions,
     }
     
     return render(request, 'notes/bulletin_dynamique.html', context)
