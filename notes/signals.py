@@ -24,12 +24,12 @@ logger = logging.getLogger(__name__)
 @receiver(post_save, sender='notes.NoteEleve')
 def sync_note_eleve_to_mensuelle(sender, instance, created, **kwargs):
     """
-    Synchronise automatiquement une NoteEleve vers NoteMensuelle.
+    Synchronise automatiquement une NoteEleve vers NoteMensuelle ou CompositionNote.
     
     Déclenché à chaque sauvegarde d'une NoteEleve.
-    Crée ou met à jour la NoteMensuelle correspondante.
+    Crée ou met à jour la NoteMensuelle (périodes mensuelles) ou CompositionNote (trimestrielles/semestrielles).
     """
-    from .models import NoteMensuelle, NoteEleve
+    from .models import NoteMensuelle, CompositionNote, NoteEleve
     
     try:
         # Récupérer les informations de l'évaluation
@@ -38,9 +38,11 @@ def sync_note_eleve_to_mensuelle(sender, instance, created, **kwargs):
         classe_note = matiere.classe
         periode = evaluation.periode
         
-        # Vérifier si c'est une période mensuelle (pas trimestrielle/semestrielle)
+        # Définir les types de périodes
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 
                                'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
         
         if periode in periodes_mensuelles:
             # Ignorer si la note est None (sauf si absent)
@@ -66,18 +68,44 @@ def sync_note_eleve_to_mensuelle(sender, instance, created, **kwargs):
             cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
             cache.delete(cache_key)
             
-            logger.debug(f"Note synchronisée: {instance.eleve} - {matiere.nom} - {periode}")
+            logger.debug(f"Note mensuelle synchronisée: {instance.eleve} - {matiere.nom} - {periode}")
+        
+        elif periode in periodes_trimestrielles or periode in periodes_semestrielles:
+            # Ignorer si la note est None (sauf si absent)
+            if instance.note is None and not instance.absent:
+                return
+            
+            # Créer ou mettre à jour CompositionNote
+            note_value = instance.note if instance.note is not None else 0
+            
+            CompositionNote.objects.update_or_create(
+                eleve=instance.eleve,
+                matiere=matiere,
+                periode=periode,
+                annee_scolaire=classe_note.annee_scolaire,
+                defaults={
+                    'note': note_value,
+                    'absent': instance.absent,
+                    'cree_par': instance.cree_par
+                }
+            )
+            
+            # Invalider le cache des rangs
+            cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
+            cache.delete(cache_key)
+            
+            logger.debug(f"Note composition synchronisée: {instance.eleve} - {matiere.nom} - {periode}")
             
     except Exception as e:
-        logger.error(f"Erreur sync NoteEleve -> NoteMensuelle: {e}")
+        logger.error(f"Erreur sync NoteEleve -> NoteMensuelle/CompositionNote: {e}")
 
 
 @receiver(post_delete, sender='notes.NoteEleve')
 def delete_note_mensuelle_on_note_eleve_delete(sender, instance, **kwargs):
     """
-    Supprime la NoteMensuelle correspondante quand une NoteEleve est supprimée.
+    Supprime la NoteMensuelle ou CompositionNote correspondante quand une NoteEleve est supprimée.
     """
-    from .models import NoteMensuelle
+    from .models import NoteMensuelle, CompositionNote, NoteEleve
     
     try:
         evaluation = instance.evaluation
@@ -87,33 +115,42 @@ def delete_note_mensuelle_on_note_eleve_delete(sender, instance, **kwargs):
         
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 
                                'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
         
-        if periode in periodes_mensuelles:
-            # Vérifier s'il y a d'autres évaluations pour cette période
-            from .models import NoteEleve
-            autres_notes = NoteEleve.objects.filter(
-                eleve=instance.eleve,
-                evaluation__matiere=matiere,
-                evaluation__periode=periode
-            ).exclude(id=instance.id).exists()
-            
-            # Ne supprimer que s'il n'y a pas d'autres notes
-            if not autres_notes:
+        # Vérifier s'il y a d'autres évaluations pour cette période
+        autres_notes = NoteEleve.objects.filter(
+            eleve=instance.eleve,
+            evaluation__matiere=matiere,
+            evaluation__periode=periode
+        ).exclude(id=instance.id).exists()
+        
+        # Ne supprimer que s'il n'y a pas d'autres notes
+        if not autres_notes:
+            if periode in periodes_mensuelles:
                 NoteMensuelle.objects.filter(
                     eleve=instance.eleve,
                     matiere=matiere,
                     mois=periode,
                     annee_scolaire=classe_note.annee_scolaire
                 ).delete()
-                
-                # Invalider le cache
-                cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
-                cache.delete(cache_key)
-                
                 logger.debug(f"NoteMensuelle supprimée: {instance.eleve} - {matiere.nom} - {periode}")
+            
+            elif periode in periodes_trimestrielles or periode in periodes_semestrielles:
+                CompositionNote.objects.filter(
+                    eleve=instance.eleve,
+                    matiere=matiere,
+                    periode=periode,
+                    annee_scolaire=classe_note.annee_scolaire
+                ).delete()
+                logger.debug(f"CompositionNote supprimée: {instance.eleve} - {matiere.nom} - {periode}")
+            
+            # Invalider le cache
+            cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
+            cache.delete(cache_key)
                 
     except Exception as e:
-        logger.error(f"Erreur suppression NoteMensuelle: {e}")
+        logger.error(f"Erreur suppression NoteMensuelle/CompositionNote: {e}")
 
 
 def sync_all_notes_eleve_to_mensuelle(classe_note=None, annee_scolaire=None):
