@@ -182,11 +182,12 @@ class ImportElevesValidator:
                 f"Ligne {ligne_num}: Le sexe doit être 'M' ou 'F' (trouvé: {row['Sexe']})"
             )
         
-        # Valider la date de naissance
-        if row.get('Date de Naissance'):
+        # Valider la date de naissance (optionnel - valider uniquement si présent)
+        date_val = row.get('Date de Naissance')
+        if date_val and not pd.isna(date_val) and str(date_val).strip() != '':
             try:
                 # Essayer différents formats
-                date_str = str(row['Date de Naissance'])
+                date_str = str(date_val).strip()
                 for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y']:
                     try:
                         date_naissance = datetime.strptime(date_str, fmt)
@@ -207,9 +208,10 @@ class ImportElevesValidator:
                     f"Ligne {ligne_num}: Date de naissance invalide (format attendu: JJ/MM/AAAA)"
                 )
         
-        # Valider le téléphone
-        if row.get('Téléphone Principal'):
-            tel = str(row['Téléphone Principal']).replace(' ', '').replace('-', '')
+        # Valider le téléphone (optionnel - valider uniquement si présent)
+        tel_val = row.get('Téléphone Principal')
+        if tel_val and not pd.isna(tel_val) and str(tel_val).strip() != '':
+            tel = str(tel_val).replace(' ', '').replace('-', '')
             if not tel.isdigit() or len(tel) < 8:
                 self.erreurs.append(
                     f"Ligne {ligne_num}: Téléphone invalide (doit contenir au moins 8 chiffres)"
