@@ -5495,6 +5495,19 @@ def gerer_matieres(request):
     if request.method == 'POST' and classe_selectionnee:
         form = MatiereNoteForm(request.POST)
         if form.is_valid():
+            code = form.cleaned_data.get('code')
+            nom = form.cleaned_data.get('nom')
+            
+            # Vérifier si le code existe déjà pour cette classe
+            if MatiereNote.objects.filter(classe=classe_selectionnee, code=code).exists():
+                messages.error(request, f'❌ Une matière avec le code "{code}" existe déjà pour cette classe.')
+                return redirect(f'/notes/matieres/?classe_id={classe_id}')
+            
+            # Vérifier si le nom existe déjà pour cette classe
+            if MatiereNote.objects.filter(classe=classe_selectionnee, nom=nom).exists():
+                messages.error(request, f'❌ Une matière avec le nom "{nom}" existe déjà pour cette classe.')
+                return redirect(f'/notes/matieres/?classe_id={classe_id}')
+            
             matiere = form.save(commit=False)
             matiere.classe = classe_selectionnee
             matiere.cree_par = request.user
@@ -5550,6 +5563,19 @@ def modifier_matiere(request, matiere_id):
     if request.method == 'POST':
         form = MatiereNoteForm(request.POST, instance=matiere)
         if form.is_valid():
+            code = form.cleaned_data.get('code')
+            nom = form.cleaned_data.get('nom')
+            
+            # Vérifier si le code existe déjà pour cette classe (exclure l'instance actuelle)
+            if MatiereNote.objects.filter(classe=matiere.classe, code=code).exclude(pk=matiere.pk).exists():
+                messages.error(request, f'❌ Une matière avec le code "{code}" existe déjà pour cette classe.')
+                return redirect(f'/notes/matieres/?classe_id={classe_id}')
+            
+            # Vérifier si le nom existe déjà pour cette classe (exclure l'instance actuelle)
+            if MatiereNote.objects.filter(classe=matiere.classe, nom=nom).exclude(pk=matiere.pk).exists():
+                messages.error(request, f'❌ Une matière avec le nom "{nom}" existe déjà pour cette classe.')
+                return redirect(f'/notes/matieres/?classe_id={classe_id}')
+            
             instance = form.save(commit=False)
             
             # Gestion des coefficients selon le niveau
