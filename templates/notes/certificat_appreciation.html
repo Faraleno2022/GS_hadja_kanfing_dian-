@@ -23,12 +23,13 @@
         .certificat {
             width: 277mm;
             height: 190mm;
-            padding: 15mm;
+            padding: 8mm 12mm;
             page-break-after: always;
             position: relative;
             background: linear-gradient(135deg, #fff9e6 0%, #fff 50%, #e6f7ff 100%);
             border: 3px solid #c9a227;
             box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 4px #c9a227;
+            overflow: hidden;
         }
         
         .certificat:last-child {
@@ -38,10 +39,10 @@
         /* Bordure décorative */
         .bordure-decorative {
             position: absolute;
-            top: 8mm;
-            left: 8mm;
-            right: 8mm;
-            bottom: 8mm;
+            top: 5mm;
+            left: 5mm;
+            right: 5mm;
+            bottom: 5mm;
             border: 2px solid #d4af37;
             pointer-events: none;
         }
@@ -49,30 +50,30 @@
         .bordure-decorative::before {
             content: '';
             position: absolute;
-            top: 3mm;
-            left: 3mm;
-            right: 3mm;
-            bottom: 3mm;
+            top: 2mm;
+            left: 2mm;
+            right: 2mm;
+            bottom: 2mm;
             border: 1px solid #d4af37;
         }
         
         /* Coins décoratifs */
         .coin {
             position: absolute;
-            width: 25mm;
-            height: 25mm;
-            border: 3px solid #c9a227;
+            width: 18mm;
+            height: 18mm;
+            border: 2px solid #c9a227;
         }
         
-        .coin-hg { top: 12mm; left: 12mm; border-right: none; border-bottom: none; }
-        .coin-hd { top: 12mm; right: 12mm; border-left: none; border-bottom: none; }
-        .coin-bg { bottom: 12mm; left: 12mm; border-right: none; border-top: none; }
-        .coin-bd { bottom: 12mm; right: 12mm; border-left: none; border-top: none; }
+        .coin-hg { top: 8mm; left: 8mm; border-right: none; border-bottom: none; }
+        .coin-hd { top: 8mm; right: 8mm; border-left: none; border-bottom: none; }
+        .coin-bg { bottom: 8mm; left: 8mm; border-right: none; border-top: none; }
+        .coin-bd { bottom: 8mm; right: 8mm; border-left: none; border-top: none; }
         
         /* En-tête */
         .entete {
             text-align: center;
-            margin-bottom: 3mm;
+            margin-bottom: 2mm;
         }
         
         .republique {
@@ -124,20 +125,20 @@
         /* Titre principal */
         .titre-certificat {
             text-align: center;
-            margin: 4mm 0;
+            margin: 2mm 0;
         }
         
         .titre-certificat h1 {
-            font-size: 24pt;
+            font-size: 22pt;
             color: #c9a227;
             text-transform: uppercase;
-            letter-spacing: 3px;
+            letter-spacing: 2px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
             font-weight: bold;
         }
         
         .titre-certificat .sous-titre {
-            font-size: 12pt;
+            font-size: 11pt;
             color: #666;
             margin-top: 1mm;
             font-style: italic;
@@ -146,17 +147,17 @@
         /* Médaille/Badge du rang */
         .badge-rang {
             text-align: center;
-            margin: 3mm 0;
+            margin: 2mm 0;
         }
         
         .medaille {
             display: inline-block;
-            width: 16mm;
-            height: 16mm;
+            width: 14mm;
+            height: 14mm;
             border-radius: 50%;
-            line-height: 16mm;
-            font-size: 20pt;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            line-height: 14mm;
+            font-size: 18pt;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.2);
         }
         
         .medaille-or { background: linear-gradient(135deg, #ffd700, #ffec8b, #ffd700); }
@@ -168,71 +169,80 @@
         /* Corps du certificat */
         .corps-certificat {
             text-align: center;
-            margin: 4mm 20mm;
+            margin: 2mm 15mm;
         }
         
         .texte-intro {
-            font-size: 11pt;
+            font-size: 10pt;
             color: #333;
-            margin-bottom: 3mm;
+            margin-bottom: 2mm;
         }
         
         .nom-eleve {
-            font-size: 20pt;
+            font-size: 18pt;
             font-weight: bold;
             color: #1a5f7a;
-            margin: 3mm 0;
+            margin: 2mm 0;
             text-transform: uppercase;
             border-bottom: 2px solid #c9a227;
-            padding-bottom: 2mm;
+            padding-bottom: 1mm;
             display: inline-block;
         }
         
         .classe-info {
-            font-size: 12pt;
+            font-size: 11pt;
             color: #444;
-            margin: 2mm 0;
+            margin: 1mm 0;
         }
         
         .resultat {
-            font-size: 14pt;
+            font-size: 12pt;
             color: #333;
-            margin: 3mm 0;
+            margin: 2mm 0;
         }
         
         .moyenne {
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: bold;
             color: #c9a227;
         }
         
         .rang-texte {
-            font-size: 16pt;
+            font-size: 14pt;
             font-weight: bold;
             color: #1a5f7a;
         }
         
         .periode-info {
-            font-size: 11pt;
+            font-size: 10pt;
             color: #666;
-            margin-top: 2mm;
+            margin-top: 1mm;
             font-style: italic;
         }
         
         /* Félicitations */
         .felicitations {
-            font-size: 11pt;
+            font-size: 10pt;
             color: #333;
-            margin: 4mm 15mm;
+            margin: 2mm 10mm;
             text-align: center;
             font-style: italic;
+        }
+        
+        /* Date */
+        .date-lieu {
+            text-align: right;
+            margin-right: 12mm;
+            font-size: 9pt;
+            color: #444;
+            margin-bottom: 2mm;
         }
         
         /* Signatures */
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin: 5mm 15mm 0;
+            margin: 2mm 12mm 0;
         }
         
         .signature-bloc {
@@ -241,25 +251,16 @@
         }
         
         .signature-titre {
-            font-size: 10pt;
+            font-size: 9pt;
             color: #333;
-            margin-bottom: 8mm;
+            margin-bottom: 6mm;
         }
         
         .signature-ligne {
             border-top: 1px solid #333;
-            padding-top: 2mm;
-            font-size: 9pt;
+            padding-top: 1mm;
+            font-size: 8pt;
             color: #666;
-        }
-        
-        /* Date */
-        .date-lieu {
-            text-align: right;
-            margin-right: 15mm;
-            font-size: 10pt;
-            color: #444;
-            margin-bottom: 3mm;
         }
         
         /* Filigrane */
