@@ -49,20 +49,38 @@ def certificats_appreciation_pdf(request):
         if not classe_eleve:
             return HttpResponse(f"Classe élèves non trouvée pour {classe_note.nom}", status=404)
         
+        # Récupérer les élèves actifs de la classe
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+        
+        # Récupérer les matières de la classe
+        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+        
+        # Déterminer le type de système selon la période
+        if periode in ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']:
+            system_type = 'trimestriel'
+        elif periode in ['SEMESTRE_1', 'SEMESTRE_2']:
+            system_type = 'semestriel'
+        elif periode in ['ANNUEL_TRIM']:
+            system_type = 'annuel_trimestriel'
+        elif periode in ['ANNUEL_SEM']:
+            system_type = 'annuel_semestriel'
+        else:
+            system_type = 'mensuel'
+        
         # Calculer le classement
         from .calculs_moyennes import calculer_classement_classe
-        classement_resultat = calculer_classement_classe(classe_note, periode)
+        classement_resultat = calculer_classement_classe(eleves, matieres, periode, system_type)
         
-        if not classement_resultat or 'classement' not in classement_resultat:
+        if not classement_resultat or 'rang_map' not in classement_resultat:
             return HttpResponse("Impossible de calculer le classement", status=400)
         
         # Récupérer les 5 premiers
-        classement = classement_resultat['classement']
+        rang_map = classement_resultat['rang_map']
         moyennes = classement_resultat.get('moyennes_par_eleve', {})
         
         # Filtrer les élèves avec un rang valide et trier par rang
         eleves_avec_rang = []
-        for eleve_id, rang in classement.items():
+        for eleve_id, rang in rang_map.items():
             if rang and rang <= 5:
                 try:
                     eleve = Eleve.objects.get(pk=eleve_id)
