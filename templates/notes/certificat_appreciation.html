@@ -72,20 +72,21 @@
         /* En-tête */
         .entete {
             text-align: center;
-            margin-bottom: 8mm;
+            margin-bottom: 3mm;
         }
         
         .republique {
-            font-size: 14pt;
+            font-size: 12pt;
             font-weight: bold;
             color: #1a1a1a;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
+            margin-bottom: 1mm;
         }
         
         .devise {
-            font-size: 11pt;
-            margin: 2mm 0;
+            font-size: 10pt;
+            margin: 1mm 0;
         }
         
         .devise-rouge { color: #CE1126; }
@@ -93,9 +94,9 @@
         .devise-vert { color: #009460; }
         
         .ministere {
-            font-size: 10pt;
+            font-size: 9pt;
             color: #444;
-            margin-bottom: 3mm;
+            margin-bottom: 2mm;
         }
         
         /* Logo et nom école */
@@ -103,18 +104,18 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10mm;
-            margin-bottom: 5mm;
+            gap: 8mm;
+            margin-bottom: 3mm;
         }
         
         .logo-ecole {
-            width: 20mm;
-            height: 20mm;
+            width: 18mm;
+            height: 18mm;
             object-fit: contain;
         }
         
         .nom-ecole {
-            font-size: 16pt;
+            font-size: 14pt;
             font-weight: bold;
             color: #1a5f7a;
             text-transform: uppercase;
@@ -123,38 +124,38 @@
         /* Titre principal */
         .titre-certificat {
             text-align: center;
-            margin: 8mm 0;
+            margin: 4mm 0;
         }
         
         .titre-certificat h1 {
-            font-size: 28pt;
+            font-size: 24pt;
             color: #c9a227;
             text-transform: uppercase;
-            letter-spacing: 4px;
+            letter-spacing: 3px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
             font-weight: bold;
         }
         
         .titre-certificat .sous-titre {
-            font-size: 14pt;
+            font-size: 12pt;
             color: #666;
-            margin-top: 2mm;
+            margin-top: 1mm;
             font-style: italic;
         }
         
         /* Médaille/Badge du rang */
         .badge-rang {
             text-align: center;
-            margin: 5mm 0;
+            margin: 3mm 0;
         }
         
         .medaille {
             display: inline-block;
-            width: 20mm;
-            height: 20mm;
+            width: 16mm;
+            height: 16mm;
             border-radius: 50%;
-            line-height: 20mm;
-            font-size: 24pt;
+            line-height: 16mm;
+            font-size: 20pt;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
         }
         
@@ -167,62 +168,62 @@
         /* Corps du certificat */
         .corps-certificat {
             text-align: center;
-            margin: 8mm 20mm;
+            margin: 4mm 20mm;
         }
         
         .texte-intro {
-            font-size: 12pt;
+            font-size: 11pt;
             color: #333;
-            margin-bottom: 5mm;
+            margin-bottom: 3mm;
         }
         
         .nom-eleve {
-            font-size: 24pt;
+            font-size: 20pt;
             font-weight: bold;
             color: #1a5f7a;
-            margin: 5mm 0;
+            margin: 3mm 0;
             text-transform: uppercase;
             border-bottom: 2px solid #c9a227;
-            padding-bottom: 3mm;
+            padding-bottom: 2mm;
             display: inline-block;
         }
         
         .classe-info {
-            font-size: 14pt;
+            font-size: 12pt;
             color: #444;
-            margin: 3mm 0;
+            margin: 2mm 0;
         }
         
         .resultat {
-            font-size: 16pt;
+            font-size: 14pt;
             color: #333;
-            margin: 5mm 0;
+            margin: 3mm 0;
         }
         
         .moyenne {
-            font-size: 20pt;
+            font-size: 18pt;
             font-weight: bold;
             color: #c9a227;
         }
         
         .rang-texte {
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: bold;
             color: #1a5f7a;
         }
         
         .periode-info {
-            font-size: 12pt;
+            font-size: 11pt;
             color: #666;
-            margin-top: 3mm;
+            margin-top: 2mm;
             font-style: italic;
         }
         
         /* Félicitations */
         .felicitations {
-            font-size: 13pt;
+            font-size: 11pt;
             color: #333;
-            margin: 8mm 15mm;
+            margin: 4mm 15mm;
             text-align: center;
             font-style: italic;
         }
@@ -231,33 +232,34 @@
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin: 10mm 20mm 0;
+            margin: 5mm 15mm 0;
         }
         
         .signature-bloc {
             text-align: center;
-            width: 40%;
+            width: 30%;
         }
         
         .signature-titre {
-            font-size: 11pt;
+            font-size: 10pt;
             color: #333;
-            margin-bottom: 12mm;
+            margin-bottom: 8mm;
         }
         
         .signature-ligne {
             border-top: 1px solid #333;
             padding-top: 2mm;
-            font-size: 10pt;
+            font-size: 9pt;
             color: #666;
         }
         
         /* Date */
         .date-lieu {
             text-align: right;
-            margin-right: 20mm;
-            font-size: 11pt;
+            margin-right: 15mm;
+            font-size: 10pt;
             color: #444;
+            margin-bottom: 3mm;
         }
         
         /* Filigrane */
@@ -400,8 +402,12 @@
     <!-- Signatures -->
     <div class="signatures">
         <div class="signature-bloc">
-            <div class="signature-titre">Le Directeur / La Directrice</div>
+            <div class="signature-titre">Le Directeur Général</div>
             <div class="signature-ligne">{{ ecole.directeur }}</div>
+        </div>
+        <div class="signature-bloc">
+            <div class="signature-titre">Le Directeur des Études</div>
+            <div class="signature-ligne">_______________________</div>
         </div>
         <div class="signature-bloc">
             <div class="signature-titre">L'Enseignant(e) Principal(e)</div>
