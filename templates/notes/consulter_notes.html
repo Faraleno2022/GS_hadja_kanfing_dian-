@@ -238,6 +238,10 @@
                         </a></li>
                     </ul>
                 </div>
+                <!-- Certificats d'appréciation Top 5 -->
+                <button class="btn btn-success btn-sm" onclick="imprimerCertificats(); return false;" title="Imprimer les certificats d'appréciation pour les 5 premiers">
+                    <i class="fas fa-award me-1"></i>Certificats Top 5
+                </button>
                 <a href="{% url 'notes:importer_notes' %}" class="btn btn-info btn-sm">
                     <i class="fas fa-file-upload me-1"></i>Importer Notes
                 </a>
@@ -699,6 +703,26 @@ function exporterNotesCompletPDF() {
     }
     
     let url = "{% url 'notes:exporter_notes_complet_pdf' %}?classe_id=" + classeId + "&periode=" + encodeURIComponent(periode);
+    window.open(url, '_blank');
+}
+
+// Fonction pour imprimer les certificats d'appréciation des 5 premiers
+function imprimerCertificats() {
+    const classeId = "{{ classe_selectionnee.id|default:'' }}";
+    const periodeSelect = document.getElementById('periode');
+    const periode = periodeSelect ? periodeSelect.value : '';
+    
+    if (!classeId) {
+        alert('Veuillez sélectionner une classe');
+        return;
+    }
+    
+    if (!periode) {
+        alert('Veuillez sélectionner une période pour générer les certificats');
+        return;
+    }
+    
+    let url = "{% url 'notes:certificats_appreciation_pdf' %}?classe_id=" + classeId + "&periode=" + encodeURIComponent(periode);
     window.open(url, '_blank');
 }
 
