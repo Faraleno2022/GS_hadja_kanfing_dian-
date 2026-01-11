@@ -242,12 +242,12 @@
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin: 2mm 12mm 0;
+            margin: 2mm 25mm 0;
         }
         
         .signature-bloc {
             text-align: center;
-            width: 30%;
+            width: 40%;
         }
         
         .signature-titre {
@@ -263,19 +263,24 @@
             color: #666;
         }
         
-        /* Filigrane */
-        .filigrane {
+        /* Filigrane logo */
+        .filigrane-logo {
             position: absolute;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -50%) rotate(-30deg);
-            opacity: 0.06;
-            font-size: 80pt;
-            color: #c9a227;
-            text-transform: uppercase;
-            letter-spacing: 10px;
+            transform: translate(-50%, -50%);
+            width: 120mm;
+            height: 120mm;
+            opacity: 0.08;
             pointer-events: none;
-            white-space: nowrap;
+            z-index: 0;
+        }
+        
+        .filigrane-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: grayscale(100%);
         }
         
         /* Drapeau guinéen */
@@ -315,8 +320,12 @@
     <div class="coin coin-bg"></div>
     <div class="coin coin-bd"></div>
     
-    <!-- Filigrane -->
-    <div class="filigrane">EXCELLENCE</div>
+    <!-- Filigrane logo -->
+    {% if logo_base64 %}
+    <div class="filigrane-logo">
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+    </div>
+    {% endif %}
     
     <!-- Drapeau -->
     <div class="drapeau">
@@ -408,10 +417,6 @@
         </div>
         <div class="signature-bloc">
             <div class="signature-titre">Le Directeur des Études</div>
-            <div class="signature-ligne">_______________________</div>
-        </div>
-        <div class="signature-bloc">
-            <div class="signature-titre">L'Enseignant(e) Principal(e)</div>
             <div class="signature-ligne">_______________________</div>
         </div>
     </div>
