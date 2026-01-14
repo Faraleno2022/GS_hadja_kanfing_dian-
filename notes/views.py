@@ -6818,12 +6818,22 @@ def consulter_notes(request):
             # Pré-charger les appréciations maternelle
             appreciations_dict = {}
             if est_maternelle:
+                # D'abord essayer avec l'année scolaire exacte
                 appreciations_qs = AppreciationMaternelle.objects.filter(
                     eleve_id__in=eleves_ids,
                     matiere_id__in=matieres_ids,
                     trimestre=periode_classement,
                     annee_scolaire=classe_selectionnee.annee_scolaire
                 ).values('eleve_id', 'matiere_id', 'appreciation', 'commentaire', 'absent')
+                
+                # Si aucune appréciation trouvée, essayer sans filtre année scolaire
+                if not appreciations_qs.exists():
+                    appreciations_qs = AppreciationMaternelle.objects.filter(
+                        eleve_id__in=eleves_ids,
+                        matiere_id__in=matieres_ids,
+                        trimestre=periode_classement
+                    ).values('eleve_id', 'matiere_id', 'appreciation', 'commentaire', 'absent')
+                
                 for a in appreciations_qs:
                     appreciations_dict[(a['eleve_id'], a['matiere_id'])] = a
             
