@@ -250,10 +250,13 @@ class AppreciationMaternelle(models.Model):
     from eleves.models import Eleve
     
     APPRECIATION_CHOICES = [
-        ('TRES_BIEN_ACQUIS', 'Très Bien Acquis'),
-        ('BIEN_ACQUIS', 'Bien Acquis'),
-        ('EN_COURS', 'En Cours d\'Acquisition'),
-        ('NON_ACQUIS', 'Non Acquis'),
+        ('A+', 'A+ - Excellent (10)'),
+        ('A', 'A - Très bien (9,5)'),
+        ('B+', 'B+ - Bien (8-9)'),
+        ('B', 'B - Assez bien (7)'),
+        ('B-', 'B- - Moyen (6)'),
+        ('C', 'C - Passable (5-5,75)'),
+        ('D', 'D - Éprouve des difficultés (3-4)'),
     ]
     
     TRIMESTRE_CHOICES = [

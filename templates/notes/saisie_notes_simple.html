@@ -382,10 +382,13 @@
                         <label class="form-label fw-bold">Trimestre 1</label>
                         <select class="form-select" id="appreciation1">
                             <option value="">-- Sélectionner --</option>
-                            <option value="TRES_BIEN_ACQUIS" {% if appreciation1 == 'TRES_BIEN_ACQUIS' %}selected{% endif %}>Très Bien Acquis</option>
-                            <option value="BIEN_ACQUIS" {% if appreciation1 == 'BIEN_ACQUIS' %}selected{% endif %}>Bien Acquis</option>
-                            <option value="EN_COURS" {% if appreciation1 == 'EN_COURS' %}selected{% endif %}>En Cours d'Acquisition</option>
-                            <option value="NON_ACQUIS" {% if appreciation1 == 'NON_ACQUIS' %}selected{% endif %}>Non Acquis</option>
+                            <option value="A+" {% if appreciation1 == 'A+' %}selected{% endif %}>A+ - Excellent (10)</option>
+                            <option value="A" {% if appreciation1 == 'A' %}selected{% endif %}>A - Très bien (9,5)</option>
+                            <option value="B+" {% if appreciation1 == 'B+' %}selected{% endif %}>B+ - Bien (8-9)</option>
+                            <option value="B" {% if appreciation1 == 'B' %}selected{% endif %}>B - Assez bien (7)</option>
+                            <option value="B-" {% if appreciation1 == 'B-' %}selected{% endif %}>B- - Moyen (6)</option>
+                            <option value="C" {% if appreciation1 == 'C' %}selected{% endif %}>C - Passable (5-5,75)</option>
+                            <option value="D" {% if appreciation1 == 'D' %}selected{% endif %}>D - Éprouve des difficultés (3-4)</option>
                         </select>
                         <textarea class="form-control mt-2" id="commentaire1" rows="2" placeholder="Commentaire...">{% if commentaire1 %}{{ commentaire1 }}{% endif %}</textarea>
                     </div>
@@ -394,10 +397,13 @@
                         <label class="form-label fw-bold">Trimestre 2</label>
                         <select class="form-select" id="appreciation2">
                             <option value="">-- Sélectionner --</option>
-                            <option value="TRES_BIEN_ACQUIS" {% if appreciation2 == 'TRES_BIEN_ACQUIS' %}selected{% endif %}>Très Bien Acquis</option>
-                            <option value="BIEN_ACQUIS" {% if appreciation2 == 'BIEN_ACQUIS' %}selected{% endif %}>Bien Acquis</option>
-                            <option value="EN_COURS" {% if appreciation2 == 'EN_COURS' %}selected{% endif %}>En Cours d'Acquisition</option>
-                            <option value="NON_ACQUIS" {% if appreciation2 == 'NON_ACQUIS' %}selected{% endif %}>Non Acquis</option>
+                            <option value="A+" {% if appreciation2 == 'A+' %}selected{% endif %}>A+ - Excellent (10)</option>
+                            <option value="A" {% if appreciation2 == 'A' %}selected{% endif %}>A - Très bien (9,5)</option>
+                            <option value="B+" {% if appreciation2 == 'B+' %}selected{% endif %}>B+ - Bien (8-9)</option>
+                            <option value="B" {% if appreciation2 == 'B' %}selected{% endif %}>B - Assez bien (7)</option>
+                            <option value="B-" {% if appreciation2 == 'B-' %}selected{% endif %}>B- - Moyen (6)</option>
+                            <option value="C" {% if appreciation2 == 'C' %}selected{% endif %}>C - Passable (5-5,75)</option>
+                            <option value="D" {% if appreciation2 == 'D' %}selected{% endif %}>D - Éprouve des difficultés (3-4)</option>
                         </select>
                         <textarea class="form-control mt-2" id="commentaire2" rows="2" placeholder="Commentaire...">{% if commentaire2 %}{{ commentaire2 }}{% endif %}</textarea>
                     </div>
@@ -406,10 +412,13 @@
                         <label class="form-label fw-bold">Trimestre 3</label>
                         <select class="form-select" id="appreciation3">
                             <option value="">-- Sélectionner --</option>
-                            <option value="TRES_BIEN_ACQUIS" {% if appreciation3 == 'TRES_BIEN_ACQUIS' %}selected{% endif %}>Très Bien Acquis</option>
-                            <option value="BIEN_ACQUIS" {% if appreciation3 == 'BIEN_ACQUIS' %}selected{% endif %}>Bien Acquis</option>
-                            <option value="EN_COURS" {% if appreciation3 == 'EN_COURS' %}selected{% endif %}>En Cours d'Acquisition</option>
-                            <option value="NON_ACQUIS" {% if appreciation3 == 'NON_ACQUIS' %}selected{% endif %}>Non Acquis</option>
+                            <option value="A+" {% if appreciation3 == 'A+' %}selected{% endif %}>A+ - Excellent (10)</option>
+                            <option value="A" {% if appreciation3 == 'A' %}selected{% endif %}>A - Très bien (9,5)</option>
+                            <option value="B+" {% if appreciation3 == 'B+' %}selected{% endif %}>B+ - Bien (8-9)</option>
+                            <option value="B" {% if appreciation3 == 'B' %}selected{% endif %}>B - Assez bien (7)</option>
+                            <option value="B-" {% if appreciation3 == 'B-' %}selected{% endif %}>B- - Moyen (6)</option>
+                            <option value="C" {% if appreciation3 == 'C' %}selected{% endif %}>C - Passable (5-5,75)</option>
+                            <option value="D" {% if appreciation3 == 'D' %}selected{% endif %}>D - Éprouve des difficultés (3-4)</option>
                         </select>
                         <textarea class="form-control mt-2" id="commentaire3" rows="2" placeholder="Commentaire...">{% if commentaire3 %}{{ commentaire3 }}{% endif %}</textarea>
                     </div>
