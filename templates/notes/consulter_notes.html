@@ -242,7 +242,7 @@
                 <button class="btn btn-success btn-sm" onclick="imprimerCertificats(); return false;" title="Imprimer les certificats d'appréciation pour les 5 premiers">
                     <i class="fas fa-award me-1"></i>Certificats Top 5
                 </button>
-                {% if est_maternelle %}
+                {% if est_maternelle and periode_selectionnee %}
                 <!-- Bulletins Maternelle -->
                 <div class="btn-group">
                     <button type="button" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown">
@@ -758,7 +758,7 @@ function imprimerCertificats() {
 
 </script>
 
-{% if est_maternelle %}
+{% if est_maternelle and periode_selectionnee %}
 <!-- Modal pour sélectionner un élève pour le bulletin maternelle -->
 <div class="modal fade" id="modalBulletinsMaternelle" tabindex="-1">
     <div class="modal-dialog modal-lg">
