@@ -6815,13 +6815,12 @@ def consulter_notes(request):
                 for c in compositions_qs:
                     compositions_dict[(c['eleve_id'], c['matiere_id'])] = c
             
-            # Pré-charger les appréciations maternelle
+            # Pré-charger les appréciations maternelle (même logique que calculer_rangs_maternelle)
             appreciations_dict = {}
             if est_maternelle:
-                # D'abord essayer avec l'année scolaire exacte
+                # D'abord essayer avec l'année scolaire exacte - NE PAS filtrer par eleve_id
                 appreciations_qs = AppreciationMaternelle.objects.filter(
-                    eleve_id__in=eleves_ids,
-                    matiere_id__in=matieres_ids,
+                    matiere__in=matieres,
                     trimestre=periode_classement,
                     annee_scolaire=classe_selectionnee.annee_scolaire
                 ).values('eleve_id', 'matiere_id', 'appreciation', 'commentaire', 'absent')
@@ -6829,8 +6828,7 @@ def consulter_notes(request):
                 # Si aucune appréciation trouvée, essayer sans filtre année scolaire
                 if not appreciations_qs.exists():
                     appreciations_qs = AppreciationMaternelle.objects.filter(
-                        eleve_id__in=eleves_ids,
-                        matiere_id__in=matieres_ids,
+                        matiere__in=matieres,
                         trimestre=periode_classement
                     ).values('eleve_id', 'matiere_id', 'appreciation', 'commentaire', 'absent')
                 
@@ -8115,12 +8113,14 @@ def sauvegarder_notes_guineen(request):
 
 @login_required
 def imprimer_tableau_notes_pdf(request):
-    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
+    """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape - Supporte maternelle"""
     from django.template.loader import render_to_string
     from weasyprint import HTML, CSS
     from django.http import HttpResponse
+    from .models import AppreciationMaternelle
+    from .calculs_moyennes import detecter_niveau_scolaire
+    from .utils_rangs import calculer_rangs_classe_periode
     
-    # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
     periode = request.GET.get('periode')
     
@@ -8128,82 +8128,103 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse("Paramètres manquants", status=400)
     
     try:
-        # Récupérer la classe et les données
         classe_note = get_object_or_404(ClasseNote, pk=classe_id)
-        classe = classe_note.classe
+        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
         
-        # Récupérer les matières
-        matieres = MatiereNote.objects.filter(classe=classe_note).order_by('matiere__nom')
-        
-        # Calculer le classement
-        from .calculs_moyennes import calculer_classement_classe
-        from .calculs_intelligent import calculer_rang_intelligent
+        # Détecter si maternelle
+        niveau_detecte = detecter_niveau_scolaire(classe_note.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
         
         # Récupérer les élèves
-        from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('matricule')
+        from eleves.models import Eleve, Classe as ClasseEleve
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire,
+            ecole=classe_note.ecole
+        ).first()
         
-        # Calculer les moyennes et rangs
-        classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom') if classe_eleve else []
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=True)
         
-        # Préparer les données pour le template
         classement_data = []
-        for eleve in eleves:
-            # Récupérer les détails des notes par matière
-            details_matieres = {}
-            for matiere in matieres:
-                from .calculs_moyennes import calculer_moyenne_matiere
-                result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
-                details_matieres[matiere.id] = result
-            
-            # Récupérer le rang et la moyenne
-            rang_num = classement_resultat['rang_map'].get(eleve.id)
-            rang_str = str(rang_num) if rang_num else "-"
-            moyenne = classement_resultat['moyennes_par_eleve'].get(eleve.id)
-            
-            # Formatter le rang avec ex-æquo si nécessaire
-            if rang_num:
-                from .calculs_intelligent import formater_rang_intelligent
-                sexe = getattr(eleve, 'sexe', 'M') or 'M'
-                rang_str = formater_rang_intelligent(rang_num, sexe)
-            
-            classement_data.append({
-                'matricule': eleve.matricule,
-                'nom_complet': eleve.nom_complet,
-                'rang': rang_str,
-                'moyenne': moyenne,
-                'details_matieres': details_matieres,
-                'sexe': getattr(eleve, 'sexe', 'M') or 'M'
-            })
         
-        # Trier par rang
-        classement_data.sort(key=lambda x: x['rang'] if x['rang'] != '-' else '999')
+        if est_maternelle:
+            # Récupérer appréciations maternelle (même logique que consulter_notes)
+            appreciations_qs = AppreciationMaternelle.objects.filter(
+                matiere__in=matieres,
+                trimestre=periode,
+                annee_scolaire=classe_note.annee_scolaire
+            ).values('eleve_id', 'matiere_id', 'appreciation')
+            
+            if not appreciations_qs.exists():
+                appreciations_qs = AppreciationMaternelle.objects.filter(
+                    matiere__in=matieres,
+                    trimestre=periode
+                ).values('eleve_id', 'matiere_id', 'appreciation')
+            
+            appreciations_dict = {(a['eleve_id'], a['matiere_id']): a for a in appreciations_qs}
+            
+            for eleve in eleves:
+                details_matieres = {}
+                for matiere in matieres:
+                    app_data = appreciations_dict.get((eleve.id, matiere.id))
+                    details_matieres[matiere.id] = {
+                        'note_display': app_data['appreciation'] if app_data and app_data['appreciation'] else '-'
+                    }
+                
+                rang_info = rangs_dict.get(eleve.id)
+                classement_data.append({
+                    'matricule': eleve.matricule,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'rang': rang_info['rang'] if rang_info else '-',
+                    'moyenne': float(rang_info['moyenne']) if rang_info else None,
+                    'details_matieres': details_matieres,
+                })
+        else:
+            from .calculs_moyennes import calculer_classement_classe, calculer_moyenne_matiere
+            classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
+            
+            for eleve in eleves:
+                details_matieres = {}
+                for matiere in matieres:
+                    result = calculer_moyenne_matiere(eleve, matiere, periode, 'mensuel')
+                    details_matieres[matiere.id] = result
+                
+                rang_info = rangs_dict.get(eleve.id)
+                classement_data.append({
+                    'matricule': eleve.matricule,
+                    'prenom': eleve.prenom,
+                    'nom': eleve.nom,
+                    'rang': rang_info['rang'] if rang_info else '-',
+                    'moyenne': float(rang_info['moyenne']) if rang_info else None,
+                    'details_matieres': details_matieres,
+                })
         
-        # Contexte pour le template
+        # Trier par rang numérique
+        def sort_rang(x):
+            r = x['rang']
+            if r == '-': return 999
+            return int(r.replace('er', '').replace('ère', '').replace('ème', ''))
+        classement_data.sort(key=sort_rang)
+        
         context = {
-            'classe_selectionnee': classe,
+            'classe_note': classe_note,
+            'classe_selectionnee': classe_note,
             'periode_selectionnee': periode,
             'matieres': matieres,
             'classement_data': classement_data,
+            'est_maternelle': est_maternelle,
+            'annee_scolaire': classe_note.annee_scolaire,
         }
         
-        # Générer le HTML
         html_content = render_to_string('notes/impression_tableau_notes.html', context, request=request)
-        
-        # Créer le PDF avec WeasyPrint
         html = HTML(string=html_content)
-        css = CSS(string='''
-            @page {
-                size: A4 landscape;
-                margin: 10mm;
-            }
-        ''')
-        
+        css = CSS(string='@page { size: A4 landscape; margin: 10mm; }')
         pdf = html.write_pdf(stylesheets=[css])
         
-        # Retourner le PDF
         response = HttpResponse(pdf, content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe.nom}_{periode}.pdf"'
+        response['Content-Disposition'] = f'inline; filename="tableau_notes_{classe_note.nom}_{periode}.pdf"'
         return response
         
     except Exception as e:

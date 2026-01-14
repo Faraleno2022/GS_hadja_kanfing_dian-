@@ -279,24 +279,26 @@
                         {{ eleve_data.rang }}
                     </td>
                     <td class="col-matricule">{{ eleve_data.matricule }}</td>
-                    <td class="col-nom">{{ eleve_data.nom_complet }}</td>
+                    <td class="col-nom">{{ eleve_data.prenom }} {{ eleve_data.nom }}</td>
                     <td class="col-moyenne note">{{ eleve_data.moyenne|floatformat:2 }}</td>
                     {% for matiere in matieres %}
                     <td class="col-matiere">
-                        {% with note_id=matiere.id %}
-                            {% if note_id in eleve_data.details_matieres %}
-                                {% with note=eleve_data.details_matieres.note_id %}
-                                    {% if note.note %}
-                                        <span class="note">{{ note.note|floatformat:1 }}</span>
-                                    {% elif note.absent %}
+                        {% with note_data=eleve_data.details_matieres|default_if_none:"" %}
+                            {% for mat_id, mat_note in note_data.items %}
+                                {% if mat_id == matiere.id %}
+                                    {% if mat_note.note_display %}
+                                        <span class="note">{{ mat_note.note_display }}</span>
+                                    {% elif mat_note.note %}
+                                        <span class="note">{{ mat_note.note|floatformat:1 }}</span>
+                                    {% elif mat_note.absent %}
                                         <span class="absent">ABS</span>
                                     {% else %}
                                         -
                                     {% endif %}
-                                {% endwith %}
-                            {% else %}
+                                {% endif %}
+                            {% empty %}
                                 -
-                            {% endif %}
+                            {% endfor %}
                         {% endwith %}
                     </td>
                     {% endfor %}
