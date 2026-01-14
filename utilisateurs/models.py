@@ -23,7 +23,7 @@ class Profil(models.Model):
     )
     adresse = models.TextField(blank=True, null=True, verbose_name="Adresse")
     photo = models.ImageField(upload_to='utilisateurs/photos/', blank=True, null=True, verbose_name="Photo")
-    ecole = models.ForeignKey(Ecole, on_delete=models.PROTECT, related_name='profils', verbose_name="École", null=True, blank=True)
+    ecole = models.ForeignKey(Ecole, on_delete=models.SET_NULL, related_name='profils', verbose_name="École", null=True, blank=True)
     
     # Permissions spécifiques
     peut_valider_paiements = models.BooleanField(default=False, verbose_name="Peut valider les paiements")
