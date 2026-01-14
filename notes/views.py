@@ -5613,6 +5613,7 @@ def modifier_matiere(request, matiere_id):
 def supprimer_matiere(request, matiere_id):
     """Supprimer une matière avec vérification des données liées"""
     from django.http import JsonResponse
+    from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
     
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
@@ -5628,11 +5629,16 @@ def supprimer_matiere(request, matiere_id):
         
         classe_id = matiere.classe.id
         
-        # Vérifier s'il y a des évaluations ou notes liées
+        # Vérifier TOUTES les données liées
         has_evaluations = Evaluation.objects.filter(matiere=matiere).exists()
         has_notes = NoteEleve.objects.filter(evaluation__matiere=matiere).exists()
+        has_notes_mensuelles = NoteMensuelle.objects.filter(matiere=matiere).exists()
+        has_compositions = CompositionNote.objects.filter(matiere=matiere).exists()
+        has_appreciations = AppreciationMaternelle.objects.filter(matiere=matiere).exists()
         
-        if has_evaluations or has_notes:
+        has_data = has_evaluations or has_notes or has_notes_mensuelles or has_compositions or has_appreciations
+        
+        if has_data:
             # Désactiver au lieu de supprimer
             matiere.actif = False
             matiere.save()
