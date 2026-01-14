@@ -6867,9 +6867,14 @@ def consulter_notes(request):
                         notes_matiere['appreciation'] = appreciation_value
                         notes_par_matiere[matiere.id] = notes_matiere
                     
-                    # Pour la maternelle, pas de moyenne générale ni de rang
-                    moyenne_generale = None
-                    rang = '-'
+                    # Pour la maternelle, utiliser les données du calcul des rangs (pourcentage d'acquisition)
+                    rang_info = rangs_dict.get(eleve.id)
+                    if rang_info:
+                        moyenne_generale = float(rang_info['moyenne'])  # Pourcentage d'acquisition
+                        rang = rang_info['rang']
+                    else:
+                        moyenne_generale = None
+                        rang = '-'
                 
                 elif periode_classement in periodes_mensuelles:
                     # Système mensuel - OPTIMISATION: utiliser le dictionnaire pré-chargé

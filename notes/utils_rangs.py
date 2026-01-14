@@ -391,11 +391,14 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
     """
     Calcule les rangs pour les élèves de maternelle basé sur les appréciations.
     
-    Système de points (invisible pour l'utilisateur):
-    - TRES_BIEN_ACQUIS = 4 points
-    - BIEN_ACQUIS = 3 points
-    - EN_COURS = 2 points
-    - NON_ACQUIS = 1 point
+    Système de points basé sur le barème des lettres:
+    - A+ = 10 points (Excellent)
+    - A = 9.5 points (Très bien)
+    - B+ = 8.5 points (Bien - moyenne 8-9)
+    - B = 7 points (Assez bien)
+    - B- = 6 points (Moyen)
+    - C = 5.5 points (Passable - moyenne 5-5.75)
+    - D = 3.5 points (Difficultés - moyenne 3-4)
     - Absent/Non évalué = 0 point
     
     La moyenne est affichée en pourcentage (ex: 87.5%)
@@ -410,14 +413,22 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
     """
     from .models import AppreciationMaternelle, MatiereNote
     
-    # Points par niveau d'appréciation (invisible)
+    # Points par niveau d'appréciation (basé sur le barème des lettres)
     POINTS_APPRECIATION = {
-        'TRES_BIEN_ACQUIS': 4,
-        'BIEN_ACQUIS': 3,
-        'EN_COURS': 2,
-        'NON_ACQUIS': 1,
+        'A+': 10,
+        'A': 9.5,
+        'B+': 8.5,
+        'B': 7,
+        'B-': 6,
+        'C': 5.5,
+        'D': 3.5,
+        # Anciennes valeurs pour compatibilité
+        'TRES_BIEN_ACQUIS': 10,
+        'BIEN_ACQUIS': 8,
+        'EN_COURS': 5.5,
+        'NON_ACQUIS': 3.5,
     }
-    MAX_POINTS = 4  # Maximum possible
+    MAX_POINTS = 10  # Maximum possible (A+ = 10)
     
     # Récupérer les matières de la classe
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)

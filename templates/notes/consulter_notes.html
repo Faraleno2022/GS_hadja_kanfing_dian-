@@ -369,7 +369,7 @@
                                         <span class="text-danger">ABS</span>
                                     {% elif est_maternelle %}
                                         {% if note_info.appreciation %}
-                                            <span class="badge {% if note_info.appreciation == 'TRES_BIEN_ACQUIS' %}bg-success{% elif note_info.appreciation == 'BIEN_ACQUIS' %}bg-primary{% elif note_info.appreciation == 'EN_COURS' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                                            <span class="badge {% if note_info.appreciation == 'A+' or note_info.appreciation == 'A' %}bg-success{% elif note_info.appreciation == 'B+' or note_info.appreciation == 'B' %}bg-primary{% elif note_info.appreciation == 'B-' or note_info.appreciation == 'C' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
                                                 {{ note_info.appreciation_display }}
                                             </span>
                                         {% else %}
