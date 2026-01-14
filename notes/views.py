@@ -7492,6 +7492,33 @@ def bulletin_dynamique(request):
                         bulletin_data['rang'] = "-"
                         bulletin_data['mention'] = 'Non évalué'
                         bulletin_data['appreciation'] = ''
+                    
+                    # Récupérer les analyses et recommandations du BulletinMaternelle
+                    from .models import BulletinMaternelle
+                    bulletin_maternelle = BulletinMaternelle.objects.filter(
+                        eleve=eleve_selectionne,
+                        classe=classe_selectionnee,
+                        trimestre=periode,
+                        annee_scolaire=classe_selectionnee.annee_scolaire
+                    ).first()
+                    
+                    if bulletin_maternelle:
+                        # Récupérer les analyses sélectionnées
+                        analyses_codes = bulletin_maternelle.analyses or []
+                        analyses_dict = dict(BulletinMaternelle.ANALYSES_CHOICES)
+                        bulletin_data['analyses_selectionnees'] = [analyses_dict.get(code, code) for code in analyses_codes]
+                        
+                        # Récupérer les recommandations sélectionnées
+                        recommandations_codes = bulletin_maternelle.recommandations or []
+                        recommandations_dict = dict(BulletinMaternelle.RECOMMANDATIONS_CHOICES)
+                        bulletin_data['recommandations_selectionnees'] = [recommandations_dict.get(code, code) for code in recommandations_codes]
+                        
+                        # Appréciation générale personnalisée
+                        if bulletin_maternelle.appreciation_generale:
+                            bulletin_data['appreciation'] = bulletin_maternelle.appreciation_generale
+                    else:
+                        bulletin_data['analyses_selectionnees'] = []
+                        bulletin_data['recommandations_selectionnees'] = []
                 
                 # Pour les autres niveaux : calcul classique
                 elif total_coefficients > 0:
