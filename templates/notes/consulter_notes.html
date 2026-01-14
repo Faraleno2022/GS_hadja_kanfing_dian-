@@ -369,9 +369,23 @@
                                         <span class="text-danger">ABS</span>
                                     {% elif est_maternelle %}
                                         {% if note_info.appreciation %}
-                                            <span class="badge {% if note_info.appreciation == 'A+' or note_info.appreciation == 'A' %}bg-success{% elif note_info.appreciation == 'B+' or note_info.appreciation == 'B' %}bg-primary{% elif note_info.appreciation == 'B-' or note_info.appreciation == 'C' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
-                                                {{ note_info.appreciation_display }}
-                                            </span>
+                                            {% if note_info.appreciation == 'A+' %}
+                                                <span class="badge" style="background-color: #198754; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'A' %}
+                                                <span class="badge" style="background-color: #20c997; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'B+' %}
+                                                <span class="badge" style="background-color: #0d6efd; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'B' %}
+                                                <span class="badge" style="background-color: #6f42c1; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'B-' %}
+                                                <span class="badge" style="background-color: #fd7e14; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'C' %}
+                                                <span class="badge" style="background-color: #ffc107; color: #212529;">{{ note_info.appreciation_display }}</span>
+                                            {% elif note_info.appreciation == 'D' %}
+                                                <span class="badge" style="background-color: #dc3545; color: white;">{{ note_info.appreciation_display }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ note_info.appreciation_display }}</span>
+                                            {% endif %}
                                         {% else %}
                                             <span class="text-muted">-</span>
                                         {% endif %}
