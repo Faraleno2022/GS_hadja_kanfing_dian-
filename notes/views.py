@@ -8230,3 +8230,249 @@ def imprimer_tableau_notes_pdf(request):
     except Exception as e:
         logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
         return HttpResponse(f"Erreur: {str(e)}", status=500)
+
+
+# ============================================================================
+# BULLETIN MATERNELLE V2 - Basé sur AppreciationMaternelle
+# ============================================================================
+
+@login_required
+def saisie_bulletin_maternelle(request, eleve_id, classe_id, trimestre):
+    """Interface de saisie des analyses et recommandations pour le bulletin maternelle"""
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from eleves.models import Eleve
+    
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer ou créer le bulletin
+    bulletin, created = BulletinMaternelle.objects.get_or_create(
+        eleve=eleve,
+        classe=classe_note,
+        trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire,
+        defaults={'cree_par': request.user}
+    )
+    
+    # Récupérer les appréciations existantes
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve,
+        matiere__in=matieres,
+        trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    if request.method == 'POST':
+        # Sauvegarder les analyses
+        analyses_selectionnees = request.POST.getlist('analyses')
+        bulletin.analyses = analyses_selectionnees
+        
+        # Sauvegarder les recommandations
+        recommandations_selectionnees = request.POST.getlist('recommandations')
+        bulletin.recommandations = recommandations_selectionnees
+        
+        # Appréciation générale
+        bulletin.appreciation_generale = request.POST.get('appreciation_generale', '')
+        bulletin.save()
+        
+        messages.success(request, f"Bulletin de {eleve.prenom} {eleve.nom} sauvegardé!")
+        
+        if 'generer_pdf' in request.POST:
+            return redirect('notes:bulletin_maternelle_v2_pdf', eleve_id=eleve_id, classe_id=classe_id, trimestre=trimestre)
+        
+        return redirect('notes:consulter_notes')
+    
+    context = {
+        'eleve': eleve,
+        'classe_note': classe_note,
+        'trimestre': trimestre,
+        'trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre),
+        'bulletin': bulletin,
+        'matieres': matieres,
+        'appreciations': {a.matiere_id: a for a in appreciations},
+        'analyses_choices': BulletinMaternelle.ANALYSES_CHOICES,
+        'recommandations_choices': BulletinMaternelle.RECOMMANDATIONS_CHOICES,
+    }
+    
+    return render(request, 'notes/maternelle/saisie_bulletin_v2.html', context)
+
+
+@login_required
+def bulletin_maternelle_v2(request, eleve_id, classe_id, trimestre):
+    """Affiche le bulletin maternelle V2 en HTML"""
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    from eleves.models import Eleve
+    
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer le bulletin (analyses/recommandations)
+    bulletin = BulletinMaternelle.objects.filter(
+        eleve=eleve,
+        classe=classe_note,
+        trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).first()
+    
+    # Récupérer les appréciations par matière
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve,
+        matiere__in=matieres,
+        trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    # Si pas d'appréciations avec année, essayer sans
+    if not appreciations.exists():
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve,
+            matiere__in=matieres,
+            trimestre=trimestre
+        ).select_related('matiere')
+    
+    # Préparer les notes avec lettres et mentions
+    notes_data = []
+    for app in appreciations:
+        notes_data.append({
+            'matiere': app.matiere,
+            'lettre': app.appreciation,
+            'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(app.appreciation, ''),
+            'absent': app.absent
+        })
+    
+    # Calculer moyenne et rang
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    rang_info = rangs_dict.get(eleve.id, {})
+    
+    context = {
+        'eleve': eleve,
+        'classe': classe_note,
+        'ecole': classe_note.ecole,
+        'trimestre': trimestre,
+        'trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre),
+        'notes': notes_data,
+        'moyenne': rang_info.get('moyenne'),
+        'rang': rang_info.get('rang', '-'),
+        'bulletin': bulletin,
+        'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
+        'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
+    }
+    
+    return render(request, 'notes/maternelle/bulletin_v2.html', context)
+
+
+@login_required
+def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
+    """Génère le bulletin maternelle V2 en PDF"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    from eleves.models import Eleve
+    import base64
+    import os
+    
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer le bulletin
+    bulletin = BulletinMaternelle.objects.filter(
+        eleve=eleve, classe=classe_note, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).first()
+    
+    # Récupérer les appréciations
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve, matiere__in=matieres, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    if not appreciations.exists():
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve, matiere__in=matieres, trimestre=trimestre
+        ).select_related('matiere')
+    
+    # Préparer les notes
+    notes_data = []
+    for app in appreciations:
+        notes_data.append({
+            'matiere': app.matiere,
+            'lettre': app.appreciation,
+            'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(app.appreciation, ''),
+            'note': _lettre_vers_note(app.appreciation),
+            'absent': app.absent
+        })
+    
+    # Calculer moyenne et rang
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    rang_info = rangs_dict.get(eleve.id, {})
+    moyenne = rang_info.get('moyenne')
+    
+    # Déterminer lettre et mention générales
+    lettre_generale = _note_vers_lettre(float(moyenne) / 10) if moyenne else None
+    mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
+    
+    # Encoder logo et photo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    photo_base64 = ''
+    if hasattr(eleve, 'photo') and eleve.photo:
+        try:
+            if os.path.exists(eleve.photo.path):
+                with open(eleve.photo.path, 'rb') as f:
+                    photo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    context = {
+        'eleve': eleve,
+        'classe': classe_note,
+        'ecole': ecole,
+        'evaluation': {'trimestre': trimestre, 'annee_scolaire': classe_note.annee_scolaire,
+                       'get_trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre)},
+        'notes': notes_data,
+        'moyenne': float(moyenne) / 10 if moyenne else None,
+        'lettre_generale': lettre_generale,
+        'mention_generale': mention_generale,
+        'rang': rang_info.get('rang', '-'),
+        'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
+        'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
+        'logo_base64': logo_base64,
+        'photo_base64': photo_base64,
+        'date_impression': timezone.now(),
+    }
+    
+    html_content = render_to_string('notes/maternelle/bulletin_pdf.html', context)
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="bulletin_{eleve.nom}_{eleve.prenom}_{trimestre}.pdf"'
+    return response
+
+
+def _lettre_vers_note(lettre):
+    """Convertit une lettre en note sur 10"""
+    conversion = {'A+': 10, 'A': 9.5, 'B+': 8.5, 'B': 7, 'B-': 6, 'C': 5.5, 'D': 3.5}
+    return conversion.get(lettre, None)
+
+
+def _note_vers_lettre(note):
+    """Convertit une note sur 10 en lettre"""
+    if note is None: return None
+    if note >= 10: return 'A+'
+    if note >= 9.5: return 'A'
+    if note >= 8: return 'B+'
+    if note >= 7: return 'B'
+    if note >= 6: return 'B-'
+    if note >= 5: return 'C'
+    return 'D'

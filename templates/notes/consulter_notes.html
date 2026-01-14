@@ -242,6 +242,22 @@
                 <button class="btn btn-success btn-sm" onclick="imprimerCertificats(); return false;" title="Imprimer les certificats d'appréciation pour les 5 premiers">
                     <i class="fas fa-award me-1"></i>Certificats Top 5
                 </button>
+                {% if est_maternelle %}
+                <!-- Bulletins Maternelle -->
+                <div class="btn-group">
+                    <button type="button" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-child me-1"></i>Bulletins Maternelle
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalBulletinsMaternelle">
+                            <i class="fas fa-user-edit me-1"></i>Saisir Analyses/Recommandations
+                        </a></li>
+                        <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}">
+                            <i class="fas fa-file-pdf me-1"></i>Imprimer tous les bulletins
+                        </a></li>
+                    </ul>
+                </div>
+                {% endif %}
                 <a href="{% url 'notes:importer_notes' %}" class="btn btn-info btn-sm">
                     <i class="fas fa-file-upload me-1"></i>Importer Notes
                 </a>
@@ -741,5 +757,66 @@ function imprimerCertificats() {
 }
 
 </script>
+
+{% if est_maternelle %}
+<!-- Modal pour sélectionner un élève pour le bulletin maternelle -->
+<div class="modal fade" id="modalBulletinsMaternelle" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title"><i class="fas fa-child me-2"></i>Bulletins Maternelle - Saisie Analyses/Recommandations</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3">Sélectionnez un élève pour saisir les analyses et recommandations de son bulletin :</p>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-hover table-sm">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Matricule</th>
+                                <th>Nom Complet</th>
+                                <th>Appréciation</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for eleve_data in eleves_toutes_notes %}
+                            <tr>
+                                <td><small>{{ eleve_data.eleve.matricule }}</small></td>
+                                <td>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</td>
+                                <td>
+                                    {% if eleve_data.moyenne_generale %}
+                                        <span class="badge bg-success">{{ eleve_data.moyenne_generale }}%</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <a href="{% url 'notes:saisie_bulletin_maternelle' eleve_id=eleve_data.eleve.id classe_id=classe_selectionnee.id trimestre=periode_selectionnee %}" 
+                                       class="btn btn-sm btn-outline-primary" title="Saisir analyses et recommandations">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'notes:bulletin_maternelle_v2_pdf' eleve_id=eleve_data.eleve.id classe_id=classe_selectionnee.id trimestre=periode_selectionnee %}" 
+                                       class="btn btn-sm btn-outline-danger" title="Générer PDF" target="_blank">
+                                        <i class="fas fa-file-pdf"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">Aucun élève trouvé</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 {% endblock %}

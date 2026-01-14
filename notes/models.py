@@ -289,6 +289,87 @@ class AppreciationMaternelle(models.Model):
         return f"{self.eleve} - {self.matiere.nom} - {self.get_trimestre_display()} - {self.get_appreciation_display()}"
 
 
+class BulletinMaternelle(models.Model):
+    """Bulletin maternelle avec analyses et recommandations"""
+    from eleves.models import Eleve
+    
+    TRIMESTRE_CHOICES = [
+        ('TRIMESTRE_1', 'Trimestre 1'),
+        ('TRIMESTRE_2', 'Trimestre 2'),
+        ('TRIMESTRE_3', 'Trimestre 3'),
+    ]
+    
+    # Analyses du travail de l'enfant (champs booléens pour cases à cocher)
+    ANALYSES_CHOICES = [
+        ('comprend', "L'enfant comprend ce qu'on lui demande"),
+        ('ne_comprend_pas', "L'enfant ne comprend pas ce qu'on lui demande"),
+        ('trop_jeune', "L'enfant est trop jeune pour cette classe"),
+        ('fixe_attention', "L'enfant fixe son attention"),
+        ('pas_probleme_monitrice', "L'enfant n'a pas de problème avec sa monitrice"),
+        ('pas_probleme_camarades', "L'enfant n'a pas de problème avec ses camarades"),
+        ('pas_probleme_famille', "L'enfant n'a pas de problème avec sa famille"),
+        ('doue', "L'enfant est doué"),
+        ('paresseux', "L'enfant est paresseux"),
+    ]
+    
+    # Recommandations de la monitrice
+    RECOMMANDATIONS_CHOICES = [
+        ('encourager_feliciter', "Enfant à encourager et à féliciter"),
+        ('suivre_domicile', "Enfant à suivre à domicile"),
+        ('gouter_sac', "Mettre le goûter dans le sac de l'enfant"),
+        ('aide_parents', "L'enfant a besoin d'aide et d'encouragement des parents"),
+        ('amour_parental', "L'enfant a besoin de l'amour maternel et paternel"),
+        ('epanoui', "L'enfant a besoin d'être épanoui"),
+        ('sorties_educatives', "L'enfant a besoin de sorties éducatives et récréatives"),
+        ('aide_monitrice_parents', "L'enfant a besoin de l'aide de la monitrice et des parents pour développer ses facultés intellectuelles"),
+        ('douceur_patience', "L'enfant doit être pris avec beaucoup de douceur et de patience"),
+        ('fermete', "L'enfant a besoin de fermeté"),
+        ('esprit_inferiorite', "L'enfant a un esprit d'infériorité"),
+        ('attention_particuliere', "L'enfant a besoin d'une attention particulière des parents"),
+    ]
+    
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='bulletins_maternelle')
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='bulletins_maternelle')
+    trimestre = models.CharField(max_length=20, choices=TRIMESTRE_CHOICES, verbose_name="Trimestre")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    
+    # Analyses du travail (stockées en JSON pour flexibilité)
+    analyses = models.JSONField(default=list, blank=True, verbose_name="Analyses du travail")
+    
+    # Recommandations (stockées en JSON pour flexibilité)  
+    recommandations = models.JSONField(default=list, blank=True, verbose_name="Recommandations")
+    
+    # Appréciation générale de la monitrice
+    appreciation_generale = models.TextField(blank=True, null=True, verbose_name="Appréciation générale")
+    
+    # Signature
+    signature_monitrice = models.BooleanField(default=False, verbose_name="Signé par la monitrice")
+    signature_directeur = models.BooleanField(default=False, verbose_name="Signé par le directeur")
+    
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Bulletin maternelle"
+        verbose_name_plural = "Bulletins maternelle"
+        ordering = ['eleve', 'trimestre']
+        unique_together = ['eleve', 'trimestre', 'annee_scolaire']
+    
+    def __str__(self):
+        return f"Bulletin {self.eleve} - {self.get_trimestre_display()} - {self.annee_scolaire}"
+    
+    def get_analyses_display(self):
+        """Retourne les analyses sélectionnées en texte"""
+        analyses_dict = dict(self.ANALYSES_CHOICES)
+        return [analyses_dict.get(a, a) for a in self.analyses if a in analyses_dict]
+    
+    def get_recommandations_display(self):
+        """Retourne les recommandations sélectionnées en texte"""
+        recommandations_dict = dict(self.RECOMMANDATIONS_CHOICES)
+        return [recommandations_dict.get(r, r) for r in self.recommandations if r in recommandations_dict]
+
+
 class ThemeBulletin(models.Model):
     """Personnalisation des couleurs du bulletin"""
     

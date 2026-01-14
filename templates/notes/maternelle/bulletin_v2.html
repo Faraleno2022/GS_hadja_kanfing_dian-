@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Bulletin Maternelle - {{ eleve.prenom }} {{ eleve.nom }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="card shadow">
+        <!-- En-tête -->
+        <div class="card-header bg-primary text-white">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    {% if ecole.logo %}
+                    <img src="{{ ecole.logo.url }}" alt="Logo" style="height: 60px;">
+                    {% endif %}
+                </div>
+                <div class="col text-center">
+                    <h4 class="mb-0">{{ ecole.nom }}</h4>
+                    <p class="mb-0">BULLETIN SCOLAIRE - MATERNELLE</p>
+                    <small>{{ trimestre_display }} - Année {{ classe.annee_scolaire }}</small>
+                </div>
+                <div class="col-auto">
+                    <a href="{% url 'notes:bulletin_maternelle_v2_pdf' eleve_id=eleve.id classe_id=classe.id trimestre=trimestre %}" 
+                       class="btn btn-light btn-sm" target="_blank">
+                        <i class="fas fa-file-pdf me-1"></i>PDF
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <!-- Informations élève -->
+            <div class="alert alert-info mb-4">
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Nom & Prénom:</strong> {{ eleve.nom }} {{ eleve.prenom }}
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Matricule:</strong> {{ eleve.matricule }}
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Classe:</strong> {{ classe.nom }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Barème -->
+            <div class="alert alert-secondary mb-4">
+                <strong>Barème:</strong>
+                <span class="badge bg-success me-1">A+ Excellent (10)</span>
+                <span class="badge bg-primary me-1">A Très bien (9,5)</span>
+                <span class="badge bg-info me-1">B+ Bien (8-9)</span>
+                <span class="badge bg-secondary me-1">B Assez bien (7)</span>
+                <span class="badge bg-warning text-dark me-1">B- Moyen (6)</span>
+                <span class="badge" style="background:#fd7e14">C Passable (5-5,75)</span>
+                <span class="badge bg-danger">D Difficultés (3-4)</span>
+            </div>
+            
+            <!-- Tableau des notes -->
+            <h5 class="mb-3"><i class="fas fa-star me-2"></i>Résultats par matière</h5>
+            <div class="table-responsive mb-4">
+                <table class="table table-bordered">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Matière</th>
+                            <th class="text-center">Lettre</th>
+                            <th>Mention</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for note in notes %}
+                        <tr>
+                            <td>{{ note.matiere.nom }}</td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% else %}
+                                    <span class="badge 
+                                        {% if note.lettre == 'A+' %}bg-success
+                                        {% elif note.lettre == 'A' %}bg-primary
+                                        {% elif note.lettre == 'B+' %}bg-info
+                                        {% elif note.lettre == 'B' %}bg-secondary
+                                        {% elif note.lettre == 'B-' %}bg-warning text-dark
+                                        {% elif note.lettre == 'C' %}bg-orange
+                                        {% else %}bg-danger{% endif %}">
+                                        {{ note.lettre }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>{{ note.mention }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">Aucune appréciation saisie</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Résultat général -->
+            {% if moyenne %}
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted">Acquisition</h6>
+                            <h3 class="text-primary">{{ moyenne }}%</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted">Rang</h6>
+                            <h3 class="text-success">{{ rang }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Analyses du travail -->
+            {% if analyses_selectionnees %}
+            <div class="mb-4">
+                <h5 class="text-primary"><i class="fas fa-clipboard-check me-2"></i>Analyse du travail de l'enfant</h5>
+                <ul class="list-group">
+                    {% for item in analyses_selectionnees %}
+                    <li class="list-group-item"><i class="fas fa-check text-success me-2"></i>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <!-- Recommandations -->
+            {% if recommandations_selectionnees %}
+            <div class="mb-4">
+                <h5 class="text-success"><i class="fas fa-lightbulb me-2"></i>Recommandations de la monitrice</h5>
+                <ul class="list-group">
+                    {% for item in recommandations_selectionnees %}
+                    <li class="list-group-item"><i class="fas fa-arrow-right text-warning me-2"></i>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            
+            <!-- Appréciation générale -->
+            {% if bulletin.appreciation_generale %}
+            <div class="mb-4">
+                <h5 class="text-info"><i class="fas fa-comment me-2"></i>Appréciation générale</h5>
+                <div class="alert alert-light border">
+                    {{ bulletin.appreciation_generale }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="card-footer">
+            <div class="d-flex justify-content-between">
+                <a href="{% url 'notes:consulter_notes' %}?classe_id={{ classe.id }}&periode={{ trimestre }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Retour
+                </a>
+                <a href="{% url 'notes:saisie_bulletin_maternelle' eleve_id=eleve.id classe_id=classe.id trimestre=trimestre %}" class="btn btn-primary">
+                    <i class="fas fa-edit me-1"></i>Modifier
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.bg-orange { background-color: #fd7e14 !important; color: white; }
+</style>
+{% endblock %}

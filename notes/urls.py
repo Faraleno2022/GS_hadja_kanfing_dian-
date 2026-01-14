@@ -110,4 +110,12 @@ urlpatterns = [
     path('maternelle/bulletin/<int:evaluation_id>/pdf/', bulletin_maternelle_pdf, name='bulletin_maternelle_pdf'),
     path('maternelle/bulletins-classe-pdf/', bulletins_classe_maternelle_pdf, name='bulletins_classe_maternelle_pdf'),
     path('maternelle/api/eleves/', api_get_eleves_classe, name='api_eleves_classe_maternelle'),
+    
+    # Nouveau système bulletin maternelle basé sur AppreciationMaternelle
+    path('maternelle/bulletin-v2/<int:eleve_id>/<int:classe_id>/<str:trimestre>/', 
+         views.bulletin_maternelle_v2, name='bulletin_maternelle_v2'),
+    path('maternelle/bulletin-v2/<int:eleve_id>/<int:classe_id>/<str:trimestre>/pdf/', 
+         views.bulletin_maternelle_v2_pdf, name='bulletin_maternelle_v2_pdf'),
+    path('maternelle/saisie-bulletin/<int:eleve_id>/<int:classe_id>/<str:trimestre>/', 
+         views.saisie_bulletin_maternelle, name='saisie_bulletin_maternelle'),
 ]
