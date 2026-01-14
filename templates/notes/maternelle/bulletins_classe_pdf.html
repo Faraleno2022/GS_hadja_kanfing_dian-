@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Bulletins Maternelle - {{ classe.nom }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 10pt;
+            line-height: 1.3;
+            color: #333;
+        }
+        
+        .bulletin-page {
+            width: 190mm;
+            min-height: 277mm;
+            margin: 0 auto;
+            padding: 6mm;
+            border: 2px solid #2c3e50;
+            position: relative;
+            page-break-after: always;
+        }
+        
+        .bulletin-page:last-child {
+            page-break-after: avoid;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+        
+        .logo-section {
+            width: 55px;
+            text-align: center;
+        }
+        
+        .logo-section img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+        }
+        
+        .header-center {
+            flex: 1;
+            text-align: center;
+            padding: 0 10px;
+        }
+        
+        .republique {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .devise {
+            font-size: 9pt;
+        }
+        .devise-rouge { color: #CE1126; }
+        .devise-jaune { color: #FCD116; }
+        .devise-vert { color: #009460; }
+        
+        .ecole-nom {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #2c3e50;
+            text-transform: uppercase;
+        }
+        
+        .bulletin-titre {
+            font-size: 13pt;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .photo-section {
+            width: 60px;
+            text-align: center;
+        }
+        
+        .photo-section img {
+            width: 55px;
+            height: 70px;
+            object-fit: cover;
+            border: 1px solid #ccc;
+        }
+        
+        .photo-placeholder {
+            width: 55px;
+            height: 70px;
+            border: 1px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18pt;
+            color: #ccc;
+            background: #f9f9f9;
+        }
+        
+        .eleve-info {
+            background: #f8f9fa;
+            padding: 6px 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            border-left: 3px solid #3498db;
+            font-size: 9pt;
+        }
+        
+        .eleve-info table {
+            width: 100%;
+        }
+        
+        .eleve-info td {
+            padding: 2px 8px;
+        }
+        
+        .eleve-info .label {
+            font-weight: bold;
+            color: #555;
+            width: 25%;
+        }
+        
+        .bareme {
+            background: #f0f0f0;
+            padding: 5px;
+            border-radius: 3px;
+            margin-bottom: 8px;
+            font-size: 7pt;
+            text-align: center;
+        }
+        
+        .section-title {
+            background: linear-gradient(90deg, #2c3e50, #34495e);
+            color: white;
+            padding: 5px 10px;
+            font-size: 9pt;
+            font-weight: bold;
+            border-radius: 3px 3px 0 0;
+        }
+        
+        .notes-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+        }
+        
+        .notes-table th, .notes-table td {
+            border: 1px solid #bdc3c7;
+            padding: 4px 6px;
+            text-align: center;
+            font-size: 9pt;
+        }
+        
+        .notes-table thead th {
+            background: #ecf0f1;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .notes-table tbody td:first-child {
+            text-align: left;
+            font-weight: 500;
+        }
+        
+        .notes-table tfoot {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        
+        .lettre-badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 8pt;
+            color: white;
+        }
+        
+        .lettre-a-plus, .lettre-a { background: #27ae60; }
+        .lettre-b-plus, .lettre-b { background: #3498db; }
+        .lettre-b-minus, .lettre-c { background: #f39c12; }
+        .lettre-d { background: #e74c3c; }
+        
+        .resultat-box {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        
+        .resultat-box h4 {
+            font-size: 10pt;
+            margin-bottom: 5px;
+        }
+        
+        .moyenne-display {
+            display: inline-block;
+            background: white;
+            color: #2c3e50;
+            padding: 5px 15px;
+            border-radius: 5px;
+            margin: 3px;
+        }
+        
+        .moyenne-value {
+            font-size: 14pt;
+            font-weight: bold;
+        }
+        
+        .moyenne-label {
+            font-size: 7pt;
+            color: #7f8c8d;
+        }
+        
+        .mention-badge {
+            display: inline-block;
+            padding: 4px 15px;
+            border-radius: 15px;
+            font-size: 10pt;
+            font-weight: bold;
+            color: white;
+            margin-top: 5px;
+        }
+        
+        .mention-excellent { background: #27ae60; }
+        .mention-tres-bien { background: #2ecc71; }
+        .mention-bien { background: #3498db; }
+        .mention-assez-bien { background: #17a2b8; }
+        .mention-moyen { background: #f39c12; }
+        .mention-passable { background: #e67e22; }
+        .mention-eprouve-des-difficultes { background: #e74c3c; }
+        
+        .analyse-section, .recommandations-section {
+            margin-bottom: 8px;
+        }
+        
+        .section-content {
+            border: 1px solid #bdc3c7;
+            border-top: none;
+            padding: 6px 10px;
+            border-radius: 0 0 3px 3px;
+            font-size: 8pt;
+        }
+        
+        .analyse-title {
+            background: linear-gradient(90deg, #17a2b8, #138496);
+        }
+        
+        .recommandations-title {
+            background: linear-gradient(90deg, #ffc107, #e0a800);
+            color: #333;
+        }
+        
+        .item-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            columns: 2;
+        }
+        
+        .item-list li {
+            padding: 2px 0;
+            padding-left: 12px;
+            position: relative;
+            font-size: 8pt;
+        }
+        
+        .item-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-size: 8pt;
+        }
+        
+        .recommandations-section .item-list li:before {
+            content: "→";
+            color: #f39c12;
+        }
+        
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #bdc3c7;
+        }
+        
+        .signature-box {
+            text-align: center;
+            width: 30%;
+        }
+        
+        .signature-label {
+            font-size: 8pt;
+            color: #555;
+            margin-bottom: 20px;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #333;
+            padding-top: 3px;
+            font-size: 7pt;
+        }
+        
+        .footer {
+            margin-top: 8px;
+            text-align: center;
+            font-size: 7pt;
+            color: #7f8c8d;
+        }
+        
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            opacity: 0.04;
+            font-size: 80pt;
+            color: #2c3e50;
+            pointer-events: none;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    {% for bulletin in bulletins %}
+    <div class="bulletin-page">
+        <div class="watermark">MATERNELLE</div>
+        
+        <!-- En-tête -->
+        <div class="header">
+            <div class="logo-section">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+                {% else %}
+                <div style="width:50px;height:50px;background:#f0f0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;">🏫</div>
+                {% endif %}
+            </div>
+            
+            <div class="header-center">
+                <div class="republique">RÉPUBLIQUE DE GUINÉE</div>
+                <div class="devise">
+                    <span class="devise-rouge">Travail</span> - 
+                    <span class="devise-jaune">Justice</span> - 
+                    <span class="devise-vert">Solidarité</span>
+                </div>
+                <div class="ecole-nom">{{ ecole.nom }}</div>
+                <div class="bulletin-titre">BULLETIN MATERNELLE - {{ trimestre_display }}</div>
+                <div style="font-size:9pt;">Année {{ annee_scolaire }}</div>
+            </div>
+            
+            <div class="photo-section">
+                {% if bulletin.photo_base64 %}
+                <img src="data:image/png;base64,{{ bulletin.photo_base64 }}" alt="Photo">
+                {% else %}
+                <div class="photo-placeholder">
+                    {{ bulletin.eleve.prenom|slice:":1" }}{{ bulletin.eleve.nom|slice:":1" }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Infos élève -->
+        <div class="eleve-info">
+            <table>
+                <tr>
+                    <td class="label">Nom & Prénom:</td>
+                    <td><strong>{{ bulletin.eleve.nom }} {{ bulletin.eleve.prenom }}</strong></td>
+                    <td class="label">Matricule:</td>
+                    <td>{{ bulletin.eleve.matricule }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Classe:</td>
+                    <td>{{ classe.nom }}</td>
+                    <td class="label">Né(e) le:</td>
+                    <td>{{ bulletin.eleve.date_naissance|date:"d/m/Y"|default:"-" }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Barème -->
+        <div class="bareme">
+            <strong>A+</strong> Excellent (10) | <strong>A</strong> Très bien (9,5) | <strong>B+</strong> Bien (8-9) | <strong>B</strong> Assez bien (7) | <strong>B-</strong> Moyen (6) | <strong>C</strong> Passable (5-5,75) | <strong>D</strong> Difficultés (3-4)
+        </div>
+        
+        <!-- Notes -->
+        <div class="section-title">📚 Résultats par matière</div>
+        <table class="notes-table">
+            <thead>
+                <tr>
+                    <th style="width:40%">Matière</th>
+                    <th style="width:15%">Note /10</th>
+                    <th style="width:15%">Lettre</th>
+                    <th style="width:30%">Mention</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for note in bulletin.notes %}
+                <tr>
+                    <td>{{ note.matiere.nom }}</td>
+                    <td>{{ note.note|default:"-" }}</td>
+                    <td>
+                        {% if note.lettre %}
+                        <span class="lettre-badge lettre-{{ note.lettre|lower }}">{{ note.lettre }}</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ note.get_mention|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" style="text-align:center;color:#999;">-</td></tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td><strong>MOYENNE</strong></td>
+                    <td><strong>{{ bulletin.moyenne|default:"-" }}/10</strong></td>
+                    <td>
+                        {% if bulletin.lettre_generale %}
+                        <span class="lettre-badge lettre-{{ bulletin.lettre_generale|lower }}">{{ bulletin.lettre_generale }}</span>
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ bulletin.mention_generale|default:"-" }}</strong></td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <!-- Résultat -->
+        {% if bulletin.moyenne %}
+        <div class="resultat-box">
+            <h4>RÉSULTAT GÉNÉRAL</h4>
+            <div class="moyenne-display">
+                <div class="moyenne-value">{{ bulletin.moyenne }}/10</div>
+                <div class="moyenne-label">Moyenne</div>
+            </div>
+            <div class="moyenne-display">
+                <div class="moyenne-value">{{ bulletin.lettre_generale }}</div>
+                <div class="moyenne-label">Lettre</div>
+            </div>
+            <br>
+            <span class="mention-badge mention-{{ bulletin.mention_generale|slugify }}">{{ bulletin.mention_generale }}</span>
+        </div>
+        {% endif %}
+        
+        <!-- Analyse -->
+        {% if bulletin.analyses_selectionnees %}
+        <div class="analyse-section">
+            <div class="section-title analyse-title">📋 Analyse du travail</div>
+            <div class="section-content">
+                <ul class="item-list">
+                    {% for item in bulletin.analyses_selectionnees %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Recommandations -->
+        {% if bulletin.recommandations_selectionnees %}
+        <div class="recommandations-section">
+            <div class="section-title recommandations-title">💡 Recommandations</div>
+            <div class="section-content">
+                <ul class="item-list">
+                    {% for item in bulletin.recommandations_selectionnees %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Signatures -->
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-label">La Monitrice</div>
+                <div class="signature-line">Signature</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Le Directeur</div>
+                <div class="signature-line">Signature et cachet</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Parent/Tuteur</div>
+                <div class="signature-line">Signature</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            {{ ecole.nom }} | {{ ecole.telephone|default:"" }} | Imprimé le {{ date_impression|date:"d/m/Y" }}
+        </div>
+    </div>
+    {% endfor %}
+</body>
+</html>

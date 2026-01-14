@@ -365,6 +365,235 @@ def invalider_cache_note_eleve(sender, instance, **kwargs):
         print(f"Erreur invalidation cache: {e}")
 
 
+# ============================================================================
+# MODÈLES POUR L'ÉVALUATION MATERNELLE
+# ============================================================================
+
+class EvaluationMaternelle(models.Model):
+    """Évaluation complète pour un élève de maternelle"""
+    from eleves.models import Eleve
+    
+    # Choix pour les lettres d'appréciation
+    LETTRE_CHOICES = [
+        ('A+', 'A+ - Excellent (10)'),
+        ('A', 'A - Très bien (9,5)'),
+        ('B+', 'B+ - Bien (8-9)'),
+        ('B', 'B - Assez bien (7)'),
+        ('B-', 'B- - Moyen (6)'),
+        ('C', 'C - Passable (5-5,75)'),
+        ('D', 'D - Éprouve des difficultés (3-4)'),
+    ]
+    
+    TRIMESTRE_CHOICES = [
+        ('TRIMESTRE_1', 'Trimestre 1'),
+        ('TRIMESTRE_2', 'Trimestre 2'),
+        ('TRIMESTRE_3', 'Trimestre 3'),
+    ]
+    
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='evaluations_maternelle')
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='evaluations_maternelle')
+    trimestre = models.CharField(max_length=20, choices=TRIMESTRE_CHOICES, verbose_name="Trimestre")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    
+    # Métadonnées
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='evaluations_maternelle_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Évaluation maternelle"
+        verbose_name_plural = "Évaluations maternelle"
+        ordering = ['eleve', 'trimestre']
+        unique_together = ['eleve', 'classe', 'trimestre', 'annee_scolaire']
+    
+    def __str__(self):
+        return f"{self.eleve} - {self.get_trimestre_display()} ({self.annee_scolaire})"
+    
+    def get_moyenne_generale(self):
+        """Calcule la moyenne générale des notes"""
+        notes = self.notes_matieres.exclude(note__isnull=True)
+        if not notes.exists():
+            return None
+        total = sum(n.note for n in notes if n.note is not None)
+        return round(total / notes.count(), 2)
+    
+    def get_lettre_generale(self):
+        """Retourne la lettre correspondant à la moyenne générale"""
+        moyenne = self.get_moyenne_generale()
+        if moyenne is None:
+            return None
+        return self.note_vers_lettre(moyenne)
+    
+    @staticmethod
+    def note_vers_lettre(note):
+        """Convertit une note en lettre d'appréciation"""
+        if note >= 10:
+            return 'A+'
+        elif note >= 9.5:
+            return 'A'
+        elif note >= 8:
+            return 'B+'
+        elif note >= 7:
+            return 'B'
+        elif note >= 6:
+            return 'B-'
+        elif note >= 5:
+            return 'C'
+        else:
+            return 'D'
+    
+    @staticmethod
+    def lettre_vers_mention(lettre):
+        """Convertit une lettre en mention textuelle"""
+        mentions = {
+            'A+': 'Excellent',
+            'A': 'Très bien',
+            'B+': 'Bien',
+            'B': 'Assez bien',
+            'B-': 'Moyen',
+            'C': 'Passable',
+            'D': 'Éprouve des difficultés'
+        }
+        return mentions.get(lettre, '')
+
+
+class NoteMaternelle(models.Model):
+    """Note pour une matière dans une évaluation maternelle"""
+    
+    evaluation = models.ForeignKey(EvaluationMaternelle, on_delete=models.CASCADE, related_name='notes_matieres')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='notes_maternelle')
+    note = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True, verbose_name="Note sur 10")
+    lettre = models.CharField(max_length=2, blank=True, verbose_name="Lettre")
+    commentaire = models.TextField(blank=True, null=True, verbose_name="Commentaire")
+    
+    class Meta:
+        verbose_name = "Note maternelle"
+        verbose_name_plural = "Notes maternelle"
+        unique_together = ['evaluation', 'matiere']
+    
+    def save(self, *args, **kwargs):
+        # Calcul automatique de la lettre en fonction de la note
+        if self.note is not None:
+            self.lettre = EvaluationMaternelle.note_vers_lettre(float(self.note))
+        super().save(*args, **kwargs)
+    
+    def get_mention(self):
+        """Retourne la mention correspondant à la lettre"""
+        return EvaluationMaternelle.lettre_vers_mention(self.lettre)
+    
+    def __str__(self):
+        return f"{self.matiere.nom} - {self.lettre} ({self.note}/10)"
+
+
+class AnalyseTravailMaternelle(models.Model):
+    """Analyse du travail de l'enfant pour une évaluation maternelle"""
+    
+    evaluation = models.OneToOneField(EvaluationMaternelle, on_delete=models.CASCADE, related_name='analyse_travail')
+    
+    # Options d'analyse (cases à cocher)
+    comprend_demandes = models.BooleanField(default=False, verbose_name="L'enfant comprend ce qu'on lui demande")
+    ne_comprend_pas = models.BooleanField(default=False, verbose_name="L'enfant ne comprend pas ce qu'on lui demande")
+    trop_jeune = models.BooleanField(default=False, verbose_name="L'enfant est trop jeune pour cette classe")
+    fixe_attention = models.BooleanField(default=False, verbose_name="L'enfant fixe son attention")
+    pas_probleme_monitrice = models.BooleanField(default=False, verbose_name="L'enfant n'a pas de problème avec sa monitrice")
+    pas_probleme_camarades = models.BooleanField(default=False, verbose_name="L'enfant n'a pas de problème avec ses camarades")
+    pas_probleme_famille = models.BooleanField(default=False, verbose_name="L'enfant n'a pas de problème avec sa famille")
+    est_doue = models.BooleanField(default=False, verbose_name="L'enfant est doué")
+    est_paresseux = models.BooleanField(default=False, verbose_name="L'enfant est paresseux")
+    
+    # Commentaire libre
+    commentaire = models.TextField(blank=True, null=True, verbose_name="Commentaire supplémentaire")
+    
+    class Meta:
+        verbose_name = "Analyse du travail (maternelle)"
+        verbose_name_plural = "Analyses du travail (maternelle)"
+    
+    def __str__(self):
+        return f"Analyse - {self.evaluation.eleve}"
+    
+    def get_analyses_selectionnees(self):
+        """Retourne la liste des analyses sélectionnées"""
+        analyses = []
+        if self.comprend_demandes:
+            analyses.append("L'enfant comprend ce qu'on lui demande")
+        if self.ne_comprend_pas:
+            analyses.append("L'enfant ne comprend pas ce qu'on lui demande")
+        if self.trop_jeune:
+            analyses.append("L'enfant est trop jeune pour cette classe")
+        if self.fixe_attention:
+            analyses.append("L'enfant fixe son attention")
+        if self.pas_probleme_monitrice:
+            analyses.append("L'enfant n'a pas de problème avec sa monitrice")
+        if self.pas_probleme_camarades:
+            analyses.append("L'enfant n'a pas de problème avec ses camarades")
+        if self.pas_probleme_famille:
+            analyses.append("L'enfant n'a pas de problème avec sa famille")
+        if self.est_doue:
+            analyses.append("L'enfant est doué")
+        if self.est_paresseux:
+            analyses.append("L'enfant est paresseux")
+        return analyses
+
+
+class RecommandationMaternelle(models.Model):
+    """Recommandations de la monitrice pour une évaluation maternelle"""
+    
+    evaluation = models.OneToOneField(EvaluationMaternelle, on_delete=models.CASCADE, related_name='recommandations')
+    
+    # Options de recommandations (cases à cocher)
+    encourager_feliciter = models.BooleanField(default=False, verbose_name="Enfant à encourager et à féliciter")
+    suivre_domicile = models.BooleanField(default=False, verbose_name="Enfant à suivre à domicile")
+    gouter_dans_sac = models.BooleanField(default=False, verbose_name="Mettre le goûter dans le sac de l'enfant")
+    aide_encouragement_parents = models.BooleanField(default=False, verbose_name="L'enfant a besoin d'aide et d'encouragement des parents")
+    amour_parental = models.BooleanField(default=False, verbose_name="L'enfant a besoin de l'amour maternel et paternel")
+    besoin_epanouissement = models.BooleanField(default=False, verbose_name="L'enfant a besoin d'être épanoui")
+    sorties_educatives = models.BooleanField(default=False, verbose_name="L'enfant a besoin de sorties éducatives et récréatives")
+    aide_intellectuelle = models.BooleanField(default=False, verbose_name="L'enfant a besoin de l'aide de la monitrice et des parents pour développer ses facultés intellectuelles")
+    douceur_patience = models.BooleanField(default=False, verbose_name="L'enfant doit être pris avec beaucoup de douceur et de patience")
+    besoin_fermete = models.BooleanField(default=False, verbose_name="L'enfant a besoin de fermeté")
+    esprit_inferiorite = models.BooleanField(default=False, verbose_name="L'enfant a un esprit d'infériorité")
+    attention_particuliere = models.BooleanField(default=False, verbose_name="L'enfant a besoin d'une attention particulière des parents")
+    
+    # Commentaire libre
+    commentaire = models.TextField(blank=True, null=True, verbose_name="Recommandation personnalisée")
+    
+    class Meta:
+        verbose_name = "Recommandation (maternelle)"
+        verbose_name_plural = "Recommandations (maternelle)"
+    
+    def __str__(self):
+        return f"Recommandations - {self.evaluation.eleve}"
+    
+    def get_recommandations_selectionnees(self):
+        """Retourne la liste des recommandations sélectionnées"""
+        recommandations = []
+        if self.encourager_feliciter:
+            recommandations.append("Enfant à encourager et à féliciter")
+        if self.suivre_domicile:
+            recommandations.append("Enfant à suivre à domicile")
+        if self.gouter_dans_sac:
+            recommandations.append("Mettre le goûter dans le sac de l'enfant")
+        if self.aide_encouragement_parents:
+            recommandations.append("L'enfant a besoin d'aide et d'encouragement des parents")
+        if self.amour_parental:
+            recommandations.append("L'enfant a besoin de l'amour maternel et paternel")
+        if self.besoin_epanouissement:
+            recommandations.append("L'enfant a besoin d'être épanoui")
+        if self.sorties_educatives:
+            recommandations.append("L'enfant a besoin de sorties éducatives et récréatives")
+        if self.aide_intellectuelle:
+            recommandations.append("L'enfant a besoin de l'aide de la monitrice et des parents pour développer ses facultés intellectuelles")
+        if self.douceur_patience:
+            recommandations.append("L'enfant doit être pris avec beaucoup de douceur et de patience")
+        if self.besoin_fermete:
+            recommandations.append("L'enfant a besoin de fermeté")
+        if self.esprit_inferiorite:
+            recommandations.append("L'enfant a un esprit d'infériorité")
+        if self.attention_particuliere:
+            recommandations.append("L'enfant a besoin d'une attention particulière des parents")
+        return recommandations
+
+
 class Classement(models.Model):
     """Stocke les moyennes et rangs calculés pour garantir la cohérence"""
     eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='classements')

@@ -12,6 +12,14 @@ from .views_import import (
     get_matieres_classe,
     get_evaluations_matiere
 )
+from .views_maternelle import (
+    saisie_evaluation_maternelle,
+    saisie_eleve_maternelle,
+    bulletin_maternelle,
+    bulletin_maternelle_pdf,
+    bulletins_classe_maternelle_pdf,
+    api_get_eleves_classe
+)
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
 from .export_notes_complet import exporter_notes_complet_pdf, exporter_notes_complet_excel
@@ -92,4 +100,14 @@ urlpatterns = [
     
     # Certificats d'appréciation pour les 5 premiers
     path('certificats-appreciation-pdf/', certificats_appreciation_pdf, name='certificats_appreciation_pdf'),
+    
+    # ============================================================================
+    # MODULE MATERNELLE - Évaluation et Bulletins
+    # ============================================================================
+    path('maternelle/saisie/', saisie_evaluation_maternelle, name='saisie_evaluation_maternelle'),
+    path('maternelle/saisie/eleve/<int:eleve_id>/', saisie_eleve_maternelle, name='saisie_eleve_maternelle'),
+    path('maternelle/bulletin/<int:evaluation_id>/', bulletin_maternelle, name='bulletin_maternelle'),
+    path('maternelle/bulletin/<int:evaluation_id>/pdf/', bulletin_maternelle_pdf, name='bulletin_maternelle_pdf'),
+    path('maternelle/bulletins-classe-pdf/', bulletins_classe_maternelle_pdf, name='bulletins_classe_maternelle_pdf'),
+    path('maternelle/api/eleves/', api_get_eleves_classe, name='api_eleves_classe_maternelle'),
 ]
