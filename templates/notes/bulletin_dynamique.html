@@ -802,14 +802,20 @@
                         {% if matiere_note.absent %}
                             <span style="color: red; font-weight: bold; font-size: 11px;">ABSENT</span>
                         {% elif matiere_note.appreciation %}
-                            {% if matiere_note.appreciation == 'TRES_BIEN_ACQUIS' %}
-                                <span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Très Bien Acquis</span>
-                            {% elif matiere_note.appreciation == 'BIEN_ACQUIS' %}
-                                <span style="background: #007bff; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Bien Acquis</span>
-                            {% elif matiere_note.appreciation == 'EN_COURS' %}
-                                <span style="background: #ffc107; color: #212529; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">En Cours</span>
-                            {% elif matiere_note.appreciation == 'NON_ACQUIS' %}
-                                <span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Non Acquis</span>
+                            {% if matiere_note.appreciation == 'A+' %}
+                                <span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">A+ Excellent</span>
+                            {% elif matiere_note.appreciation == 'A' %}
+                                <span style="background: #007bff; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">A Très bien</span>
+                            {% elif matiere_note.appreciation == 'B+' %}
+                                <span style="background: #17a2b8; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">B+ Bien</span>
+                            {% elif matiere_note.appreciation == 'B' %}
+                                <span style="background: #6c757d; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">B Assez bien</span>
+                            {% elif matiere_note.appreciation == 'B-' %}
+                                <span style="background: #ffc107; color: #212529; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">B- Moyen</span>
+                            {% elif matiere_note.appreciation == 'C' %}
+                                <span style="background: #fd7e14; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">C Passable</span>
+                            {% elif matiere_note.appreciation == 'D' %}
+                                <span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">D Difficultés</span>
                             {% else %}
                                 <span style="color: #999;">-</span>
                             {% endif %}
@@ -822,14 +828,20 @@
                             {{ matiere_note.commentaire }}
                         {% elif matiere_note.absent %}
                             <span style="color: #dc3545;">Absent(e) lors de l'évaluation</span>
-                        {% elif matiere_note.appreciation == 'TRES_BIEN_ACQUIS' %}
+                        {% elif matiere_note.appreciation == 'A+' %}
                             <span style="color: #28a745;">Excellent travail, continue ainsi !</span>
-                        {% elif matiere_note.appreciation == 'BIEN_ACQUIS' %}
-                            <span style="color: #007bff;">Bon niveau, quelques perfectionnements possibles</span>
-                        {% elif matiere_note.appreciation == 'EN_COURS' %}
-                            <span style="color: #856404;">Des progrès à faire, persévère !</span>
-                        {% elif matiere_note.appreciation == 'NON_ACQUIS' %}
-                            <span style="color: #dc3545;">Nécessite un accompagnement renforcé</span>
+                        {% elif matiere_note.appreciation == 'A' %}
+                            <span style="color: #007bff;">Très bon niveau, félicitations !</span>
+                        {% elif matiere_note.appreciation == 'B+' %}
+                            <span style="color: #17a2b8;">Bon travail, continue tes efforts !</span>
+                        {% elif matiere_note.appreciation == 'B' %}
+                            <span style="color: #6c757d;">Assez bon niveau, quelques progrès à faire</span>
+                        {% elif matiere_note.appreciation == 'B-' %}
+                            <span style="color: #856404;">Niveau moyen, des efforts nécessaires</span>
+                        {% elif matiere_note.appreciation == 'C' %}
+                            <span style="color: #fd7e14;">Passable, un accompagnement est conseillé</span>
+                        {% elif matiere_note.appreciation == 'D' %}
+                            <span style="color: #dc3545;">Éprouve des difficultés, aide nécessaire</span>
                         {% else %}
                             <span style="color: #999;">-</span>
                         {% endif %}
