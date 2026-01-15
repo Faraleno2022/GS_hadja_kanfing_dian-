@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('eleves', '0001_initial'),
-        ('notes', '0011_optimisation_index'),
+        ('notes', '0010_classement'),
     ]
 
     operations = [
