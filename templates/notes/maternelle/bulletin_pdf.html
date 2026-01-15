@@ -563,5 +563,175 @@
             Document généré le {{ date_impression|date:"d/m/Y à H:i" }} | {{ ecole.nom }} - {{ ecole.telephone|default:"" }}
         </div>
     </div>
+    
+    <!-- PAGE 2: Fiche d'analyse et recommandations à cocher -->
+    <div class="bulletin-container" style="page-break-before: always;">
+        <!-- En-tête simplifié -->
+        <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
+            <div style="font-size: 14pt; font-weight: bold; color: #2c3e50;">{{ ecole.nom }}</div>
+            <div style="font-size: 16pt; font-weight: bold; color: #e74c3c; margin-top: 5px;">FICHE D'ÉVALUATION - MATERNELLE</div>
+            <div style="font-size: 10pt; margin-top: 5px;">{{ evaluation.get_trimestre_display }} - Année {{ evaluation.annee_scolaire }}</div>
+        </div>
+        
+        <!-- Informations élève -->
+        <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #3498db;">
+            <table style="width: 100%;">
+                <tr>
+                    <td style="width: 50%;"><strong>Nom & Prénom:</strong> {{ eleve.nom }} {{ eleve.prenom }}</td>
+                    <td><strong>Classe:</strong> {{ classe.nom }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Section Analyse du travail de l'enfant -->
+        <div style="margin-bottom: 20px;">
+            <div style="background: linear-gradient(90deg, #17a2b8, #138496); color: white; padding: 8px 15px; font-size: 12pt; font-weight: bold; border-radius: 5px 5px 0 0;">
+                📋 ANALYSE DU TRAVAIL DE L'ENFANT
+            </div>
+            <div style="border: 1px solid #17a2b8; border-top: none; padding: 15px; border-radius: 0 0 5px 5px;">
+                <table style="width: 100%; font-size: 10pt;">
+                    <tr>
+                        <td style="padding: 6px 0; width: 50%;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'comprend' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant comprend ce qu'on lui demande
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'ne comprend pas' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant ne comprend pas ce qu'on lui demande
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'trop jeune' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant est trop jeune pour cette classe
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'fixe son attention' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant fixe son attention
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'ne fixe pas' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant ne fixe pas son attention
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'timide' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant est timide
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'turbulent' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant est turbulent
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'sociable' in analyses_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant est sociable
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Section Recommandations de la coordinatrice -->
+        <div style="margin-bottom: 20px;">
+            <div style="background: linear-gradient(90deg, #ffc107, #e0a800); color: #333; padding: 8px 15px; font-size: 12pt; font-weight: bold; border-radius: 5px 5px 0 0;">
+                💡 RECOMMANDATIONS DE LA COORDINATRICE
+            </div>
+            <div style="border: 1px solid #ffc107; border-top: none; padding: 15px; border-radius: 0 0 5px 5px;">
+                <table style="width: 100%; font-size: 10pt;">
+                    <tr>
+                        <td style="padding: 6px 0; width: 50%;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'encourager' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            Enfant à encourager et à féliciter
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'suivre à domicile' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            Enfant à suivre à domicile
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'goûter' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            Mettre le goûter dans le sac de l'enfant
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'aide et d\'encouragement' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin d'aide et d'encouragement des parents
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'amour maternel' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin de l'amour maternel et paternel
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'épanoui' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin d'être épanoui
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'sorties éducatives' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin de sorties éducatives et récréatives
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'facultés intellectuelles' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin d'aide pour développer ses facultés intellectuelles
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'douceur et de patience' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant doit être pris avec beaucoup de douceur et de patience
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'fermeté' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin de fermeté
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'infériorité' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a un esprit d'infériorité
+                        </td>
+                        <td style="padding: 6px 0;">
+                            <span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #333; margin-right: 8px; vertical-align: middle;">{% if 'attention particulière' in recommandations_selectionnees|join:'' %}✓{% endif %}</span>
+                            L'enfant a besoin d'une attention particulière des parents
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Observations complémentaires -->
+        <div style="margin-bottom: 20px;">
+            <div style="background: linear-gradient(90deg, #6c757d, #5a6268); color: white; padding: 8px 15px; font-size: 12pt; font-weight: bold; border-radius: 5px 5px 0 0;">
+                📝 OBSERVATIONS COMPLÉMENTAIRES
+            </div>
+            <div style="border: 1px solid #6c757d; border-top: none; padding: 15px; border-radius: 0 0 5px 5px; min-height: 60px;">
+                <div style="border-bottom: 1px dashed #ccc; height: 25px; margin-bottom: 5px;"></div>
+                <div style="border-bottom: 1px dashed #ccc; height: 25px; margin-bottom: 5px;"></div>
+                <div style="border-bottom: 1px dashed #ccc; height: 25px;"></div>
+            </div>
+        </div>
+        
+        <!-- Signatures -->
+        <div class="signatures" style="margin-top: 30px;">
+            <div class="signature-box">
+                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-line">Signature</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Le Directeur/La Directrice</div>
+                <div class="signature-line">Signature et cachet</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Parent/Tuteur</div>
+                <div class="signature-line">Signature</div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
