@@ -81,12 +81,12 @@ def certificats_appreciation_pdf(request):
             eleves_avec_rang = []
             for eleve in eleves:
                 rang_info = rangs_dict.get(eleve.id)
-                if rang_info and rang_info['rang'] <= 5:
+                if rang_info and rang_info.get('rang_num', 999) <= 5:
                     eleves_avec_rang.append({
                         'eleve': eleve,
-                        'rang': rang_info['rang'],
+                        'rang': rang_info.get('rang_num', 999),  # Utiliser rang_num (entier)
                         'moyenne': float(rang_info['moyenne']),  # Taux d'acquisition en %
-                        'rang_num': rang_info['rang_num']
+                        'rang_num': rang_info.get('rang_num', 999)
                     })
             
             # Trier par rang
