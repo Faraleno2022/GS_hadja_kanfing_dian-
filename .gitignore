@@ -32,8 +32,8 @@ static_collected/
 .DS_Store
 Thumbs.db
 
-# Migrations
-*/migrations/
+# Migrations (cache only)
+*/migrations/__pycache__/
 
 # Fichiers de test PDF
 carte_test*.pdf
