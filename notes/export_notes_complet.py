@@ -9,14 +9,15 @@ from decimal import Decimal
 import io
 import re
 
-from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
+from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
-def get_notes_eleves_par_matiere(classe, periode, eleves, matieres):
+def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternelle=False):
     """
     Récupère toutes les notes des élèves par matière pour une période donnée.
     Retourne un dictionnaire structuré avec les données.
+    Pour la maternelle, récupère les appréciations (A+, A, B+, etc.) au lieu des notes numériques.
     """
     from .utils_rangs import calculer_rangs_classe_periode
     
@@ -51,8 +52,22 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres):
         for matiere in matieres:
             note_value = None
             absent = False
+            appreciation = None  # Pour maternelle
             
-            if periode in periodes_mensuelles:
+            # Pour la maternelle : récupérer les appréciations
+            if est_maternelle:
+                try:
+                    appr_obj = AppreciationMaternelle.objects.get(
+                        eleve=eleve,
+                        matiere=matiere,
+                        trimestre=periode,
+                        annee_scolaire=classe.annee_scolaire
+                    )
+                    appreciation = appr_obj.appreciation
+                    absent = appr_obj.absent
+                except AppreciationMaternelle.DoesNotExist:
+                    pass
+            elif periode in periodes_mensuelles:
                 # Notes mensuelles
                 try:
                     note_obj = NoteMensuelle.objects.get(
@@ -82,6 +97,7 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres):
             notes_eleve['notes_par_matiere'][matiere.id] = {
                 'note': note_value,
                 'absent': absent,
+                'appreciation': appreciation,  # Pour maternelle
                 'coefficient': float(matiere.coefficient) if matiere.coefficient else 1.0
             }
         
@@ -123,13 +139,14 @@ def exporter_notes_complet_excel(request):
         
         eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
-        # Récupérer les notes
-        resultats = get_notes_eleves_par_matiere(classe, periode, eleves, matieres)
-        
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_scolaire = detecter_niveau_scolaire(classe.nom)
         est_primaire = (niveau_scolaire == 'PRIMAIRE')
+        est_maternelle = (niveau_scolaire == 'MATERNELLE')
+        
+        # Récupérer les notes (avec appréciations pour maternelle)
+        resultats = get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternelle=est_maternelle)
         
         # Créer le workbook Excel
         wb = openpyxl.Workbook()
@@ -215,9 +232,13 @@ def exporter_notes_complet_excel(request):
                 note_info = r['notes_par_matiere'].get(matiere.id, {})
                 note = note_info.get('note')
                 absent = note_info.get('absent', False)
+                appreciation = note_info.get('appreciation')  # Pour maternelle
                 
                 if absent:
                     cell_value = 'ABS'
+                elif est_maternelle and appreciation:
+                    # Afficher l'appréciation pour la maternelle
+                    cell_value = appreciation
                 elif note is not None:
                     cell_value = f"{note:.2f}"
                 else:
@@ -227,16 +248,20 @@ def exporter_notes_complet_excel(request):
                 cell.border = thin_border
                 cell.alignment = center_align
                 
-                # Colorer en rouge si note < 10 (ou < 5 pour primaire)
-                seuil = 5 if est_primaire else 10
-                if note is not None and note < seuil:
-                    cell.font = red_font
+                # Colorer en rouge si note < 10 (ou < 5 pour primaire) - pas pour maternelle
+                if not est_maternelle:
+                    seuil = 5 if est_primaire else 10
+                    if note is not None and note < seuil:
+                        cell.font = red_font
                 
                 col += 1
             
             # Moyenne générale
             moy = r.get('moyenne_generale')
-            moy_cell = ws.cell(row=row, column=col, value=f"{moy:.2f}" if moy else '-')
+            if est_maternelle:
+                moy_cell = ws.cell(row=row, column=col, value=f"{moy:.1f}%" if moy else '-')
+            else:
+                moy_cell = ws.cell(row=row, column=col, value=f"{moy:.2f}" if moy else '-')
             moy_cell.border = thin_border
             moy_cell.alignment = center_align
             seuil_moy = 5 if est_primaire else 10
@@ -331,13 +356,14 @@ def exporter_notes_complet_pdf(request):
         
         eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
-        # Récupérer les notes
-        resultats = get_notes_eleves_par_matiere(classe, periode, eleves, matieres)
-        
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_scolaire = detecter_niveau_scolaire(classe.nom)
         est_primaire = (niveau_scolaire == 'PRIMAIRE')
+        est_maternelle = (niveau_scolaire == 'MATERNELLE')
+        
+        # Récupérer les notes (avec appréciations pour maternelle)
+        resultats = get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternelle=est_maternelle)
         
         # Créer le PDF en paysage
         buffer = io.BytesIO()
@@ -419,9 +445,13 @@ def exporter_notes_complet_pdf(request):
                 note_info = r['notes_par_matiere'].get(matiere.id, {})
                 note = note_info.get('note')
                 absent = note_info.get('absent', False)
+                appreciation = note_info.get('appreciation')  # Pour maternelle
                 
                 if absent:
                     row.append('ABS')
+                elif est_maternelle and appreciation:
+                    # Afficher l'appréciation pour la maternelle
+                    row.append(appreciation)
                 elif note is not None:
                     row.append(f"{note:.1f}")
                 else:
@@ -429,7 +459,11 @@ def exporter_notes_complet_pdf(request):
             
             # Moyenne et rang
             moy = r.get('moyenne_generale')
-            row.append(f"{moy:.2f}" if moy else '-')
+            if est_maternelle:
+                # Pour maternelle, afficher en pourcentage
+                row.append(f"{moy:.1f}%" if moy else '-')
+            else:
+                row.append(f"{moy:.2f}" if moy else '-')
             row.append(r.get('rang', '-'))
             
             data.append(row)
