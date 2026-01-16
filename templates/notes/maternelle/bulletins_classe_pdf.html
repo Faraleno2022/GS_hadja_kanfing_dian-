@@ -490,7 +490,7 @@
         <!-- Signatures -->
         <div class="signatures">
             <div class="signature-box">
-                <div class="signature-label">La Monitrice</div>
+                <div class="signature-label">La Coordinatrice</div>
                 <div class="signature-line">Signature</div>
             </div>
             <div class="signature-box">
@@ -505,6 +505,176 @@
         
         <div class="footer">
             {{ ecole.nom }} | {{ ecole.telephone|default:"" }} | Imprimé le {{ date_impression|date:"d/m/Y" }}
+        </div>
+    </div>
+    
+    <!-- PAGE 2: Fiche d'évaluation avec cases à cocher -->
+    <div class="bulletin-page">
+        <!-- En-tête simplifié -->
+        <div style="text-align: center; margin-bottom: 10px; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+            <div style="font-size: 12pt; font-weight: bold; color: #2c3e50;">{{ ecole.nom }}</div>
+            <div style="font-size: 14pt; font-weight: bold; color: #e74c3c; margin-top: 3px;">FICHE D'ÉVALUATION - MATERNELLE</div>
+            <div style="font-size: 9pt; margin-top: 3px;">{{ trimestre_display }} - Année {{ annee_scolaire }}</div>
+        </div>
+        
+        <!-- Informations élève -->
+        <div style="background: #f8f9fa; padding: 8px 12px; border-radius: 5px; margin-bottom: 12px; border-left: 3px solid #3498db;">
+            <table style="width: 100%; font-size: 9pt;">
+                <tr>
+                    <td style="width: 50%;"><strong>Nom & Prénom:</strong> {{ bulletin.eleve.nom }} {{ bulletin.eleve.prenom }}</td>
+                    <td><strong>Classe:</strong> {{ classe.nom }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <!-- Section Analyse du travail de l'enfant -->
+        <div style="margin-bottom: 15px;">
+            <div style="background: linear-gradient(90deg, #17a2b8, #138496); color: white; padding: 6px 12px; font-size: 10pt; font-weight: bold; border-radius: 4px 4px 0 0;">
+                📋 ANALYSE DU TRAVAIL DE L'ENFANT
+            </div>
+            <div style="border: 1px solid #17a2b8; border-top: none; padding: 12px; border-radius: 0 0 4px 4px;">
+                <table style="width: 100%; font-size: 9pt;">
+                    <tr>
+                        <td style="padding: 5px 0; width: 50%;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant comprend ce qu'on lui demande
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant ne comprend pas ce qu'on lui demande
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant est trop jeune pour cette classe
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant fixe son attention
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant ne fixe pas son attention
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant est timide
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant est turbulent
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant est sociable
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Section Recommandations de la coordinatrice -->
+        <div style="margin-bottom: 15px;">
+            <div style="background: linear-gradient(90deg, #ffc107, #e0a800); color: #333; padding: 6px 12px; font-size: 10pt; font-weight: bold; border-radius: 4px 4px 0 0;">
+                💡 RECOMMANDATIONS DE LA COORDINATRICE
+            </div>
+            <div style="border: 1px solid #ffc107; border-top: none; padding: 12px; border-radius: 0 0 4px 4px;">
+                <table style="width: 100%; font-size: 9pt;">
+                    <tr>
+                        <td style="padding: 5px 0; width: 50%;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            Enfant à encourager et à féliciter
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            Enfant à suivre à domicile
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            Mettre le goûter dans le sac de l'enfant
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin d'aide et d'encouragement des parents
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin de l'amour maternel et paternel
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin d'être épanoui
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin de sorties éducatives et récréatives
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin d'aide pour développer ses facultés intellectuelles
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant doit être pris avec beaucoup de douceur et de patience
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin de fermeté
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a un esprit d'infériorité
+                        </td>
+                        <td style="padding: 5px 0;">
+                            <span style="display: inline-block; width: 12px; height: 12px; border: 2px solid #333; margin-right: 6px; vertical-align: middle;"></span>
+                            L'enfant a besoin d'une attention particulière des parents
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Observations complémentaires -->
+        <div style="margin-bottom: 15px;">
+            <div style="background: linear-gradient(90deg, #6c757d, #5a6268); color: white; padding: 6px 12px; font-size: 10pt; font-weight: bold; border-radius: 4px 4px 0 0;">
+                📝 OBSERVATIONS COMPLÉMENTAIRES
+            </div>
+            <div style="border: 1px solid #6c757d; border-top: none; padding: 12px; border-radius: 0 0 4px 4px; min-height: 50px;">
+                <div style="border-bottom: 1px dashed #ccc; height: 20px; margin-bottom: 4px;"></div>
+                <div style="border-bottom: 1px dashed #ccc; height: 20px; margin-bottom: 4px;"></div>
+                <div style="border-bottom: 1px dashed #ccc; height: 20px;"></div>
+            </div>
+        </div>
+        
+        <!-- Signatures -->
+        <div class="signatures" style="margin-top: 20px;">
+            <div class="signature-box">
+                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-line">Signature</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Le Directeur</div>
+                <div class="signature-line">Signature et cachet</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-label">Parent/Tuteur</div>
+                <div class="signature-line">Signature</div>
+            </div>
         </div>
     </div>
     {% endfor %}
