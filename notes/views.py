@@ -8526,14 +8526,17 @@ def fiches_recommandations_pdf(request):
     
     # Récupérer les élèves de la classe
     try:
-        classe_eleves = Classe.objects.get(
+        classe_eleves = Classe.objects.filter(
             nom=classe_note.nom,
             annee_scolaire=classe_note.annee_scolaire
-        )
-        eleves = Eleve.objects.filter(
-            classe=classe_eleves,
-            statut='ACTIF'
-        ).order_by('nom', 'prenom')
+        ).first()
+        if classe_eleves:
+            eleves = Eleve.objects.filter(
+                classe=classe_eleves,
+                statut='ACTIF'
+            ).order_by('nom', 'prenom')
+        else:
+            eleves = []
     except Classe.DoesNotExist:
         eleves = []
     
