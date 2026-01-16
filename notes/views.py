@@ -7029,6 +7029,7 @@ def consulter_notes(request):
         'matieres': matieres,
         'periodes_disponibles': periodes_disponibles,
         'periode_classement': periode_selectionnee,
+        'periode_selectionnee': periode_selectionnee,  # Alias pour le template
         'eleves_toutes_notes': eleves_toutes_notes,
         'evaluations_par_matiere': evaluations_par_matiere,
         'niveau_enseignement': niveau_enseignement,
