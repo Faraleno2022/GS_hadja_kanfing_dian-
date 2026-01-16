@@ -62,14 +62,17 @@ def saisie_evaluation_maternelle(request):
         
         # Récupérer les élèves de cette classe depuis le module eleves
         try:
-            classe_eleves = Classe.objects.get(
+            classe_eleves = Classe.objects.filter(
                 nom=classe_selectionnee.nom,
                 annee_scolaire=annee_scolaire
-            )
-            eleves = Eleve.objects.filter(
-                classe=classe_eleves,
-                statut='ACTIF'
-            ).order_by('nom', 'prenom')
+            ).first()
+            if classe_eleves:
+                eleves = Eleve.objects.filter(
+                    classe=classe_eleves,
+                    statut='ACTIF'
+                ).order_by('nom', 'prenom')
+            else:
+                eleves = []
         except Classe.DoesNotExist:
             eleves = []
         
@@ -472,14 +475,17 @@ def api_get_eleves_classe(request):
     
     try:
         classe_note = ClasseNote.objects.get(id=classe_id)
-        classe_eleves = Classe.objects.get(
+        classe_eleves = Classe.objects.filter(
             nom=classe_note.nom,
             annee_scolaire=annee_scolaire
-        )
-        eleves = Eleve.objects.filter(
-            classe=classe_eleves,
-            statut='ACTIF'
-        ).order_by('nom', 'prenom').values('id', 'nom', 'prenom', 'matricule')
+        ).first()
+        if classe_eleves:
+            eleves = Eleve.objects.filter(
+                classe=classe_eleves,
+                statut='ACTIF'
+            ).order_by('nom', 'prenom').values('id', 'nom', 'prenom', 'matricule')
+        else:
+            eleves = []
         
         return JsonResponse({'eleves': list(eleves)})
     except Exception as e:
