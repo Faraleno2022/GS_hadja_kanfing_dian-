@@ -6045,7 +6045,40 @@ def saisir_notes(request):
             except Exception as e:
                 logger.error(f"[SAISIR_NOTES] Erreur récupération NoteMensuelle: {e}")
         
-        # 2. Chercher dans CompositionNote (notes trimestrielles/semestrielles importées)
+        # 2. Chercher dans AppreciationMaternelle (appréciations maternelle)
+        if type_note == 'appreciation' and est_maternelle:
+            try:
+                from .models import AppreciationMaternelle
+                appreciations_maternelle = AppreciationMaternelle.objects.filter(
+                    matiere=matiere_selectionnee,
+                    trimestre=periode,
+                    eleve_id__in=eleves_ids
+                )
+                
+                # Filtrer par année scolaire si disponible
+                if annee_scolaire:
+                    appreciations_maternelle = appreciations_maternelle.filter(annee_scolaire=annee_scolaire)
+                
+                appreciations_maternelle = appreciations_maternelle.select_related('eleve')
+                
+                logger.info(f"[SAISIR_NOTES] AppreciationMaternelle trouvées: {appreciations_maternelle.count()}")
+                
+                for app in appreciations_maternelle:
+                    try:
+                        notes_map[app.eleve_id] = {
+                            'note': None,
+                            'absent': bool(app.absent),
+                            'appreciation': app.appreciation,  # A, B, C, D, E
+                            'commentaire': app.observation if hasattr(app, 'observation') else None,
+                        }
+                    except Exception:
+                        continue
+                
+                logger.info(f"[SAISIR_NOTES] Notes map après AppreciationMaternelle: {len(notes_map)} entrées")
+            except Exception as e:
+                logger.error(f"[SAISIR_NOTES] Erreur récupération AppreciationMaternelle: {e}")
+        
+        # 3. Chercher dans CompositionNote (notes trimestrielles/semestrielles importées)
         if periode in periodes_trimestrielles or periode in periodes_semestrielles:
             try:
                 notes_composition = CompositionNote.objects.filter(
