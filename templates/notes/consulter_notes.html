@@ -207,46 +207,51 @@
     
     <!-- Vue Complète: Toutes les matières -->
     <div class="table-card">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h4><i class="fas fa-table me-2"></i>{% if est_maternelle %}Tableau des Appréciations{% else %}Tableau Récapitulatif Complet{% endif %} - {% if classe_selectionnee %}{{ classe_selectionnee.nom }}{% endif %} - {{ periode_selectionnee|default:"Toutes périodes" }}</h4>
-            <div class="btn-group gap-2">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="mb-0"><i class="fas fa-table me-2"></i>{% if est_maternelle %}Appréciations{% else %}Récapitulatif{% endif %} - {{ classe_selectionnee.nom }} - {{ periode_selectionnee|default:"Toutes périodes" }}</h5>
+            <div class="d-flex flex-wrap gap-1">
                 <!-- Export complet avec toutes les notes par matière -->
                 <div class="dropdown">
                     <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-table me-1"></i>Exporter Notes Complètes
+                        <i class="fas fa-table me-1"></i>Notes
                     </button>
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="#" onclick="exporterNotesCompletExcel(); return false;">
-                            <i class="fas fa-file-excel text-success me-2"></i>Excel (toutes les notes)
+                            <i class="fas fa-file-excel text-success me-2"></i>Excel
                         </a></li>
                         <li><a class="dropdown-item" href="#" onclick="exporterNotesCompletPDF(); return false;">
-                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF (toutes les notes)
+                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF
                         </a></li>
                     </ul>
                 </div>
                 <!-- Export classement simple -->
                 <div class="dropdown">
                     <button class="btn btn-warning btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-trophy me-1"></i>Exporter Classement
+                        <i class="fas fa-trophy me-1"></i>Classement
                     </button>
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="#" onclick="exporterResultatsExcel(); return false;">
-                            <i class="fas fa-file-excel text-success me-2"></i>Excel (classement)
+                            <i class="fas fa-file-excel text-success me-2"></i>Excel
                         </a></li>
                         <li><a class="dropdown-item" href="#" onclick="exporterResultatsPDF(); return false;">
-                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF (classement)
+                            <i class="fas fa-file-pdf text-danger me-2"></i>PDF
                         </a></li>
                     </ul>
                 </div>
                 <!-- Certificats d'appréciation Top 5 -->
-                <button class="btn btn-success btn-sm" onclick="imprimerCertificats(); return false;" title="Imprimer les certificats d'appréciation pour les 5 premiers">
-                    <i class="fas fa-award me-1"></i>Certificats Top 5
+                <button class="btn btn-success btn-sm" onclick="imprimerCertificats(); return false;" title="Certificats Top 5">
+                    <i class="fas fa-award me-1"></i>Top 5
                 </button>
                 {% if est_maternelle and periode_selectionnee %}
+                <!-- Fiches Recommandations - Bouton direct -->
+                <a href="{% url 'notes:fiches_recommandations_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" 
+                   class="btn btn-info btn-sm" target="_blank" title="Télécharger les fiches de recommandations vierges">
+                    <i class="fas fa-clipboard-list me-1"></i>Fiches Recommandations
+                </a>
                 <!-- Bulletins Maternelle -->
                 <div class="btn-group">
-                    <button type="button" class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="fas fa-child me-1"></i>Bulletins Maternelle
+                    <button type="button" class="btn btn-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-child me-1"></i>Bulletins
                     </button>
                     <ul class="dropdown-menu">
                         <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalBulletinsMaternelle">
@@ -255,15 +260,11 @@
                         <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}">
                             <i class="fas fa-file-pdf me-1"></i>Imprimer tous les bulletins
                         </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="{% url 'notes:fiches_recommandations_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
-                            <i class="fas fa-clipboard-list me-1 text-info"></i>Fiches Recommandations (vierges)
-                        </a></li>
                     </ul>
                 </div>
                 {% endif %}
-                <a href="{% url 'notes:importer_notes' %}" class="btn btn-info btn-sm">
-                    <i class="fas fa-file-upload me-1"></i>Importer Notes
+                <a href="{% url 'notes:importer_notes' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-file-upload me-1"></i>Importer
                 </a>
             </div>
         </div>
