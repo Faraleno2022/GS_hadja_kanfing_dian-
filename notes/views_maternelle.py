@@ -61,10 +61,11 @@ def saisie_evaluation_maternelle(request):
         classe_selectionnee = get_object_or_404(ClasseNote, id=classe_id)
         
         # Récupérer les élèves de cette classe depuis le module eleves
+        # Utiliser l'année scolaire de la ClasseNote
         try:
             classe_eleves = Classe.objects.filter(
                 nom=classe_selectionnee.nom,
-                annee_scolaire=annee_scolaire
+                annee_scolaire=classe_selectionnee.annee_scolaire
             ).first()
             if classe_eleves:
                 eleves = Eleve.objects.filter(
@@ -477,7 +478,7 @@ def api_get_eleves_classe(request):
         classe_note = ClasseNote.objects.get(id=classe_id)
         classe_eleves = Classe.objects.filter(
             nom=classe_note.nom,
-            annee_scolaire=annee_scolaire
+            annee_scolaire=classe_note.annee_scolaire
         ).first()
         if classe_eleves:
             eleves = Eleve.objects.filter(
