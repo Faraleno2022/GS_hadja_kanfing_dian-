@@ -31,8 +31,8 @@ def has_permission(user, permission_name):
         return True
 
     # Règles métier implicites par rôle
-    # Autoriser les COMPTABLES à valider les paiements/échéances sans avoir à cocher manuellement
-    if profil.role == 'COMPTABLE' and permission_name in {'peut_valider_paiements'}:
+    # Autoriser les COMPTABLES à valider les paiements/échéances et gérer les notes sans avoir à cocher manuellement
+    if profil.role == 'COMPTABLE' and permission_name in {'peut_valider_paiements', 'peut_gerer_notes', 'peut_importer_eleves'}:
         return True
     
     # Vérifier la permission spécifique
@@ -268,6 +268,7 @@ def get_user_permissions(user):
     
     # Par défaut, calcul pour les autres rôles
     can_validate_paiements = profil.peut_valider_paiements or (profil.role == 'COMPTABLE')
+    can_manage_notes = profil.peut_gerer_notes or (profil.role == 'COMPTABLE')
     return {
         'can_add_payments': profil.peut_ajouter_paiements,
         'can_add_expenses': profil.peut_ajouter_depenses,
@@ -282,7 +283,7 @@ def get_user_permissions(user):
         'can_generate_reports': profil.peut_generer_rapports,
         'can_view_reports': profil.peut_consulter_rapports,
         'can_manage_users': profil.peut_gerer_utilisateurs,
-        'can_manage_notes': profil.peut_gerer_notes,
+        'can_manage_notes': can_manage_notes,
     }
 
 def check_comptable_restrictions(user):

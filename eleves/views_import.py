@@ -33,8 +33,9 @@ def importer_eleves(request):
     peut_importer = (
         request.user.is_staff or 
         request.user.is_superuser or
-        request.user.groups.filter(name__in=['Administrateurs', 'Directeurs']).exists() or
-        (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves)
+        request.user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
+        (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves) or
+        (hasattr(request.user, 'profil') and request.user.profil.role == 'COMPTABLE')
     )
     
     if not peut_importer:
