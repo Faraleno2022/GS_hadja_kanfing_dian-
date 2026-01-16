@@ -588,10 +588,10 @@ def generer_template_excel(classe_id, matiere_id, type_import='MENSUELLE'):
                     classe_eleve = c
                     break
         
-        # Récupérer les élèves
+        # Récupérer les élèves triés par ordre alphabétique (prénom puis nom)
         eleves = []
         if classe_eleve:
-            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
         
         if eleves:
             # Créer le template avec les élèves
