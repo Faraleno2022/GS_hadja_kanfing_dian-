@@ -8628,3 +8628,119 @@ def fiches_recommandations_pdf(request):
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
     return response
+
+
+@login_required
+def fiche_saisie_notes_pdf(request):
+    """Générer une fiche PDF de saisie des notes à distribuer aux professeurs"""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    matiere_id = request.GET.get('matiere_id')
+    system_type = request.GET.get('system_type', 'trimestre')  # trimestre ou semestre
+    
+    if not classe_id:
+        return HttpResponse("Paramètre classe_id requis", status=400)
+    
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+    except Exception as e:
+        return HttpResponse(f"Erreur: {str(e)}", status=400)
+    
+    # Récupérer la matière si spécifiée
+    matiere = None
+    if matiere_id:
+        try:
+            matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        except:
+            pass
+    
+    # Récupérer les élèves
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+    
+    if classe.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
+        
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe.nom,
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+    
+    eleves = []
+    if classe_eleve:
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+    
+    # Déterminer les colonnes selon le système
+    if system_type == 'semestre':
+        # Système semestriel
+        colonnes_periode1 = ['Octobre', 'Novembre', 'Décembre', 'Janvier', 'Moy. Cours', 'Composition']
+        colonnes_periode2 = ['Février', 'Mars', 'Avril', 'Mai', 'Moy. Cours', 'Composition']
+        periode1_nom = '1er Semestre'
+        periode2_nom = '2ème Semestre'
+    else:
+        # Système trimestriel
+        colonnes_periode1 = ['Octobre', 'Novembre', 'Décembre', 'Moy. Cours', 'Composition']
+        colonnes_periode2 = ['Janvier', 'Février', 'Mars', 'Moy. Cours', 'Composition']
+        colonnes_periode3 = ['Avril', 'Mai', 'Juin', 'Moy. Cours', 'Composition']
+        periode1_nom = '1er Trimestre'
+        periode2_nom = '2ème Trimestre'
+        periode3_nom = '3ème Trimestre'
+    
+    # Récupérer l'école
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else classe.ecole
+    
+    # Préparer le contexte
+    context = {
+        'classe': classe,
+        'matiere': matiere,
+        'eleves': eleves,
+        'system_type': system_type,
+        'ecole': ecole,
+        'annee_scolaire': classe.annee_scolaire,
+        'date_impression': timezone.now(),
+    }
+    
+    if system_type == 'semestre':
+        context.update({
+            'colonnes_periode1': colonnes_periode1,
+            'colonnes_periode2': colonnes_periode2,
+            'periode1_nom': periode1_nom,
+            'periode2_nom': periode2_nom,
+        })
+    else:
+        context.update({
+            'colonnes_periode1': colonnes_periode1,
+            'colonnes_periode2': colonnes_periode2,
+            'colonnes_periode3': colonnes_periode3,
+            'periode1_nom': periode1_nom,
+            'periode2_nom': periode2_nom,
+            'periode3_nom': periode3_nom,
+        })
+    
+    # Générer le HTML
+    html_content = render_to_string('notes/fiche_saisie_notes_pdf.html', context)
+    
+    # Générer le PDF
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    # Créer la réponse
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
+    filename = f"fiche_saisie_{nom_classe_clean}_{system_type}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    
+    return response
