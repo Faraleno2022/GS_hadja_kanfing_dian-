@@ -255,6 +255,10 @@
                         <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}">
                             <i class="fas fa-file-pdf me-1"></i>Imprimer tous les bulletins
                         </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'notes:fiches_recommandations_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
+                            <i class="fas fa-clipboard-list me-1 text-info"></i>Fiches Recommandations (vierges)
+                        </a></li>
                     </ul>
                 </div>
                 {% endif %}

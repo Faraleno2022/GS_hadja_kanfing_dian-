@@ -8503,3 +8503,91 @@ def _note_vers_lettre(note):
     if note >= 6: return 'B-'
     if note >= 5: return 'C'
     return 'D'
+
+
+@login_required
+def fiches_recommandations_pdf(request):
+    """Génère les fiches de recommandations vierges pour tous les élèves d'une classe maternelle"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from eleves.models import Eleve, Classe
+    import base64
+    import os
+    
+    classe_id = request.GET.get('classe')
+    trimestre = request.GET.get('trimestre', 'TRIMESTRE_1')
+    
+    if not classe_id:
+        messages.error(request, "Veuillez sélectionner une classe")
+        return redirect('notes:consulter_notes')
+    
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer les élèves de la classe
+    try:
+        classe_eleves = Classe.objects.get(
+            nom=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire
+        )
+        eleves = Eleve.objects.filter(
+            classe=classe_eleves,
+            statut='ACTIF'
+        ).order_by('nom', 'prenom')
+    except Classe.DoesNotExist:
+        eleves = []
+    
+    if not eleves:
+        messages.warning(request, "Aucun élève trouvé dans cette classe")
+        return redirect('notes:consulter_notes')
+    
+    # Encoder le logo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    # Préparer les données pour chaque élève
+    eleves_data = []
+    for eleve in eleves:
+        eleves_data.append({
+            'eleve': eleve,
+            'nom': eleve.nom,
+            'prenom': eleve.prenom,
+        })
+    
+    # Déterminer le nom du trimestre
+    trimestre_display = {
+        'TRIMESTRE_1': '1er Trimestre',
+        'TRIMESTRE_2': '2ème Trimestre', 
+        'TRIMESTRE_3': '3ème Trimestre',
+        'SEMESTRE_1': '1er Semestre',
+        'SEMESTRE_2': '2ème Semestre',
+    }.get(trimestre, trimestre)
+    
+    context = {
+        'eleves': eleves_data,
+        'classe': classe_note,
+        'ecole': ecole,
+        'trimestre': trimestre,
+        'trimestre_display': trimestre_display,
+        'annee_scolaire': classe_note.annee_scolaire,
+        'logo_base64': logo_base64,
+        'date_impression': timezone.now(),
+    }
+    
+    # Générer le HTML
+    html_content = render_to_string('notes/maternelle/fiches_recommandations_pdf.html', context)
+    
+    # Générer le PDF
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    # Créer la réponse
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    filename = f"fiches_recommandations_{classe_note.nom}_{trimestre}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    
+    return response

@@ -118,4 +118,6 @@ urlpatterns = [
          views.bulletin_maternelle_v2_pdf, name='bulletin_maternelle_v2_pdf'),
     path('maternelle/saisie-bulletin/<int:eleve_id>/<int:classe_id>/<str:trimestre>/', 
          views.saisie_bulletin_maternelle, name='saisie_bulletin_maternelle'),
+    path('maternelle/fiches-recommandations-pdf/', 
+         views.fiches_recommandations_pdf, name='fiches_recommandations_pdf'),
 ]
