@@ -684,18 +684,34 @@
     {% if classe_selectionnee and periode_selectionnee and bulletin_data and bulletin_data.eleve %}
     <div class="text-center mb-3 no-print btn-group">
         <!-- Bouton PDF individuel -->
+        {% if est_maternelle %}
+        <a href="{% url 'notes:bulletin_maternelle_v2_pdf' eleve_selectionne.id classe_selectionnee.id periode_selectionnee %}" 
+           class="btn btn-lg btn-danger" target="_blank"
+           title="Télécharger le bulletin maternelle de cet élève en PDF">
+            <i class="fas fa-file-pdf me-2"></i>PDF Individuel
+        </a>
+        {% else %}
         <a href="{% url 'notes:bulletin_intelligent_pdf' eleve_selectionne.id classe_selectionnee.id periode_selectionnee %}" 
            class="btn btn-lg btn-danger" target="_blank"
            title="Télécharger le bulletin de cet élève en PDF">
             <i class="fas fa-file-pdf me-2"></i>PDF Individuel
         </a>
+        {% endif %}
         
         <!-- Bouton PDF de toute la classe -->
+        {% if est_maternelle %}
+        <a href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" 
+           class="btn btn-lg btn-primary" target="_blank"
+           title="Télécharger tous les bulletins maternelle de la classe en PDF">
+            <i class="fas fa-users me-2"></i>PDF Classe Entière
+        </a>
+        {% else %}
         <a href="{% url 'notes:bulletins_classe_pdf' classe_selectionnee.id periode_selectionnee %}" 
            class="btn btn-lg btn-primary" target="_blank"
            title="Télécharger tous les bulletins de la classe en PDF">
             <i class="fas fa-users me-2"></i>PDF Classe Entière
         </a>
+        {% endif %}
         
         <!-- Bouton WhatsApp -->
         <button class="btn btn-lg btn-whatsapp" 
@@ -707,11 +723,19 @@
     {% elif classe_selectionnee and periode_selectionnee %}
     <div class="text-center mb-3 no-print btn-group">
         <!-- Bouton PDF de toute la classe (même sans élève sélectionné) -->
+        {% if est_maternelle %}
+        <a href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" 
+           class="btn btn-lg btn-primary" target="_blank"
+           title="Télécharger tous les bulletins maternelle de la classe en PDF">
+            <i class="fas fa-users me-2"></i>PDF Tous les Bulletins
+        </a>
+        {% else %}
         <a href="{% url 'notes:bulletins_classe_pdf' classe_selectionnee.id periode_selectionnee %}" 
            class="btn btn-lg btn-primary" target="_blank"
            title="Télécharger tous les bulletins de la classe en PDF">
             <i class="fas fa-users me-2"></i>PDF Tous les Bulletins
         </a>
+        {% endif %}
     </div>
     {% endif %}
 
