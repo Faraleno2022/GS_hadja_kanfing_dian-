@@ -24,10 +24,27 @@
         .page {
             page-break-after: always;
             padding: 5px;
+            position: relative;
         }
         
         .page:last-child {
             page-break-after: avoid;
+        }
+        
+        /* Filigrane avec le logo de l'école */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.08;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        .watermark img {
+            width: 400px;
+            height: auto;
         }
         
         .header {
@@ -185,6 +202,13 @@
     </style>
 </head>
 <body>
+    <!-- Filigrane avec le logo de l'école -->
+    {% if logo_base64 %}
+    <div class="watermark">
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+    </div>
+    {% endif %}
+    
     {% if system_type == 'semestre' %}
     <!-- Page 1: 1er Semestre -->
     <div class="page">

@@ -345,7 +345,7 @@
                 </div>
                 
                 {% if classe_selectionnee %}
-                <!-- Bouton pour imprimer la fiche de saisie des notes -->
+                <!-- Boutons pour imprimer les fiches -->
                 <div class="row mt-3">
                     <div class="col-12">
                         <div class="d-flex gap-2 flex-wrap">
@@ -356,6 +356,10 @@
                             <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=semestre" 
                                class="btn btn-outline-success" target="_blank" title="Fiche avec colonnes semestrielles">
                                 <i class="fas fa-print me-2"></i>Fiche Saisie (Semestre)
+                            </a>
+                            <a href="{% url 'notes:fiche_report_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode=TRIMESTRE_1" 
+                               class="btn btn-outline-warning" target="_blank" title="Fiche de report avec toutes les matières">
+                                <i class="fas fa-table me-2"></i>Fiche Report (Toutes Matières)
                             </a>
                         </div>
                     </div>

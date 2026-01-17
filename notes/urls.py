@@ -123,4 +123,7 @@ urlpatterns = [
     
     # Fiche de saisie des notes à imprimer pour les professeurs
     path('fiche-saisie-notes-pdf/', views.fiche_saisie_notes_pdf, name='fiche_saisie_notes_pdf'),
+    
+    # Fiche de report des notes avec toutes les matières en colonnes
+    path('fiche-report-notes-pdf/', views.fiche_report_notes_pdf, name='fiche_report_notes_pdf'),
 ]

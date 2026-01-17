@@ -8703,6 +8703,17 @@ def fiche_saisie_notes_pdf(request):
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else classe.ecole
     
+    # Récupérer le logo de l'école en base64 pour le filigrane
+    logo_base64 = None
+    if ecole and ecole.logo:
+        try:
+            import base64
+            with ecole.logo.open('rb') as logo_file:
+                logo_data = logo_file.read()
+                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
+        except Exception:
+            pass
+    
     # Préparer le contexte
     context = {
         'classe': classe,
@@ -8712,6 +8723,7 @@ def fiche_saisie_notes_pdf(request):
         'ecole': ecole,
         'annee_scolaire': classe.annee_scolaire,
         'date_impression': timezone.now(),
+        'logo_base64': logo_base64,
     }
     
     if system_type == 'semestre':
@@ -8741,6 +8753,105 @@ def fiche_saisie_notes_pdf(request):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
     filename = f"fiche_saisie_{nom_classe_clean}_{system_type}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    
+    return response
+
+
+@login_required
+def fiche_report_notes_pdf(request):
+    """Générer une fiche PDF de report de notes avec toutes les matières en colonnes"""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    import base64
+    
+    # Récupérer les paramètres
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', 'TRIMESTRE_1')
+    
+    if not classe_id:
+        return HttpResponse("Paramètre classe_id requis", status=400)
+    
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+    except Exception as e:
+        return HttpResponse(f"Erreur: {str(e)}", status=400)
+    
+    # Récupérer toutes les matières de la classe
+    matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
+    
+    # Récupérer les élèves
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+    
+    if classe.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
+        
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe.nom,
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+    
+    eleves = []
+    if classe_eleve:
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+    
+    # Récupérer l'école
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else classe.ecole
+    
+    # Récupérer le logo de l'école en base64 pour le filigrane
+    logo_base64 = None
+    if ecole and ecole.logo:
+        try:
+            with ecole.logo.open('rb') as logo_file:
+                logo_data = logo_file.read()
+                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
+        except Exception:
+            pass
+    
+    # Déterminer le nom de la période
+    periode_display = {
+        'TRIMESTRE_1': '1er Trimestre',
+        'TRIMESTRE_2': '2ème Trimestre',
+        'TRIMESTRE_3': '3ème Trimestre',
+        'SEMESTRE_1': '1er Semestre',
+        'SEMESTRE_2': '2ème Semestre',
+    }.get(periode, periode)
+    
+    # Préparer le contexte
+    context = {
+        'classe': classe,
+        'matieres': matieres,
+        'eleves': eleves,
+        'ecole': ecole,
+        'annee_scolaire': classe.annee_scolaire,
+        'date_impression': timezone.now(),
+        'logo_base64': logo_base64,
+        'periode': periode,
+        'periode_display': periode_display,
+    }
+    
+    # Générer le HTML
+    html_content = render_to_string('notes/fiche_report_notes_pdf.html', context)
+    
+    # Générer le PDF
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    # Créer la réponse
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
+    filename = f"fiche_report_{nom_classe_clean}_{periode}.pdf"
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
     return response
