@@ -580,19 +580,63 @@
     
     <!-- PAGE 2: Fiche d'analyse et recommandations à cocher -->
     <div class="bulletin-container" style="page-break-before: always;">
-        <!-- En-tête simplifié -->
-        <div style="text-align: center; margin-bottom: 15px; border-bottom: 2px solid #3498db; padding-bottom: 10px;">
-            <div style="font-size: 14pt; font-weight: bold; color: #2c3e50;">{{ ecole.nom }}</div>
-            <div style="font-size: 16pt; font-weight: bold; color: #e74c3c; margin-top: 5px;">FICHE D'ÉVALUATION - MATERNELLE</div>
-            <div style="font-size: 10pt; margin-top: 5px;">{{ evaluation.get_trimestre_display }} - Année {{ evaluation.annee_scolaire }}</div>
+        <!-- Filigrane logo page 2 -->
+        {% if logo_base64 %}
+        <div class="watermark-logo">
+            <img src="data:image/png;base64,{{ logo_base64 }}" alt="">
+        </div>
+        {% endif %}
+        
+        <!-- En-tête complet comme page 1 -->
+        <div class="header">
+            <div class="logo-section">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+                {% else %}
+                <div style="width:45px;height:45px;background:#f0f0f0;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+                    <span style="font-size:18px;">🏫</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="header-center">
+                <div class="republique">RÉPUBLIQUE DE GUINÉE</div>
+                <div class="devise">
+                    <span class="devise-rouge">Travail</span> - 
+                    <span class="devise-jaune">Justice</span> - 
+                    <span class="devise-vert">Solidarité</span>
+                </div>
+                <div class="ecole-nom">{{ ecole.nom }}</div>
+                <div style="font-size:8pt;color:#666;">{{ ecole.adresse }}</div>
+                <div class="bulletin-titre">FICHE D'ÉVALUATION - MATERNELLE</div>
+                <div style="font-size:9pt;margin-top:2px;">{{ evaluation.get_trimestre_display }} - Année {{ evaluation.annee_scolaire }}</div>
+            </div>
+            
+            <div class="photo-section">
+                {% if photo_base64 %}
+                <img src="data:image/png;base64,{{ photo_base64 }}" alt="Photo élève">
+                {% else %}
+                <div class="photo-placeholder">
+                    {{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}
+                </div>
+                {% endif %}
+            </div>
         </div>
         
         <!-- Informations élève -->
-        <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #3498db;">
-            <table style="width: 100%;">
+        <div class="eleve-info">
+            <table>
                 <tr>
-                    <td style="width: 50%;"><strong>Nom & Prénom:</strong> {{ eleve.nom }} {{ eleve.prenom }}</td>
-                    <td><strong>Classe:</strong> {{ classe.nom }}</td>
+                    <td class="label">Nom & Prénom:</td>
+                    <td class="value"><strong>{{ eleve.nom }} {{ eleve.prenom }}</strong></td>
+                    <td class="label">Matricule:</td>
+                    <td class="value">{{ eleve.matricule }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Classe:</td>
+                    <td class="value">{{ classe.nom }}</td>
+                    <td class="label">Date de naissance:</td>
+                    <td class="value">{{ eleve.date_naissance|date:"d/m/Y"|default:"-" }}</td>
                 </tr>
             </table>
         </div>
