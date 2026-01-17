@@ -6,7 +6,7 @@
     <style>
         @page {
             size: A4;
-            margin: 10mm;
+            margin: 5mm;
         }
         
         * {
@@ -17,18 +17,19 @@
         
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 11pt;
-            line-height: 1.4;
+            font-size: 9pt;
+            line-height: 1.2;
             color: #333;
         }
         
         .bulletin-container {
-            width: 190mm;
-            min-height: 277mm;
+            width: 200mm;
+            max-height: 287mm;
             margin: 0 auto;
-            padding: 8mm;
-            border: 2px solid #2c3e50;
+            padding: 4mm;
+            border: 1px solid #2c3e50;
             position: relative;
+            overflow: hidden;
         }
         
         /* En-tête */
@@ -36,78 +37,78 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
+            margin-bottom: 6px;
+            border-bottom: 1px solid #3498db;
+            padding-bottom: 4px;
         }
         
         .logo-section {
-            width: 70px;
+            width: 50px;
             text-align: center;
         }
         
         .logo-section img {
-            width: 60px;
-            height: 60px;
+            width: 45px;
+            height: 45px;
             object-fit: contain;
         }
         
         .header-center {
             flex: 1;
             text-align: center;
-            padding: 0 15px;
+            padding: 0 8px;
         }
         
         .republique {
-            font-size: 14pt;
+            font-size: 10pt;
             font-weight: bold;
             color: #2c3e50;
-            margin-bottom: 3px;
+            margin-bottom: 1px;
         }
         
         .devise {
-            font-size: 10pt;
-            margin-bottom: 5px;
+            font-size: 8pt;
+            margin-bottom: 2px;
         }
         .devise-rouge { color: #CE1126; }
         .devise-jaune { color: #FCD116; }
         .devise-vert { color: #009460; }
         
         .ecole-nom {
-            font-size: 13pt;
+            font-size: 10pt;
             font-weight: bold;
             color: #2c3e50;
             text-transform: uppercase;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
         }
         
         .bulletin-titre {
-            font-size: 16pt;
+            font-size: 11pt;
             font-weight: bold;
             color: #e74c3c;
-            margin-top: 5px;
+            margin-top: 2px;
         }
         
         .photo-section {
-            width: 80px;
+            width: 55px;
             text-align: center;
         }
         
         .photo-section img {
-            width: 70px;
-            height: 85px;
+            width: 50px;
+            height: 60px;
             object-fit: cover;
             border: 1px solid #ccc;
         }
         
         .photo-placeholder {
-            width: 70px;
-            height: 85px;
+            width: 50px;
+            height: 60px;
             border: 1px dashed #ccc;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24pt;
+            font-size: 16pt;
             color: #ccc;
             background: #f9f9f9;
         }
@@ -115,10 +116,10 @@
         /* Infos élève */
         .eleve-info {
             background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border-left: 4px solid #3498db;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            border-left: 3px solid #3498db;
         }
         
         .eleve-info table {
@@ -126,8 +127,8 @@
         }
         
         .eleve-info td {
-            padding: 3px 10px;
-            font-size: 10pt;
+            padding: 1px 5px;
+            font-size: 8pt;
         }
         
         .eleve-info .label {
@@ -142,16 +143,16 @@
         
         /* Tableau des notes */
         .notes-section {
-            margin-bottom: 15px;
+            margin-bottom: 6px;
         }
         
         .section-title {
             background: linear-gradient(90deg, #2c3e50, #34495e);
             color: white;
-            padding: 8px 15px;
-            font-size: 11pt;
+            padding: 4px 8px;
+            font-size: 9pt;
             font-weight: bold;
-            border-radius: 5px 5px 0 0;
+            border-radius: 3px 3px 0 0;
         }
         
         .notes-table {
@@ -163,9 +164,9 @@
         .notes-table th,
         .notes-table td {
             border: 1px solid #bdc3c7;
-            padding: 6px 8px;
+            padding: 2px 4px;
             text-align: center;
-            font-size: 10pt;
+            font-size: 8pt;
         }
         
         .notes-table thead th {
@@ -187,10 +188,10 @@
         /* Badges de lettres */
         .lettre-badge {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 3px;
             font-weight: bold;
-            font-size: 10pt;
+            font-size: 8pt;
         }
         
         .lettre-A-plus, .lettre-A { background: #27ae60; color: white; }
@@ -200,14 +201,14 @@
         
         /* Section analyse */
         .analyse-section, .recommandations-section {
-            margin-bottom: 15px;
+            margin-bottom: 5px;
         }
         
         .section-content {
             border: 1px solid #bdc3c7;
             border-top: none;
-            padding: 10px 15px;
-            border-radius: 0 0 5px 5px;
+            padding: 4px 8px;
+            border-radius: 0 0 3px 3px;
             background: #fff;
         }
         
@@ -227,10 +228,10 @@
         }
         
         .item-list li {
-            padding: 4px 0;
-            padding-left: 20px;
+            padding: 1px 0;
+            padding-left: 15px;
             position: relative;
-            font-size: 10pt;
+            font-size: 8pt;
         }
         
         .item-list li:before {
@@ -248,55 +249,55 @@
         
         .commentaire-box {
             background: #f8f9fa;
-            padding: 8px;
-            border-radius: 4px;
-            margin-top: 8px;
+            padding: 4px;
+            border-radius: 3px;
+            margin-top: 4px;
             font-style: italic;
-            font-size: 9pt;
-            border-left: 3px solid #3498db;
+            font-size: 7pt;
+            border-left: 2px solid #3498db;
         }
         
         /* Résultat général */
         .resultat-general {
             background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
-            padding: 15px;
-            border-radius: 8px;
+            padding: 8px;
+            border-radius: 5px;
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 6px;
         }
         
         .resultat-general h3 {
-            font-size: 12pt;
-            margin-bottom: 10px;
+            font-size: 9pt;
+            margin-bottom: 5px;
         }
         
         .moyenne-box {
             display: inline-block;
             background: white;
             color: #2c3e50;
-            padding: 10px 30px;
-            border-radius: 8px;
-            margin: 5px;
+            padding: 4px 15px;
+            border-radius: 5px;
+            margin: 2px;
         }
         
         .moyenne-value {
-            font-size: 20pt;
+            font-size: 14pt;
             font-weight: bold;
         }
         
         .moyenne-label {
-            font-size: 9pt;
+            font-size: 7pt;
             color: #7f8c8d;
         }
         
         .mention-badge {
             display: inline-block;
-            padding: 8px 25px;
-            border-radius: 20px;
-            font-size: 14pt;
+            padding: 4px 15px;
+            border-radius: 15px;
+            font-size: 10pt;
             font-weight: bold;
-            margin-top: 10px;
+            margin-top: 4px;
         }
         
         .mention-excellent { background: #27ae60; }
@@ -311,8 +312,8 @@
         .signatures {
             display: flex;
             justify-content: space-between;
-            margin-top: 20px;
-            padding-top: 15px;
+            margin-top: 8px;
+            padding-top: 6px;
             border-top: 1px dashed #bdc3c7;
         }
         
@@ -322,39 +323,39 @@
         }
         
         .signature-label {
-            font-size: 9pt;
+            font-size: 8pt;
             color: #555;
-            margin-bottom: 30px;
+            margin-bottom: 18px;
         }
         
         .signature-line {
             border-top: 1px solid #333;
-            padding-top: 5px;
-            font-size: 8pt;
+            padding-top: 3px;
+            font-size: 7pt;
         }
         
         /* Barème */
         .bareme {
             background: #f8f9fa;
-            padding: 8px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            font-size: 8pt;
+            padding: 3px;
+            border-radius: 3px;
+            margin-bottom: 5px;
+            font-size: 7pt;
             text-align: center;
         }
         
         .bareme span {
-            margin: 0 8px;
+            margin: 0 4px;
         }
         
         /* Footer */
         .footer {
-            margin-top: 15px;
+            margin-top: 5px;
             text-align: center;
-            font-size: 8pt;
+            font-size: 7pt;
             color: #7f8c8d;
             border-top: 1px solid #ecf0f1;
-            padding-top: 8px;
+            padding-top: 3px;
         }
         
         /* Filigrane logo */
@@ -369,8 +370,8 @@
         }
         
         .watermark-logo img {
-            width: 300px;
-            height: 300px;
+            width: 200px;
+            height: 200px;
             object-fit: contain;
         }
     </style>
