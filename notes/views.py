@@ -8557,24 +8557,63 @@ def fiches_recommandations_pdf(request):
     
     classe_note = get_object_or_404(ClasseNote, id=classe_id)
     
+    # Mapping des classes spéciales
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+    
     # Récupérer les élèves de la classe
+    classe_eleves = None
+    eleves = []
+    
     try:
-        classe_eleves = Classe.objects.filter(
-            nom=classe_note.nom,
-            annee_scolaire=classe_note.annee_scolaire
-        ).first()
+        if classe_note.id in mapping_classes:
+            classe_eleves = Classe.objects.filter(id=mapping_classes[classe_note.id]).first()
+        else:
+            # Essayer avec nom exact, année et école
+            classe_eleves = Classe.objects.filter(
+                nom=classe_note.nom,
+                annee_scolaire=classe_note.annee_scolaire,
+                ecole=classe_note.ecole
+            ).first()
+            
+            if not classe_eleves:
+                # Essayer sans le filtre école
+                classe_eleves = Classe.objects.filter(
+                    nom__iexact=classe_note.nom,
+                    annee_scolaire=classe_note.annee_scolaire
+                ).first()
+            
+            if not classe_eleves:
+                # Essayer avec une correspondance partielle du nom
+                classe_eleves = Classe.objects.filter(
+                    nom__icontains=classe_note.nom.split()[0] if classe_note.nom else '',
+                    annee_scolaire=classe_note.annee_scolaire
+                ).first()
+            
+            if not classe_eleves:
+                # Dernier essai: chercher par nom uniquement (toutes années)
+                classe_eleves = Classe.objects.filter(
+                    nom__iexact=classe_note.nom
+                ).order_by('-annee_scolaire').first()
+        
         if classe_eleves:
-            eleves = Eleve.objects.filter(
+            eleves = list(Eleve.objects.filter(
                 classe=classe_eleves,
                 statut='ACTIF'
-            ).order_by('nom', 'prenom')
-        else:
-            eleves = []
-    except Classe.DoesNotExist:
+            ).order_by('nom', 'prenom'))
+    except Exception as e:
         eleves = []
     
     if not eleves:
-        messages.warning(request, "Aucun élève trouvé dans cette classe")
+        # Message de debug plus informatif
+        debug_info = f"Classe: {classe_note.nom}, Année: {classe_note.annee_scolaire}"
+        if classe_eleves:
+            debug_info += f", Classe élèves trouvée: ID={classe_eleves.id}"
+        else:
+            debug_info += ", Aucune classe élèves correspondante trouvée"
+        messages.warning(request, f"Aucun élève trouvé dans cette classe. ({debug_info})")
         return redirect('notes:consulter_notes')
     
     # Encoder le logo
