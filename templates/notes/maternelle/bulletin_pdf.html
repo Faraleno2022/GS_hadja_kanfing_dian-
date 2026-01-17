@@ -505,11 +505,17 @@
                 <div class="moyenne-value">{{ lettre_generale }}</div>
                 <div class="moyenne-label">Appréciation générale</div>
             </div>
+            {% if moyenne_pourcentage %}
+            <div class="moyenne-box">
+                <div class="moyenne-value">{{ moyenne_pourcentage }}</div>
+                <div class="moyenne-label">Taux d'acquisition</div>
+            </div>
+            {% endif %}
             <br>
             <span class="mention-badge mention-{{ mention_generale|slugify }}">{{ mention_generale }}</span>
             {% if rang and rang != '-' %}
             <div style="margin-top:10px;font-size:11pt;">
-                <strong>Rang:</strong> {{ rang }}
+                <strong>Rang:</strong> {{ rang }}{% if total_eleves %}/{{ total_eleves }}{% endif %}
             </div>
             {% endif %}
         </div>

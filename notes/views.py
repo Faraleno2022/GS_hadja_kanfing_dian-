@@ -8471,11 +8471,15 @@ def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
     # Calculer moyenne et rang
     rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
     rang_info = rangs_dict.get(eleve.id, {})
-    moyenne = rang_info.get('moyenne')
+    moyenne_pourcentage = rang_info.get('moyenne')  # Pourcentage d'acquisition (ex: 87.5%)
     
-    # Déterminer lettre et mention générales
-    lettre_generale = _note_vers_lettre(float(moyenne) / 10) if moyenne else None
-    mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
+    # Déterminer lettre et mention générales basées sur le pourcentage
+    lettre_generale = None
+    mention_generale = ''
+    if moyenne_pourcentage:
+        note_sur_10 = float(moyenne_pourcentage) / 10  # 87.5% -> 8.75
+        lettre_generale = _note_vers_lettre(note_sur_10)
+        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
     
     # Encoder logo et photo
     ecole = classe_note.ecole
@@ -8502,10 +8506,11 @@ def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
         'evaluation': {'trimestre': trimestre, 'annee_scolaire': classe_note.annee_scolaire,
                        'get_trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre)},
         'notes': notes_data,
-        'moyenne': float(moyenne) / 10 if moyenne else None,
+        'moyenne_pourcentage': f"{float(moyenne_pourcentage):.1f}%" if moyenne_pourcentage else None,
         'lettre_generale': lettre_generale,
         'mention_generale': mention_generale,
         'rang': rang_info.get('rang', '-'),
+        'total_eleves': rang_info.get('total_eleves'),
         'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
         'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
         'logo_base64': logo_base64,
@@ -8666,11 +8671,16 @@ def bulletins_classe_maternelle_v2_pdf(request):
         
         # Calculer moyenne et rang
         rang_info = rangs_dict.get(eleve.id, {})
-        moyenne = rang_info.get('moyenne')
+        moyenne_pourcentage = rang_info.get('moyenne')  # Pourcentage d'acquisition (ex: 87.5%)
         
-        # Déterminer lettre et mention générales
-        lettre_generale = _note_vers_lettre(float(moyenne) / 10) if moyenne else None
-        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
+        # Déterminer lettre et mention générales basées sur le pourcentage
+        # Conversion: pourcentage -> note sur 10 -> lettre
+        lettre_generale = None
+        mention_generale = ''
+        if moyenne_pourcentage:
+            note_sur_10 = float(moyenne_pourcentage) / 10  # 87.5% -> 8.75
+            lettre_generale = _note_vers_lettre(note_sur_10)
+            mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
         
         # Photo de l'élève
         photo_base64 = ''
@@ -8684,10 +8694,11 @@ def bulletins_classe_maternelle_v2_pdf(request):
         bulletins_data.append({
             'eleve': eleve,
             'notes': notes_data,
-            'moyenne': float(moyenne) / 10 if moyenne else None,
+            'moyenne_pourcentage': f"{float(moyenne_pourcentage):.1f}%" if moyenne_pourcentage else None,
             'lettre_generale': lettre_generale,
             'mention_generale': mention_generale,
             'rang': rang_info.get('rang', '-'),
+            'total_eleves': rang_info.get('total_eleves', len(eleves)),
             'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
             'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
             'photo_base64': photo_base64,
