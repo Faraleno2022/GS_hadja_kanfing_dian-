@@ -398,64 +398,67 @@
         
         <!-- Barème -->
         <div class="bareme">
-            <strong>A+</strong> Excellent (10) | <strong>A</strong> Très bien (9,5) | <strong>B+</strong> Bien (8-9) | <strong>B</strong> Assez bien (7) | <strong>B-</strong> Moyen (6) | <strong>C</strong> Passable (5-5,75) | <strong>D</strong> Difficultés (3-4)
+            <strong>A+</strong> Excellent | <strong>A</strong> Très bien | <strong>B+</strong> Bien | <strong>B</strong> Assez bien | <strong>B-</strong> Moyen | <strong>C</strong> Passable | <strong>D</strong> Difficultés
         </div>
         
-        <!-- Notes -->
+        <!-- Appréciations -->
         <div class="section-title">📚 Résultats par matière</div>
         <table class="notes-table">
             <thead>
                 <tr>
-                    <th style="width:40%">Matière</th>
-                    <th style="width:15%">Note /10</th>
-                    <th style="width:15%">Lettre</th>
-                    <th style="width:30%">Mention</th>
+                    <th style="width:50%">Matière</th>
+                    <th style="width:50%">Appréciation</th>
                 </tr>
             </thead>
             <tbody>
                 {% for note in bulletin.notes %}
                 <tr>
                     <td>{{ note.matiere.nom }}</td>
-                    <td>{{ note.note|default:"-" }}</td>
                     <td>
-                        {% if note.lettre %}
+                        {% if note.absent %}
+                        <span style="color:#e74c3c;font-style:italic;">Absent</span>
+                        {% elif note.mention %}
+                        <span class="lettre-badge lettre-{{ note.lettre|lower }}">{{ note.lettre }}</span> - {{ note.mention }}
+                        {% elif note.lettre %}
                         <span class="lettre-badge lettre-{{ note.lettre|lower }}">{{ note.lettre }}</span>
-                        {% else %}-{% endif %}
+                        {% else %}
+                        <span style="color:#999;">-</span>
+                        {% endif %}
                     </td>
-                    <td>{{ note.get_mention|default:"-" }}</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" style="text-align:center;color:#999;">-</td></tr>
+                <tr><td colspan="2" style="text-align:center;color:#999;">Aucune appréciation saisie</td></tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr>
-                    <td><strong>MOYENNE</strong></td>
-                    <td><strong>{{ bulletin.moyenne|default:"-" }}/10</strong></td>
+                    <td><strong>APPRÉCIATION GÉNÉRALE</strong></td>
                     <td>
                         {% if bulletin.lettre_generale %}
-                        <span class="lettre-badge lettre-{{ bulletin.lettre_generale|lower }}">{{ bulletin.lettre_generale }}</span>
+                        <span class="lettre-badge lettre-{{ bulletin.lettre_generale|lower }}">{{ bulletin.lettre_generale }}</span> - <strong>{{ bulletin.mention_generale|default:"-" }}</strong>
+                        {% else %}
+                        <span style="color:#999;">-</span>
                         {% endif %}
                     </td>
-                    <td><strong>{{ bulletin.mention_generale|default:"-" }}</strong></td>
                 </tr>
             </tfoot>
         </table>
         
         <!-- Résultat -->
-        {% if bulletin.moyenne %}
+        {% if bulletin.lettre_generale %}
         <div class="resultat-box">
             <h4>RÉSULTAT GÉNÉRAL</h4>
             <div class="moyenne-display">
-                <div class="moyenne-value">{{ bulletin.moyenne }}/10</div>
-                <div class="moyenne-label">Moyenne</div>
-            </div>
-            <div class="moyenne-display">
                 <div class="moyenne-value">{{ bulletin.lettre_generale }}</div>
-                <div class="moyenne-label">Lettre</div>
+                <div class="moyenne-label">Appréciation générale</div>
             </div>
             <br>
             <span class="mention-badge mention-{{ bulletin.mention_generale|slugify }}">{{ bulletin.mention_generale }}</span>
+            {% if bulletin.rang and bulletin.rang != '-' %}
+            <div style="margin-top:8px;font-size:10pt;">
+                <strong>Rang:</strong> {{ bulletin.rang }}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
         
