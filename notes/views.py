@@ -8540,6 +8540,190 @@ def _note_vers_lettre(note):
 
 
 @login_required
+def bulletins_classe_maternelle_v2_pdf(request):
+    """Génère tous les bulletins maternelle V2 d'une classe en un seul PDF"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    from eleves.models import Eleve, Classe
+    import base64
+    import os
+    
+    classe_id = request.GET.get('classe')
+    trimestre = request.GET.get('trimestre', 'TRIMESTRE_1')
+    
+    if not classe_id:
+        messages.error(request, "Veuillez sélectionner une classe")
+        return redirect('notes:consulter_notes')
+    
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Mapping des classes spéciales
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+    
+    # Récupérer les élèves de la classe avec logique améliorée
+    classe_eleves = None
+    eleves = []
+    
+    try:
+        if classe_note.id in mapping_classes:
+            classe_eleves = Classe.objects.filter(id=mapping_classes[classe_note.id]).first()
+        else:
+            # Essayer avec nom exact, année et école
+            classe_eleves = Classe.objects.filter(
+                nom=classe_note.nom,
+                annee_scolaire=classe_note.annee_scolaire,
+                ecole=classe_note.ecole
+            ).first()
+            
+            if not classe_eleves:
+                # Essayer sans le filtre école
+                classe_eleves = Classe.objects.filter(
+                    nom__iexact=classe_note.nom,
+                    annee_scolaire=classe_note.annee_scolaire
+                ).first()
+            
+            if not classe_eleves:
+                # Essayer avec une correspondance partielle du nom
+                classe_eleves = Classe.objects.filter(
+                    nom__icontains=classe_note.nom.split()[0] if classe_note.nom else '',
+                    annee_scolaire=classe_note.annee_scolaire
+                ).first()
+            
+            if not classe_eleves:
+                # Dernier essai: chercher par nom uniquement (toutes années)
+                classe_eleves = Classe.objects.filter(
+                    nom__iexact=classe_note.nom
+                ).order_by('-annee_scolaire').first()
+        
+        if classe_eleves:
+            eleves = list(Eleve.objects.filter(
+                classe=classe_eleves,
+                statut='ACTIF'
+            ).order_by('nom', 'prenom'))
+    except Exception as e:
+        eleves = []
+    
+    if not eleves:
+        debug_info = f"Classe: {classe_note.nom}, Année: {classe_note.annee_scolaire}"
+        if classe_eleves:
+            debug_info += f", Classe élèves trouvée: ID={classe_eleves.id}"
+        else:
+            debug_info += ", Aucune classe élèves correspondante trouvée"
+        messages.warning(request, f"Aucun élève trouvé dans cette classe. ({debug_info})")
+        return redirect('notes:consulter_notes')
+    
+    # Encoder le logo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole and ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    # Calculer les rangs pour toute la classe
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    
+    # Récupérer les matières de la classe
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    
+    # Préparer les données pour chaque élève
+    bulletins_data = []
+    for eleve in eleves:
+        # Récupérer le bulletin
+        bulletin = BulletinMaternelle.objects.filter(
+            eleve=eleve, classe=classe_note, trimestre=trimestre,
+            annee_scolaire=classe_note.annee_scolaire
+        ).first()
+        
+        # Récupérer les appréciations
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve, matiere__in=matieres, trimestre=trimestre,
+            annee_scolaire=classe_note.annee_scolaire
+        ).select_related('matiere')
+        
+        if not appreciations.exists():
+            appreciations = AppreciationMaternelle.objects.filter(
+                eleve=eleve, matiere__in=matieres, trimestre=trimestre
+            ).select_related('matiere')
+        
+        # Préparer les notes
+        notes_data = []
+        for app in appreciations:
+            notes_data.append({
+                'matiere': app.matiere,
+                'lettre': app.appreciation,
+                'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(app.appreciation, ''),
+                'note': _lettre_vers_note(app.appreciation),
+                'absent': app.absent
+            })
+        
+        # Calculer moyenne et rang
+        rang_info = rangs_dict.get(eleve.id, {})
+        moyenne = rang_info.get('moyenne')
+        
+        # Déterminer lettre et mention générales
+        lettre_generale = _note_vers_lettre(float(moyenne) / 10) if moyenne else None
+        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
+        
+        # Photo de l'élève
+        photo_base64 = ''
+        if hasattr(eleve, 'photo') and eleve.photo:
+            try:
+                if os.path.exists(eleve.photo.path):
+                    with open(eleve.photo.path, 'rb') as f:
+                        photo_base64 = base64.b64encode(f.read()).decode('utf-8')
+            except: pass
+        
+        bulletins_data.append({
+            'eleve': eleve,
+            'notes': notes_data,
+            'moyenne': float(moyenne) / 10 if moyenne else None,
+            'lettre_generale': lettre_generale,
+            'mention_generale': mention_generale,
+            'rang': rang_info.get('rang', '-'),
+            'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
+            'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
+            'photo_base64': photo_base64,
+            'bulletin': bulletin,
+        })
+    
+    # Déterminer le nom du trimestre
+    trimestre_display = {
+        'TRIMESTRE_1': '1er Trimestre',
+        'TRIMESTRE_2': '2ème Trimestre',
+        'TRIMESTRE_3': '3ème Trimestre',
+        'SEMESTRE_1': '1er Semestre',
+        'SEMESTRE_2': '2ème Semestre',
+    }.get(trimestre, trimestre)
+    
+    context = {
+        'bulletins': bulletins_data,
+        'classe': classe_note,
+        'ecole': ecole,
+        'trimestre': trimestre,
+        'trimestre_display': trimestre_display,
+        'annee_scolaire': classe_note.annee_scolaire,
+        'logo_base64': logo_base64,
+        'date_impression': timezone.now(),
+    }
+    
+    html_content = render_to_string('notes/maternelle/bulletins_classe_pdf.html', context)
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe_note.nom.replace(' ', '_').replace('/', '-')
+    response['Content-Disposition'] = f'inline; filename="bulletins_{nom_classe_clean}_{trimestre}.pdf"'
+    return response
+
+
+@login_required
 def fiches_recommandations_pdf(request):
     """Génère les fiches de recommandations vierges pour tous les élèves d'une classe maternelle"""
     from django.template.loader import render_to_string
