@@ -3185,6 +3185,7 @@ def eleves_soldes_simple(request):
     Règle soldé: (inscription_du + max(tranches_du - remises, 0)) - (inscription_payée + tranches_payées + remises) <= 0
     """
     from django.utils import timezone as _tz
+    from django.contrib import messages as django_messages
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
 
     # Année scolaire par défaut: Septembre→Août
@@ -3193,20 +3194,6 @@ def eleves_soldes_simple(request):
     ecole_id = (request.GET.get('ecole_id') or '').strip()
     classe_id = (request.GET.get('classe_id') or '').strip()
     q = (request.GET.get('q') or '').strip()
-
-    # Base queryset restreinte par année et école utilisateur
-    qs = EcheancierPaiement.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-    qs = qs.filter(annee_scolaire=annee)
-    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
-
-    if ecole_id:
-        qs = qs.filter(eleve__classe__ecole_id=ecole_id)
-    if classe_id:
-        qs = qs.filter(eleve__classe_id=classe_id)
-    if q:
-        qs = qs.filter(
-            Q(eleve__nom__icontains=q) | Q(eleve__prenom__icontains=q) | Q(eleve__matricule__icontains=q)
-        )
 
     # Période de l'année
     try:
@@ -3223,6 +3210,69 @@ def eleves_soldes_simple(request):
         periode_fin = periode_debut
     elif periode_fin > today:
         periode_fin = today
+
+    # Options filtres (toujours disponibles même en cas d'erreur)
+    try:
+        from eleves.models import Ecole
+        ecoles_qs = Ecole.objects.all().order_by('nom')
+        if not (getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False)):
+            ecole_id_user = getattr(getattr(request.user, 'profil', None), 'ecole_id', None)
+            ecoles_qs = ecoles_qs.filter(pk=ecole_id_user) if ecole_id_user else ecoles_qs.none()
+    except Exception:
+        ecoles_qs = []
+    
+    try:
+        classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
+        classes = filter_by_user_school(classes, request.user, 'ecole')
+    except Exception:
+        classes = []
+
+    try:
+        annees_options = [
+            f"{annee_debut - 1}-{annee_debut}",
+            f"{annee_debut}-{annee_debut + 1}",
+            f"{annee_debut + 1}-{annee_debut + 2}",
+        ]
+    except Exception:
+        annees_options = [annee]
+
+    # Vérifier si la table EcheancierPaiement existe et a les bonnes colonnes
+    try:
+        # Test simple pour vérifier que la table existe avec les colonnes requises
+        test_qs = EcheancierPaiement.objects.values('frais_inscription_du', 'tranche_1_due')[:1]
+        list(test_qs)  # Force l'exécution de la requête
+    except Exception as e:
+        # Table ou colonnes manquantes - afficher un message d'erreur
+        django_messages.warning(request, "La table des échéanciers n'est pas configurée. Veuillez exécuter les migrations: python manage.py migrate paiements")
+        context = {
+            'annee': annee,
+            'annees_options': annees_options,
+            'ecoles': ecoles_qs,
+            'classes': classes,
+            'ecole_id': ecole_id,
+            'classe_id': classe_id,
+            'q': q,
+            'page_obj': None,
+            'totaux': {'du': 0, 'paye': 0, 'solde': 0, 'remises': 0},
+            'periode_debut': periode_debut,
+            'periode_fin': periode_fin,
+            'erreur_migration': True,
+        }
+        return render(request, 'paiements/eleves_soldes.html', context)
+
+    # Base queryset restreinte par année et école utilisateur
+    qs = EcheancierPaiement.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    qs = qs.filter(annee_scolaire=annee)
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+
+    if ecole_id:
+        qs = qs.filter(eleve__classe__ecole_id=ecole_id)
+    if classe_id:
+        qs = qs.filter(eleve__classe_id=classe_id)
+    if q:
+        qs = qs.filter(
+            Q(eleve__nom__icontains=q) | Q(eleve__prenom__icontains=q) | Q(eleve__matricule__icontains=q)
+        )
 
     # Expressions
     dues_sco = (
@@ -3304,27 +3354,6 @@ def eleves_soldes_simple(request):
 
     paginator = Paginator(qs_soldes, 25)
     page_obj = paginator.get_page(request.GET.get('page') or 1)
-
-    # Options filtres
-    try:
-        from eleves.models import Ecole
-        ecoles_qs = Ecole.objects.all().order_by('nom')
-        if not (getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False)):
-            ecole_id_user = getattr(getattr(request.user, 'profil', None), 'ecole_id', None)
-            ecoles_qs = ecoles_qs.filter(pk=ecole_id_user) if ecole_id_user else ecoles_qs.none()
-    except Exception:
-        ecoles_qs = []
-    classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
-    classes = filter_by_user_school(classes, request.user, 'ecole')
-
-    try:
-        annees_options = [
-            f"{annee_debut - 1}-{annee_debut}",
-            f"{annee_debut}-{annee_debut + 1}",
-            f"{annee_debut + 1}-{annee_debut + 2}",
-        ]
-    except Exception:
-        annees_options = [annee]
 
     context = {
         'annee': annee,
