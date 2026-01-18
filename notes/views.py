@@ -6503,7 +6503,14 @@ def sauvegarder_notes(request):
                     if not eleve_id:
                         continue
                     
-                    eleve = Eleve.objects.get(pk=eleve_id)
+                    # Nettoyer l'ID des caractères non numériques (espaces insécables, etc.)
+                    import re
+                    eleve_id_clean = re.sub(r'[^\d]', '', str(eleve_id))
+                    if not eleve_id_clean:
+                        erreurs.append(f"ID élève invalide: {eleve_id}")
+                        continue
+                    
+                    eleve = Eleve.objects.get(pk=int(eleve_id_clean))
                     
                     # Traiter selon le type de note
                     if 'appreciation' in note_data:
