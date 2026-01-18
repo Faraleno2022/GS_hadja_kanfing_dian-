@@ -8526,22 +8526,7 @@ def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
     return response
 
 
-def _lettre_vers_note(lettre):
-    """Convertit une lettre en note sur 10"""
-    conversion = {'A+': 10, 'A': 9.5, 'B+': 8.5, 'B': 7, 'B-': 6, 'C': 5.5, 'D': 3.5}
-    return conversion.get(lettre, None)
-
-
-def _note_vers_lettre(note):
-    """Convertit une note sur 10 en lettre"""
-    if note is None: return None
-    if note >= 10: return 'A+'
-    if note >= 9.5: return 'A'
-    if note >= 8: return 'B+'
-    if note >= 7: return 'B'
-    if note >= 6: return 'B-'
-    if note >= 5: return 'C'
-    return 'D'
+from .utils_maternelle import lettre_vers_note as _lettre_vers_note, note_vers_lettre as _note_vers_lettre
 
 
 @login_required

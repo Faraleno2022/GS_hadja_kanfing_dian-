@@ -265,6 +265,7 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
     from weasyprint import HTML
     from .models import AppreciationMaternelle, BulletinMaternelle, MatiereNote
     from .utils_rangs import calculer_rangs_classe_periode
+    from .utils_maternelle import lettre_vers_note as _lettre_vers_note, note_vers_lettre as _note_vers_lettre
     
     # Mapper la période au format trimestre
     trimestre = periode
@@ -274,21 +275,6 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
         trimestre = 'TRIMESTRE_2'
     elif 'TRIMESTRE_3' in periode:
         trimestre = 'TRIMESTRE_3'
-    
-    # Fonctions de conversion (identiques à views.py)
-    def _lettre_vers_note(lettre):
-        conversion = {'A+': 10, 'A': 9.5, 'B+': 8.5, 'B': 7, 'B-': 6, 'C': 5.5, 'D': 3.5}
-        return conversion.get(lettre, None)
-    
-    def _note_vers_lettre(note):
-        if note is None: return None
-        if note >= 10: return 'A+'
-        if note >= 9.5: return 'A'
-        if note >= 8: return 'B+'
-        if note >= 7: return 'B'
-        if note >= 6: return 'B-'
-        if note >= 5: return 'C'
-        return 'D'
     
     # Récupérer le bulletin
     bulletin = BulletinMaternelle.objects.filter(
