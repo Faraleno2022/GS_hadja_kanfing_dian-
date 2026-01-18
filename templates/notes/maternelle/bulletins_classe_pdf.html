@@ -412,11 +412,11 @@
         </div>
         
         <!-- Appréciations -->
-        <div class="section-title">📚 Résultats par matière</div>
+        <div class="section-title">📚 Résultats par activité</div>
         <table class="notes-table">
             <thead>
                 <tr>
-                    <th style="width:50%">Matière</th>
+                    <th style="width:50%">Activité</th>
                     <th style="width:50%">Appréciation</th>
                 </tr>
             </thead>
@@ -470,12 +470,7 @@
             {% endif %}
             <br>
             <span class="mention-badge mention-{{ bulletin.mention_generale|slugify }}">{{ bulletin.mention_generale }}</span>
-            {% if bulletin.rang and bulletin.rang != '-' %}
-            <div style="margin-top:8px;font-size:10pt;">
-                <strong>Rang:</strong> {{ bulletin.rang }}/{{ bulletin.total_eleves }}
-            </div>
-            {% endif %}
-        </div>
+                    </div>
         {% endif %}
         
         <!-- Analyse -->

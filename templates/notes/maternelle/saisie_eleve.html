@@ -41,12 +41,12 @@
             <form method="POST" id="evaluation-form">
                 {% csrf_token %}
                 
-                <!-- Section 1: Notes par matière -->
+                <!-- Section 1: Notes par activité -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-success text-white">
                         <h5 class="mb-0">
                             <i class="fas fa-graduation-cap me-2"></i>
-                            1. Notes par matière (sur 10)
+                            1. Notes par activité (sur 10)
                         </h5>
                     </div>
                     <div class="card-body">
@@ -67,7 +67,7 @@
                             <table class="table table-bordered">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 30%">Matière</th>
+                                        <th style="width: 30%">Activité</th>
                                         <th style="width: 15%" class="text-center">Note /10</th>
                                         <th style="width: 10%" class="text-center">Lettre</th>
                                         <th style="width: 20%" class="text-center">Mention</th>
@@ -104,7 +104,7 @@
                                     {% empty %}
                                     <tr>
                                         <td colspan="5" class="text-center text-muted">
-                                            Aucune matière configurée pour cette classe
+                                            Aucune activité configurée pour cette classe
                                         </td>
                                     </tr>
                                     {% endfor %}

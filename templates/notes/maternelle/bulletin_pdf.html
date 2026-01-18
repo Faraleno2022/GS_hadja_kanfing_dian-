@@ -453,11 +453,11 @@
         
         <!-- Tableau des appréciations -->
         <div class="notes-section">
-            <div class="section-title">📚 Résultats par matière</div>
+            <div class="section-title">📚 Résultats par activité</div>
             <table class="notes-table">
                 <thead>
                     <tr>
-                        <th style="width:50%">Matière</th>
+                        <th style="width:50%">Activité</th>
                         <th style="width:50%">Appréciation</th>
                     </tr>
                 </thead>
@@ -514,12 +514,7 @@
             {% endif %}
             <br>
             <span class="mention-badge mention-{{ mention_generale|slugify }}">{{ mention_generale }}</span>
-            {% if rang and rang != '-' %}
-            <div style="margin-top:10px;font-size:11pt;">
-                <strong>Rang:</strong> {{ rang }}{% if total_eleves %}/{{ total_eleves }}{% endif %}
-            </div>
-            {% endif %}
-        </div>
+                    </div>
         {% endif %}
         
         <!-- Analyse du travail -->
