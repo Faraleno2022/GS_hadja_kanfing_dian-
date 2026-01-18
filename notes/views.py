@@ -6539,20 +6539,26 @@ def sauvegarder_notes(request):
                             }
                         )
                     else:
-                        # Note numérique - vérifier que l'évaluation existe
-                        if evaluation is None:
-                            erreurs.append(f"{eleve.nom} {eleve.prenom}: Impossible de sauvegarder une note numérique sans évaluation")
-                            continue
-                        
+                        # Note numérique
                         note_value = str(note_data.get('note', '')).strip()
+                        
+                        # Définir les périodes par type
+                        periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+                        periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+                        periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
+                        
+                        # Déterminer la note maximale
+                        note_sur = 20
+                        if matiere.classe.niveau_enseignement == 'PRIMAIRE':
+                            note_sur = 10
                         
                         # Valider la note
                         note_decimal = None
                         if note_value and not absent:
                             try:
                                 note_decimal = Decimal(note_value.replace(',', '.'))
-                                if note_decimal < 0 or note_decimal > evaluation.note_sur:
-                                    erreurs.append(f"{eleve.nom} {eleve.prenom}: Note invalide (doit être entre 0 et {evaluation.note_sur})")
+                                if note_decimal < 0 or note_decimal > note_sur:
+                                    erreurs.append(f"{eleve.nom} {eleve.prenom}: Note invalide (doit être entre 0 et {note_sur})")
                                     continue
                             except (InvalidOperation, ValueError, TypeError):
                                 erreurs.append(f"{eleve.nom} {eleve.prenom}: Format de note invalide")
@@ -6561,16 +6567,49 @@ def sauvegarder_notes(request):
                             # Pas de note et pas absent, on ignore
                             continue
                         
-                        # Créer ou mettre à jour la note
-                        note_obj, created = NoteEleve.objects.update_or_create(
-                            eleve=eleve,
-                            evaluation=evaluation,
-                            defaults={
-                                'note': note_decimal if not absent else None,
-                                'absent': absent,
-                                'cree_par': request.user,
-                            }
-                        )
+                        # Sauvegarder dans le bon modèle selon la période
+                        annee_scolaire = matiere.classe.annee_scolaire
+                        
+                        if periode.upper() in periodes_mensuelles:
+                            # Sauvegarder dans NoteMensuelle
+                            note_obj, created = NoteMensuelle.objects.update_or_create(
+                                eleve=eleve,
+                                matiere=matiere,
+                                mois=periode.upper(),
+                                annee_scolaire=annee_scolaire,
+                                defaults={
+                                    'note': note_decimal if not absent else None,
+                                    'absent': absent,
+                                    'cree_par': request.user,
+                                }
+                            )
+                        elif periode.upper() in periodes_trimestrielles or periode.upper() in periodes_semestrielles:
+                            # Sauvegarder dans CompositionNote
+                            note_obj, created = CompositionNote.objects.update_or_create(
+                                eleve=eleve,
+                                matiere=matiere,
+                                periode=periode.upper(),
+                                annee_scolaire=annee_scolaire,
+                                defaults={
+                                    'note': note_decimal if not absent else Decimal('0'),
+                                    'absent': absent,
+                                    'cree_par': request.user,
+                                }
+                            )
+                        else:
+                            # Fallback: Sauvegarder dans NoteEleve via Evaluation
+                            if evaluation is None:
+                                erreurs.append(f"{eleve.nom} {eleve.prenom}: Période non reconnue et pas d'évaluation")
+                                continue
+                            note_obj, created = NoteEleve.objects.update_or_create(
+                                eleve=eleve,
+                                evaluation=evaluation,
+                                defaults={
+                                    'note': note_decimal if not absent else None,
+                                    'absent': absent,
+                                    'cree_par': request.user,
+                                }
+                            )
                     
                     if created:
                         notes_sauvegardees += 1
@@ -6698,7 +6737,7 @@ def supprimer_notes(request):
             
             # 2. Supprimer les compositions si période trimestrielle/semestrielle
             if periode.upper() in periodes_trimestrielles or periode.upper() in periodes_semestrielles:
-                query = CompositionNote.objects.filter(matiere=matiere, trimestre=periode.upper())
+                query = CompositionNote.objects.filter(matiere=matiere, periode=periode.upper())
                 if eleve_ids:
                     query = query.filter(eleve_id__in=eleve_ids)
                 count = query.count()
