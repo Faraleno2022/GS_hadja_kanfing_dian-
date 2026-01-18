@@ -6633,10 +6633,18 @@ def sauvegarder_notes(request):
 
 @login_required
 def supprimer_notes(request):
-    """Supprimer les notes d'une évaluation ou d'une période spécifique"""
+    """Supprimer les notes d'une évaluation ou d'une période spécifique.
+    
+    Gère tous les types de notes:
+    - NoteMensuelle (notes mensuelles)
+    - CompositionNote (compositions trimestrielles/semestrielles)
+    - AppreciationMaternelle (appréciations maternelle)
+    - NoteEleve (notes d'évaluation classiques)
+    """
     from django.http import JsonResponse
     from eleves.models import Eleve
     from django.db import transaction
+    from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
     import json
     import logging
     
@@ -6650,6 +6658,7 @@ def supprimer_notes(request):
         matiere_id = data.get('matiere_id')
         periode = data.get('periode')
         eleve_ids = data.get('eleve_ids', [])  # Liste optionnelle d'élèves spécifiques
+        type_note = data.get('type_note', '')  # Type de note optionnel
         
         # Validation des paramètres
         if not all([matiere_id, periode]):
@@ -6658,33 +6667,76 @@ def supprimer_notes(request):
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
         
-        # Récupérer les évaluations correspondantes
-        evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
-        
-        if not evaluations.exists():
-            return JsonResponse({'success': False, 'error': 'Aucune évaluation trouvée pour cette période'}, status=404)
+        # Définir les périodes par type
+        periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
         
         notes_supprimees = 0
+        details = []
         
         # Utiliser une transaction pour garantir l'intégrité des données
         with transaction.atomic():
-            # Construire la requête de suppression
-            notes_query = NoteEleve.objects.filter(evaluation__in=evaluations)
+            # 1. Supprimer les notes mensuelles si période mensuelle
+            if periode.upper() in periodes_mensuelles:
+                query = NoteMensuelle.objects.filter(matiere=matiere, mois=periode.upper())
+                if eleve_ids:
+                    query = query.filter(eleve_id__in=eleve_ids)
+                count = query.count()
+                if count > 0:
+                    query.delete()
+                    notes_supprimees += count
+                    details.append(f"{count} note(s) mensuelle(s)")
+                    logger.info(f"Suppression de {count} NoteMensuelle pour {matiere.nom}, mois {periode}")
             
-            # Si des élèves spécifiques sont fournis, filtrer par élève
-            if eleve_ids:
-                notes_query = notes_query.filter(eleve_id__in=eleve_ids)
+            # 2. Supprimer les compositions si période trimestrielle/semestrielle
+            if periode.upper() in periodes_trimestrielles or periode.upper() in periodes_semestrielles:
+                query = CompositionNote.objects.filter(matiere=matiere, trimestre=periode.upper())
+                if eleve_ids:
+                    query = query.filter(eleve_id__in=eleve_ids)
+                count = query.count()
+                if count > 0:
+                    query.delete()
+                    notes_supprimees += count
+                    details.append(f"{count} composition(s)")
+                    logger.info(f"Suppression de {count} CompositionNote pour {matiere.nom}, période {periode}")
             
-            # Compter et supprimer
-            notes_supprimees = notes_query.count()
-            notes_query.delete()
+            # 3. Supprimer les appréciations maternelle si période trimestrielle
+            if periode.upper() in periodes_trimestrielles:
+                query = AppreciationMaternelle.objects.filter(matiere=matiere, trimestre=periode.upper())
+                if eleve_ids:
+                    query = query.filter(eleve_id__in=eleve_ids)
+                count = query.count()
+                if count > 0:
+                    query.delete()
+                    notes_supprimees += count
+                    details.append(f"{count} appréciation(s) maternelle")
+                    logger.info(f"Suppression de {count} AppreciationMaternelle pour {matiere.nom}, période {periode}")
             
-            logger.info(f"Suppression de {notes_supprimees} notes pour la matière {matiere.nom}, période {periode}")
+            # 4. Supprimer les notes d'évaluation classiques
+            evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
+            if evaluations.exists():
+                notes_query = NoteEleve.objects.filter(evaluation__in=evaluations)
+                if eleve_ids:
+                    notes_query = notes_query.filter(eleve_id__in=eleve_ids)
+                count = notes_query.count()
+                if count > 0:
+                    notes_query.delete()
+                    notes_supprimees += count
+                    details.append(f"{count} note(s) d'évaluation")
+                    logger.info(f"Suppression de {count} NoteEleve pour {matiere.nom}, période {periode}")
+        
+        if notes_supprimees == 0:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Aucune note trouvée pour la matière "{matiere.nom}" et la période "{periode}"'
+            }, status=404)
         
         return JsonResponse({
             'success': True,
             'message': f'✅ {notes_supprimees} note(s) supprimée(s) avec succès',
-            'notes_supprimees': notes_supprimees
+            'notes_supprimees': notes_supprimees,
+            'details': details
         })
         
     except json.JSONDecodeError:
