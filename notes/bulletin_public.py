@@ -257,13 +257,13 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
 def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
     """
     Génère le bulletin maternelle v2 pour le téléchargement public.
-    Utilise le même template que bulletin_maternelle_v2_pdf.
+    Utilise exactement la même logique que bulletin_maternelle_v2_pdf dans views.py.
     """
     import base64
     import os
     from django.template.loader import render_to_string
     from weasyprint import HTML
-    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .models import AppreciationMaternelle, BulletinMaternelle, MatiereNote
     from .utils_rangs import calculer_rangs_classe_periode
     
     # Mapper la période au format trimestre
@@ -275,35 +275,40 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
     elif 'TRIMESTRE_3' in periode:
         trimestre = 'TRIMESTRE_3'
     
-    # Fonction de conversion lettre vers note
+    # Fonctions de conversion (identiques à views.py)
     def _lettre_vers_note(lettre):
-        mapping = {'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'B-': 6, 'C': 5, 'D': 3}
-        return mapping.get(lettre, 0)
+        conversion = {'A+': 10, 'A': 9.5, 'B+': 8.5, 'B': 7, 'B-': 6, 'C': 5.5, 'D': 3.5}
+        return conversion.get(lettre, None)
     
     def _note_vers_lettre(note):
-        if note >= 9.5: return 'A+'
-        elif note >= 8.5: return 'A'
-        elif note >= 7.5: return 'B+'
-        elif note >= 6.5: return 'B'
-        elif note >= 5.5: return 'B-'
-        elif note >= 4: return 'C'
-        else: return 'D'
-    
-    # Récupérer les appréciations
-    appreciations = AppreciationMaternelle.objects.filter(
-        eleve=eleve,
-        classe=classe_note,
-        trimestre=trimestre
-    ).select_related('matiere')
+        if note is None: return None
+        if note >= 10: return 'A+'
+        if note >= 9.5: return 'A'
+        if note >= 8: return 'B+'
+        if note >= 7: return 'B'
+        if note >= 6: return 'B-'
+        if note >= 5: return 'C'
+        return 'D'
     
     # Récupérer le bulletin
     bulletin = BulletinMaternelle.objects.filter(
-        eleve=eleve,
-        classe=classe_note,
-        trimestre=trimestre
+        eleve=eleve, classe=classe_note, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
     ).first()
     
-    # Préparer les données des notes
+    # Récupérer les matières et appréciations (identique à views.py)
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve, matiere__in=matieres, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    if not appreciations.exists():
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve, matiere__in=matieres, trimestre=trimestre
+        ).select_related('matiere')
+    
+    # Préparer les notes (identique à views.py)
     notes_data = []
     for app in appreciations:
         notes_data.append({
@@ -317,17 +322,15 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
     # Calculer moyenne et rang
     rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
     rang_info = rangs_dict.get(eleve.id, {})
-    moyenne_pourcentage = rang_info.get('moyenne')
-    rang = rang_info.get('rang', '-')
-    total_eleves = rang_info.get('total_eleves', 0)
+    moyenne_pourcentage = rang_info.get('moyenne')  # Pourcentage d'acquisition
     
-    # Déterminer lettre et mention générales
+    # Déterminer lettre et mention générales basées sur le pourcentage
     lettre_generale = None
     mention_generale = ''
     if moyenne_pourcentage:
-        note_sur_10 = float(moyenne_pourcentage) / 10
+        note_sur_10 = float(moyenne_pourcentage) / 10  # 87.5% -> 8.75
         lettre_generale = _note_vers_lettre(note_sur_10)
-        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '')
+        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '') if lettre_generale else ''
     
     # Encoder logo et photo
     ecole = classe_note.ecole
@@ -349,29 +352,24 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
         except:
             pass
     
-    # Préparer le contexte
+    # Préparer le contexte (IDENTIQUE à bulletin_maternelle_v2_pdf)
     context = {
         'eleve': eleve,
         'classe': classe_note,
         'ecole': ecole,
-        'evaluation': type('obj', (object,), {
-            'trimestre': trimestre,
+        'evaluation': {
+            'trimestre': trimestre, 
             'annee_scolaire': classe_note.annee_scolaire,
-            'get_trimestre_display': lambda: dict([
-                ('TRIMESTRE_1', '1er Trimestre'),
-                ('TRIMESTRE_2', '2ème Trimestre'),
-                ('TRIMESTRE_3', '3ème Trimestre')
-            ]).get(trimestre, trimestre)
-        })(),
-        'notes_data': notes_data,
-        'bulletin': bulletin,
-        'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
-        'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
+            'get_trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre)
+        },
+        'notes': notes_data,  # Clé 'notes' comme dans views.py
+        'moyenne_pourcentage': f"{float(moyenne_pourcentage):.1f}%" if moyenne_pourcentage else None,
         'lettre_generale': lettre_generale,
         'mention_generale': mention_generale,
-        'moyenne_pourcentage': moyenne_pourcentage,
-        'rang': rang,
-        'total_eleves': total_eleves,
+        'rang': rang_info.get('rang', '-'),
+        'total_eleves': rang_info.get('total_eleves'),
+        'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
+        'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
         'logo_base64': logo_base64,
         'photo_base64': photo_base64,
         'date_impression': timezone.now(),
