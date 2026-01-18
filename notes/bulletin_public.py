@@ -114,6 +114,7 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
     
     # Token valide - générer le PDF
     try:
+        from .calculs_moyennes import detecter_niveau_scolaire
         from .bulletin_intelligent import (
             CalculateurBulletinIntelligent, 
             generer_pdf_avec_filigrane
@@ -121,6 +122,14 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
         
         eleve = get_object_or_404(Eleve, id=eleve_id)
         classe_note = get_object_or_404(ClasseNote, id=classe_note_id)
+        
+        # Détecter si c'est une classe maternelle
+        niveau_detecte = detecter_niveau_scolaire(classe_note.nom)
+        est_maternelle = (niveau_detecte == 'MATERNELLE')
+        
+        # Si maternelle, utiliser le bulletin maternelle v2
+        if est_maternelle:
+            return _generer_bulletin_maternelle_public(request, eleve, classe_note, periode)
         
         # Déterminer le système et le type de système pour l'affichage
         systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -243,3 +252,142 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
     except Exception as e:
         logger.error(f"Erreur génération bulletin public: {e}")
         raise Http404("Erreur lors de la génération du bulletin. Veuillez réessayer.")
+
+
+def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
+    """
+    Génère le bulletin maternelle v2 pour le téléchargement public.
+    Utilise le même template que bulletin_maternelle_v2_pdf.
+    """
+    import base64
+    import os
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    
+    # Mapper la période au format trimestre
+    trimestre = periode
+    if 'TRIMESTRE_1' in periode:
+        trimestre = 'TRIMESTRE_1'
+    elif 'TRIMESTRE_2' in periode:
+        trimestre = 'TRIMESTRE_2'
+    elif 'TRIMESTRE_3' in periode:
+        trimestre = 'TRIMESTRE_3'
+    
+    # Fonction de conversion lettre vers note
+    def _lettre_vers_note(lettre):
+        mapping = {'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'B-': 6, 'C': 5, 'D': 3}
+        return mapping.get(lettre, 0)
+    
+    def _note_vers_lettre(note):
+        if note >= 9.5: return 'A+'
+        elif note >= 8.5: return 'A'
+        elif note >= 7.5: return 'B+'
+        elif note >= 6.5: return 'B'
+        elif note >= 5.5: return 'B-'
+        elif note >= 4: return 'C'
+        else: return 'D'
+    
+    # Récupérer les appréciations
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve,
+        classe=classe_note,
+        trimestre=trimestre
+    ).select_related('matiere')
+    
+    # Récupérer le bulletin
+    bulletin = BulletinMaternelle.objects.filter(
+        eleve=eleve,
+        classe=classe_note,
+        trimestre=trimestre
+    ).first()
+    
+    # Préparer les données des notes
+    notes_data = []
+    for app in appreciations:
+        notes_data.append({
+            'matiere': app.matiere,
+            'lettre': app.appreciation,
+            'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(app.appreciation, ''),
+            'note': _lettre_vers_note(app.appreciation),
+            'absent': app.absent
+        })
+    
+    # Calculer moyenne et rang
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    rang_info = rangs_dict.get(eleve.id, {})
+    moyenne_pourcentage = rang_info.get('moyenne')
+    rang = rang_info.get('rang', '-')
+    total_eleves = rang_info.get('total_eleves', 0)
+    
+    # Déterminer lettre et mention générales
+    lettre_generale = None
+    mention_generale = ''
+    if moyenne_pourcentage:
+        note_sur_10 = float(moyenne_pourcentage) / 10
+        lettre_generale = _note_vers_lettre(note_sur_10)
+        mention_generale = dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(lettre_generale, '')
+    
+    # Encoder logo et photo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole and ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except:
+            pass
+    
+    photo_base64 = ''
+    if hasattr(eleve, 'photo') and eleve.photo:
+        try:
+            if os.path.exists(eleve.photo.path):
+                with open(eleve.photo.path, 'rb') as f:
+                    photo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except:
+            pass
+    
+    # Préparer le contexte
+    context = {
+        'eleve': eleve,
+        'classe': classe_note,
+        'ecole': ecole,
+        'evaluation': type('obj', (object,), {
+            'trimestre': trimestre,
+            'annee_scolaire': classe_note.annee_scolaire,
+            'get_trimestre_display': lambda: dict([
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre')
+            ]).get(trimestre, trimestre)
+        })(),
+        'notes_data': notes_data,
+        'bulletin': bulletin,
+        'analyses_selectionnees': bulletin.get_analyses_display() if bulletin else [],
+        'recommandations_selectionnees': bulletin.get_recommandations_display() if bulletin else [],
+        'lettre_generale': lettre_generale,
+        'mention_generale': mention_generale,
+        'moyenne_pourcentage': moyenne_pourcentage,
+        'rang': rang,
+        'total_eleves': total_eleves,
+        'logo_base64': logo_base64,
+        'photo_base64': photo_base64,
+        'date_impression': timezone.now(),
+    }
+    
+    # Générer le HTML avec le template maternelle v2
+    html_content = render_to_string('notes/maternelle/bulletin_pdf.html', context)
+    
+    # Générer le PDF
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    # Réponse HTTP
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    filename = f"bulletin_maternelle_{eleve.nom}_{eleve.prenom}_{periode}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    logger.info(f"Bulletin maternelle téléchargé via lien public: eleve={eleve.id}, periode={periode}")
+    
+    return response
