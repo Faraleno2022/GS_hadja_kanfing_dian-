@@ -442,57 +442,53 @@
                     <td style="font-weight:500;">{{ note.matiere.nom }}</td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'A+' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #27ae60;background:#27ae60;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #27ae60;background:#27ae60;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'A' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #2ecc71;background:#2ecc71;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #2ecc71;background:#2ecc71;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'B+' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #3498db;background:#3498db;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #3498db;background:#3498db;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'B' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #17a2b8;background:#17a2b8;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #17a2b8;background:#17a2b8;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'B-' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #f39c12;background:#f39c12;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #f39c12;background:#f39c12;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'C' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #e67e22;background:#e67e22;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e67e22;background:#e67e22;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'D' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #e74c3c;background:#e74c3c;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e74c3c;background:#e74c3c;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="8" style="text-align:center;color:#999;font-size:7pt;">Aucune appréciation saisie</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -501,51 +497,51 @@
                     <td><strong>APPRÉCIATION GÉNÉRALE</strong></td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'A+' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #27ae60;background:#27ae60;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #27ae60;background:#27ae60;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'A' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #2ecc71;background:#2ecc71;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #2ecc71;background:#2ecc71;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'B+' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #3498db;background:#3498db;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #3498db;background:#3498db;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'B' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #17a2b8;background:#17a2b8;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #17a2b8;background:#17a2b8;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'B-' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #f39c12;background:#f39c12;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #f39c12;background:#f39c12;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'C' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #e67e22;background:#e67e22;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e67e22;background:#e67e22;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                     <td style="text-align:center;">
                         {% if bulletin.lettre_generale == 'D' %}
-                        <span style="display:inline-block;width:12px;height:12px;border:2px solid #e74c3c;background:#e74c3c;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e74c3c;background:#e74c3c;"></span>
                         {% else %}
-                        <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
                         {% endif %}
                     </td>
                 </tr>

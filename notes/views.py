@@ -8741,16 +8741,36 @@ def bulletins_classe_maternelle_v2_pdf(request):
                 eleve=eleve, matiere__in=matieres, trimestre=trimestre
             ).select_related('matiere')
         
-        # Préparer les notes
+        # Préparer les notes - TOUJOURS inclure toutes les matières
         notes_data = []
+        
+        # Créer un dictionnaire des appréciations par matière
+        appreciations_dict = {}
         for app in appreciations:
-            notes_data.append({
-                'matiere': app.matiere,
-                'lettre': app.appreciation,
-                'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(app.appreciation, ''),
-                'note': _lettre_vers_note(app.appreciation),
-                'absent': app.absent
-            })
+            appreciations_dict[app.matiere.id] = app
+        
+        # Pour chaque matière, créer une entrée (avec ou sans appréciation)
+        for matiere in matieres:
+            appreciation = appreciations_dict.get(matiere.id)
+            
+            if appreciation:
+                # Si appréciation existe, l'utiliser
+                notes_data.append({
+                    'matiere': matiere,
+                    'lettre': appreciation.appreciation,
+                    'mention': dict(AppreciationMaternelle.APPRECIATION_CHOICES).get(appreciation.appreciation, ''),
+                    'note': _lettre_vers_note(appreciation.appreciation),
+                    'absent': appreciation.absent
+                })
+            else:
+                # Si pas d'appréciation, créer une entrée vide pour cocher manuellement
+                notes_data.append({
+                    'matiere': matiere,
+                    'lettre': None,
+                    'mention': '',
+                    'note': None,
+                    'absent': False
+                })
         
         # Calculer moyenne et rang
         rang_info = rangs_dict.get(eleve.id, {})
