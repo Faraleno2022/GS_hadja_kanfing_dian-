@@ -457,40 +457,136 @@
             <table class="notes-table">
                 <thead>
                     <tr>
-                        <th style="width:50%">Activité</th>
-                        <th style="width:50%">Appréciation</th>
+                        <th style="width:35%">Activité</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">A+</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">A</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">B+</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">B</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">B-</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">C</th>
+                        <th style="width:9%;text-align:center;font-size:7pt;">D</th>
+                    </tr>
+                    <tr>
+                        <th style="font-size:6pt;color:#666;"></th>
+                        <th style="font-size:5pt;color:#666;">Excellent</th>
+                        <th style="font-size:5pt;color:#666;">Très bien</th>
+                        <th style="font-size:5pt;color:#666;">Bien</th>
+                        <th style="font-size:5pt;color:#666;">Assez bien</th>
+                        <th style="font-size:5pt;color:#666;">Moyen</th>
+                        <th style="font-size:5pt;color:#666;">Passable</th>
+                        <th style="font-size:5pt;color:#666;">Difficultés</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for note in notes %}
                     <tr>
-                        <td>{{ note.matiere.nom }}</td>
-                        <td>
-                            {% if note.absent %}
-                            <span style="color:#e74c3c;font-style:italic;">Absent</span>
-                            {% elif note.mention %}
-                            <span class="lettre-badge lettre-{{ note.lettre|slugify }}">{{ note.lettre }}</span> - {{ note.mention }}
-                            {% elif note.lettre %}
-                            <span class="lettre-badge lettre-{{ note.lettre|slugify }}">{{ note.lettre }}</span>
+                        <td style="font-weight:500;">{{ note.matiere.nom }}</td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'A+' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #27ae60;background:#27ae60;"></span>
                             {% else %}
-                            <span style="color:#999;">-</span>
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'A' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #2ecc71;background:#2ecc71;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'B+' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #3498db;background:#3498db;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'B' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #17a2b8;background:#17a2b8;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'B-' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #f39c12;background:#f39c12;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'C' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e67e22;background:#e67e22;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if note.lettre == 'D' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e74c3c;background:#e74c3c;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
                             {% endif %}
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="2" style="text-align:center;color:#999;">Aucune appréciation saisie</td>
+                        <td colspan="8" style="text-align:center;color:#999;font-size:7pt;">Aucune appréciation saisie</td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot>
                     <tr>
                         <td><strong>APPRÉCIATION GÉNÉRALE</strong></td>
-                        <td>
-                            {% if lettre_generale %}
-                            <span class="lettre-badge lettre-{{ lettre_generale|slugify }}">{{ lettre_generale }}</span> - <strong>{{ mention_generale|default:"-" }}</strong>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'A+' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #27ae60;background:#27ae60;"></span>
                             {% else %}
-                            <span style="color:#999;">-</span>
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'A' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #2ecc71;background:#2ecc71;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'B+' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #3498db;background:#3498db;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'B' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #17a2b8;background:#17a2b8;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'B-' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #f39c12;background:#f39c12;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'C' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e67e22;background:#e67e22;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if lettre_generale == 'D' %}
+                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e74c3c;background:#e74c3c;"></span>
+                            {% else %}
+                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
                             {% endif %}
                         </td>
                     </tr>

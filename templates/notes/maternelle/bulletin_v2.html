@@ -62,9 +62,24 @@
                 <table class="table table-bordered">
                     <thead class="table-dark">
                         <tr>
-                            <th>Activité</th>
-                            <th class="text-center">Lettre</th>
-                            <th>Mention</th>
+                            <th style="width:35%">Activité</th>
+                            <th class="text-center" style="width:9%">A+</th>
+                            <th class="text-center" style="width:9%">A</th>
+                            <th class="text-center" style="width:9%">B+</th>
+                            <th class="text-center" style="width:9%">B</th>
+                            <th class="text-center" style="width:9%">B-</th>
+                            <th class="text-center" style="width:9%">C</th>
+                            <th class="text-center" style="width:9%">D</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Excellent</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Très bien</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Bien</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Assez bien</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Moyen</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Passable</th>
+                            <th class="text-center" style="font-size:0.6rem;color:#ccc;">Difficultés</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -74,27 +89,127 @@
                             <td class="text-center">
                                 {% if note.absent %}
                                     <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'A+' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #28a745;background:#28a745;border-radius:2px;"></span>
                                 {% else %}
-                                    <span class="badge 
-                                        {% if note.lettre == 'A+' %}bg-success
-                                        {% elif note.lettre == 'A' %}bg-primary
-                                        {% elif note.lettre == 'B+' %}bg-info
-                                        {% elif note.lettre == 'B' %}bg-secondary
-                                        {% elif note.lettre == 'B-' %}bg-warning text-dark
-                                        {% elif note.lettre == 'C' %}bg-orange
-                                        {% else %}bg-danger{% endif %}">
-                                        {{ note.lettre }}
-                                    </span>
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
                                 {% endif %}
                             </td>
-                            <td>{{ note.mention }}</td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'A' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #17a2b8;background:#17a2b8;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'B+' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #007bff;background:#007bff;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'B' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #6c757d;background:#6c757d;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'B-' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #ffc107;background:#ffc107;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'C' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #fd7e14;background:#fd7e14;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if note.absent %}
+                                    <span class="badge bg-secondary">ABS</span>
+                                {% elif note.lettre == 'D' %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:2px solid #dc3545;background:#dc3545;border-radius:2px;"></span>
+                                {% else %}
+                                    <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="3" class="text-center text-muted">Aucune appréciation saisie</td>
+                            <td colspan="8" class="text-center text-muted">Aucune appréciation saisie</td>
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot class="table-secondary">
+                        <tr>
+                            <th>APPRÉCIATION GÉNÉRALE</th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'A+' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #28a745;background:#28a745;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'A' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #17a2b8;background:#17a2b8;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'B+' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #007bff;background:#007bff;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'B' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #6c757d;background:#6c757d;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'B-' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #ffc107;background:#ffc107;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'C' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #fd7e14;background:#fd7e14;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                            <th class="text-center">
+                                {% if lettre_generale == 'D' %}
+                                <span style="display:inline-block;width:14px;height:14px;border:2px solid #dc3545;background:#dc3545;border-radius:2px;"></span>
+                                {% else %}
+                                <span style="display:inline-block;width:14px;height:14px;border:1px solid #ddd;border-radius:2px;"></span>
+                                {% endif %}
+                            </th>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
             
