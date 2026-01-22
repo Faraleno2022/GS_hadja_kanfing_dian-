@@ -54,13 +54,21 @@ MATIERES_PRIMAIRE = MATIERES_PRIMAIRE_CYCLE2
 # Matières par défaut pour la MATERNELLE
 # NOTE: Pas de coefficients pour la maternelle - évaluation qualitative uniquement
 MATIERES_MATERNELLE = [
-    {'nom': 'Langage', 'code': 'LANG', 'coefficient': None},
-    {'nom': 'Écriture', 'code': 'ECR', 'coefficient': None},
-    {'nom': 'Calcul', 'code': 'CALC', 'coefficient': None},
-    {'nom': 'Dessin', 'code': 'DESS', 'coefficient': None},
-    {'nom': 'Récitation/Chant', 'code': 'REC', 'coefficient': None},
-    {'nom': 'Jeux éducatifs', 'code': 'JEUX', 'coefficient': None},
-    {'nom': 'Psychomotricité', 'code': 'PSYCH', 'coefficient': None},
+    {'nom': 'Anglais', 'code': 'AG', 'coefficient': None},
+    {'nom': 'Coloriage', 'code': 'CO', 'coefficient': None},
+    {'nom': 'Dessin', 'code': 'DS', 'coefficient': None},
+    {'nom': 'Education Civique et Morale', 'code': 'ECM', 'coefficient': None},
+    {'nom': 'Education pour la santé', 'code': 'EPST', 'coefficient': None},
+    {'nom': 'Exercice sensoriel', 'code': 'EXS', 'coefficient': None},
+    {'nom': 'Graphisme', 'code': 'GRA', 'coefficient': None},
+    {'nom': 'Gymnastyque', 'code': 'GYS', 'coefficient': None},
+    {'nom': 'Langage', 'code': 'LAN', 'coefficient': None},
+    {'nom': 'Logico-maths', 'code': 'LMTH', 'coefficient': None},
+    {'nom': 'Peinture', 'code': 'PN', 'coefficient': None},
+    {'nom': 'Pré-écriture', 'code': 'PECR', 'coefficient': None},
+    {'nom': 'Pré-lecture', 'code': 'PLEC', 'coefficient': None},
+    {'nom': 'Pré-maths', 'code': 'PRM', 'coefficient': None},
+    {'nom': 'Récitation/Chant', 'code': 'RCH', 'coefficient': None},
 ]
 
 # Matières par défaut pour le LYCÉE - Série Sciences Mathématiques (11ème SM, 12ème SM)
