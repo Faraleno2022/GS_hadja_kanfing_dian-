@@ -16,6 +16,7 @@ from .models import (
     AnalyseTravailMaternelle, RecommandationMaternelle
 )
 from eleves.models import Eleve, Classe
+from .analyse_maternelle_intelligente import AnalyseMaternelleIntelligente
 
 
 def get_annee_scolaire_courante():
@@ -209,6 +210,15 @@ def sauvegarder_evaluation_maternelle(request, evaluation, matieres, analyse, re
         recommandations.attention_particuliere = request.POST.get('attention_particuliere') == 'on'
         recommandations.commentaire = request.POST.get('recommandation_commentaire', '')
         recommandations.save()
+        
+        # Analyse automatique des appréciations si un commentaire est fourni
+        appreciation_text = request.POST.get('appreciation_automatique', '').strip()
+        if appreciation_text:
+            try:
+                AnalyseMaternelleIntelligente.appliquer_analyse_automatique(evaluation, appreciation_text)
+                messages.info(request, "Analyse automatique des appréciations effectuée")
+            except Exception as e:
+                messages.warning(request, f"L'analyse automatique a échoué: {str(e)}")
         
         messages.success(request, f"Évaluation de {evaluation.eleve} sauvegardée avec succès!")
         
@@ -463,6 +473,69 @@ def bulletins_classe_maternelle_pdf(request):
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
     return response
+
+
+@login_required
+def analyse_appreciations_auto(request):
+    """Vue pour l'analyse automatique des appréciations"""
+    if request.method == 'POST':
+        appreciation_text = request.POST.get('appreciation_text', '').strip()
+        evaluation_id = request.POST.get('evaluation_id')
+        
+        if not appreciation_text:
+            return JsonResponse({'success': False, 'error': 'Veuillez fournir une appréciation'})
+        
+        if evaluation_id:
+            try:
+                evaluation = EvaluationMaternelle.objects.get(id=evaluation_id)
+                analyse, recommandations = AnalyseMaternelleIntelligente.appliquer_analyse_automatique(
+                    evaluation, appreciation_text
+                )
+                
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Analyse effectuée avec succès',
+                    'analyses': {
+                        'selectionnees': analyse.get_analyses_selectionnees(),
+                        'comprend_demandes': analyse.comprend_demandes,
+                        'ne_comprend_pas': analyse.ne_comprend_pas,
+                        'trop_jeune': analyse.trop_jeune,
+                        'fixe_attention': analyse.fixe_attention,
+                        'pas_probleme_monitrice': analyse.pas_probleme_monitrice,
+                        'pas_probleme_camarades': analyse.pas_probleme_camarades,
+                        'pas_probleme_famille': analyse.pas_probleme_famille,
+                        'est_doue': analyse.est_doue,
+                        'est_paresseux': analyse.est_paresseux
+                    },
+                    'recommandations': {
+                        'selectionnees': recommandations.get_recommandations_selectionnees(),
+                        'encourager_feliciter': recommandations.encourager_feliciter,
+                        'suivre_domicile': recommandations.suivre_domicile,
+                        'gouter_dans_sac': recommandations.gouter_dans_sac,
+                        'aide_encouragement_parents': recommandations.aide_encouragement_parents,
+                        'amour_parental': recommandations.amour_parental,
+                        'besoin_epanouissement': recommandations.besoin_epanouissement,
+                        'sorties_educatives': recommandations.sorties_educatives,
+                        'aide_intellectuelle': recommandations.aide_intellectuelle,
+                        'douceur_patience': recommandations.douceur_patience,
+                        'besoin_fermete': recommandations.besoin_fermete,
+                        'esprit_inferiorite': recommandations.esprit_inferiorite,
+                        'attention_particuliere': recommandations.attention_particuliere
+                    }
+                })
+            except EvaluationMaternelle.DoesNotExist:
+                return JsonResponse({'success': False, 'error': 'Évaluation non trouvée'})
+        
+        # Analyse simple sans sauvegarde
+        analyses_dict, recommandations_dict = AnalyseMaternelleIntelligente.analyser_appreciation(appreciation_text)
+        
+        return JsonResponse({
+            'success': True,
+            'analyses': analyses_dict,
+            'recommandations': recommandations_dict
+        })
+    
+    return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
 
 
 @login_required

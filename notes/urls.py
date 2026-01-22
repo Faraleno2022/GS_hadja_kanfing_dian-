@@ -18,7 +18,8 @@ from .views_maternelle import (
     bulletin_maternelle,
     bulletin_maternelle_pdf,
     bulletins_classe_maternelle_pdf,
-    api_get_eleves_classe
+    api_get_eleves_classe,
+    analyse_appreciations_auto
 )
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
@@ -109,6 +110,7 @@ urlpatterns = [
     path('maternelle/bulletin/<int:evaluation_id>/', bulletin_maternelle, name='bulletin_maternelle'),
     path('maternelle/bulletin/<int:evaluation_id>/pdf/', bulletin_maternelle_pdf, name='bulletin_maternelle_pdf'),
     path('maternelle/bulletins-classe-pdf/', bulletins_classe_maternelle_pdf, name='bulletins_classe_maternelle_pdf'),
+    path('maternelle/analyse-appreciations/', analyse_appreciations_auto, name='analyse_appreciations_auto'),
     path('maternelle/bulletins-classe-v2-pdf/', views.bulletins_classe_maternelle_v2_pdf, name='bulletins_classe_maternelle_v2_pdf'),
     path('maternelle/api/eleves/', api_get_eleves_classe, name='api_eleves_classe_maternelle'),
     
