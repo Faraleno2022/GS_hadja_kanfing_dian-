@@ -7179,6 +7179,7 @@ def bulletin_guineen(request):
 def bulletin_dynamique(request):
     """Bulletin dynamique - Génération de bulletins personnalisés"""
     from decimal import Decimal
+    from django.contrib import messages
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
@@ -7189,11 +7190,60 @@ def bulletin_dynamique(request):
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
     
-    # Paramètres de sélection
-    classe_id = request.GET.get('classe_id')
-    eleve_id = request.GET.get('eleve_id')
-    periode = request.GET.get('periode', '')
-    system_type = request.GET.get('system_type', 'trimestre')  # mensuel, trimestre, semestre, annuel_trimestriel, annuel_semestriel
+    # Paramètres de sélection avec nettoyage
+    def nettoyer_parametre_numerique(param):
+        """Nettoie un paramètre numérique en supprimant les espaces et caractères invalides"""
+        if not param:
+            return None
+        
+        # Convertir en string si nécessaire
+        if not isinstance(param, str):
+            param = str(param)
+        
+        # Remplacer tous les types d'espaces (y compris les espaces insécables) par rien
+        import re
+        param_nettoye = re.sub(r'[\s\u00A0\u2000-\u200F\u2028-\u202F\u205F\u3000]', '', param)
+        
+        # Supprimer les caractères non numériques sauf le signe moins
+        param_nettoye = ''.join(c for c in param_nettoye if c.isdigit() or c == '-')
+        
+        try:
+            return int(param_nettoye) if param_nettoye else None
+        except ValueError:
+            return None
+    
+    def valider_et_corriger_eleve_id(eleve_id, classe_id):
+        """Valide et corrige l'ID de l'élève si nécessaire"""
+        if not eleve_id or not isinstance(eleve_id, int):
+            return None
+        
+        # Essayer de trouver l'élève avec l'ID donné
+        try:
+            return Eleve.objects.get(pk=eleve_id)
+        except Eleve.DoesNotExist:
+            # Si l'élève n'existe pas, essayer des variations
+            # Cas spécial : si l'ID ressemble à 1xxx mais qu'on a 1 xxx (espace)
+            if eleve_id > 1000 and eleve_id < 20000:
+                # Essayer avec un zéro supplémentaire
+                with_zero = int(f"1{str(eleve_id)[1:]}")
+                try:
+                    return Eleve.objects.get(pk=with_zero)
+                except Eleve.DoesNotExist:
+                    pass
+            
+            # Essayer avec des zéros devant
+            padded_id = int(f"{eleve_id:05d}")  # Au moins 5 chiffres
+            try:
+                return Eleve.objects.get(pk=padded_id)
+            except Eleve.DoesNotExist:
+                pass
+            
+            return None
+    
+    classe_id = nettoyer_parametre_numerique(request.GET.get('classe_id'))
+    eleve_id = nettoyer_parametre_numerique(request.GET.get('eleve_id'))
+    periode = request.GET.get('periode', '').strip()
+    system_type = request.GET.get('system_type', 'trimestre').strip()  # mensuel, trimestre, semestre, annuel_trimestriel, annuel_semestriel
     
     # Valider que la période correspond au system_type sélectionné
     # Si la période ne correspond pas, la réinitialiser
@@ -7325,9 +7375,17 @@ def bulletin_dynamique(request):
             eleve_selectionne = None
             
             # Si un élève est sélectionné
-            if eleve_id:
-                eleve_selectionne = get_object_or_404(Eleve, pk=eleve_id)
-                bulletin_data['eleve'] = eleve_selectionne
+            if eleve_id and isinstance(eleve_id, int) and eleve_id > 0:
+                eleve_selectionne = valider_et_corriger_eleve_id(eleve_id, classe_id)
+                if eleve_selectionne:
+                    bulletin_data['eleve'] = eleve_selectionne
+                    # Si l'ID a été corrigé, informer l'utilisateur
+                    if eleve_selectionne.pk != eleve_id:
+                        messages.info(request, f"ID d'élève corrigé : {eleve_id} → {eleve_selectionne.pk}")
+                else:
+                    # L'élève n'existe pas, réinitialiser la sélection
+                    eleve_id = None
+                    messages.warning(request, f"L'élève avec l'ID {eleve_id} n'a pas été trouvé.")
             
             # Détecter le niveau scolaire
             from .calculs_moyennes import detecter_niveau_scolaire
