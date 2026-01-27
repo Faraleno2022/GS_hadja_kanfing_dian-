@@ -40,16 +40,16 @@
     }
     
     .eleves-table th {
-        padding: 1.2rem;
+        padding: 1.5rem;
         font-weight: 600;
         text-align: left;
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .eleves-table td {
-        padding: 1rem;
+        padding: 1.2rem;
         border-bottom: 1px solid #e5e7eb;
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .eleves-table tbody tr:hover {
@@ -57,13 +57,13 @@
     }
     
     .note-input {
-        width: 120px;
-        padding: 0.8rem;
+        width: 140px;
+        padding: 1rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
         text-align: center;
         font-weight: 600;
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .note-input:focus {
@@ -73,8 +73,8 @@
     }
     
     .absent-checkbox {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         cursor: pointer;
     }
     
@@ -140,20 +140,20 @@
     }
     
     .appreciation-select {
-        width: 220px;
-        padding: 0.8rem;
+        width: 250px;
+        padding: 1rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .commentaire-input {
         width: 100%;
-        padding: 0.8rem;
+        padding: 1rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
         resize: vertical;
-        font-size: 14px;
+        font-size: 16px;
     }
     
     .info-badge {
@@ -439,10 +439,10 @@
                         <th>Prénom</th>
                         <th>Nom</th>
                         {% if type_note == 'appreciation' %}
-                        <th style="width: 270px;">Appréciation</th>
+                        <th style="width: 300px;">Appréciation</th>
                         <th>Commentaire</th>
                         {% else %}
-                        <th style="width: 140px;">Note /{{ note_sur }}</th>
+                        <th style="width: 160px;">Note /{{ note_sur }}</th>
                         {% endif %}
                         <th style="width: 80px;">Absent</th>
                     </tr>
