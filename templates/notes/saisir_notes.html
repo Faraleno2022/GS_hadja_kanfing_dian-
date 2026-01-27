@@ -40,14 +40,16 @@
     }
     
     .eleves-table th {
-        padding: 1rem;
+        padding: 1.2rem;
         font-weight: 600;
         text-align: left;
+        font-size: 14px;
     }
     
     .eleves-table td {
-        padding: 0.75rem;
+        padding: 1rem;
         border-bottom: 1px solid #e5e7eb;
+        font-size: 14px;
     }
     
     .eleves-table tbody tr:hover {
@@ -55,12 +57,13 @@
     }
     
     .note-input {
-        width: 100px;
-        padding: 0.5rem;
+        width: 120px;
+        padding: 0.8rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
         text-align: center;
         font-weight: 600;
+        font-size: 14px;
     }
     
     .note-input:focus {
@@ -70,8 +73,8 @@
     }
     
     .absent-checkbox {
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         cursor: pointer;
     }
     
@@ -137,18 +140,20 @@
     }
     
     .appreciation-select {
-        width: 200px;
-        padding: 0.5rem;
+        width: 220px;
+        padding: 0.8rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
+        font-size: 14px;
     }
     
     .commentaire-input {
         width: 100%;
-        padding: 0.5rem;
+        padding: 0.8rem;
         border: 2px solid #d1d5db;
         border-radius: 6px;
         resize: vertical;
+        font-size: 14px;
     }
     
     .info-badge {
@@ -434,10 +439,10 @@
                         <th>Prénom</th>
                         <th>Nom</th>
                         {% if type_note == 'appreciation' %}
-                        <th style="width: 250px;">Appréciation</th>
+                        <th style="width: 270px;">Appréciation</th>
                         <th>Commentaire</th>
                         {% else %}
-                        <th style="width: 120px;">Note /{{ note_sur }}</th>
+                        <th style="width: 140px;">Note /{{ note_sur }}</th>
                         {% endif %}
                         <th style="width: 80px;">Absent</th>
                     </tr>
