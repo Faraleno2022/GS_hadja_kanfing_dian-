@@ -265,3 +265,143 @@ def get_evaluations_matiere(request):
     
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+# ============================================================================
+# IMPORTATION INTELLIGENTE - Template avec toutes les matières en colonnes
+# ============================================================================
+
+@login_required
+def import_intelligent(request):
+    """
+    Vue principale pour l'importation intelligente de notes.
+    Permet de télécharger un template et d'importer les notes.
+    """
+    from .import_intelligent import generer_template_intelligent, importer_notes_intelligent, ImportIntelligentError
+    
+    if not can_manage_notes(request.user):
+        messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
+        return redirect('notes:liste_classes')
+    
+    # Récupérer les classes
+    classes = ClasseNote.objects.filter(actif=True).order_by('nom')
+    
+    # Filtrage par école si nécessaire
+    if not request.user.is_superuser:
+        from utilisateurs.utils import user_school
+        ecole = user_school(request.user)
+        if ecole:
+            classes = classes.filter(ecole=ecole)
+    
+    context = {
+        'classes': classes,
+        'periodes_mensuelles': [
+            ('OCTOBRE', 'Octobre'),
+            ('NOVEMBRE', 'Novembre'),
+            ('DECEMBRE', 'Décembre'),
+            ('JANVIER', 'Janvier'),
+            ('FEVRIER', 'Février'),
+            ('MARS', 'Mars'),
+            ('AVRIL', 'Avril'),
+            ('MAI', 'Mai'),
+            ('JUIN', 'Juin'),
+        ],
+        'periodes_trimestrielles': [
+            ('TRIMESTRE_1', '1er Trimestre'),
+            ('TRIMESTRE_2', '2ème Trimestre'),
+            ('TRIMESTRE_3', '3ème Trimestre'),
+        ],
+        'periodes_semestrielles': [
+            ('SEMESTRE_1', '1er Semestre'),
+            ('SEMESTRE_2', '2ème Semestre'),
+        ],
+    }
+    
+    if request.method == 'POST':
+        # Traiter l'importation
+        classe_id = request.POST.get('classe')
+        periode = request.POST.get('periode')
+        annee_scolaire = request.POST.get('annee_scolaire')
+        type_notes = request.POST.get('type_notes', 'MENSUELLE')
+        fichier = request.FILES.get('fichier')
+        
+        if not all([classe_id, periode, annee_scolaire]):
+            messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+            return render(request, 'notes/import_intelligent.html', context)
+        
+        if not fichier:
+            messages.error(request, "Veuillez sélectionner un fichier Excel.")
+            return render(request, 'notes/import_intelligent.html', context)
+        
+        try:
+            stats = importer_notes_intelligent(
+                fichier=fichier,
+                classe_id=classe_id,
+                periode=periode,
+                annee_scolaire=annee_scolaire,
+                type_notes=type_notes,
+                user=request.user
+            )
+            
+            # Afficher les résultats
+            messages.success(
+                request,
+                f"✅ Importation réussie! "
+                f"{stats['importees']} note(s) créée(s), "
+                f"{stats['modifiees']} mise(s) à jour. "
+                f"Matières: {', '.join(stats['matieres_traitees'][:5])}{'...' if len(stats['matieres_traitees']) > 5 else ''}"
+            )
+            
+            if stats['erreurs'] > 0:
+                messages.warning(
+                    request,
+                    f"⚠️ {stats['erreurs']} erreur(s) rencontrée(s). "
+                    f"Détails: {'; '.join(stats['erreurs_details'][:3])}"
+                )
+            
+            return redirect('notes:consulter_notes')
+        
+        except ImportIntelligentError as e:
+            messages.error(request, f"Erreur d'importation: {e}")
+        except Exception as e:
+            messages.error(request, f"Erreur inattendue: {e}")
+    
+    return render(request, 'notes/import_intelligent.html', context)
+
+
+@login_required
+def telecharger_template_intelligent(request):
+    """
+    Télécharge le template Excel intelligent avec toutes les matières en colonnes.
+    """
+    from .import_intelligent import generer_template_intelligent, ImportIntelligentError
+    
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', 'TRIMESTRE_1')
+    
+    if not classe_id:
+        messages.error(request, "Veuillez sélectionner une classe.")
+        return redirect('notes:import_intelligent')
+    
+    try:
+        output, classe, matieres, note_max = generer_template_intelligent(classe_id, periode)
+        
+        # Préparer la réponse
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # Nom du fichier
+        nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
+        filename = f"template_notes_{nom_classe_clean}_{periode}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+    
+    except ImportIntelligentError as e:
+        messages.error(request, f"Erreur: {e}")
+        return redirect('notes:import_intelligent')
+    except Exception as e:
+        messages.error(request, f"Erreur inattendue: {e}")
+        return redirect('notes:import_intelligent')

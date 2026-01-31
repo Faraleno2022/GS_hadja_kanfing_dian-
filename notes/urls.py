@@ -10,7 +10,9 @@ from .views_import import (
     importer_notes,
     telecharger_template_import,
     get_matieres_classe,
-    get_evaluations_matiere
+    get_evaluations_matiere,
+    import_intelligent,
+    telecharger_template_intelligent
 )
 from .views_maternelle import (
     saisie_evaluation_maternelle,
@@ -129,4 +131,8 @@ urlpatterns = [
     
     # Fiche de report des notes avec toutes les matières en colonnes
     path('fiche-report-notes-pdf/', views.fiche_report_notes_pdf, name='fiche_report_notes_pdf'),
+    
+    # Importation intelligente - Template avec toutes les matières en colonnes
+    path('import-intelligent/', import_intelligent, name='import_intelligent'),
+    path('template-intelligent/', telecharger_template_intelligent, name='telecharger_template_intelligent'),
 ]

@@ -55,10 +55,11 @@ def certificats_appreciation_pdf(request):
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
         
-        # Détecter si c'est une classe maternelle
+        # Détecter le niveau scolaire (maternelle, primaire, secondaire)
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
         est_maternelle = (niveau_scolaire == 'MATERNELLE')
+        est_primaire = (niveau_scolaire == 'PRIMAIRE')
         
         # Déterminer le type de système selon la période
         if periode in ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']:
@@ -183,6 +184,8 @@ def certificats_appreciation_pdf(request):
             'date_emission': datetime.now().strftime('%d/%m/%Y'),
             'ville': getattr(ecole, 'adresse', 'Conakry').split(',')[0] if ecole else 'Conakry',
             'est_maternelle': est_maternelle,
+            'est_primaire': est_primaire,
+            'note_max': 10 if est_primaire else 20,
         }
         
         # Générer le HTML - utiliser un template différent pour la maternelle

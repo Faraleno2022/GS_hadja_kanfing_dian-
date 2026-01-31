@@ -173,13 +173,14 @@ class NoteMensuelle(models.Model):
         ('MARS', 'Mars'),
         ('AVRIL', 'Avril'),
         ('MAI', 'Mai'),
+        ('JUIN', 'Juin'),
     ]
     
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='notes_mensuelles')
     matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='notes_mensuelles')
     mois = models.CharField(max_length=20, choices=MOIS_CHOICES, verbose_name="Mois")
     annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
-    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
+    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20", null=True, blank=True)
     absent = models.BooleanField(default=False, verbose_name="Absent")
     
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)

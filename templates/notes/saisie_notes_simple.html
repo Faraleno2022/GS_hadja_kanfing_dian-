@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load notes_extras %}
 
 {% block title %}Saisie des Notes{% endblock %}
 
@@ -477,7 +478,7 @@ async function sauvegarderNotesMensuelles() {
     }
     
     const notesMois = {};
-    const moisList = {{ mois_codes|safe }};
+    const moisList = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'];
     
     moisList.forEach(mois => {
         const input = document.getElementById('note_' + mois);

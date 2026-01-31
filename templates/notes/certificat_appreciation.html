@@ -380,7 +380,7 @@
         <div class="nom-eleve">{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</div>
         <div class="classe-info">Élève en classe de <strong>{{ classe.nom }}</strong></div>
         <div class="resultat">
-            Pour avoir obtenu une moyenne de <span class="moyenne">{{ eleve_data.moyenne|floatformat:2 }}/20</span>
+            Pour avoir obtenu une moyenne de <span class="moyenne">{{ eleve_data.moyenne|floatformat:2 }}/{{ note_max }}</span>
         </div>
         <div class="resultat">
             Se classant <span class="rang-texte">{{ eleve_data.rang_formate }}</span> sur {{ total_eleves }} élèves

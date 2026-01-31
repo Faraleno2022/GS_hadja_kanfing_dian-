@@ -8188,6 +8188,9 @@ def saisie_notes_simple(request):
             annee_scolaire=classe_selectionnee.annee_scolaire
         ).exclude(note__isnull=True).count()
     
+    # Liste des codes de mois pour le JavaScript
+    mois_codes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+    
     context = {
         'titre_page': 'Saisie Notes - Système Guinéen',
         'classes': classes,
@@ -8206,6 +8209,7 @@ def saisie_notes_simple(request):
         'niveau_enseignement': niveau_enseignement,
         'system_type': system_type,
         'mois_list': mois_list,
+        'mois_codes': mois_codes,
         'notes_existantes_count': notes_existantes_count,
     }
     
@@ -9098,6 +9102,12 @@ def fiche_saisie_notes_pdf(request):
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else classe.ecole
     
+    # Détecter le niveau scolaire (primaire = notes sur 10)
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    note_max = 10 if est_primaire else 20
+    
     # Récupérer le logo de l'école en base64 pour le filigrane
     logo_base64 = None
     if ecole and ecole.logo:
@@ -9119,6 +9129,8 @@ def fiche_saisie_notes_pdf(request):
         'annee_scolaire': classe.annee_scolaire,
         'date_impression': timezone.now(),
         'logo_base64': logo_base64,
+        'est_primaire': est_primaire,
+        'note_max': note_max,
     }
     
     if system_type == 'semestre':
@@ -9224,6 +9236,12 @@ def fiche_report_notes_pdf(request):
         'SEMESTRE_2': '2ème Semestre',
     }.get(periode, periode)
     
+    # Détecter le niveau scolaire (primaire = notes sur 10)
+    from .calculs_moyennes import detecter_niveau_scolaire
+    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
+    est_primaire = (niveau_scolaire == 'PRIMAIRE')
+    note_max = 10 if est_primaire else 20
+    
     # Préparer le contexte
     context = {
         'classe': classe,
@@ -9235,6 +9253,8 @@ def fiche_report_notes_pdf(request):
         'logo_base64': logo_base64,
         'periode': periode,
         'periode_display': periode_display,
+        'est_primaire': est_primaire,
+        'note_max': note_max,
     }
     
     # Générer le HTML
