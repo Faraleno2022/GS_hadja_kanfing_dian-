@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Importation Intelligente des Notes{% endblock %}
+{% block title %}Importation des Notes{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -11,8 +11,8 @@
                 <div class="card-header bg-gradient-primary text-white">
                     <div class="d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">
-                            <i class="fas fa-magic me-2"></i>
-                            Importation Intelligente des Notes
+                            <i class="fas fa-file-import me-2"></i>
+                            Importation des Notes
                         </h4>
                         <a href="{% url 'notes:consulter_notes' %}" class="btn btn-light btn-sm">
                             <i class="fas fa-arrow-left me-1"></i> Retour
@@ -21,14 +21,41 @@
                 </div>
                 
                 <div class="card-body">
-                    <!-- Instructions -->
-                    <div class="alert alert-info mb-4">
-                        <h5 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Comment ça marche ?</h5>
-                        <ol class="mb-0">
-                            <li><strong>Téléchargez le template</strong> : Sélectionnez une classe et une période, puis cliquez sur "Télécharger Template"</li>
-                            <li><strong>Remplissez les notes</strong> : Le fichier Excel contient tous les élèves et toutes les matières de la classe</li>
-                            <li><strong>Importez le fichier</strong> : Uploadez le fichier rempli et le système récupère automatiquement toutes les notes</li>
-                        </ol>
+                    <!-- Choix du mode d'importation -->
+                    <div class="mb-4">
+                        <h5 class="mb-3"><i class="fas fa-cog me-2"></i>Choisissez le mode d'importation</h5>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="mode_import" id="mode_simple" value="simple" autocomplete="off">
+                            <label class="btn btn-outline-warning" for="mode_simple">
+                                <i class="fas fa-file-alt me-2"></i>
+                                <strong>Import Simple</strong><br>
+                                <small>Une matière à la fois</small>
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="mode_import" id="mode_intelligent" value="intelligent" autocomplete="off" checked>
+                            <label class="btn btn-outline-success" for="mode_intelligent">
+                                <i class="fas fa-magic me-2"></i>
+                                <strong>Import Intelligent</strong><br>
+                                <small>Toutes les matières en colonnes</small>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Instructions dynamiques -->
+                    <div class="alert alert-info mb-4" id="instructions_simple" style="display: none;">
+                        <h5 class="alert-heading"><i class="fas fa-info-circle me-2"></i>Mode Simple - Une matière à la fois</h5>
+                        <p class="mb-0">
+                            Format du fichier : <strong>Matricule | Prénom | Nom | Note | Absent</strong><br>
+                            Idéal pour importer les notes d'une seule matière rapidement.
+                        </p>
+                    </div>
+                    
+                    <div class="alert alert-success mb-4" id="instructions_intelligent">
+                        <h5 class="alert-heading"><i class="fas fa-magic me-2"></i>Mode Intelligent - Toutes les matières</h5>
+                        <p class="mb-0">
+                            Format du fichier : <strong>N° | Matricule | Prénoms | Nom | Sexe | Matière1 | Matière2 | ...</strong><br>
+                            Importez toutes les notes de la classe en une seule fois !
+                        </p>
                     </div>
                     
                     <div class="row">
@@ -39,7 +66,7 @@
                                     <h5 class="mb-0"><i class="fas fa-download me-2"></i>Étape 1: Télécharger le Template</h5>
                                 </div>
                                 <div class="card-body">
-                                    <form id="formTemplate" method="GET" action="{% url 'notes:telecharger_template_intelligent' %}">
+                                    <form id="formTemplate" method="GET">
                                         <div class="mb-3">
                                             <label for="classe_template" class="form-label fw-bold">Classe <span class="text-danger">*</span></label>
                                             <select name="classe_id" id="classe_template" class="form-select" required>
@@ -71,13 +98,33 @@
                                             </select>
                                         </div>
                                         
+                                        <!-- Matière (visible uniquement en mode simple) -->
+                                        <div class="mb-3" id="matiere_container" style="display: none;">
+                                            <label for="matiere_template" class="form-label fw-bold">Matière <span class="text-danger">*</span></label>
+                                            <select name="matiere_id" id="matiere_template" class="form-select">
+                                                <option value="">-- Sélectionner d'abord une classe --</option>
+                                            </select>
+                                        </div>
+                                        
                                         <button type="submit" class="btn btn-primary w-100">
                                             <i class="fas fa-file-excel me-2"></i>Télécharger Template Excel
                                         </button>
                                     </form>
                                     
-                                    <div class="mt-3 p-3 bg-light rounded">
-                                        <h6><i class="fas fa-table me-2"></i>Format du Template</h6>
+                                    <div class="mt-3 p-3 bg-light rounded" id="format_simple" style="display: none;">
+                                        <h6><i class="fas fa-table me-2"></i>Format Simple</h6>
+                                        <small class="text-muted">
+                                            Le fichier contient :<br>
+                                            • <strong>Matricule</strong> - Identifiant unique<br>
+                                            • <strong>Prénom</strong> - Prénom de l'élève<br>
+                                            • <strong>Nom</strong> - Nom de famille<br>
+                                            • <strong>Note</strong> - Note sur 10 ou 20<br>
+                                            • <strong>Absent</strong> - OUI ou NON
+                                        </small>
+                                    </div>
+                                    
+                                    <div class="mt-3 p-3 bg-light rounded" id="format_intelligent">
+                                        <h6><i class="fas fa-table me-2"></i>Format Intelligent</h6>
                                         <small class="text-muted">
                                             Le fichier contient :<br>
                                             • <strong>N°</strong> - Numéro d'ordre<br>
@@ -231,19 +278,73 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Synchroniser les sélections entre les deux formulaires
+    // Éléments
+    const modeSimple = document.getElementById('mode_simple');
+    const modeIntelligent = document.getElementById('mode_intelligent');
+    const formTemplate = document.getElementById('formTemplate');
     const classeTemplate = document.getElementById('classe_template');
     const classeImport = document.getElementById('classe');
     const periodeTemplate = document.getElementById('periode_template');
     const periodeImport = document.getElementById('periode');
+    const matiereContainer = document.getElementById('matiere_container');
+    const matiereTemplate = document.getElementById('matiere_template');
+    const formatSimple = document.getElementById('format_simple');
+    const formatIntelligent = document.getElementById('format_intelligent');
+    const instructionsSimple = document.getElementById('instructions_simple');
+    const instructionsIntelligent = document.getElementById('instructions_intelligent');
     
+    // URLs des templates
+    const urlTemplateIntelligent = "{% url 'notes:telecharger_template_intelligent' %}";
+    const urlTemplateSimple = "{% url 'notes:telecharger_template_import' %}";
+    
+    // Fonction pour changer le mode
+    function updateMode() {
+        const isSimple = modeSimple.checked;
+        
+        // Afficher/masquer les éléments selon le mode
+        matiereContainer.style.display = isSimple ? 'block' : 'none';
+        formatSimple.style.display = isSimple ? 'block' : 'none';
+        formatIntelligent.style.display = isSimple ? 'none' : 'block';
+        instructionsSimple.style.display = isSimple ? 'block' : 'none';
+        instructionsIntelligent.style.display = isSimple ? 'none' : 'block';
+        
+        // Changer l'action du formulaire
+        formTemplate.action = isSimple ? urlTemplateSimple : urlTemplateIntelligent;
+        
+        // Rendre la matière obligatoire ou non
+        matiereTemplate.required = isSimple;
+    }
+    
+    // Écouter les changements de mode
+    modeSimple.addEventListener('change', updateMode);
+    modeIntelligent.addEventListener('change', updateMode);
+    
+    // Charger les matières quand on change de classe
     classeTemplate.addEventListener('change', function() {
-        classeImport.value = this.value;
+        const classeId = this.value;
+        classeImport.value = classeId;
+        
+        if (classeId && modeSimple.checked) {
+            // Charger les matières via AJAX
+            fetch(`{% url 'notes:api_matieres_classe' %}?classe_id=${classeId}`)
+                .then(response => response.json())
+                .then(data => {
+                    matiereTemplate.innerHTML = '<option value="">-- Sélectionner une matière --</option>';
+                    data.matieres.forEach(m => {
+                        matiereTemplate.innerHTML += `<option value="${m.id}">${m.nom}</option>`;
+                    });
+                })
+                .catch(err => console.error('Erreur chargement matières:', err));
+        }
     });
     
+    // Synchroniser la période
     periodeTemplate.addEventListener('change', function() {
         periodeImport.value = this.value;
     });
+    
+    // Initialiser
+    updateMode();
 });
 </script>
 {% endblock %}
