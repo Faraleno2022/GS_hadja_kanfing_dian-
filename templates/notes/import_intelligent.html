@@ -66,7 +66,7 @@
                                     <h5 class="mb-0"><i class="fas fa-download me-2"></i>Étape 1: Télécharger le Template</h5>
                                 </div>
                                 <div class="card-body">
-                                    <form id="formTemplate" method="GET">
+                                    <form id="formTemplate" method="GET" action="{% url 'notes:telecharger_template_intelligent' %}">
                                         <div class="mb-3">
                                             <label for="classe_template" class="form-label fw-bold">Classe <span class="text-danger">*</span></label>
                                             <select name="classe_id" id="classe_template" class="form-select" required>
