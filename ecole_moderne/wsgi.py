@@ -1,13 +1,15 @@
-"""
-WSGI config for ecole_moderne project.
-
-It exposes the WSGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/
-"""
-
 import os
+from pathlib import Path
+
+# Charge le fichier .env
+env_file = Path('/home/myschoolgn/.env')
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                key, value = line.split('=', 1)
+                os.environ[key] = value
 
 from django.core.wsgi import get_wsgi_application
 

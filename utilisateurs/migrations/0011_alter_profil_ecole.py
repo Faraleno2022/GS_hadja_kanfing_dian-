@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('eleves', '0010_rendre_champs_optionnels'),
-        ('utilisateurs', '0010_profil_peut_importer_eleves_and_more'),
+        ('utilisateurs', '0010_merge_20251107_1935'),
     ]
 
     operations = [

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
 import os
+from load_env import *
 import sys
 
 
