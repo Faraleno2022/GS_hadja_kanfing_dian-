@@ -61,11 +61,23 @@
                 max-width: 40px !important;
             }
             
-            .col-nom {
-                width: 100px !important;
-                min-width: 100px !important;
-                max-width: 100px !important;
+            .col-prenom {
+                width: 90px !important;
+                min-width: 90px !important;
+                max-width: 90px !important;
                 text-align: left !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+            }
+            
+            .col-nom {
+                width: 80px !important;
+                min-width: 80px !important;
+                max-width: 80px !important;
+                text-align: left !important;
+                font-weight: bold !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
             }
             
             .col-moyenne {
@@ -180,10 +192,21 @@
             min-width: 45px;
         }
         
-        .col-nom {
-            width: 120px;
-            min-width: 120px;
+        .col-prenom {
+            width: 100px;
+            min-width: 100px;
             text-align: left !important;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        
+        .col-nom {
+            width: 90px;
+            min-width: 90px;
+            text-align: left !important;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
         }
         
         .col-moyenne {
@@ -263,7 +286,8 @@
                 <tr>
                     <th class="col-rang">Rang</th>
                     <th class="col-matricule">Matricule</th>
-                    <th class="col-nom">Nom Complet</th>
+                    <th class="col-prenom">Prénom</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-moyenne">Moyenne</th>
                     {% for matiere in matieres %}
                     <th class="col-matiere">
@@ -279,7 +303,8 @@
                         {{ eleve_data.rang }}
                     </td>
                     <td class="col-matricule">{{ eleve_data.matricule }}</td>
-                    <td class="col-nom">{{ eleve_data.prenom }} {{ eleve_data.nom }}</td>
+                    <td class="col-prenom">{{ eleve_data.prenom }}</td>
+                    <td class="col-nom">{{ eleve_data.nom }}</td>
                     <td class="col-moyenne note">{{ eleve_data.moyenne|floatformat:2 }}</td>
                     {% for matiere in matieres %}
                     <td class="col-matiere">
