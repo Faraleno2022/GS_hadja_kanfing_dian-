@@ -417,29 +417,29 @@
             <thead>
                 <tr>
                     <th style="width:35%">Activité</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">A+</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">A</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">B+</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">B</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">B-</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">C</th>
-                    <th style="width:9%;text-align:center;font-size:7pt;">D</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">A+</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">A</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">B+</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">B</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">B-</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">C</th>
+                    <th style="width:9%;text-align:center;font-size:9pt;">D</th>
                 </tr>
                 <tr>
-                    <th style="font-size:6pt;color:#666;"></th>
-                    <th style="font-size:5pt;color:#666;">Excellent</th>
-                    <th style="font-size:5pt;color:#666;">Très bien</th>
-                    <th style="font-size:5pt;color:#666;">Bien</th>
-                    <th style="font-size:5pt;color:#666;">Assez bien</th>
-                    <th style="font-size:5pt;color:#666;">Moyen</th>
-                    <th style="font-size:5pt;color:#666;">Passable</th>
-                    <th style="font-size:5pt;color:#666;">Difficultés</th>
+                    <th style="font-size:8pt;color:#666;"></th>
+                    <th style="font-size:7pt;color:#666;">Excellent</th>
+                    <th style="font-size:7pt;color:#666;">Très bien</th>
+                    <th style="font-size:7pt;color:#666;">Bien</th>
+                    <th style="font-size:7pt;color:#666;">Assez bien</th>
+                    <th style="font-size:7pt;color:#666;">Moyen</th>
+                    <th style="font-size:7pt;color:#666;">Passable</th>
+                    <th style="font-size:7pt;color:#666;">Difficultés</th>
                 </tr>
             </thead>
             <tbody>
                 {% for note in bulletin.notes %}
                 <tr>
-                    <td style="font-weight:500;">{{ note.matiere.nom }}</td>
+                    <td style="font-weight:500;font-size:9pt;">{{ note.matiere.nom }}</td>
                     <td style="text-align:center;">
                         {% if note.lettre == 'A+' %}
                         <span style="display:inline-block;width:14px;height:14px;border:2px solid #27ae60;background:#27ae60;"></span>
