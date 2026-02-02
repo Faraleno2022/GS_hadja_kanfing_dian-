@@ -405,3 +405,211 @@ def telecharger_template_intelligent(request):
     except Exception as e:
         messages.error(request, f"Erreur inattendue: {e}")
         return redirect('notes:import_intelligent')
+
+
+@login_required
+def saisie_intelligente(request):
+    """
+    Vue pour la saisie intelligente des notes - toutes les matières en colonnes
+    """
+    from eleves.models import Eleve, Classe as ClasseEleve
+    from .models import NoteMensuelle, CompositionNote
+    from .calculs_moyennes import detecter_niveau_scolaire
+    import json
+    
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    
+    # Récupérer les classes
+    if ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    
+    # Paramètres de sélection
+    classe_id = request.GET.get('classe_id')
+    type_note = request.GET.get('type_note', '')
+    periode = request.GET.get('periode', '')
+    
+    classe_selectionnee = None
+    matieres = []
+    eleves = []
+    notes_existantes = []
+    note_max = 20
+    
+    # Périodes disponibles par défaut
+    periodes_disponibles = []
+    
+    if classe_id:
+        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        matieres = list(MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom'))
+        
+        # Détecter le niveau scolaire pour la note max
+        niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
+        note_max = 10 if niveau_detecte == 'PRIMAIRE' else 20
+        
+        # Déterminer les périodes disponibles selon le type de note
+        if type_note == 'mensuelle':
+            periodes_disponibles = [
+                ('OCTOBRE', 'Octobre'),
+                ('NOVEMBRE', 'Novembre'),
+                ('DECEMBRE', 'Décembre'),
+                ('JANVIER', 'Janvier'),
+                ('FEVRIER', 'Février'),
+                ('MARS', 'Mars'),
+                ('AVRIL', 'Avril'),
+                ('MAI', 'Mai'),
+                ('JUIN', 'Juin'),
+            ]
+        elif type_note == 'composition':
+            periodes_disponibles = [
+                ('TRIMESTRE_1', '1er Trimestre'),
+                ('TRIMESTRE_2', '2ème Trimestre'),
+                ('TRIMESTRE_3', '3ème Trimestre'),
+                ('SEMESTRE_1', '1er Semestre'),
+                ('SEMESTRE_2', '2ème Semestre'),
+            ]
+        
+        # Récupérer les élèves
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe_selectionnee.nom,
+            annee_scolaire=classe_selectionnee.annee_scolaire,
+            ecole=classe_selectionnee.ecole
+        ).first()
+        
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe_selectionnee.nom,
+                annee_scolaire=classe_selectionnee.annee_scolaire
+            ).first()
+        
+        if classe_eleve:
+            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        
+        # Récupérer les notes existantes si période sélectionnée
+        if periode and eleves and matieres:
+            notes_list = []
+            
+            for eleve in eleves:
+                for matiere in matieres:
+                    if type_note == 'mensuelle':
+                        note_obj = NoteMensuelle.objects.filter(
+                            eleve=eleve,
+                            matiere=matiere,
+                            mois=periode,
+                            annee_scolaire=classe_selectionnee.annee_scolaire
+                        ).first()
+                    else:
+                        note_obj = CompositionNote.objects.filter(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode,
+                            annee_scolaire=classe_selectionnee.annee_scolaire
+                        ).first()
+                    
+                    if note_obj:
+                        notes_list.append({
+                            'eleve_id': eleve.id,
+                            'matiere_id': matiere.id,
+                            'note': float(note_obj.note) if note_obj.note is not None else None,
+                            'absent': note_obj.absent if hasattr(note_obj, 'absent') else False
+                        })
+            
+            notes_existantes = json.dumps(notes_list)
+    
+    # Labels pour l'affichage
+    periode_display = dict([
+        ('OCTOBRE', 'Octobre'), ('NOVEMBRE', 'Novembre'), ('DECEMBRE', 'Décembre'),
+        ('JANVIER', 'Janvier'), ('FEVRIER', 'Février'), ('MARS', 'Mars'),
+        ('AVRIL', 'Avril'), ('MAI', 'Mai'), ('JUIN', 'Juin'),
+        ('TRIMESTRE_1', '1er Trimestre'), ('TRIMESTRE_2', '2ème Trimestre'),
+        ('TRIMESTRE_3', '3ème Trimestre'), ('SEMESTRE_1', '1er Semestre'),
+        ('SEMESTRE_2', '2ème Semestre'),
+    ]).get(periode, periode)
+    
+    type_note_display = {'mensuelle': 'Note Mensuelle', 'composition': 'Composition'}.get(type_note, type_note)
+    
+    context = {
+        'classes': classes,
+        'classe_selectionnee': classe_selectionnee,
+        'matieres': matieres,
+        'eleves': eleves,
+        'type_note': type_note,
+        'periode': periode,
+        'periodes_disponibles': periodes_disponibles,
+        'note_max': note_max,
+        'notes_existantes': notes_existantes,
+        'periode_display': periode_display,
+        'type_note_display': type_note_display,
+    }
+    
+    return render(request, 'notes/saisie_intelligente.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def saisie_intelligente_save(request):
+    """
+    API pour sauvegarder les notes de la saisie intelligente
+    """
+    from eleves.models import Eleve
+    from .models import NoteMensuelle, CompositionNote
+    from decimal import Decimal
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        type_note = data.get('type_note')
+        periode = data.get('periode')
+        notes = data.get('notes', [])
+        
+        if not type_note or not periode:
+            return JsonResponse({'success': False, 'error': 'Type de note et période requis'})
+        
+        saved_count = 0
+        
+        for note_data in notes:
+            eleve_id = note_data.get('eleve_id')
+            matiere_id = note_data.get('matiere_id')
+            note_value = note_data.get('note')
+            is_absent = note_data.get('absent', False)
+            
+            try:
+                eleve = Eleve.objects.get(id=eleve_id)
+                matiere = MatiereNote.objects.get(id=matiere_id)
+                annee_scolaire = matiere.classe.annee_scolaire
+                
+                if type_note == 'mensuelle':
+                    note_obj, created = NoteMensuelle.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        mois=periode,
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'note': Decimal(str(note_value)) if note_value is not None else None,
+                            'absent': is_absent
+                        }
+                    )
+                else:
+                    note_obj, created = CompositionNote.objects.update_or_create(
+                        eleve=eleve,
+                        matiere=matiere,
+                        periode=periode,
+                        annee_scolaire=annee_scolaire,
+                        defaults={
+                            'note': Decimal(str(note_value)) if note_value is not None else None,
+                            'absent': is_absent
+                        }
+                    )
+                
+                saved_count += 1
+                
+            except (Eleve.DoesNotExist, MatiereNote.DoesNotExist) as e:
+                continue
+        
+        return JsonResponse({'success': True, 'saved': saved_count})
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Données JSON invalides'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

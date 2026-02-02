@@ -12,7 +12,9 @@ from .views_import import (
     get_matieres_classe,
     get_evaluations_matiere,
     import_intelligent,
-    telecharger_template_intelligent
+    telecharger_template_intelligent,
+    saisie_intelligente,
+    saisie_intelligente_save
 )
 from .views_maternelle import (
     saisie_evaluation_maternelle,
@@ -135,4 +137,8 @@ urlpatterns = [
     # Importation intelligente - Template avec toutes les matières en colonnes
     path('import-intelligent/', import_intelligent, name='import_intelligent'),
     path('template-intelligent/', telecharger_template_intelligent, name='telecharger_template_intelligent'),
+    
+    # Saisie intelligente - Toutes les matières en colonnes
+    path('saisie-intelligente/', saisie_intelligente, name='saisie_intelligente'),
+    path('saisie-intelligente/save/', saisie_intelligente_save, name='saisie_intelligente_save'),
 ]
