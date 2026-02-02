@@ -43,10 +43,10 @@ def generer_template_intelligent(classe_id, periode, system_type='trimestre'):
     # Trouver la classe d'élèves correspondante
     classe_eleve = _trouver_classe_eleve(classe)
     
-    # Récupérer les élèves
+    # Récupérer les élèves (triés par ordre alphabétique: nom puis prénom)
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
     
     # Détecter le niveau scolaire pour la note max
     from .calculs_moyennes import detecter_niveau_scolaire

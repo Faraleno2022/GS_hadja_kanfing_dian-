@@ -9080,7 +9080,7 @@ def fiche_saisie_notes_pdf(request):
     
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
     
     # Déterminer les colonnes selon le système
     if system_type == 'semestre':
@@ -9211,7 +9211,7 @@ def fiche_report_notes_pdf(request):
     
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
     
     # Récupérer l'école
     user_profil = getattr(request.user, 'profil', None)
