@@ -75,6 +75,10 @@
     .notes-card.orange:hover { background: linear-gradient(135deg, #fff3e0 0%, #ffffff 100%); }
     .notes-card.orange .notes-card-icon { color: #ff9800; }
     
+    .notes-card.magic { border-left: 5px solid #9b59b6; }
+    .notes-card.magic:hover { background: linear-gradient(135deg, #f5eef8 0%, #ffffff 100%); }
+    .notes-card.magic .notes-card-icon { color: #9b59b6; }
+    
     .page-header {
         background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
         color: white;
@@ -191,6 +195,17 @@
                 <h3 class="notes-card-title">Importer des Notes</h3>
                 <p class="notes-card-description">
                     Importer rapidement des notes depuis Excel ou CSV
+                </p>
+            </a>
+        </div>
+
+        <!-- Importation Intelligente -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:import_intelligent' %}" class="notes-card magic">
+                <i class="fas fa-magic notes-card-icon"></i>
+                <h3 class="notes-card-title">Importation Intelligente</h3>
+                <p class="notes-card-description">
+                    Importer toutes les matières d'une classe en une seule fois
                 </p>
             </a>
         </div>
