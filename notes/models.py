@@ -221,7 +221,7 @@ class CompositionNote(models.Model):
     matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='compositions')
     periode = models.CharField(max_length=20, choices=PERIODE_CHOICES, verbose_name="Période")
     annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
-    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
+    note = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Note sur 20")
     absent = models.BooleanField(default=False, verbose_name="Absent")
     
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
