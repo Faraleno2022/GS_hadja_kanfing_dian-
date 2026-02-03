@@ -246,8 +246,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for col in colonnes_periode1 %}
                         {% if 'Moy' in col %}
@@ -264,8 +264,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for col in colonnes_periode1 %}
                     <td class="empty-cell"></td>
@@ -319,8 +319,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for col in colonnes_periode2 %}
                         {% if 'Moy' in col %}
@@ -337,8 +337,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for col in colonnes_periode2 %}
                     <td class="empty-cell"></td>
@@ -395,8 +395,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for col in colonnes_periode1 %}
                         {% if 'Moy' in col %}
@@ -413,8 +413,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for col in colonnes_periode1 %}
                     <td class="empty-cell"></td>
@@ -468,8 +468,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for col in colonnes_periode2 %}
                         {% if 'Moy' in col %}
@@ -486,8 +486,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for col in colonnes_periode2 %}
                     <td class="empty-cell"></td>
@@ -541,8 +541,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for col in colonnes_periode3 %}
                         {% if 'Moy' in col %}
@@ -559,8 +559,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for col in colonnes_periode3 %}
                     <td class="empty-cell"></td>

@@ -262,8 +262,8 @@
             <thead>
                 <tr>
                     <th class="col-num">N°</th>
-                    <th class="col-nom">Nom</th>
                     <th class="col-prenom">Prénoms</th>
+                    <th class="col-nom">Nom</th>
                     <th class="col-sexe">Sexe</th>
                     {% for matiere in matieres %}
                     <th class="col-matiere" title="{{ matiere.nom }}">{{ matiere.nom|truncatechars:15 }}</th>
@@ -276,8 +276,8 @@
                 {% for eleve in eleves %}
                 <tr>
                     <td>{{ forloop.counter }}</td>
-                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td class="col-prenom">{{ eleve.prenom }}</td>
+                    <td class="col-nom">{{ eleve.nom }}</td>
                     <td>{{ eleve.sexe|default:"" }}</td>
                     {% for matiere in matieres %}
                     <td class="empty-cell"></td>

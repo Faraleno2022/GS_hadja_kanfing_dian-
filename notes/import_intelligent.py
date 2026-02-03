@@ -43,22 +43,22 @@ def generer_template_intelligent(classe_id, periode, system_type='trimestre'):
     # Trouver la classe d'élèves correspondante
     classe_eleve = _trouver_classe_eleve(classe)
     
-    # Récupérer les élèves (triés par ordre alphabétique: nom puis prénom)
+    # Récupérer les élèves (triés par ordre alphabétique: prénom puis nom)
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
     
     # Détecter le niveau scolaire pour la note max
     from .calculs_moyennes import detecter_niveau_scolaire
     niveau = detecter_niveau_scolaire(classe.nom)
     note_max = 10 if niveau == 'PRIMAIRE' else 20
     
-    # Construire les données (Nom avant Prénoms pour ordre alphabétique)
+    # Construire les données (Prénoms avant Nom, tri par prénom)
     data = {
         'N°': list(range(1, len(eleves) + 1)) if eleves else [1],
         'Matricule': [e.matricule for e in eleves] if eleves else [''],
-        'Nom': [e.nom for e in eleves] if eleves else [''],
         'Prénoms': [e.prenom for e in eleves] if eleves else [''],
+        'Nom': [e.nom for e in eleves] if eleves else [''],
         'Sexe': [e.sexe or '' for e in eleves] if eleves else [''],
     }
     
