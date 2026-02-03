@@ -9270,3 +9270,239 @@ def fiche_report_notes_pdf(request):
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
     return response
+
+
+@login_required
+def bulletin_maternelle_modele2_pdf(request, eleve_id, classe_id, trimestre):
+    """Génère le bulletin maternelle Modèle 2 (format tableau avec activités) en PDF"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    from eleves.models import Eleve, Classe as ClasseEleve
+    import base64
+    import os
+    
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer le bulletin
+    bulletin = BulletinMaternelle.objects.filter(
+        eleve=eleve, classe=classe_note, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).first()
+    
+    # Récupérer les appréciations
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    appreciations = AppreciationMaternelle.objects.filter(
+        eleve=eleve, matiere__in=matieres, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    if not appreciations.exists():
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve, matiere__in=matieres, trimestre=trimestre
+        ).select_related('matiere')
+    
+    # Créer un dictionnaire des notes par nom de matière normalisé
+    notes_dict = {}
+    for app in appreciations:
+        nom_matiere = app.matiere.nom.lower().strip()
+        notes_dict[nom_matiere] = {
+            'appreciation': app.appreciation,
+            'observation': app.commentaire if hasattr(app, 'commentaire') else '',
+            'absent': app.absent
+        }
+    
+    # Mapper les matières vers les activités du modèle 2
+    # Structure: matiere_activite -> {observation, appreciation}
+    notes_mapped = {
+        'francais_lecture': notes_dict.get('lecture', notes_dict.get('français - lecture', {})),
+        'francais_graphisme': notes_dict.get('graphisme', notes_dict.get('écriture', notes_dict.get('français - graphisme', {}))),
+        'francais_recitation': notes_dict.get('récitation', notes_dict.get('recitation', notes_dict.get('français - récitation', {}))),
+        'francais_oral': notes_dict.get('oral', notes_dict.get('langage', notes_dict.get('français - oral', {}))),
+        'maths_numeration': notes_dict.get('numération', notes_dict.get('numeration', notes_dict.get('maths - numération', {}))),
+        'maths_geometrie': notes_dict.get('géométrie', notes_dict.get('geometrie', notes_dict.get('maths - géométrie', {}))),
+        'maths_prenumerations': notes_dict.get('prénumérations', notes_dict.get('prenumerations', notes_dict.get('maths - prénumérations', {}))),
+        'explorer_civique': notes_dict.get('instruction civique', notes_dict.get('civique', notes_dict.get('explorer le monde', {}))),
+        'expression_coloriage': notes_dict.get('coloriage', notes_dict.get('dessin', notes_dict.get('expression', {}))),
+        'activites_espace': notes_dict.get('espace', notes_dict.get('situation dans l\'espace', {})),
+        'activites_temps': notes_dict.get('temps', notes_dict.get('situation dans le temps', {})),
+    }
+    
+    # Calculer rang et effectif
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    rang_info = rangs_dict.get(eleve.id, {})
+    
+    # Compter les élèves
+    classe_eleve = ClasseEleve.objects.filter(
+        nom=classe_note.nom,
+        annee_scolaire=classe_note.annee_scolaire,
+        ecole=classe_note.ecole
+    ).first()
+    effectif = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').count() if classe_eleve else 0
+    
+    # Encoder logo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole and ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    context = {
+        'eleve': eleve,
+        'classe': classe_note,
+        'ecole': ecole,
+        'trimestre': trimestre,
+        'trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre),
+        'annee_scolaire': classe_note.annee_scolaire,
+        'notes_dict': notes_mapped,
+        'rang': rang_info.get('rang', ''),
+        'effectif': effectif,
+        'appreciation_generale': bulletin.appreciation_generale if bulletin else '',
+        'enseignant': '',
+        'logo_base64': logo_base64,
+        'date_impression': timezone.now(),
+    }
+    
+    html_content = render_to_string('notes/maternelle/bulletin_modele2_pdf.html', context)
+    pdf_file = HTML(string=html_content).write_pdf()
+    
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="bulletin_m2_{eleve.nom}_{eleve.prenom}_{trimestre}.pdf"'
+    return response
+
+
+@login_required
+def bulletins_classe_maternelle_modele2_pdf(request):
+    """Génère tous les bulletins maternelle Modèle 2 d'une classe en un seul PDF"""
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    from .models import AppreciationMaternelle, BulletinMaternelle
+    from .utils_rangs import calculer_rangs_classe_periode
+    from eleves.models import Eleve, Classe as ClasseEleve
+    import base64
+    import os
+    
+    classe_id = request.GET.get('classe')
+    trimestre = request.GET.get('trimestre', 'TRIMESTRE_1')
+    
+    if not classe_id:
+        messages.error(request, "Veuillez sélectionner une classe")
+        return redirect('notes:consulter_notes')
+    
+    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    
+    # Récupérer les élèves
+    classe_eleve = ClasseEleve.objects.filter(
+        nom=classe_note.nom,
+        annee_scolaire=classe_note.annee_scolaire,
+        ecole=classe_note.ecole
+    ).first()
+    
+    if not classe_eleve:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom__iexact=classe_note.nom,
+            annee_scolaire=classe_note.annee_scolaire
+        ).first()
+    
+    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')) if classe_eleve else []
+    
+    if not eleves:
+        messages.warning(request, "Aucun élève trouvé dans cette classe.")
+        return redirect('notes:consulter_notes')
+    
+    # Récupérer les rangs
+    rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+    effectif = len(eleves)
+    
+    # Récupérer les matières
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    
+    # Encoder logo
+    ecole = classe_note.ecole
+    logo_base64 = ''
+    if ecole and ecole.logo:
+        try:
+            if os.path.exists(ecole.logo.path):
+                with open(ecole.logo.path, 'rb') as f:
+                    logo_base64 = base64.b64encode(f.read()).decode('utf-8')
+        except: pass
+    
+    # Générer les bulletins
+    bulletins_html = []
+    for eleve in eleves:
+        # Récupérer le bulletin
+        bulletin = BulletinMaternelle.objects.filter(
+            eleve=eleve, classe=classe_note, trimestre=trimestre,
+            annee_scolaire=classe_note.annee_scolaire
+        ).first()
+        
+        # Récupérer les appréciations
+        appreciations = AppreciationMaternelle.objects.filter(
+            eleve=eleve, matiere__in=matieres, trimestre=trimestre,
+            annee_scolaire=classe_note.annee_scolaire
+        ).select_related('matiere')
+        
+        if not appreciations.exists():
+            appreciations = AppreciationMaternelle.objects.filter(
+                eleve=eleve, matiere__in=matieres, trimestre=trimestre
+            ).select_related('matiere')
+        
+        # Créer dictionnaire des notes
+        notes_dict = {}
+        for app in appreciations:
+            nom_matiere = app.matiere.nom.lower().strip()
+            notes_dict[nom_matiere] = {
+                'appreciation': app.appreciation,
+                'observation': app.commentaire if hasattr(app, 'commentaire') else '',
+                'absent': app.absent
+            }
+        
+        # Mapper les matières
+        notes_mapped = {
+            'francais_lecture': notes_dict.get('lecture', notes_dict.get('français - lecture', {})),
+            'francais_graphisme': notes_dict.get('graphisme', notes_dict.get('écriture', {})),
+            'francais_recitation': notes_dict.get('récitation', notes_dict.get('recitation', {})),
+            'francais_oral': notes_dict.get('oral', notes_dict.get('langage', {})),
+            'maths_numeration': notes_dict.get('numération', notes_dict.get('numeration', {})),
+            'maths_geometrie': notes_dict.get('géométrie', notes_dict.get('geometrie', {})),
+            'maths_prenumerations': notes_dict.get('prénumérations', notes_dict.get('prenumerations', {})),
+            'explorer_civique': notes_dict.get('instruction civique', notes_dict.get('civique', {})),
+            'expression_coloriage': notes_dict.get('coloriage', notes_dict.get('dessin', {})),
+            'activites_espace': notes_dict.get('espace', {}),
+            'activites_temps': notes_dict.get('temps', {}),
+        }
+        
+        rang_info = rangs_dict.get(eleve.id, {})
+        
+        context = {
+            'eleve': eleve,
+            'classe': classe_note,
+            'ecole': ecole,
+            'trimestre': trimestre,
+            'trimestre_display': dict(BulletinMaternelle.TRIMESTRE_CHOICES).get(trimestre, trimestre),
+            'annee_scolaire': classe_note.annee_scolaire,
+            'notes_dict': notes_mapped,
+            'rang': rang_info.get('rang', ''),
+            'effectif': effectif,
+            'appreciation_generale': bulletin.appreciation_generale if bulletin else '',
+            'enseignant': '',
+            'logo_base64': logo_base64,
+        }
+        
+        bulletin_html = render_to_string('notes/maternelle/bulletin_modele2_pdf.html', context)
+        bulletins_html.append(bulletin_html)
+    
+    # Combiner tous les bulletins avec saut de page
+    combined_html = '<div style="page-break-after: always;"></div>'.join(bulletins_html)
+    
+    pdf_file = HTML(string=combined_html).write_pdf()
+    
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe_note.nom.replace(' ', '_').replace('/', '-')
+    response['Content-Disposition'] = f'inline; filename="bulletins_m2_{nom_classe_clean}_{trimestre}.pdf"'
+    return response

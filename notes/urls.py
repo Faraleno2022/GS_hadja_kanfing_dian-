@@ -141,4 +141,10 @@ urlpatterns = [
     # Saisie intelligente - Toutes les matières en colonnes
     path('saisie-intelligente/', saisie_intelligente, name='saisie_intelligente'),
     path('saisie-intelligente/save/', saisie_intelligente_save, name='saisie_intelligente_save'),
+    
+    # Bulletin Maternelle Modèle 2 (format tableau avec activités)
+    path('maternelle/bulletin-modele2/<int:eleve_id>/<int:classe_id>/<str:trimestre>/pdf/', 
+         views.bulletin_maternelle_modele2_pdf, name='bulletin_maternelle_modele2_pdf'),
+    path('maternelle/bulletins-classe-modele2-pdf/', 
+         views.bulletins_classe_maternelle_modele2_pdf, name='bulletins_classe_maternelle_modele2_pdf'),
 ]

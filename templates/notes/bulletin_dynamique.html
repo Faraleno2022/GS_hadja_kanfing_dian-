@@ -700,11 +700,20 @@
         
         <!-- Bouton PDF de toute la classe -->
         {% if est_maternelle %}
-        <a href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" 
-           class="btn btn-lg btn-primary" target="_blank"
-           title="Télécharger tous les bulletins maternelle de la classe en PDF">
-            <i class="fas fa-users me-2"></i>PDF Classe Entière
-        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-lg btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-users me-2"></i>PDF Classe Entière
+            </button>
+            <ul class="dropdown-menu">
+                <li class="dropdown-header">Choisir le modèle</li>
+                <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
+                    <i class="fas fa-file-pdf me-1"></i>Modèle 1 (Lettres A-E)
+                </a></li>
+                <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_modele2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
+                    <i class="fas fa-table me-1"></i>Modèle 2 (Tableau Activités)
+                </a></li>
+            </ul>
+        </div>
         {% else %}
         <a href="{% url 'notes:bulletins_classe_pdf' classe_selectionnee.id periode_selectionnee %}" 
            class="btn btn-lg btn-primary" target="_blank"
@@ -724,11 +733,20 @@
     <div class="text-center mb-3 no-print btn-group">
         <!-- Bouton PDF de toute la classe (même sans élève sélectionné) -->
         {% if est_maternelle %}
-        <a href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" 
-           class="btn btn-lg btn-primary" target="_blank"
-           title="Télécharger tous les bulletins maternelle de la classe en PDF">
-            <i class="fas fa-users me-2"></i>PDF Tous les Bulletins
-        </a>
+        <div class="btn-group">
+            <button type="button" class="btn btn-lg btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-users me-2"></i>PDF Tous les Bulletins
+            </button>
+            <ul class="dropdown-menu">
+                <li class="dropdown-header">Choisir le modèle</li>
+                <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_v2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
+                    <i class="fas fa-file-pdf me-1"></i>Modèle 1 (Lettres A-E)
+                </a></li>
+                <li><a class="dropdown-item" href="{% url 'notes:bulletins_classe_maternelle_modele2_pdf' %}?classe={{ classe_selectionnee.id }}&trimestre={{ periode_selectionnee }}" target="_blank">
+                    <i class="fas fa-table me-1"></i>Modèle 2 (Tableau Activités)
+                </a></li>
+            </ul>
+        </div>
         {% else %}
         <a href="{% url 'notes:bulletins_classe_pdf' classe_selectionnee.id periode_selectionnee %}" 
            class="btn btn-lg btn-primary" target="_blank"
