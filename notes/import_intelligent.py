@@ -53,12 +53,12 @@ def generer_template_intelligent(classe_id, periode, system_type='trimestre'):
     niveau = detecter_niveau_scolaire(classe.nom)
     note_max = 10 if niveau == 'PRIMAIRE' else 20
     
-    # Construire les données
+    # Construire les données (Nom avant Prénoms pour ordre alphabétique)
     data = {
         'N°': list(range(1, len(eleves) + 1)) if eleves else [1],
         'Matricule': [e.matricule for e in eleves] if eleves else [''],
-        'Prénoms': [e.prenom for e in eleves] if eleves else [''],
         'Nom': [e.nom for e in eleves] if eleves else [''],
+        'Prénoms': [e.prenom for e in eleves] if eleves else [''],
         'Sexe': [e.sexe or '' for e in eleves] if eleves else [''],
     }
     
