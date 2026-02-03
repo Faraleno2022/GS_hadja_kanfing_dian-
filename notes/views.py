@@ -9314,20 +9314,27 @@ def bulletin_maternelle_modele2_pdf(request, eleve_id, classe_id, trimestre):
             'absent': app.absent
         }
     
-    # Mapper les matières vers les activités du modèle 2
-    # Structure: matiere_activite -> {observation, appreciation}
+    # Fonction helper pour trouver une matière par mots-clés
+    def trouver_matiere(*keywords):
+        for key, value in notes_dict.items():
+            for kw in keywords:
+                if kw.lower() in key:
+                    return value
+        return {}
+    
+    # Mapper les matières vers les activités du modèle 2 avec recherche flexible
     notes_mapped = {
-        'francais_lecture': notes_dict.get('lecture', notes_dict.get('français - lecture', {})),
-        'francais_graphisme': notes_dict.get('graphisme', notes_dict.get('écriture', notes_dict.get('français - graphisme', {}))),
-        'francais_recitation': notes_dict.get('récitation', notes_dict.get('recitation', notes_dict.get('français - récitation', {}))),
-        'francais_oral': notes_dict.get('oral', notes_dict.get('langage', notes_dict.get('français - oral', {}))),
-        'maths_numeration': notes_dict.get('numération', notes_dict.get('numeration', notes_dict.get('maths - numération', {}))),
-        'maths_geometrie': notes_dict.get('géométrie', notes_dict.get('geometrie', notes_dict.get('maths - géométrie', {}))),
-        'maths_prenumerations': notes_dict.get('prénumérations', notes_dict.get('prenumerations', notes_dict.get('maths - prénumérations', {}))),
-        'explorer_civique': notes_dict.get('instruction civique', notes_dict.get('civique', notes_dict.get('explorer le monde', {}))),
-        'expression_coloriage': notes_dict.get('coloriage', notes_dict.get('dessin', notes_dict.get('expression', {}))),
-        'activites_espace': notes_dict.get('espace', notes_dict.get('situation dans l\'espace', {})),
-        'activites_temps': notes_dict.get('temps', notes_dict.get('situation dans le temps', {})),
+        'francais_lecture': trouver_matiere('lecture'),
+        'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture'),
+        'francais_recitation': trouver_matiere('récitation', 'recitation'),
+        'francais_oral': trouver_matiere('oral', 'langage'),
+        'maths_numeration': trouver_matiere('numération', 'numeration'),
+        'maths_geometrie': trouver_matiere('géométrie', 'geometrie'),
+        'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération'),
+        'explorer_civique': trouver_matiere('civique', 'moral', 'explorer'),
+        'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création'),
+        'activites_espace': trouver_matiere('espace'),
+        'activites_temps': trouver_matiere('temps'),
     }
     
     # Calculer rang et effectif
@@ -9462,19 +9469,27 @@ def bulletins_classe_maternelle_modele2_pdf(request):
                 'absent': app.absent
             }
         
-        # Mapper les matières
+        # Fonction helper pour trouver une matière par mots-clés
+        def trouver_matiere(*keywords):
+            for key, value in notes_dict.items():
+                for kw in keywords:
+                    if kw.lower() in key:
+                        return value
+            return {}
+        
+        # Mapper les matières avec recherche flexible
         notes_mapped = {
-            'francais_lecture': notes_dict.get('lecture', notes_dict.get('français - lecture', {})),
-            'francais_graphisme': notes_dict.get('graphisme', notes_dict.get('écriture', {})),
-            'francais_recitation': notes_dict.get('récitation', notes_dict.get('recitation', {})),
-            'francais_oral': notes_dict.get('oral', notes_dict.get('langage', {})),
-            'maths_numeration': notes_dict.get('numération', notes_dict.get('numeration', {})),
-            'maths_geometrie': notes_dict.get('géométrie', notes_dict.get('geometrie', {})),
-            'maths_prenumerations': notes_dict.get('prénumérations', notes_dict.get('prenumerations', {})),
-            'explorer_civique': notes_dict.get('instruction civique', notes_dict.get('civique', {})),
-            'expression_coloriage': notes_dict.get('coloriage', notes_dict.get('dessin', {})),
-            'activites_espace': notes_dict.get('espace', {}),
-            'activites_temps': notes_dict.get('temps', {}),
+            'francais_lecture': trouver_matiere('lecture'),
+            'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture'),
+            'francais_recitation': trouver_matiere('récitation', 'recitation'),
+            'francais_oral': trouver_matiere('oral', 'langage'),
+            'maths_numeration': trouver_matiere('numération', 'numeration'),
+            'maths_geometrie': trouver_matiere('géométrie', 'geometrie'),
+            'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération'),
+            'explorer_civique': trouver_matiere('civique', 'moral', 'explorer'),
+            'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création'),
+            'activites_espace': trouver_matiere('espace'),
+            'activites_temps': trouver_matiere('temps'),
         }
         
         rang_info = rangs_dict.get(eleve.id, {})
