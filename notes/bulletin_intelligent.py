@@ -2192,12 +2192,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
         ('TOPPADDING', (0, 0), (-1, 0), 6),
         ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -2), 8),
+        ('FONTSIZE', (0, 1), (-1, -2), 10),
         ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ('LEFTPADDING', (0, 1), (0, -1), 5),
@@ -2221,9 +2221,9 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             ('FONTNAME', (col_moy, 1), (col_moy, -1), 'Helvetica-Bold'),
             ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
             ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
-            # Réduire la taille de police pour les colonnes nombreuses
-            ('FONTSIZE', (0, 0), (-1, 0), 7),
-            ('FONTSIZE', (0, 1), (-1, -1), 6),
+            # Taille de police pour les colonnes nombreuses
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
         ])
     else:
         if est_primaire:
