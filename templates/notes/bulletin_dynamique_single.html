@@ -69,30 +69,30 @@
     <!-- Tableau des notes / appréciations -->
     {% if est_maternelle %}
     <!-- BULLETIN MATERNELLE: Tableau des appréciations -->
-    <table class="notes-table" style="font-size: 11px;">
+    <table class="notes-table" style="font-size: 13px;">
         <thead>
             <tr style="background: linear-gradient(135deg, #4a90d9 0%, #667eea 100%);">
-                <th style="width: 35%; padding: 10px; font-size: 12px; font-weight: bold; color: white;">DOMAINE D'ACTIVITÉ</th>
-                <th style="width: 25%; padding: 10px; font-size: 12px; font-weight: bold; color: white;">APPRÉCIATION</th>
-                <th style="width: 40%; padding: 10px; font-size: 12px; font-weight: bold; color: white;">OBSERVATIONS</th>
+                <th style="width: 35%; padding: 10px; font-size: 14px; font-weight: bold; color: white;">DOMAINE D'ACTIVITÉ</th>
+                <th style="width: 25%; padding: 10px; font-size: 14px; font-weight: bold; color: white;">APPRÉCIATION</th>
+                <th style="width: 40%; padding: 10px; font-size: 14px; font-weight: bold; color: white;">OBSERVATIONS</th>
             </tr>
         </thead>
         <tbody>
             {% for matiere_note in bulletin_data.matieres_notes %}
             <tr style="background: {% cycle '#f8f9fa' '#ffffff' %};">
-                <td class="matiere-col" style="padding: 8px; font-weight: bold; font-size: 11px;">{{ matiere_note.matiere.nom }}</td>
+                <td class="matiere-col" style="padding: 8px; font-weight: bold; font-size: 13px;">{{ matiere_note.matiere.nom }}</td>
                 <td style="text-align: center; padding: 8px;">
                     {% if matiere_note.absent %}
-                        <span style="color: red; font-weight: bold; font-size: 11px;">ABSENT</span>
+                        <span style="color: red; font-weight: bold; font-size: 13px;">ABSENT</span>
                     {% elif matiere_note.appreciation %}
                         {% if matiere_note.appreciation == 'TRES_BIEN_ACQUIS' %}
-                            <span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Très Bien Acquis</span>
+                            <span style="background: #28a745; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">Très Bien Acquis</span>
                         {% elif matiere_note.appreciation == 'BIEN_ACQUIS' %}
-                            <span style="background: #007bff; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Bien Acquis</span>
+                            <span style="background: #007bff; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">Bien Acquis</span>
                         {% elif matiere_note.appreciation == 'EN_COURS' %}
-                            <span style="background: #ffc107; color: #212529; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">En Cours</span>
+                            <span style="background: #ffc107; color: #212529; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">En Cours</span>
                         {% elif matiere_note.appreciation == 'NON_ACQUIS' %}
-                            <span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 10px;">Non Acquis</span>
+                            <span style="background: #dc3545; color: white; padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 12px;">Non Acquis</span>
                         {% else %}
                             <span style="color: #999;">-</span>
                         {% endif %}
@@ -100,7 +100,7 @@
                         <span style="color: #999;">-</span>
                     {% endif %}
                 </td>
-                <td style="padding: 8px; font-size: 10px; color: #333; font-style: italic;">
+                <td style="padding: 8px; font-size: 12px; color: #333; font-style: italic;">
                     {% if matiere_note.commentaire %}
                         {{ matiere_note.commentaire }}
                     {% elif matiere_note.absent %}
