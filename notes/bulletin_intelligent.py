@@ -748,26 +748,26 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Adapter la taille de police selon le nombre de matières pour éviter le chevauchement
     nb_matieres = len(data) - 2  # -2 pour en-tête et ligne TOTAL
     if nb_matieres > 15:
-        # Beaucoup de matières: police très petite et padding réduit
-        font_header = 7
-        font_body = 6
-        font_total = 7
-        padding_top = 2
-        padding_bottom = 2
-    elif nb_matieres > 12:
-        # Nombreuses matières: police petite
-        font_header = 8
-        font_body = 7
-        font_total = 8
-        padding_top = 3
-        padding_bottom = 3
-    else:
-        # Normal
+        # Beaucoup de matières: police réduite et padding réduit
         font_header = 9
         font_body = 8
         font_total = 9
+        padding_top = 3
+        padding_bottom = 3
+    elif nb_matieres > 12:
+        # Nombreuses matières: police moyenne
+        font_header = 10
+        font_body = 9
+        font_total = 10
         padding_top = 4
         padding_bottom = 4
+    else:
+        # Normal
+        font_header = 11
+        font_body = 10
+        font_total = 11
+        padding_top = 5
+        padding_bottom = 5
     
     # Style du tableau - base
     style = [
@@ -812,9 +812,9 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             ('FONTNAME', (col_moy, 1), (col_moy, -1), 'Helvetica-Bold'),
             ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
             ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
-            # Réduire la taille de police pour les colonnes nombreuses
-            ('FONTSIZE', (0, 0), (-1, 0), 7),
-            ('FONTSIZE', (0, 1), (-1, -1), 6),
+            # Taille de police pour les colonnes nombreuses
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
         ])
     else:
         if est_primaire:
