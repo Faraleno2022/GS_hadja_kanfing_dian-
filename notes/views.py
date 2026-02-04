@@ -8783,33 +8783,46 @@ def bulletins_classe_maternelle_v2_pdf(request):
     # Récupérer les matières de la classe
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
     
+    # OPTIMISATION: Précharger TOUS les bulletins et appréciations en une seule requête
+    eleves_ids = [e.id for e in eleves]
+    
+    # Précharger tous les bulletins de la classe en une requête
+    all_bulletins = BulletinMaternelle.objects.filter(
+        eleve_id__in=eleves_ids, classe=classe_note, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    )
+    bulletins_dict = {b.eleve_id: b for b in all_bulletins}
+    
+    # Précharger toutes les appréciations en une requête
+    all_appreciations = AppreciationMaternelle.objects.filter(
+        eleve_id__in=eleves_ids, matiere__in=matieres, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere')
+    
+    # Si pas d'appréciations avec année, essayer sans
+    if not all_appreciations.exists():
+        all_appreciations = AppreciationMaternelle.objects.filter(
+            eleve_id__in=eleves_ids, matiere__in=matieres, trimestre=trimestre
+        ).select_related('matiere')
+    
+    # Organiser les appréciations par élève
+    appreciations_par_eleve = {}
+    for app in all_appreciations:
+        if app.eleve_id not in appreciations_par_eleve:
+            appreciations_par_eleve[app.eleve_id] = {}
+        appreciations_par_eleve[app.eleve_id][app.matiere.id] = app
+    
     # Préparer les données pour chaque élève
     bulletins_data = []
     for eleve in eleves:
-        # Récupérer le bulletin
-        bulletin = BulletinMaternelle.objects.filter(
-            eleve=eleve, classe=classe_note, trimestre=trimestre,
-            annee_scolaire=classe_note.annee_scolaire
-        ).first()
+        # Récupérer le bulletin depuis le cache
+        bulletin = bulletins_dict.get(eleve.id)
         
-        # Récupérer les appréciations
-        appreciations = AppreciationMaternelle.objects.filter(
-            eleve=eleve, matiere__in=matieres, trimestre=trimestre,
-            annee_scolaire=classe_note.annee_scolaire
-        ).select_related('matiere')
-        
-        if not appreciations.exists():
-            appreciations = AppreciationMaternelle.objects.filter(
-                eleve=eleve, matiere__in=matieres, trimestre=trimestre
-            ).select_related('matiere')
+        # Récupérer les appréciations depuis le cache
+        appreciations_dict = appreciations_par_eleve.get(eleve.id, {})
         
         # Préparer les notes - TOUJOURS inclure toutes les matières
         notes_data = []
-        
-        # Créer un dictionnaire des appréciations par matière
-        appreciations_dict = {}
-        for app in appreciations:
-            appreciations_dict[app.matiere.id] = app
         
         # Pour chaque matière, créer une entrée (avec ou sans appréciation)
         for matiere in matieres:
@@ -9430,9 +9443,9 @@ def bulletins_classe_maternelle_modele2_pdf(request):
     effectif = len(eleves)
     
     # Récupérer les matières
-    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+    matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
     
-    # Encoder logo
+    # Encoder logo UNE SEULE FOIS
     ecole = classe_note.ecole
     logo_base64 = ''
     if ecole and ecole.logo:
@@ -9442,35 +9455,45 @@ def bulletins_classe_maternelle_modele2_pdf(request):
                     logo_base64 = base64.b64encode(f.read()).decode('utf-8')
         except: pass
     
+    # OPTIMISATION: Précharger TOUS les bulletins et appréciations en masse
+    eleves_ids = [e.id for e in eleves]
+    
+    # Précharger tous les bulletins
+    all_bulletins = BulletinMaternelle.objects.filter(
+        eleve_id__in=eleves_ids, classe=classe_note, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    )
+    bulletins_dict = {b.eleve_id: b for b in all_bulletins}
+    
+    # Précharger toutes les appréciations
+    all_appreciations = list(AppreciationMaternelle.objects.filter(
+        eleve_id__in=eleves_ids, matiere__in=matieres, trimestre=trimestre,
+        annee_scolaire=classe_note.annee_scolaire
+    ).select_related('matiere'))
+    
+    if not all_appreciations:
+        all_appreciations = list(AppreciationMaternelle.objects.filter(
+            eleve_id__in=eleves_ids, matiere__in=matieres, trimestre=trimestre
+        ).select_related('matiere'))
+    
+    # Organiser les appréciations par élève
+    appreciations_par_eleve = {}
+    for app in all_appreciations:
+        if app.eleve_id not in appreciations_par_eleve:
+            appreciations_par_eleve[app.eleve_id] = {}
+        nom_matiere = app.matiere.nom.lower().strip()
+        appreciations_par_eleve[app.eleve_id][nom_matiere] = {
+            'appreciation': app.appreciation,
+            'observation': app.commentaire if hasattr(app, 'commentaire') else '',
+            'absent': app.absent
+        }
+    
     # Générer les bulletins
     bulletins_html = []
     for eleve in eleves:
-        # Récupérer le bulletin
-        bulletin = BulletinMaternelle.objects.filter(
-            eleve=eleve, classe=classe_note, trimestre=trimestre,
-            annee_scolaire=classe_note.annee_scolaire
-        ).first()
-        
-        # Récupérer les appréciations
-        appreciations = AppreciationMaternelle.objects.filter(
-            eleve=eleve, matiere__in=matieres, trimestre=trimestre,
-            annee_scolaire=classe_note.annee_scolaire
-        ).select_related('matiere')
-        
-        if not appreciations.exists():
-            appreciations = AppreciationMaternelle.objects.filter(
-                eleve=eleve, matiere__in=matieres, trimestre=trimestre
-            ).select_related('matiere')
-        
-        # Créer dictionnaire des notes
-        notes_dict = {}
-        for app in appreciations:
-            nom_matiere = app.matiere.nom.lower().strip()
-            notes_dict[nom_matiere] = {
-                'appreciation': app.appreciation,
-                'observation': app.commentaire if hasattr(app, 'commentaire') else '',
-                'absent': app.absent
-            }
+        # Récupérer depuis le cache
+        bulletin = bulletins_dict.get(eleve.id)
+        notes_dict = appreciations_par_eleve.get(eleve.id, {})
         
         # Fonction helper pour trouver une matière par mots-clés (recherche intelligente)
         def trouver_matiere(*keywords):
