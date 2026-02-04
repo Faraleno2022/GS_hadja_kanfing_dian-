@@ -9314,27 +9314,30 @@ def bulletin_maternelle_modele2_pdf(request, eleve_id, classe_id, trimestre):
             'absent': app.absent
         }
     
-    # Fonction helper pour trouver une matière par mots-clés
+    # Fonction helper pour trouver une matière par mots-clés (recherche intelligente)
     def trouver_matiere(*keywords):
+        # Normaliser les mots-clés
+        keywords_lower = [kw.lower() for kw in keywords]
         for key, value in notes_dict.items():
-            for kw in keywords:
-                if kw.lower() in key:
+            key_normalized = key.lower().replace('-', ' ').replace('_', ' ')
+            for kw in keywords_lower:
+                if kw in key_normalized:
                     return value
         return {}
     
-    # Mapper les matières vers les activités du modèle 2 avec recherche flexible
+    # Mapper les matières vers les activités du modèle 2 avec recherche flexible et intelligente
     notes_mapped = {
-        'francais_lecture': trouver_matiere('lecture'),
-        'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture'),
-        'francais_recitation': trouver_matiere('récitation', 'recitation'),
-        'francais_oral': trouver_matiere('oral', 'langage'),
-        'maths_numeration': trouver_matiere('numération', 'numeration'),
-        'maths_geometrie': trouver_matiere('géométrie', 'geometrie'),
-        'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération'),
-        'explorer_civique': trouver_matiere('civique', 'moral', 'explorer'),
-        'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création'),
-        'activites_espace': trouver_matiere('espace'),
-        'activites_temps': trouver_matiere('temps'),
+        'francais_lecture': trouver_matiere('lecture', 'lect'),
+        'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture', 'graph'),
+        'francais_recitation': trouver_matiere('récitation', 'recitation', 'récit', 'poésie', 'poesie'),
+        'francais_oral': trouver_matiere('oral', 'langage', 'expression orale', 'lang'),
+        'maths_numeration': trouver_matiere('numération', 'numeration', 'numer', 'nombre'),
+        'maths_geometrie': trouver_matiere('géométrie', 'geometrie', 'géom', 'geom', 'forme'),
+        'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération', 'pre-num', 'prénum'),
+        'explorer_civique': trouver_matiere('civique', 'moral', 'explorer', 'instruction', 'icm', 'éducation civique'),
+        'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création', 'art', 'plastique', 'color'),
+        'activites_espace': trouver_matiere('espace', 'spatial', 'repérage'),
+        'activites_temps': trouver_matiere('temps', 'temporel', 'chronolog'),
     }
     
     # Calculer rang et effectif
@@ -9469,27 +9472,29 @@ def bulletins_classe_maternelle_modele2_pdf(request):
                 'absent': app.absent
             }
         
-        # Fonction helper pour trouver une matière par mots-clés
+        # Fonction helper pour trouver une matière par mots-clés (recherche intelligente)
         def trouver_matiere(*keywords):
+            keywords_lower = [kw.lower() for kw in keywords]
             for key, value in notes_dict.items():
-                for kw in keywords:
-                    if kw.lower() in key:
+                key_normalized = key.lower().replace('-', ' ').replace('_', ' ')
+                for kw in keywords_lower:
+                    if kw in key_normalized:
                         return value
             return {}
         
-        # Mapper les matières avec recherche flexible
+        # Mapper les matières avec recherche flexible et intelligente
         notes_mapped = {
-            'francais_lecture': trouver_matiere('lecture'),
-            'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture'),
-            'francais_recitation': trouver_matiere('récitation', 'recitation'),
-            'francais_oral': trouver_matiere('oral', 'langage'),
-            'maths_numeration': trouver_matiere('numération', 'numeration'),
-            'maths_geometrie': trouver_matiere('géométrie', 'geometrie'),
-            'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération'),
-            'explorer_civique': trouver_matiere('civique', 'moral', 'explorer'),
-            'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création'),
-            'activites_espace': trouver_matiere('espace'),
-            'activites_temps': trouver_matiere('temps'),
+            'francais_lecture': trouver_matiere('lecture', 'lect'),
+            'francais_graphisme': trouver_matiere('graphisme', 'écriture', 'ecriture', 'graph'),
+            'francais_recitation': trouver_matiere('récitation', 'recitation', 'récit', 'poésie', 'poesie'),
+            'francais_oral': trouver_matiere('oral', 'langage', 'expression orale', 'lang'),
+            'maths_numeration': trouver_matiere('numération', 'numeration', 'numer', 'nombre'),
+            'maths_geometrie': trouver_matiere('géométrie', 'geometrie', 'géom', 'geom', 'forme'),
+            'maths_prenumerations': trouver_matiere('prénumération', 'prenumeration', 'pré-numération', 'pre-num', 'prénum'),
+            'explorer_civique': trouver_matiere('civique', 'moral', 'explorer', 'instruction', 'icm', 'éducation civique'),
+            'expression_coloriage': trouver_matiere('coloriage', 'dessin', 'expression', 'création', 'art', 'plastique', 'color'),
+            'activites_espace': trouver_matiere('espace', 'spatial', 'repérage'),
+            'activites_temps': trouver_matiere('temps', 'temporel', 'chronolog'),
         }
         
         rang_info = rangs_dict.get(eleve.id, {})

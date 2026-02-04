@@ -26,6 +26,27 @@
             width: 190mm;
             margin: 0 auto;
             padding: 5mm;
+            position: relative;
+        }
+        
+        /* Filigrane logo */
+        .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            opacity: 0.08;
+            z-index: -1;
+            width: 400px;
+            height: 400px;
+            pointer-events: none;
+        }
+        
+        .watermark img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: grayscale(100%);
         }
         
         /* En-tête */
@@ -279,11 +300,22 @@
     </style>
 </head>
 <body>
+    <!-- Filigrane logo -->
+    {% if logo_base64 %}
+    <div class="watermark">
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="">
+    </div>
+    {% elif ecole.logo %}
+    <div class="watermark">
+        <img src="{{ ecole.logo.url }}" alt="">
+    </div>
+    {% endif %}
+    
     <div class="bulletin-container">
         <!-- En-tête -->
         <div class="header">
             <div class="header-left">
-                <p><strong>MEP - U</strong></p>
+                <p><strong>MPUA</strong></p>
                 <p>IRE: {{ ecole.region|default:"KINDIA" }}</p>
                 <p>DPE: {{ ecole.prefecture|default:"COYAH" }}</p>
                 <p>EP: {{ ecole.nom|default:"GS HADJA KANFING DIANE" }}</p>
@@ -343,7 +375,15 @@
                         {% elif notes_dict.francais_lecture.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.francais_lecture.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.francais_lecture.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.francais_lecture.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.francais_lecture.appreciation == 'C' %}Bien
+                        {% elif notes_dict.francais_lecture.appreciation == 'D' %}Passable
+                        {% elif notes_dict.francais_lecture.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.francais_lecture.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Graphisme (écriture)</td>
@@ -355,7 +395,15 @@
                         {% elif notes_dict.francais_graphisme.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.francais_graphisme.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.francais_graphisme.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.francais_graphisme.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.francais_graphisme.appreciation == 'C' %}Bien
+                        {% elif notes_dict.francais_graphisme.appreciation == 'D' %}Passable
+                        {% elif notes_dict.francais_graphisme.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.francais_graphisme.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Récitation</td>
@@ -367,7 +415,15 @@
                         {% elif notes_dict.francais_recitation.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.francais_recitation.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.francais_recitation.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.francais_recitation.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.francais_recitation.appreciation == 'C' %}Bien
+                        {% elif notes_dict.francais_recitation.appreciation == 'D' %}Passable
+                        {% elif notes_dict.francais_recitation.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.francais_recitation.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Oral (Langage)</td>
@@ -379,7 +435,15 @@
                         {% elif notes_dict.francais_oral.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.francais_oral.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.francais_oral.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.francais_oral.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.francais_oral.appreciation == 'C' %}Bien
+                        {% elif notes_dict.francais_oral.appreciation == 'D' %}Passable
+                        {% elif notes_dict.francais_oral.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.francais_oral.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 
                 <!-- MATHS -->
@@ -394,7 +458,15 @@
                         {% elif notes_dict.maths_numeration.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.maths_numeration.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.maths_numeration.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.maths_numeration.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.maths_numeration.appreciation == 'C' %}Bien
+                        {% elif notes_dict.maths_numeration.appreciation == 'D' %}Passable
+                        {% elif notes_dict.maths_numeration.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.maths_numeration.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Géométrie</td>
@@ -406,7 +478,15 @@
                         {% elif notes_dict.maths_geometrie.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.maths_geometrie.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.maths_geometrie.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.maths_geometrie.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.maths_geometrie.appreciation == 'C' %}Bien
+                        {% elif notes_dict.maths_geometrie.appreciation == 'D' %}Passable
+                        {% elif notes_dict.maths_geometrie.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.maths_geometrie.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Prénumérations</td>
@@ -418,7 +498,15 @@
                         {% elif notes_dict.maths_prenumerations.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.maths_prenumerations.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.maths_prenumerations.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.maths_prenumerations.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.maths_prenumerations.appreciation == 'C' %}Bien
+                        {% elif notes_dict.maths_prenumerations.appreciation == 'D' %}Passable
+                        {% elif notes_dict.maths_prenumerations.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.maths_prenumerations.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 
                 <!-- EXPLORER LE MONDE -->
@@ -433,7 +521,15 @@
                         {% elif notes_dict.explorer_civique.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.explorer_civique.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.explorer_civique.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.explorer_civique.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.explorer_civique.appreciation == 'C' %}Bien
+                        {% elif notes_dict.explorer_civique.appreciation == 'D' %}Passable
+                        {% elif notes_dict.explorer_civique.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.explorer_civique.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 
                 <!-- EXPRESSION DE CRÉATION ET DE CRÉATION -->
@@ -448,7 +544,15 @@
                         {% elif notes_dict.expression_coloriage.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.expression_coloriage.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.expression_coloriage.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.expression_coloriage.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.expression_coloriage.appreciation == 'C' %}Bien
+                        {% elif notes_dict.expression_coloriage.appreciation == 'D' %}Passable
+                        {% elif notes_dict.expression_coloriage.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.expression_coloriage.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 
                 <!-- ACTIVITÉS DE VEILLE AU MILIEU -->
@@ -463,7 +567,15 @@
                         {% elif notes_dict.activites_espace.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.activites_espace.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.activites_espace.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.activites_espace.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.activites_espace.appreciation == 'C' %}Bien
+                        {% elif notes_dict.activites_espace.appreciation == 'D' %}Passable
+                        {% elif notes_dict.activites_espace.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.activites_espace.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
                 <tr>
                     <td class="activite-cell">Situation dans le temps</td>
@@ -475,7 +587,15 @@
                         {% elif notes_dict.activites_temps.appreciation == 'E' %}<span class="smiley smiley-e">😢</span>
                         {% endif %}
                     </td>
-                    <td>{{ notes_dict.activites_temps.appreciation|default:"" }}</td>
+                    <td>
+                        {% if notes_dict.activites_temps.appreciation == 'A' %}Excellent
+                        {% elif notes_dict.activites_temps.appreciation == 'B' %}Très Bien
+                        {% elif notes_dict.activites_temps.appreciation == 'C' %}Bien
+                        {% elif notes_dict.activites_temps.appreciation == 'D' %}Passable
+                        {% elif notes_dict.activites_temps.appreciation == 'E' %}Insuffisant
+                        {% else %}{{ notes_dict.activites_temps.appreciation|default:"" }}
+                        {% endif %}
+                    </td>
                 </tr>
             </tbody>
         </table>
