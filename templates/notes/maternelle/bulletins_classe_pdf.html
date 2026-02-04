@@ -494,90 +494,28 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <td><strong>APPRÉCIATION GÉNÉRALE</strong></td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'A+' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #27ae60;background:#27ae60;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'A' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #2ecc71;background:#2ecc71;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'B+' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #3498db;background:#3498db;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'B' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #17a2b8;background:#17a2b8;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'B-' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #f39c12;background:#f39c12;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'C' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e67e22;background:#e67e22;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
-                    </td>
-                    <td style="text-align:center;">
-                        {% if bulletin.lettre_generale == 'D' %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #e74c3c;background:#e74c3c;"></span>
-                        {% else %}
-                        <span style="display:inline-block;width:14px;height:14px;border:2px solid #333;"></span>
-                        {% endif %}
+                    <td><strong>TOTAL</strong></td>
+                    <td colspan="7" style="text-align:center;font-weight:bold;font-size:11pt;">
+                        {{ bulletin.lettre_generale|default:"" }}
                     </td>
                 </tr>
             </tfoot>
         </table>
         
-        <!-- Lignes Total et Profil de l'élève -->
+        <!-- Profil de l'enfant -->
         <table class="total-profil-table" style="width:100%;margin-top:15px;border-collapse:collapse;border:1px solid #333;">
             <tr>
-                <td style="width:50%;padding:10px;border:1px solid #333;font-weight:bold;background:#f8f9fa;font-size:9pt;">Total</td>
-                <td style="width:50%;padding:10px;border:1px solid #333;font-size:9pt;"></td>
+                <td colspan="2" style="padding:8px;border:1px solid #333;font-weight:bold;background:#f8f9fa;font-size:10pt;">Profil de l'enfant</td>
             </tr>
             <tr>
-                <td style="width:50%;padding:10px;border:1px solid #333;font-weight:bold;background:#f8f9fa;font-size:9pt;">Profil de l'élève</td>
-                <td style="width:50%;padding:10px;border:1px solid #333;font-size:9pt;"></td>
+                <td colspan="2" style="padding:15px;border:1px solid #333;font-size:9pt;">
+                    <div style="border-bottom: 1px dashed #999; height: 18px; margin-bottom: 8px;"></div>
+                    <div style="border-bottom: 1px dashed #999; height: 18px; margin-bottom: 8px;"></div>
+                    <div style="border-bottom: 1px dashed #999; height: 18px;"></div>
+                </td>
             </tr>
         </table>
         
-        <!-- Résultat -->
-        {% if bulletin.lettre_generale %}
-        <div class="resultat-box">
-            <h4>RÉSULTAT GÉNÉRAL</h4>
-            <div class="moyenne-display">
-                <div class="moyenne-value">{{ bulletin.lettre_generale }}</div>
-                <div class="moyenne-label">Appréciation générale</div>
-            </div>
-            {% if bulletin.moyenne_pourcentage %}
-            <div class="moyenne-display">
-                <div class="moyenne-value">{{ bulletin.moyenne_pourcentage }}</div>
-                <div class="moyenne-label">Taux d'acquisition</div>
-            </div>
-            {% endif %}
-            <br>
-            <span class="mention-badge mention-{{ bulletin.mention_generale|slugify }}">{{ bulletin.mention_generale }}</span>
-                    </div>
-        {% endif %}
         
         <!-- Analyse -->
         {% if bulletin.analyses_selectionnees %}
@@ -610,7 +548,7 @@
         <!-- Signatures -->
         <div class="signatures" style="justify-content: space-between;">
             <div class="signature-box" style="width: 45%;">
-                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-label">La Monitrice</div>
                 <div class="signature-line">Signature</div>
             </div>
             <div class="signature-box" style="width: 45%;">
@@ -738,10 +676,10 @@
             </div>
         </div>
         
-        <!-- Section Recommandations de la coordinatrice -->
+        <!-- Section Recommandations de la monitrice -->
         <div style="margin-bottom: 15px;">
             <div style="background: linear-gradient(90deg, #ffc107, #e0a800); color: #333; padding: 6px 12px; font-size: 10pt; font-weight: bold; border-radius: 4px 4px 0 0;">
-                💡 RECOMMANDATIONS DE LA COORDINATRICE
+                💡 RECOMMANDATIONS DE LA MONITRICE
             </div>
             <div style="border: 1px solid #ffc107; border-top: none; padding: 12px; border-radius: 0 0 4px 4px;">
                 <table style="width: 100%; font-size: 9pt;">
@@ -824,7 +762,7 @@
         <!-- Signatures -->
         <div class="signatures" style="margin-top: 20px;">
             <div class="signature-box">
-                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-label">La Monitrice</div>
                 <div class="signature-line">Signature</div>
             </div>
             <div class="signature-box">
