@@ -539,79 +539,24 @@
                 </tbody>
                 <tfoot>
                     <tr>
-                        <td><strong>APPRÉCIATION GÉNÉRALE</strong></td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'A+' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #27ae60;background:#27ae60;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'A' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #2ecc71;background:#2ecc71;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'B+' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #3498db;background:#3498db;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'B' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #17a2b8;background:#17a2b8;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'B-' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #f39c12;background:#f39c12;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'C' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e67e22;background:#e67e22;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
-                        </td>
-                        <td style="text-align:center;">
-                            {% if lettre_generale == 'D' %}
-                            <span style="display:inline-block;width:12px;height:12px;border:2px solid #e74c3c;background:#e74c3c;"></span>
-                            {% else %}
-                            <span style="display:inline-block;width:12px;height:12px;border:1px solid #ccc;"></span>
-                            {% endif %}
+                        <td><strong>TOTAL</strong></td>
+                        <td colspan="7" style="text-align:center;font-weight:bold;font-size:10pt;">
+                            {{ lettre_generale|default:"" }}
                         </td>
                     </tr>
                 </tfoot>
             </table>
         </div>
         
-        <!-- Résultat général -->
-        {% if lettre_generale %}
+        <!-- Profil de l'enfant -->
         <div class="resultat-general">
-            <h3>RÉSULTAT GÉNÉRAL</h3>
-            <div class="moyenne-box">
-                <div class="moyenne-value">{{ lettre_generale }}</div>
-                <div class="moyenne-label">Appréciation générale</div>
+            <h3>PROFIL DE L'ENFANT</h3>
+            <div style="width:100%;padding:10px;">
+                <div style="border-bottom: 1px dashed #999; height: 20px; margin-bottom: 8px;"></div>
+                <div style="border-bottom: 1px dashed #999; height: 20px; margin-bottom: 8px;"></div>
+                <div style="border-bottom: 1px dashed #999; height: 20px;"></div>
             </div>
-            {% if moyenne_pourcentage %}
-            <div class="moyenne-box">
-                <div class="moyenne-value">{{ moyenne_pourcentage }}</div>
-                <div class="moyenne-label">Taux d'acquisition</div>
-            </div>
-            {% endif %}
-            <br>
-            <span class="mention-badge mention-{{ mention_generale|slugify }}">{{ mention_generale }}</span>
-                    </div>
-        {% endif %}
+        </div>
         
         <!-- Analyse du travail -->
         {% if analyses_selectionnees %}
@@ -635,7 +580,7 @@
         <!-- Recommandations -->
         {% if recommandations_selectionnees %}
         <div class="recommandations-section">
-            <div class="section-title recommandations-title">💡 Recommandations de la coordinatrice</div>
+            <div class="section-title recommandations-title">💡 Recommandations de la monitrice</div>
             <div class="section-content">
                 <ul class="item-list">
                     {% for item in recommandations_selectionnees %}
@@ -654,7 +599,7 @@
         <!-- Signatures -->
         <div class="signatures" style="justify-content: space-between;">
             <div class="signature-box" style="width: 45%;">
-                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-label">La Monitrice</div>
                 <div class="signature-line">Signature</div>
             </div>
             <div class="signature-box" style="width: 45%;">
@@ -783,10 +728,10 @@
             </div>
         </div>
         
-        <!-- Section Recommandations de la coordinatrice -->
+        <!-- Section Recommandations de la monitrice -->
         <div style="margin-bottom: 20px;">
             <div style="background: linear-gradient(90deg, #ffc107, #e0a800); color: #333; padding: 8px 15px; font-size: 12pt; font-weight: bold; border-radius: 5px 5px 0 0;">
-                💡 RECOMMANDATIONS DE LA COORDINATRICE
+                💡 RECOMMANDATIONS DE LA MONITRICE
             </div>
             <div style="border: 1px solid #ffc107; border-top: none; padding: 15px; border-radius: 0 0 5px 5px;">
                 <table style="width: 100%; font-size: 10pt;">
@@ -869,7 +814,7 @@
         <!-- Signatures -->
         <div class="signatures" style="margin-top: 30px;">
             <div class="signature-box">
-                <div class="signature-label">La Coordinatrice</div>
+                <div class="signature-label">La Monitrice</div>
                 <div class="signature-line">Signature</div>
             </div>
             <div class="signature-box">
