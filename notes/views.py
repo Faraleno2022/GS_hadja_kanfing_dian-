@@ -7,23 +7,18 @@ from django.core.paginator import Paginator
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.db import IntegrityError
+from django.views.decorators.http import require_POST
 from decimal import Decimal
 import json
-from eleves.models import Classe as ClasseEleve
+import os
+import io
+from datetime import datetime
+from eleves.models import Classe as ClasseEleve, Eleve
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote
-from eleves.models import Eleve
-from decimal import Decimal
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_POST
-from django.utils import timezone
-import json
-import os
-import io
-from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -33,14 +28,22 @@ from .calculs_intelligent import (
     obtenir_appreciation_intelligente,
     formater_rang_intelligent,
 )
-# from .utils import (
-#     semester_course_avg,
-#     semester_compo_avg,
-#     semester_avg,
-#     course_month_avg,
-#     compo_month_avg,
-#     monthly_avg,
-# )
+
+# Import centralisé du filigrane - chargé une seule fois
+try:
+    from ecole_moderne.pdf_utils import draw_logo_watermark as _draw_watermark_base
+    WATERMARK_AVAILABLE = True
+except ImportError:
+    WATERMARK_AVAILABLE = False
+    _draw_watermark_base = None
+
+def _apply_watermark(c, width, height, ecole=None):
+    """Applique le filigrane si disponible - fonction utilitaire centralisée"""
+    if WATERMARK_AVAILABLE and _draw_watermark_base:
+        try:
+            _draw_watermark_base(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=ecole)
+        except Exception:
+            pass
 
 # Groupes de niveaux pour l'affichage
 PRIMAIRE = {
@@ -881,12 +884,8 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
 
-    # Filigrane standard si disponible (spécifique à l'école)
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    # Filigrane
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
 
     margin = 2 * cm
     y = height - margin
@@ -932,11 +931,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     for row in lignes:
         if y < margin + 60:
             c.showPage()
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
@@ -1136,11 +1131,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
 
     # Page 1: Couverture
     margin = 2 * cm
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1156,11 +1147,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     c.showPage()
 
     # Page 2: Table des matières
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1177,20 +1164,13 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
         page_no += 1
         if y < margin + 40:
             c.showPage()
-            try:
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             y = height - margin
     c.showPage()
 
     for eleve in eleves:
         # Filigrane
-        try:
-            from ecole_moderne.pdf_utils import draw_logo_watermark
-            draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-        except Exception:
-            pass
+        _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
         y = height - margin
         if getattr(classe, 'ecole', None):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1230,11 +1210,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
         for row in lignes:
             if y < margin + 60:
                 c.showPage(); y = height - margin
-                try:
-                    from ecole_moderne.pdf_utils import draw_logo_watermark
-                    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-                except Exception:
-                    pass
+                _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
             if not est_primaire_ou_maternelle:
@@ -1393,11 +1369,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
 
     # Page 1: Couverture
     margin = 2 * cm
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1413,11 +1385,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     c.showPage()
 
     # Page 2: Table des matières
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1434,19 +1402,12 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
         page_no += 1
         if y < margin + 40:
             c.showPage()
-            try:
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             y = height - margin
     c.showPage()
 
     for eleve in eleves:
-        try:
-            from ecole_moderne.pdf_utils import draw_logo_watermark
-            draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-        except Exception:
-            pass
+        _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
         y = height - margin
         if getattr(classe, 'ecole', None):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -1486,11 +1447,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
         for row in lignes:
             if y < margin + 60:
                 c.showPage(); y = height - margin
-                try:
-                    from ecole_moderne.pdf_utils import draw_logo_watermark
-                    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-                except Exception:
-                    pass
+                _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
             if not est_primaire_ou_maternelle:
@@ -1783,11 +1740,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     width, height = A4
 
     # Filigrane
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
 
     margin = 2 * cm
     y = height - margin
@@ -1827,11 +1780,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     for row in lignes:
         if y < margin + 60:
             c.showPage()
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
@@ -2011,11 +1960,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     width, height = A4
 
     # Filigrane
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
 
     margin = 2 * cm
     y = height - margin
@@ -2052,11 +1997,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     for row in lignes:
         if y < margin + 60:
             c.showPage()
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             y = height - margin
         x = margin
         c.drawString(x, y, str(row['matiere'])); x += colw[0]
@@ -2347,11 +2288,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         moyenne_generale = (somme_moyennes_coef / somme_coef_matieres).quantize(Decimal('0.01')) if somme_coef_matieres > 0 else None
 
         # Dessiner la page
-        try:
-            from ecole_moderne.pdf_utils import draw_logo_watermark
-            draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-        except Exception:
-            pass
+        _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
 
         margin = 2 * cm
         y = height - margin
@@ -2387,11 +2324,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         for row in lignes:
             if y < margin + 60:
                 c.showPage()
-                try:
-                    from ecole_moderne.pdf_utils import draw_logo_watermark
-                    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-                except Exception:
-                    pass
+                _apply_watermark(c, width, height)
                 y = height - margin
             x = margin
             c.drawString(x, y, str(row['matiere'])); x += colw[0]
@@ -2875,11 +2808,7 @@ def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
 
     margin = 2*cm
     # En-tête standard + titre
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -2901,11 +2830,7 @@ def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
     for idx, (e, avg) in enumerate(rows, start=1):
         if y < margin + 40:
             c.showPage(); y = height - margin
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-            except Exception:
-                pass
+            _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
             if getattr(classe, 'ecole', None):
                 y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
             c.setFont('Helvetica-Bold', 12)
@@ -3147,11 +3072,7 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-    except Exception:
-        pass
+    _apply_watermark(c, width, height)
     margin = 2*cm; y = height - margin
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -3179,11 +3100,7 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     for row in lignes:
         if y < margin + 60:
             c.showPage();
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-            except Exception:
-                pass
+            _apply_watermark(c, width, height)
             y = height - margin
         x = margin
         c.drawString(x, y, row['matiere']); x += colw[0]
@@ -3399,11 +3316,7 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         return "Insuffisant"
 
     def draw_for_student(eleve):
-        try:
-            from ecole_moderne.pdf_utils import draw_logo_watermark
-            draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-        except Exception:
-            pass
+        _apply_watermark(c, width, height)
         margin = 2*cm; y = height - margin
         if getattr(classe, 'ecole', None):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
@@ -3448,11 +3361,7 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         for row in lignes:
             if y < margin + 60:
                 c.showPage();
-                try:
-                    from ecole_moderne.pdf_utils import draw_logo_watermark
-                    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-                except Exception:
-                    pass
+                _apply_watermark(c, width, height)
                 y = height - margin
             x = margin
             c.drawString(x, y, row['matiere']); x += colw[0]
@@ -3748,11 +3657,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
     
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-    except Exception:
-        pass
+    _apply_watermark(c, width, height)
     
     margin = 2 * cm
     y = height - margin
@@ -3792,11 +3697,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     for i, item in enumerate(classement):
         if y < margin + 60:
             c.showPage()
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-            except Exception:
-                pass
+            _apply_watermark(c, width, height)
             y = height - margin
         
         x = margin
@@ -4200,11 +4101,7 @@ def cartes_scolaires_pdf(request, classe_id):
     width, height = A4
     
     # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=getattr(classe, 'ecole', None))
-    except Exception:
-        pass
+    _apply_watermark(c, width, height, ecole=getattr(classe, 'ecole', None))
     
     # Configuration des cartes (10 cartes par page - 2x5)
     card_width = 8.5 * cm
@@ -4236,11 +4133,7 @@ def cartes_scolaires_pdf(request, classe_id):
         if card_count > 0 and card_count % 10 == 0:
             c.showPage()
             # Filigrane standardisé sur nouvelle page
-            try:
-                from ecole_moderne.pdf_utils import draw_logo_watermark
-                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-            except Exception:
-                pass
+            _apply_watermark(c, width, height)
         
         # Position de la carte actuelle
         pos_x, pos_y = positions[card_count % 10]
@@ -4588,11 +4481,7 @@ def carte_eleve_pdf(request, matricule):
     width, height = A4
     
     # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
-    try:
-        from ecole_moderne.pdf_utils import draw_logo_watermark
-        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
-    except Exception:
-        pass
+    _apply_watermark(c, width, height)
     
     # Configuration de la carte (centrée sur la page) - Format carte bancaire standard
     card_width = 8.6 * cm  # 86mm
