@@ -927,7 +927,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c.setFillColor(colors.black)
     y -= 10
 
-    c.setFont('Helvetica', 13)
+    c.setFont('Helvetica', 15)
     for row in lignes:
         if y < margin + 60:
             c.showPage()
@@ -1136,7 +1136,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
     c.setFont('Helvetica-Bold', 20); c.drawCentredString(width/2, y-10, f"Bulletins mensuels — {mois_label}"); y -= 50
-    c.setFont('Helvetica', 13); c.drawCentredString(width/2, y, f"Classe: {classe.nom}"); y -= 20
+    c.setFont('Helvetica', 15); c.drawCentredString(width/2, y, f"Classe: {classe.nom}"); y -= 20
     c.drawCentredString(width/2, y, f"Année scolaire: {annee_scolaire or ''}"); y -= 20
     c.setFont('Helvetica-Oblique', 11); c.setFillColorRGB(0.3,0.3,0.3)
     c.drawCentredString(width/2, y, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -1206,7 +1206,7 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
             c.drawString(x, y, htxt); x += colw[i]
         y -= 14
         c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
-        c.setFont('Helvetica', 13)
+        c.setFont('Helvetica', 15)
         for row in lignes:
             if y < margin + 60:
                 c.showPage(); y = height - margin
@@ -1374,7 +1374,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     if getattr(classe, 'ecole', None):
         y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
     c.setFont('Helvetica-Bold', 20); c.drawCentredString(width/2, y-10, f"Bulletins semestriels — S{semestre}"); y -= 50
-    c.setFont('Helvetica', 13); c.drawCentredString(width/2, y, f"Classe: {classe.nom}"); y -= 20
+    c.setFont('Helvetica', 15); c.drawCentredString(width/2, y, f"Classe: {classe.nom}"); y -= 20
     c.drawCentredString(width/2, y, f"Année scolaire: {annee_scolaire or ''}"); y -= 20
     c.setFont('Helvetica-Oblique', 11); c.setFillColorRGB(0.3,0.3,0.3)
     c.drawCentredString(width/2, y, f"Généré le {datetime.now().strftime('%d/%m/%Y %H:%M')}")
@@ -1443,7 +1443,7 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
             c.drawString(x, y, htxt); x += colw[i]
         y -= 14
         c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
-        c.setFont('Helvetica', 13)
+        c.setFont('Helvetica', 15)
         for row in lignes:
             if y < margin + 60:
                 c.showPage(); y = height - margin
@@ -1776,7 +1776,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     y -= 14
     c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
 
-    c.setFont('Helvetica', 13)
+    c.setFont('Helvetica', 15)
     for row in lignes:
         if y < margin + 60:
             c.showPage()
@@ -1993,7 +1993,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     y -= 14
     c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
 
-    c.setFont('Helvetica', 13)
+    c.setFont('Helvetica', 15)
     for row in lignes:
         if y < margin + 60:
             c.showPage()
@@ -2320,7 +2320,7 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
         c.setFillColor(colors.black)
         y -= 10
-        c.setFont('Helvetica', 13)
+        c.setFont('Helvetica', 15)
         for row in lignes:
             if y < margin + 60:
                 c.showPage()
@@ -3096,7 +3096,7 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     x = margin
     for i, h in enumerate(headers): c.drawString(x, y, h); x += colw[i]
     y -= 14; c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
-    c.setFont('Helvetica', 13)
+    c.setFont('Helvetica', 15)
     for row in lignes:
         if y < margin + 60:
             c.showPage();
@@ -3335,7 +3335,7 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         x = margin
         for i, h in enumerate(headers): c.drawString(x, y, h); x += colw[i]
         y -= 14; c.setFillColor(colors.lightgrey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 10
-        c.setFont('Helvetica', 13)
+        c.setFont('Helvetica', 15)
 
         # Lignes
         lignes = []

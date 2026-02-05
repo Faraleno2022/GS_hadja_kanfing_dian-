@@ -749,23 +749,23 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     nb_matieres = len(data) - 2  # -2 pour en-tête et ligne TOTAL
     if nb_matieres > 15:
         # Beaucoup de matières: police réduite et padding réduit
-        font_header = 9
-        font_body = 8
-        font_total = 9
+        font_header = 11
+        font_body = 10
+        font_total = 11
         padding_top = 3
         padding_bottom = 3
     elif nb_matieres > 12:
         # Nombreuses matières: police moyenne
-        font_header = 10
-        font_body = 9
-        font_total = 10
+        font_header = 12
+        font_body = 11
+        font_total = 12
         padding_top = 4
         padding_bottom = 4
     else:
         # Normal
-        font_header = 11
-        font_body = 10
-        font_total = 11
+        font_header = 13
+        font_body = 12
+        font_total = 13
         padding_top = 5
         padding_bottom = 5
     
@@ -813,8 +813,8 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
             ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
             # Taille de police pour les colonnes nombreuses
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
         ])
     else:
         if est_primaire:
@@ -2192,12 +2192,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 0), (-1, 0), 13),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
         ('TOPPADDING', (0, 0), (-1, 0), 6),
         ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -2), 10),
+        ('FONTSIZE', (0, 1), (-1, -2), 12),
         ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),
         ('LEFTPADDING', (0, 1), (0, -1), 5),
@@ -2208,7 +2208,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
         ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9),
+        ('FONTSIZE', (0, -1), (-1, -1), 11),
     ]
     
     # Colonnes MOY et PTS avec couleurs (position varie selon le système et le niveau)
@@ -2222,8 +2222,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             ('BACKGROUND', (col_pts, 1), (col_pts, -2), ROUGE_PTS),
             ('FONTNAME', (col_pts, 1), (col_pts, -1), 'Helvetica-Bold'),
             # Taille de police pour les colonnes nombreuses
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
         ])
     else:
         if est_primaire:
