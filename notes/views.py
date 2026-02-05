@@ -9365,6 +9365,17 @@ def bulletins_classe_maternelle_modele2_pdf(request):
             eleve_id__in=eleves_ids, matiere__in=matieres, trimestre=trimestre
         ).select_related('matiere'))
     
+    # Dictionnaire de conversion des appréciations en texte complet
+    APPRECIATION_TEXTE = {
+        'A+': 'Excellent',
+        'A': 'Très bien',
+        'B+': 'Bien',
+        'B': 'Assez bien',
+        'B-': 'Moyen',
+        'C': 'Passable',
+        'D': 'Éprouve des difficultés',
+    }
+    
     # Organiser les appréciations par élève
     appreciations_par_eleve = {}
     for app in all_appreciations:
@@ -9373,6 +9384,7 @@ def bulletins_classe_maternelle_modele2_pdf(request):
         nom_matiere = app.matiere.nom.lower().strip()
         appreciations_par_eleve[app.eleve_id][nom_matiere] = {
             'appreciation': app.appreciation,
+            'appreciation_texte': APPRECIATION_TEXTE.get(app.appreciation, app.appreciation or ''),
             'observation': app.commentaire if hasattr(app, 'commentaire') else '',
             'absent': app.absent
         }
