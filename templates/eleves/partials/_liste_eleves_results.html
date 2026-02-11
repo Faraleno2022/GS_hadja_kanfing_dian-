@@ -6,11 +6,9 @@
         </h5>
         <div class="d-flex align-items-center gap-2">
             <small class="text-muted">{{ page_obj.paginator.count }} élève(s) trouvé(s)</small>
-            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
             <button type="button" class="btn btn-danger btn-sm" id="btn-supprimer-masse" style="display: none;" data-bs-toggle="modal" data-bs-target="#confirmDeleteMasseModal">
                 <i class="fas fa-trash me-1"></i>Supprimer la sélection (<span id="count-selection">0</span>)
             </button>
-            {% endif %}
         </div>
     </div>
     <div class="card-body p-0">
@@ -19,11 +17,9 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
-                            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
                             <th style="width: 40px;">
                                 <input type="checkbox" class="form-check-input" id="select-all-eleves" title="Tout sélectionner">
                             </th>
-                            {% endif %}
                             <th>Photo</th>
                             <th>Matricule</th>
                             <th>Nom Complet</th>
@@ -36,11 +32,9 @@
                     <tbody>
                         {% for eleve in page_obj %}
                             <tr>
-                                {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
                                 <td>
                                     <input type="checkbox" class="form-check-input cb-eleve" value="{{ eleve.id }}" data-nom="{{ eleve.prenom }} {{ eleve.nom }}" data-matricule="{{ eleve.matricule }}" data-classe="{{ eleve.classe.nom }}">
                                 </td>
-                                {% endif %}
                                 <td>
                                     {% if eleve.photo %}
                                         <img src="{{ eleve.photo.url }}" alt="Photo" class="rounded-circle" width="40" height="40" style="object-fit: cover;">
@@ -323,7 +317,6 @@
     {% endif %}
 {% endfor %}
 
-{% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
 <div class="modal fade" id="confirmDeleteMasseModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -391,8 +384,6 @@
         </div>
     </div>
 </div>
-{% endif %}
-
 <script>
 // Fonction pour imprimer la carte scolaire (définie globalement)
 function imprimerCarte(matricule) {
