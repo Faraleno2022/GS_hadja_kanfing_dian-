@@ -16,6 +16,7 @@ urlpatterns = [
     path('ajouter/', views.ajouter_eleve, name='ajouter_eleve'),
     path('<int:eleve_id>/modifier/', views.modifier_eleve, name='modifier_eleve'),
     path('<int:eleve_id>/supprimer/', views.supprimer_eleve, name='supprimer_eleve'),
+    path('supprimer-masse/', views.supprimer_eleves_masse, name='supprimer_eleves_masse'),
     
     # Gestion des classes
     path('classes/', views.gestion_classes, name='gestion_classes'),

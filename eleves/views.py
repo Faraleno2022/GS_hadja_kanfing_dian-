@@ -1443,6 +1443,143 @@ def supprimer_eleve(request, eleve_id):
     })
 
 @login_required
+@require_http_methods(["POST"])
+def supprimer_eleves_masse(request):
+    """Vue pour supprimer définitivement plusieurs élèves en masse"""
+    # Vérifier la permission de suppression définitive
+    peut_supprimer_definitivement = user_is_admin(request.user) or (
+        hasattr(request.user, 'profil') and 
+        request.user.profil.peut_supprimer_eleves_definitivement
+    )
+    
+    if not peut_supprimer_definitivement:
+        messages.error(request, "Vous n'avez pas la permission de supprimer définitivement des élèves.")
+        return redirect('eleves:liste_eleves')
+    
+    # Vérifier le code de sécurité
+    code_verification = request.POST.get('code_verification', '').strip()
+    if code_verification != '625196629':
+        messages.error(request, "Code de vérification incorrect. Suppression annulée.")
+        return redirect('eleves:liste_eleves')
+    
+    # Récupérer les IDs des élèves
+    eleve_ids_str = request.POST.get('eleve_ids', '')
+    if not eleve_ids_str:
+        messages.error(request, "Aucun élève sélectionné.")
+        return redirect('eleves:liste_eleves')
+    
+    try:
+        eleve_ids = [int(x) for x in eleve_ids_str.split(',') if x.strip()]
+    except ValueError:
+        messages.error(request, "IDs d'élèves invalides.")
+        return redirect('eleves:liste_eleves')
+    
+    if not eleve_ids:
+        messages.error(request, "Aucun élève sélectionné.")
+        return redirect('eleves:liste_eleves')
+    
+    # Récupérer les élèves
+    qs = Eleve.objects.filter(id__in=eleve_ids)
+    if not user_is_admin(request.user):
+        qs = filter_by_user_school(qs, request.user, 'classe__ecole')
+    
+    eleves = list(qs)
+    if not eleves:
+        messages.error(request, "Aucun élève trouvé avec les IDs fournis.")
+        return redirect('eleves:liste_eleves')
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        with transaction.atomic():
+            eleves_supprimes = []
+            total_paiements = 0
+            total_abonnements_bus = 0
+            total_abonnements_cantine = 0
+            
+            for eleve in eleves:
+                nom_complet = f"{eleve.prenom} {eleve.nom}"
+                matricule = eleve.matricule
+                
+                paiements_count = eleve.paiements.count()
+                abonnements_bus_count = eleve.abonnements_bus.count()
+                abonnements_cantine_count = eleve.abonnements_cantine.count()
+                
+                # Collecter les informations avant suppression
+                paiements_supprimes = []
+                for paiement in eleve.paiements.all():
+                    paiements_supprimes.append(f"{paiement.numero_recu} - {paiement.montant} GNF")
+                
+                abonnements_bus_supprimes = []
+                for abo in eleve.abonnements_bus.all():
+                    abonnements_bus_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
+                
+                abonnements_cantine_supprimes = []
+                for abo in eleve.abonnements_cantine.all():
+                    abonnements_cantine_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
+                
+                eleves_supprimes.append({
+                    'eleve_id': eleve.id,
+                    'matricule': matricule,
+                    'nom_complet': nom_complet,
+                    'classe': str(eleve.classe),
+                    'paiements_supprimes': paiements_supprimes,
+                    'abonnements_bus_supprimes': abonnements_bus_supprimes,
+                    'abonnements_cantine_supprimes': abonnements_cantine_supprimes,
+                })
+                
+                total_paiements += paiements_count
+                total_abonnements_bus += abonnements_bus_count
+                total_abonnements_cantine += abonnements_cantine_count
+                
+                # Supprimer les éléments associés
+                eleve.paiements.all().delete()
+                eleve.abonnements_bus.all().delete()
+                eleve.abonnements_cantine.all().delete()
+                
+                # Supprimer l'élève
+                eleve.delete()
+                
+                logger.info(f"Suppression définitive en masse: {nom_complet} ({matricule}) par {request.user.username}")
+            
+            # Créer l'entrée dans la corbeille
+            from administration.models import SystemLog
+            SystemLog.objects.create(
+                action='SUPPRESSION_DEFINITIVE',
+                description=f"Suppression définitive en masse de {len(eleves_supprimes)} élève(s) avec {total_paiements} paiement(s), {total_abonnements_bus} abonnement(s) bus et {total_abonnements_cantine} abonnement(s) cantine",
+                user=request.user,
+                ip_address=request.META.get('REMOTE_ADDR', ''),
+                details={
+                    'type': 'suppression_masse',
+                    'nombre_eleves': len(eleves_supprimes),
+                    'eleves_supprimes': eleves_supprimes,
+                    'verification_code_used': True,
+                    'user_agent': request.META.get('HTTP_USER_AGENT', '')
+                }
+            )
+            
+            # Log dans le journal d'activité
+            noms = ', '.join([e['nom_complet'] for e in eleves_supprimes])
+            JournalActivite.objects.create(
+                user=request.user,
+                action='SUPPRESSION',
+                type_objet='ELEVE',
+                description=f"Suppression définitive en masse de {len(eleves_supprimes)} élève(s): {noms}",
+                adresse_ip=request.META.get('REMOTE_ADDR', ''),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+            
+            messages.success(request, f"{len(eleves_supprimes)} élève(s) ont été supprimés définitivement avec toutes leurs données associées.")
+            
+    except Exception as e:
+        logger.error(f"Erreur lors de la suppression en masse: {e}")
+        messages.error(request, f"Erreur lors de la suppression en masse: {e}")
+    
+    return redirect('eleves:liste_eleves')
+
+
+@login_required
 def gestion_classes(request):
     """Vue pour gérer les classes"""
     classes = Classe.objects.select_related('ecole').annotate(

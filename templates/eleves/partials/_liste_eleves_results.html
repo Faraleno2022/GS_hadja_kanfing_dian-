@@ -4,7 +4,14 @@
         <h5 class="card-title mb-0">
             <i class="fas fa-list me-2"></i>Liste des élèves
         </h5>
-        <small class="text-muted">{{ page_obj.paginator.count }} élève(s) trouvé(s)</small>
+        <div class="d-flex align-items-center gap-2">
+            <small class="text-muted">{{ page_obj.paginator.count }} élève(s) trouvé(s)</small>
+            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
+            <button type="button" class="btn btn-danger btn-sm" id="btn-supprimer-masse" style="display: none;" data-bs-toggle="modal" data-bs-target="#confirmDeleteMasseModal">
+                <i class="fas fa-trash me-1"></i>Supprimer la sélection (<span id="count-selection">0</span>)
+            </button>
+            {% endif %}
+        </div>
     </div>
     <div class="card-body p-0">
         {% if page_obj %}
@@ -12,6 +19,11 @@
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
                         <tr>
+                            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
+                            <th style="width: 40px;">
+                                <input type="checkbox" class="form-check-input" id="select-all-eleves" title="Tout sélectionner">
+                            </th>
+                            {% endif %}
                             <th>Photo</th>
                             <th>Matricule</th>
                             <th>Nom Complet</th>
@@ -24,6 +36,11 @@
                     <tbody>
                         {% for eleve in page_obj %}
                             <tr>
+                                {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
+                                <td>
+                                    <input type="checkbox" class="form-check-input cb-eleve" value="{{ eleve.id }}" data-nom="{{ eleve.prenom }} {{ eleve.nom }}" data-matricule="{{ eleve.matricule }}" data-classe="{{ eleve.classe.nom }}">
+                                </td>
+                                {% endif %}
                                 <td>
                                     {% if eleve.photo %}
                                         <img src="{{ eleve.photo.url }}" alt="Photo" class="rounded-circle" width="40" height="40" style="object-fit: cover;">
@@ -306,6 +323,76 @@
     {% endif %}
 {% endfor %}
 
+{% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
+<div class="modal fade" id="confirmDeleteMasseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Suppression définitive en masse
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'eleves:supprimer_eleves_masse' %}" id="deleteFormMasse">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-skull-crossbones me-2"></i>
+                        <strong>ATTENTION !</strong> Vous êtes sur le point de supprimer <strong>définitivement</strong> les élèves sélectionnés.
+                        <br>Toutes leurs données (paiements, notes, abonnements, etc.) seront perdues.
+                        <br><strong>Cette action est IRRÉVERSIBLE !</strong>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-users me-1"></i>Élèves sélectionnés :
+                        </label>
+                        <div id="liste-eleves-masse" class="border rounded p-2" style="max-height: 200px; overflow-y: auto;">
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="eleve_ids" id="eleve-ids-input" value="">
+
+                    <div class="mb-3">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-shield-alt me-2"></i>
+                            <strong>Code de sécurité requis</strong>
+                        </div>
+                        <label for="codeVerificationMasse" class="form-label fw-bold">
+                            <i class="fas fa-key me-1"></i>Entrez le code de vérification
+                        </label>
+                        <input type="text" class="form-control form-control-lg text-center"
+                               id="codeVerificationMasse"
+                               name="code_verification"
+                               placeholder="Code à 9 chiffres"
+                               maxlength="9"
+                               pattern="[0-9]{9}"
+                               autocomplete="off">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i>
+                            Contactez l'administrateur pour obtenir le code
+                        </small>
+                    </div>
+
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-clock me-1"></i>
+                        Cette action sera enregistrée dans le journal d'activité.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Annuler
+                    </button>
+                    <button type="submit" class="btn btn-dark" id="confirmBtnMasse">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Supprimer Définitivement
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <script>
 // Fonction pour imprimer la carte scolaire (définie globalement)
 function imprimerCarte(matricule) {
@@ -332,4 +419,81 @@ function imprimerCarte(matricule) {
         console.log('Génération de la carte scolaire pour le matricule:', matricule);
     }
 }
+
+// Gestion de la sélection en masse pour suppression
+(function() {
+    const selectAll = document.getElementById('select-all-eleves');
+    const btnMasse = document.getElementById('btn-supprimer-masse');
+    const countSpan = document.getElementById('count-selection');
+    
+    if (!selectAll || !btnMasse) return;
+
+    function updateSelection() {
+        const checked = document.querySelectorAll('.cb-eleve:checked');
+        const count = checked.length;
+        countSpan.textContent = count;
+        btnMasse.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+
+    selectAll.addEventListener('change', function() {
+        document.querySelectorAll('.cb-eleve').forEach(function(cb) {
+            cb.checked = selectAll.checked;
+        });
+        updateSelection();
+    });
+
+    document.querySelectorAll('.cb-eleve').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            const all = document.querySelectorAll('.cb-eleve');
+            const checked = document.querySelectorAll('.cb-eleve:checked');
+            selectAll.checked = all.length === checked.length;
+            updateSelection();
+        });
+    });
+
+    // Remplir le modal avant ouverture
+    var modalEl = document.getElementById('confirmDeleteMasseModal');
+    if (modalEl) {
+        modalEl.addEventListener('show.bs.modal', function() {
+            var checked = document.querySelectorAll('.cb-eleve:checked');
+            var ids = [];
+            var html = '';
+            checked.forEach(function(cb) {
+                ids.push(cb.value);
+                html += '<div class="d-flex justify-content-between align-items-center py-1 border-bottom">' +
+                    '<span><i class="fas fa-user me-1"></i><strong>' + cb.dataset.nom + '</strong></span>' +
+                    '<span class="text-muted small">' + cb.dataset.matricule + ' - ' + cb.dataset.classe + '</span>' +
+                    '</div>';
+            });
+            document.getElementById('eleve-ids-input').value = ids.join(',');
+            document.getElementById('liste-eleves-masse').innerHTML = html;
+        });
+    }
+
+    // Validation du formulaire de suppression en masse
+    var formMasse = document.getElementById('deleteFormMasse');
+    if (formMasse) {
+        formMasse.addEventListener('submit', function(e) {
+            var codeInput = document.getElementById('codeVerificationMasse');
+            if (!codeInput.value || codeInput.value.length !== 9) {
+                e.preventDefault();
+                alert('Veuillez entrer un code de vérification valide (9 chiffres)');
+                codeInput.focus();
+                return false;
+            }
+            var ids = document.getElementById('eleve-ids-input').value;
+            if (!ids) {
+                e.preventDefault();
+                alert('Aucun élève sélectionné.');
+                return false;
+            }
+            var count = ids.split(',').length;
+            var message = 'ATTENTION ! Vous allez supprimer DÉFINITIVEMENT ' + count + ' élève(s) et toutes leurs données.\n\nCette action est IRRÉVERSIBLE.\n\nÊtes-vous absolument sûr de vouloir continuer ?';
+            if (!confirm(message)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    }
+})();
 </script>
