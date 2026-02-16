@@ -566,7 +566,10 @@ def saisie_intelligente_save(request):
         if not type_note or not periode:
             return JsonResponse({'success': False, 'error': 'Type de note et période requis'})
         
-        saved_count = 0
+        created_count = 0
+        updated_count = 0
+        absent_count = 0
+        errors = []
         
         for note_data in notes:
             eleve_id = note_data.get('eleve_id')
@@ -574,10 +577,20 @@ def saisie_intelligente_save(request):
             note_value = note_data.get('note')
             is_absent = note_data.get('absent', False)
             
+            # Ignorer les entrées sans note et qui ne sont pas des absences
+            if note_value is None and not is_absent:
+                continue
+            
             try:
                 eleve = Eleve.objects.get(id=eleve_id)
                 matiere = MatiereNote.objects.get(id=matiere_id)
                 annee_scolaire = matiere.classe.annee_scolaire
+                
+                # Pour les absents, stocker note=0 avec absent=True
+                if is_absent:
+                    note_decimal = Decimal('0')
+                else:
+                    note_decimal = Decimal(str(note_value))
                 
                 if type_note == 'mensuelle':
                     note_obj, created = NoteMensuelle.objects.update_or_create(
@@ -586,7 +599,7 @@ def saisie_intelligente_save(request):
                         mois=periode,
                         annee_scolaire=annee_scolaire,
                         defaults={
-                            'note': Decimal(str(note_value)) if note_value is not None else None,
+                            'note': note_decimal,
                             'absent': is_absent
                         }
                     )
@@ -597,17 +610,32 @@ def saisie_intelligente_save(request):
                         periode=periode,
                         annee_scolaire=annee_scolaire,
                         defaults={
-                            'note': Decimal(str(note_value)) if note_value is not None else None,
+                            'note': note_decimal,
                             'absent': is_absent
                         }
                     )
                 
-                saved_count += 1
+                if is_absent:
+                    absent_count += 1
+                elif created:
+                    created_count += 1
+                else:
+                    updated_count += 1
                 
-            except (Eleve.DoesNotExist, MatiereNote.DoesNotExist) as e:
+            except (Eleve.DoesNotExist, MatiereNote.DoesNotExist):
                 continue
+            except Exception as e:
+                errors.append(str(e))
         
-        return JsonResponse({'success': True, 'saved': saved_count})
+        total_saved = created_count + updated_count + absent_count
+        return JsonResponse({
+            'success': True,
+            'saved': total_saved,
+            'created': created_count,
+            'updated': updated_count,
+            'absents': absent_count,
+            'errors': errors
+        })
         
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'})

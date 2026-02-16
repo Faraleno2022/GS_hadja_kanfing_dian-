@@ -525,15 +525,23 @@ async function sauvegarderToutesNotes() {
     inputs.forEach(input => {
         const eleveId = input.dataset.eleveId;
         const matiereId = input.dataset.matiereId;
-        const value = input.value;
+        const value = input.value.trim();
         const isAbsent = input.classList.contains('absent') || input.dataset.absent === 'true';
         
-        if (value !== '' || isAbsent) {
+        // N'envoyer que les notes avec une valeur numérique OU les absents
+        if (isAbsent) {
             notes.push({
                 eleve_id: eleveId,
                 matiere_id: matiereId,
-                note: value === '' ? null : parseFloat(value),
-                absent: isAbsent
+                note: null,
+                absent: true
+            });
+        } else if (value !== '' && !isNaN(parseFloat(value))) {
+            notes.push({
+                eleve_id: eleveId,
+                matiere_id: matiereId,
+                note: parseFloat(value),
+                absent: false
             });
         }
     });
@@ -562,7 +570,17 @@ async function sauvegarderToutesNotes() {
         const data = await response.json();
         
         if (data.success) {
-            showToast(`${data.saved} note(s) enregistrée(s) avec succès!`, 'success');
+            let msg = `${data.saved} note(s) enregistrée(s) avec succès!`;
+            if (data.created > 0) msg += ` (${data.created} nouvelle(s)`;
+            if (data.updated > 0) msg += data.created > 0 ? `, ${data.updated} mise(s) à jour` : ` (${data.updated} mise(s) à jour`;
+            if (data.absents > 0) msg += (data.created > 0 || data.updated > 0) ? `, ${data.absents} absent(s)` : ` (${data.absents} absent(s)`;
+            if (data.created > 0 || data.updated > 0 || data.absents > 0) msg += ')';
+            if (data.errors && data.errors.length > 0) {
+                showToast(msg, 'success');
+                setTimeout(() => showToast(`${data.errors.length} erreur(s) détectée(s)`, 'error'), 500);
+            } else {
+                showToast(msg, 'success');
+            }
         } else {
             showToast(data.error || 'Erreur lors de l\'enregistrement', 'error');
         }
