@@ -931,10 +931,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     sig_width = 6*cm
     
-    # Censeur (aligné à gauche avec 1.2cm)
+    # Censeur / Directeur du primaire (aligné à gauche avec 1.2cm)
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(1.2*cm + sig_width/2, y, "Censeur de l'établissement")
+    titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
+    c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
@@ -2335,7 +2336,8 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(1.2*cm + sig_width/2, y, "Censeur de l'établissement")
+    titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
+    c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)

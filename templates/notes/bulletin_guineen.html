@@ -587,7 +587,7 @@
             <!-- Signatures -->
             <div class="signatures">
                 <div class="signature-box">
-                    <p>Le Censeur de l'établissement</p>
+                    <p>{% if est_primaire %}Le Directeur du primaire{% else %}Le Censeur de l'établissement{% endif %}</p>
                     <div style="height: 60px;"></div>
                     <p style="font-size: 10px;">Signature</p>
                 </div>
