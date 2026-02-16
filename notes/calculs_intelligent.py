@@ -145,18 +145,24 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
     - < 50%: À encourager
     
     PRIMAIRE (Moyenne /10):
+    - >= 9: Excellent
     - >= 8: Très Bien
     - >= 7: Bien
     - >= 6: Assez Bien
     - >= 5: Passable
-    - < 5: Insuffisant
+    - >= 4: Insuffisant
+    - >= 3: Faible
+    - < 3: Très faible
     
     SECONDAIRE (Moyenne /20):
+    - >= 18: Excellent
     - >= 16: Très Bien
     - >= 14: Bien
     - >= 12: Assez Bien
     - >= 10: Passable
-    - < 10: Insuffisant
+    - >= 8: Insuffisant
+    - >= 6: Faible
+    - < 6: Très faible
     
     Args:
         moyenne: Moyenne de l'élève (ou taux d'acquisition pour maternelle)
@@ -197,10 +203,12 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
             return "Assez Bien"
         elif moyenne >= Decimal('5'):
             return "Passable"
-        elif moyenne >= Decimal('4.5'):
+        elif moyenne >= Decimal('4'):
+            return "Insuffisant"
+        elif moyenne >= Decimal('3'):
             return "Faible"
         else:
-            return "Insuffisant"
+            return "Très faible"
     
     else:
         # Secondaire : moyenne sur 20 (par défaut)
@@ -214,10 +222,12 @@ def obtenir_mention_intelligente(moyenne: Optional[Decimal], niveau: str = 'SECO
             return "Assez Bien"
         elif moyenne >= Decimal('10'):
             return "Passable"
-        elif moyenne >= Decimal('9'):
+        elif moyenne >= Decimal('8'):
+            return "Insuffisant"
+        elif moyenne >= Decimal('6'):
             return "Faible"
         else:
-            return "Insuffisant"
+            return "Très faible"
 
 
 def obtenir_appreciation_intelligente(moyenne: Optional[Decimal], prenom: str = None, niveau: str = 'SECONDAIRE') -> str:

@@ -714,7 +714,9 @@ def obtenir_mention_intelligente(moyenne, niveau='SECONDAIRE'):
     
     elif niveau == 'PRIMAIRE':
         # Primaire : moyenne sur 10
-        if moyenne >= 8:
+        if moyenne >= 9:
+            return "Excellent"
+        elif moyenne >= 8:
             return "Très Bien"
         elif moyenne >= 7:
             return "Bien"
@@ -722,12 +724,18 @@ def obtenir_mention_intelligente(moyenne, niveau='SECONDAIRE'):
             return "Assez Bien"
         elif moyenne >= 5:
             return "Passable"
-        else:
+        elif moyenne >= 4:
             return "Insuffisant"
+        elif moyenne >= 3:
+            return "Faible"
+        else:
+            return "Très faible"
     
     else:
         # Secondaire : moyenne sur 20 (par défaut)
-        if moyenne >= 16:
+        if moyenne >= 18:
+            return "Excellent"
+        elif moyenne >= 16:
             return "Très Bien"
         elif moyenne >= 14:
             return "Bien"
@@ -735,8 +743,12 @@ def obtenir_mention_intelligente(moyenne, niveau='SECONDAIRE'):
             return "Assez Bien"
         elif moyenne >= 10:
             return "Passable"
-        else:
+        elif moyenne >= 8:
             return "Insuffisant"
+        elif moyenne >= 6:
+            return "Faible"
+        else:
+            return "Très faible"
 
 
 def obtenir_appreciation_intelligente(moyenne, prenom, niveau='SECONDAIRE'):

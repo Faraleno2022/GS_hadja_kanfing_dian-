@@ -853,10 +853,12 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             # Utiliser la moyenne de la source centralisée pour cohérence
             moyenne_generale = rang_info.get('moyenne', moyenne_generale)
 
-    # Mention selon barème simple (modifiable)
+    # Mention selon barème adapté au niveau
     def mention_for(avg: Decimal | None) -> str:
         if avg is None:
             return ""
+        if avg >= Decimal('18'):
+            return "Excellent"
         if avg >= Decimal('16'):
             return "Très Bien"
         if avg >= Decimal('14'):
@@ -865,7 +867,11 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
             return "Assez Bien"
         if avg >= Decimal('10'):
             return "Passable"
-        return "Insuffisant"
+        if avg >= Decimal('8'):
+            return "Insuffisant"
+        if avg >= Decimal('6'):
+            return "Faible"
+        return "Très faible"
     mention = mention_for(moyenne_generale)
 
     # Génération PDF
@@ -2234,6 +2240,8 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
             return "À encourager"
         elif est_primaire:
             # Primaire : moyenne sur 10
+            if avg >= Decimal('9'):
+                return "Excellent"
             if avg >= Decimal('8'):
                 return "Très Bien"
             if avg >= Decimal('7'):
@@ -2242,9 +2250,15 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
                 return "Assez Bien"
             if avg >= Decimal('5'):
                 return "Passable"
-            return "Insuffisant"
+            if avg >= Decimal('4'):
+                return "Insuffisant"
+            if avg >= Decimal('3'):
+                return "Faible"
+            return "Très faible"
         else:
             # Secondaire : moyenne sur 20
+            if avg >= Decimal('18'):
+                return "Excellent"
             if avg >= Decimal('16'):
                 return "Très Bien"
             if avg >= Decimal('14'):
@@ -2253,7 +2267,11 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
                 return "Assez Bien"
             if avg >= Decimal('10'):
                 return "Passable"
-            return "Insuffisant"
+            if avg >= Decimal('8'):
+                return "Insuffisant"
+            if avg >= Decimal('6'):
+                return "Faible"
+            return "Très faible"
 
     def draw_bulletin_for_student(eleve):
         # Calcul des moyennes pour l'élève
@@ -3051,11 +3069,14 @@ def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     def mention_for(avg: Decimal | None) -> str:
         if avg is None:
             return ""
+        if avg >= Decimal('18'): return "Excellent"
         if avg >= Decimal('16'): return "Très Bien"
         if avg >= Decimal('14'): return "Bien"
         if avg >= Decimal('12'): return "Assez Bien"
         if avg >= Decimal('10'): return "Passable"
-        return "Insuffisant"
+        if avg >= Decimal('8'): return "Insuffisant"
+        if avg >= Decimal('6'): return "Faible"
+        return "Très faible"
     mention = mention_for(moyenne_generale)
 
     # PDF
@@ -3309,11 +3330,14 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
 
     def mention_for(avg: Decimal | None) -> str:
         if avg is None: return ""
+        if avg >= Decimal('18'): return "Excellent"
         if avg >= Decimal('16'): return "Très Bien"
         if avg >= Decimal('14'): return "Bien"
         if avg >= Decimal('12'): return "Assez Bien"
         if avg >= Decimal('10'): return "Passable"
-        return "Insuffisant"
+        if avg >= Decimal('8'): return "Insuffisant"
+        if avg >= Decimal('6'): return "Faible"
+        return "Très faible"
 
     def draw_for_student(eleve):
         _apply_watermark(c, width, height)

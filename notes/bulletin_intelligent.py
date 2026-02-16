@@ -1011,9 +1011,9 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     # Adapter les mentions selon le niveau scolaire
     if est_primaire:
-        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Faible ≥4.5 | Insuffisant <4.5")
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Insuffisant ≥4 | Faible ≥3 | Très faible <3")
     else:
-        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Faible ≥9 | Insuffisant <9")
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Insuffisant ≥8 | Faible ≥6 | Très faible <6")
     
     # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))
@@ -2410,9 +2410,9 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     # Adapter les mentions selon le niveau scolaire
     if est_primaire:
-        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Faible ≥4.5 | Insuffisant <4.5")
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥9 | Très bien ≥8 | Bien ≥7 | Assez bien ≥6 | Passable ≥5 | Insuffisant ≥4 | Faible ≥3 | Très faible <3")
     else:
-        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Faible ≥9 | Insuffisant <9")
+        c.drawString(1.4*cm, y - 1.5*cm, "• Mentions : Excellent ≥18 | Très bien ≥16 | Bien ≥14 | Assez bien ≥12 | Passable ≥10 | Insuffisant ≥8 | Faible ≥6 | Très faible <6")
     
     # ===== PIED DE PAGE avec infos dynamiques de l'école =====
     c.setFillColor(colors.HexColor('#999999'))

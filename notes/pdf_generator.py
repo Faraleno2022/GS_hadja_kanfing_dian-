@@ -86,7 +86,9 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     def get_appreciation(note, est_primaire):
         if est_primaire:
             # Seuils pour primaire (sur 10)
-            if note >= 8:
+            if note >= 9:
+                return 'Excellent'
+            elif note >= 8:
                 return 'Très bien'
             elif note >= 7:
                 return 'Bien'
@@ -94,20 +96,30 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
                 return 'Assez bien'
             elif note >= 5:
                 return 'Passable'
-            else:
+            elif note >= 4:
                 return 'Insuffisant'
+            elif note >= 3:
+                return 'Faible'
+            else:
+                return 'Très faible'
         else:
             # Seuils pour secondaire (sur 20)
-            if note >= 16:
+            if note >= 18:
                 return 'Excellent'
-            elif note >= 14:
+            elif note >= 16:
                 return 'Très bien'
-            elif note >= 12:
+            elif note >= 14:
                 return 'Bien'
-            elif note >= 10:
+            elif note >= 12:
                 return 'Assez bien'
-            else:
+            elif note >= 10:
+                return 'Passable'
+            elif note >= 8:
                 return 'Insuffisant'
+            elif note >= 6:
+                return 'Faible'
+            else:
+                return 'Très faible'
     
     for note_matiere in eleve_data['notes_matieres']:
         moyenne = note_matiere['moyenne']
@@ -282,7 +294,9 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     def get_appreciation(note, est_primaire):
         if est_primaire:
             # Seuils pour primaire (sur 10)
-            if note >= 8:
+            if note >= 9:
+                return 'Excellent'
+            elif note >= 8:
                 return 'Très bien'
             elif note >= 7:
                 return 'Bien'
@@ -290,20 +304,30 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
                 return 'Assez bien'
             elif note >= 5:
                 return 'Passable'
-            else:
+            elif note >= 4:
                 return 'Insuffisant'
+            elif note >= 3:
+                return 'Faible'
+            else:
+                return 'Très faible'
         else:
             # Seuils pour secondaire (sur 20)
-            if note >= 16:
+            if note >= 18:
                 return 'Excellent'
-            elif note >= 14:
+            elif note >= 16:
                 return 'Très bien'
-            elif note >= 12:
+            elif note >= 14:
                 return 'Bien'
-            elif note >= 10:
+            elif note >= 12:
                 return 'Assez bien'
-            else:
+            elif note >= 10:
+                return 'Passable'
+            elif note >= 8:
                 return 'Insuffisant'
+            elif note >= 6:
+                return 'Faible'
+            else:
+                return 'Très faible'
     
     for note_matiere in eleve_data['notes_matieres']:
         moyenne = note_matiere['moyenne']
