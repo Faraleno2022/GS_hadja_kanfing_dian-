@@ -174,6 +174,7 @@ def exporter_resultats_pdf(request):
                     mention = 'Passable'
                 elif moy >= 4:
                     mention = 'Insuffisant'
+                    lignes_non_admis.append(idx + 1)
                 elif moy >= 3:
                     mention = 'Faible'
                     lignes_non_admis.append(idx + 1)
@@ -194,6 +195,7 @@ def exporter_resultats_pdf(request):
                     mention = 'Passable'
                 elif moy >= 8:
                     mention = 'Insuffisant'
+                    lignes_non_admis.append(idx + 1)
                 elif moy >= 6:
                     mention = 'Faible'
                     lignes_non_admis.append(idx + 1)
@@ -243,21 +245,78 @@ def exporter_resultats_pdf(request):
         table.setStyle(TableStyle(style_commands))
         elements.append(table)
         
-        # Statistiques adaptées selon le type de classe
-        elements.append(Spacer(1, 1*cm))
+        # Statistiques détaillées
+        elements.append(Spacer(1, 0.5*cm))
+        
         moyennes_valides = [r['moyenne'] for r in resultats if r['moyenne']]
+        
         if moyennes_valides:
-            moy_classe = sum(moyennes_valides)/len(moyennes_valides)
-            if est_maternelle:
-                stats_text = f"Effectif: {len(resultats)} | Taux moyen d'acquisition: {moy_classe:.1f}% | "
-                stats_text += f"Max: {max(moyennes_valides):.1f}% | Min: {min(moyennes_valides):.1f}%"
-            elif est_primaire:
-                stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {moy_classe:.2f}/10 | "
-                stats_text += f"Max: {max(moyennes_valides):.2f}/10 | Min: {min(moyennes_valides):.2f}/10"
-            else:
-                stats_text = f"Effectif: {len(resultats)} | Moyenne de classe: {moy_classe:.2f}/20 | "
-                stats_text += f"Max: {max(moyennes_valides):.2f}/20 | Min: {min(moyennes_valides):.2f}/20"
-            elements.append(Paragraph(stats_text, styles['Normal']))
+            note_sur = 10 if est_primaire else (100 if est_maternelle else 20)
+            seuil_admis = 5 if est_primaire else (50 if est_maternelle else 10)
+            suffixe = '%' if est_maternelle else f'/{note_sur}'
+            fmt = '.1f' if est_maternelle else '.2f'
+            
+            moy_classe = sum(moyennes_valides) / len(moyennes_valides)
+            
+            # Statistiques par sexe
+            filles = [r for r in resultats if r['eleve'].sexe == 'F' and r['moyenne']]
+            garcons = [r for r in resultats if r['eleve'].sexe == 'M' and r['moyenne']]
+            nb_filles = len(filles)
+            nb_garcons = len(garcons)
+            moy_filles = sum(r['moyenne'] for r in filles) / nb_filles if nb_filles else 0
+            moy_garcons = sum(r['moyenne'] for r in garcons) / nb_garcons if nb_garcons else 0
+            
+            # Admis / Non admis
+            nb_admis = len([r for r in resultats if r['moyenne'] and r['moyenne'] >= seuil_admis])
+            nb_non_admis = len([r for r in resultats if r['moyenne'] and r['moyenne'] < seuil_admis])
+            taux_reussite = (nb_admis / len(moyennes_valides) * 100) if moyennes_valides else 0
+            
+            # Titre section statistiques
+            stats_title_style = ParagraphStyle(
+                'StatsTitle',
+                parent=styles['Heading2'],
+                fontSize=12,
+                textColor=colors.HexColor('#007bff'),
+                spaceAfter=6,
+                alignment=TA_CENTER
+            )
+            elements.append(Paragraph("STATISTIQUES DE LA CLASSE", stats_title_style))
+            elements.append(Spacer(1, 0.2*cm))
+            
+            # Tableau statistiques
+            stats_data = [
+                ['Statistique', 'Valeur'],
+                ['Ont composé', str(len(moyennes_valides))],
+                ['Filles', str(nb_filles)],
+                ['Garçons', str(nb_garcons)],
+                ['Moyenne de classe', f"{moy_classe:{fmt}}{suffixe}"],
+                ['Moyenne des filles', f"{moy_filles:{fmt}}{suffixe}" if nb_filles else '-'],
+                ['Moyenne des garçons', f"{moy_garcons:{fmt}}{suffixe}" if nb_garcons else '-'],
+                ['Meilleure moyenne', f"{max(moyennes_valides):{fmt}}{suffixe}"],
+                ['Plus faible moyenne', f"{min(moyennes_valides):{fmt}}{suffixe}"],
+                ['Admis', f"{nb_admis} ({taux_reussite:.1f}%)"],
+                ['Non admis', f"{nb_non_admis} ({100 - taux_reussite:.1f}%)"],
+            ]
+            
+            stats_table = Table(stats_data, colWidths=[8*cm, 6*cm])
+            stats_style = TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                # Non admis en rouge
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.red),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ])
+            stats_table.setStyle(stats_style)
+            elements.append(stats_table)
         
         # Construire le PDF
         doc.build(elements)
@@ -485,6 +544,10 @@ def exporter_resultats_excel(request):
                 mention if moy else '-'
             ]
             
+            # Déterminer si non admis
+            seuil_admis = 5 if est_primaire else (50 if est_maternelle else 10)
+            est_non_admis = moy < seuil_admis if moy else False
+            
             for col, value in enumerate(data_row, 1):
                 cell = ws.cell(row=row_idx, column=col, value=value)
                 cell.border = thin_border
@@ -492,6 +555,9 @@ def exporter_resultats_excel(request):
                     cell.alignment = center_align
                 else:
                     cell.alignment = left_align
+                # Mention et moyenne en rouge pour les non admis
+                if est_non_admis and col in [5, 6]:
+                    cell.font = Font(bold=True, color="FF0000")
         
         # Ajuster les largeurs de colonnes
         ws.column_dimensions['A'].width = 10
@@ -501,26 +567,64 @@ def exporter_resultats_excel(request):
         ws.column_dimensions['E'].width = 15
         ws.column_dimensions['F'].width = 15
         
-        # Statistiques (décalées de 5 lignes supplémentaires pour l'en-tête école)
+        # Statistiques détaillées
         last_row = len(resultats) + 11
         moyennes_valides = [r['moyenne'] for r in resultats if r['moyenne']]
         if moyennes_valides:
-            moy_classe = sum(moyennes_valides)/len(moyennes_valides)
-            ws.cell(row=last_row, column=1, value="Statistiques:")
-            ws.cell(row=last_row, column=1).font = Font(bold=True)
-            ws.cell(row=last_row + 1, column=1, value=f"Effectif: {len(resultats)}")
-            if est_maternelle:
-                ws.cell(row=last_row + 1, column=2, value=f"Taux moyen: {moy_classe:.1f}%")
-                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.1f}%")
-                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.1f}%")
-            elif est_primaire:
-                ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {moy_classe:.2f}/10")
-                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}/10")
-                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}/10")
-            else:
-                ws.cell(row=last_row + 1, column=2, value=f"Moyenne classe: {moy_classe:.2f}/20")
-                ws.cell(row=last_row + 1, column=3, value=f"Max: {max(moyennes_valides):.2f}/20")
-                ws.cell(row=last_row + 1, column=4, value=f"Min: {min(moyennes_valides):.2f}/20")
+            note_sur = 10 if est_primaire else (100 if est_maternelle else 20)
+            seuil_admis = 5 if est_primaire else (50 if est_maternelle else 10)
+            suffixe = '%' if est_maternelle else f'/{note_sur}'
+            fmt = '.1f' if est_maternelle else '.2f'
+            
+            moy_classe = sum(moyennes_valides) / len(moyennes_valides)
+            
+            # Statistiques par sexe
+            filles = [r for r in resultats if r['eleve'].sexe == 'F' and r['moyenne']]
+            garcons = [r for r in resultats if r['eleve'].sexe == 'M' and r['moyenne']]
+            nb_filles = len(filles)
+            nb_garcons = len(garcons)
+            moy_filles = sum(r['moyenne'] for r in filles) / nb_filles if nb_filles else 0
+            moy_garcons = sum(r['moyenne'] for r in garcons) / nb_garcons if nb_garcons else 0
+            
+            nb_admis = len([r for r in resultats if r['moyenne'] and r['moyenne'] >= seuil_admis])
+            nb_non_admis = len([r for r in resultats if r['moyenne'] and r['moyenne'] < seuil_admis])
+            taux_reussite = (nb_admis / len(moyennes_valides) * 100) if moyennes_valides else 0
+            
+            # Titre statistiques
+            stats_fill = PatternFill(start_color="007BFF", end_color="007BFF", fill_type="solid")
+            ws.merge_cells(start_row=last_row, start_column=1, end_row=last_row, end_column=2)
+            cell_title = ws.cell(row=last_row, column=1, value="STATISTIQUES DE LA CLASSE")
+            cell_title.font = Font(bold=True, color="FFFFFF", size=11)
+            cell_title.fill = stats_fill
+            cell_title.alignment = center_align
+            ws.cell(row=last_row, column=2).fill = stats_fill
+            
+            stats_rows = [
+                ('Ont composé', str(len(moyennes_valides))),
+                ('Filles', str(nb_filles)),
+                ('Garçons', str(nb_garcons)),
+                ('Moyenne de classe', f"{moy_classe:{fmt}}{suffixe}"),
+                ('Moyenne des filles', f"{moy_filles:{fmt}}{suffixe}" if nb_filles else '-'),
+                ('Moyenne des garçons', f"{moy_garcons:{fmt}}{suffixe}" if nb_garcons else '-'),
+                ('Meilleure moyenne', f"{max(moyennes_valides):{fmt}}{suffixe}"),
+                ('Plus faible moyenne', f"{min(moyennes_valides):{fmt}}{suffixe}"),
+                ('Admis', f"{nb_admis} ({taux_reussite:.1f}%)"),
+                ('Non admis', f"{nb_non_admis} ({100 - taux_reussite:.1f}%)"),
+            ]
+            
+            for i, (label, value) in enumerate(stats_rows, 1):
+                row_num = last_row + i
+                c1 = ws.cell(row=row_num, column=1, value=label)
+                c1.font = Font(bold=True)
+                c1.border = thin_border
+                c1.alignment = left_align
+                c2 = ws.cell(row=row_num, column=2, value=value)
+                c2.border = thin_border
+                c2.alignment = center_align
+                # Non admis en rouge
+                if label == 'Non admis':
+                    c1.font = Font(bold=True, color="FF0000")
+                    c2.font = Font(bold=True, color="FF0000")
         
         # Sauvegarder dans un buffer
         buffer = io.BytesIO()
