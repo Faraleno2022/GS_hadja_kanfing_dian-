@@ -600,7 +600,8 @@ def saisie_intelligente_save(request):
                         annee_scolaire=annee_scolaire,
                         defaults={
                             'note': note_decimal,
-                            'absent': is_absent
+                            'absent': is_absent,
+                            'cree_par': request.user
                         }
                     )
                 else:
@@ -611,7 +612,8 @@ def saisie_intelligente_save(request):
                         annee_scolaire=annee_scolaire,
                         defaults={
                             'note': note_decimal,
-                            'absent': is_absent
+                            'absent': is_absent,
+                            'cree_par': request.user
                         }
                     )
                 
