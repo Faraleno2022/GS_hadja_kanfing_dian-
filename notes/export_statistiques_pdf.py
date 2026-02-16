@@ -127,21 +127,30 @@ def _calculer_statistiques_classe(classe_note, periode):
             moyenne_generale = float(total_points / total_coefficients)
             
             # Classifier l'élève
-            if moyenne_generale >= 16:
+            if moyenne_generale >= 18:
                 categorie = 'excellent'
                 mention = 'Excellent'
-            elif moyenne_generale >= 14:
+            elif moyenne_generale >= 16:
                 categorie = 'tres_bien'
                 mention = 'Très Bien'
-            elif moyenne_generale >= 12:
+            elif moyenne_generale >= 14:
                 categorie = 'bien'
                 mention = 'Bien'
-            elif moyenne_generale >= 10:
+            elif moyenne_generale >= 12:
                 categorie = 'assez_bien'
                 mention = 'Assez Bien'
-            else:
+            elif moyenne_generale >= 10:
+                categorie = 'passable'
+                mention = 'Passable'
+            elif moyenne_generale >= 8:
                 categorie = 'insuffisant'
                 mention = 'Insuffisant'
+            elif moyenne_generale >= 6:
+                categorie = 'faible'
+                mention = 'Faible'
+            else:
+                categorie = 'tres_faible'
+                mention = 'Très faible'
             
             eleves_data.append({
                 'eleve': eleve,
@@ -185,10 +194,14 @@ def _calculer_statistiques_classe(classe_note, periode):
             'nb_tres_bien': len([e for e in eleves_data if e['categorie'] == 'tres_bien']),
             'nb_bien': len([e for e in eleves_data if e['categorie'] == 'bien']),
             'nb_assez_bien': len([e for e in eleves_data if e['categorie'] == 'assez_bien']),
+            'nb_passable': len([e for e in eleves_data if e['categorie'] == 'passable']),
             'nb_insuffisant': len([e for e in eleves_data if e['categorie'] == 'insuffisant']),
+            'nb_faible': len([e for e in eleves_data if e['categorie'] == 'faible']),
+            'nb_tres_faible': len([e for e in eleves_data if e['categorie'] == 'tres_faible']),
         }
+        nb_echec = stats_globales['nb_insuffisant'] + stats_globales['nb_faible'] + stats_globales['nb_tres_faible']
         stats_globales['taux_reussite'] = round(
-            (stats_globales['total_eleves'] - stats_globales['nb_insuffisant']) / 
+            (stats_globales['total_eleves'] - nb_echec) / 
             stats_globales['total_eleves'] * 100, 1
         )
     else:
@@ -214,15 +227,19 @@ def _generer_graphique_repartition(stats):
     
     fig, ax = plt.subplots(figsize=(6, 4))
     
-    labels = ['Excellent\n(≥16)', 'Très Bien\n(≥14)', 'Bien\n(≥12)', 'Assez Bien\n(≥10)', 'Insuffisant\n(<10)']
+    labels = ['Excellent\n(≥18)', 'Très Bien\n(≥16)', 'Bien\n(≥14)', 'Assez Bien\n(≥12)', 'Passable\n(≥10)', 'Insuffisant\n(≥8)', 'Faible\n(≥6)', 'Très faible\n(<6)']
+    sg = stats['stats_globales']
     sizes = [
-        stats['stats_globales']['nb_excellent'],
-        stats['stats_globales']['nb_tres_bien'],
-        stats['stats_globales']['nb_bien'],
-        stats['stats_globales']['nb_assez_bien'],
-        stats['stats_globales']['nb_insuffisant']
+        sg.get('nb_excellent', 0),
+        sg.get('nb_tres_bien', 0),
+        sg.get('nb_bien', 0),
+        sg.get('nb_assez_bien', 0),
+        sg.get('nb_passable', 0),
+        sg.get('nb_insuffisant', 0),
+        sg.get('nb_faible', 0),
+        sg.get('nb_tres_faible', 0)
     ]
-    colors_pie = ['#28a745', '#17a2b8', '#ffc107', '#fd7e14', '#dc3545']
+    colors_pie = ['#146c43', '#28a745', '#17a2b8', '#ffc107', '#fd7e14', '#dc3545', '#e55353', '#8b0000']
     
     # Filtrer les valeurs nulles
     non_zero = [(l, s, c) for l, s, c in zip(labels, sizes, colors_pie) if s > 0]

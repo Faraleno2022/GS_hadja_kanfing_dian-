@@ -144,13 +144,14 @@ def obtenir_mention(moyenne: Optional[Decimal]) -> str:
     Détermine la mention selon la moyenne avec seuils intelligents
     
     SEUILS DYNAMIQUES:
-    - >= 18.5: Excellent
-    - >= 16.5: Très bien
-    - >= 14.5: Bien
-    - >= 12.5: Assez bien
+    - >= 18: Excellent
+    - >= 16: Très bien
+    - >= 14: Bien
+    - >= 12: Assez bien
     - >= 10: Passable
-    - >= 9: Faible
-    - < 9: Insuffisant
+    - >= 8: Insuffisant
+    - >= 6: Faible
+    - < 6: Très faible
     
     Args:
         moyenne: Moyenne de l'élève
@@ -161,20 +162,22 @@ def obtenir_mention(moyenne: Optional[Decimal]) -> str:
     if moyenne is None:
         return "Non évalué"
     
-    if moyenne >= Decimal('18.5'):
+    if moyenne >= Decimal('18'):
         return "Excellent"
-    elif moyenne >= Decimal('16.5'):
+    elif moyenne >= Decimal('16'):
         return "Très bien"
-    elif moyenne >= Decimal('14.5'):
+    elif moyenne >= Decimal('14'):
         return "Bien"
-    elif moyenne >= Decimal('12.5'):
+    elif moyenne >= Decimal('12'):
         return "Assez bien"
     elif moyenne >= Decimal('10'):
         return "Passable"
-    elif moyenne >= Decimal('9'):
+    elif moyenne >= Decimal('8'):
+        return "Insuffisant"
+    elif moyenne >= Decimal('6'):
         return "Faible"
     else:
-        return "Insuffisant"
+        return "Très faible"
 
 
 def obtenir_appreciation(moyenne: Optional[Decimal], prenom: str = None) -> str:

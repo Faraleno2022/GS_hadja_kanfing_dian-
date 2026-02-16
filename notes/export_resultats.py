@@ -162,7 +162,9 @@ def exporter_resultats_pdf(request):
                     lignes_non_admis.append(idx + 1)
             elif est_primaire:
                 # Pour le primaire : mentions sur 10
-                if moy >= 8:
+                if moy >= 9:
+                    mention = 'Excellent'
+                elif moy >= 8:
                     mention = 'Très Bien'
                 elif moy >= 7:
                     mention = 'Bien'
@@ -170,12 +172,19 @@ def exporter_resultats_pdf(request):
                     mention = 'Assez Bien'
                 elif moy >= 5:
                     mention = 'Passable'
-                else:
+                elif moy >= 4:
                     mention = 'Insuffisant'
+                elif moy >= 3:
+                    mention = 'Faible'
+                    lignes_non_admis.append(idx + 1)
+                else:
+                    mention = 'Très faible'
                     lignes_non_admis.append(idx + 1)
             else:
                 # Pour le secondaire : mentions sur 20
-                if moy >= 16:
+                if moy >= 18:
+                    mention = 'Excellent'
+                elif moy >= 16:
                     mention = 'Très Bien'
                 elif moy >= 14:
                     mention = 'Bien'
@@ -183,8 +192,13 @@ def exporter_resultats_pdf(request):
                     mention = 'Assez Bien'
                 elif moy >= 10:
                     mention = 'Passable'
-                else:
+                elif moy >= 8:
                     mention = 'Insuffisant'
+                elif moy >= 6:
+                    mention = 'Faible'
+                    lignes_non_admis.append(idx + 1)
+                else:
+                    mention = 'Très faible'
                     lignes_non_admis.append(idx + 1)  # +1 car la ligne 0 est l'en-tête
             
             # Format de la moyenne/acquisition
@@ -425,7 +439,9 @@ def exporter_resultats_excel(request):
                 moy_display = f"{moy:.1f}%" if moy else '-'
             elif est_primaire:
                 # Pour le primaire : mentions sur 10
-                if moy >= 8:
+                if moy >= 9:
+                    mention = 'Excellent'
+                elif moy >= 8:
                     mention = 'Très Bien'
                 elif moy >= 7:
                     mention = 'Bien'
@@ -433,12 +449,18 @@ def exporter_resultats_excel(request):
                     mention = 'Assez Bien'
                 elif moy >= 5:
                     mention = 'Passable'
-                else:
+                elif moy >= 4:
                     mention = 'Insuffisant'
+                elif moy >= 3:
+                    mention = 'Faible'
+                else:
+                    mention = 'Très faible'
                 moy_display = f"{moy:.2f}" if moy else '-'
             else:
                 # Pour le secondaire : mentions sur 20
-                if moy >= 16:
+                if moy >= 18:
+                    mention = 'Excellent'
+                elif moy >= 16:
                     mention = 'Très Bien'
                 elif moy >= 14:
                     mention = 'Bien'
@@ -446,8 +468,12 @@ def exporter_resultats_excel(request):
                     mention = 'Assez Bien'
                 elif moy >= 10:
                     mention = 'Passable'
-                else:
+                elif moy >= 8:
                     mention = 'Insuffisant'
+                elif moy >= 6:
+                    mention = 'Faible'
+                else:
+                    mention = 'Très faible'
                 moy_display = f"{moy:.2f}" if moy else '-'
             
             data_row = [

@@ -481,7 +481,9 @@ def apercu_message_whatsapp(request):
                     rang = f"{rang_info['rang']}/{rang_info['total_eleves']}"
                     
                     # Calculer la mention
-                    if moyenne >= 16:
+                    if moyenne >= 18:
+                        mention = "Excellent"
+                    elif moyenne >= 16:
                         mention = "Très Bien"
                     elif moyenne >= 14:
                         mention = "Bien"
@@ -489,8 +491,12 @@ def apercu_message_whatsapp(request):
                         mention = "Assez Bien"
                     elif moyenne >= 10:
                         mention = "Passable"
-                    else:
+                    elif moyenne >= 8:
                         mention = "Insuffisant"
+                    elif moyenne >= 6:
+                        mention = "Faible"
+                    else:
+                        mention = "Très faible"
         except Exception as e:
             logger.warning(f"Impossible de récupérer les résultats: {e}")
         

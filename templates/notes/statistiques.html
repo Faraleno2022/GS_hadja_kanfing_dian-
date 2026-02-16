@@ -352,11 +352,14 @@
                             </span>
                         </td>
                         <td class="text-center">
-                            {% if eleve_data.moyenne >= 16 %}Excellent
-                            {% elif eleve_data.moyenne >= 14 %}Très bien
-                            {% elif eleve_data.moyenne >= 12 %}Bien
-                            {% elif eleve_data.moyenne >= 10 %}Assez bien
-                            {% else %}Insuffisant
+                            {% if eleve_data.moyenne >= 18 %}Excellent
+                            {% elif eleve_data.moyenne >= 16 %}Très bien
+                            {% elif eleve_data.moyenne >= 14 %}Bien
+                            {% elif eleve_data.moyenne >= 12 %}Assez bien
+                            {% elif eleve_data.moyenne >= 10 %}Passable
+                            {% elif eleve_data.moyenne >= 8 %}Insuffisant
+                            {% elif eleve_data.moyenne >= 6 %}Faible
+                            {% else %}Très faible
                             {% endif %}
                         </td>
                     </tr>
@@ -391,21 +394,27 @@ if (repartitionData && (repartitionData.excellent > 0 || repartitionData.tres_bi
     new Chart(repartitionCtx, {
         type: 'doughnut',
         data: {
-            labels: ['Excellent (≥16)', 'Très bien (≥14)', 'Bien (≥12)', 'Assez bien (≥10)', 'Insuffisant (<10)'],
+            labels: ['Excellent (≥18)', 'Très bien (≥16)', 'Bien (≥14)', 'Assez bien (≥12)', 'Passable (≥10)', 'Insuffisant (≥8)', 'Faible (≥6)', 'Très faible (<6)'],
             datasets: [{
                 data: [
                     repartitionData.excellent,
                     repartitionData.tres_bien,
                     repartitionData.bien,
                     repartitionData.assez_bien,
-                    repartitionData.insuffisant
+                    repartitionData.passable || 0,
+                    repartitionData.insuffisant,
+                    repartitionData.faible || 0,
+                    repartitionData.tres_faible || 0
                 ],
                 backgroundColor: [
+                    '#146c43',
                     '#28a745',
                     '#17a2b8',
                     '#ffc107',
                     '#fd7e14',
-                    '#dc3545'
+                    '#dc3545',
+                    '#e55353',
+                    '#8b0000'
                 ]
             }]
         },
