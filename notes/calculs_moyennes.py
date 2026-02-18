@@ -1028,18 +1028,15 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
     # SYSTÈME MENSUEL: Note du mois uniquement
     # ============================================================
     if system_type == 'mensuel':
-        try:
-            note_mensuelle = NoteMensuelle.objects.get(
-                eleve=eleve,
-                matiere=matiere,
-                mois=periode,
-                annee_scolaire=matiere.classe.annee_scolaire
-            )
-            if not note_mensuelle.absent and note_mensuelle.note is not None:
-                result['moyenne_continue'] = float(note_mensuelle.note)
-                result['moyenne'] = float(note_mensuelle.note)
-        except NoteMensuelle.DoesNotExist:
-            pass
+        note_mensuelle = NoteMensuelle.objects.filter(
+            eleve=eleve,
+            matiere=matiere,
+            mois=periode,
+            annee_scolaire=matiere.classe.annee_scolaire
+        ).first()
+        if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
+            result['moyenne_continue'] = float(note_mensuelle.note)
+            result['moyenne'] = float(note_mensuelle.note)
     
     # ============================================================
     # SYSTÈME TRIMESTRIEL: Moyenne des mois + Composition
@@ -1060,32 +1057,25 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             moyennes_detail = []
             
             for mois in mois_periode:
-                try:
-                    note_mensuelle = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=mois,
-                        annee_scolaire=matiere.classe.annee_scolaire
-                    )
-                    if not note_mensuelle.absent and note_mensuelle.note is not None:
-                        total_notes += Decimal(str(note_mensuelle.note))
-                        count_notes += 1
-                        moyennes_detail.append({
-                            'libelle': mois[:3] + '.',
-                            'moyenne': float(note_mensuelle.note),
-                            'absent': False
-                        })
-                    else:
-                        moyennes_detail.append({
-                            'libelle': mois[:3] + '.',
-                            'moyenne': None,
-                            'absent': True
-                        })
-                except NoteMensuelle.DoesNotExist:
+                note_mensuelle = NoteMensuelle.objects.filter(
+                    eleve=eleve,
+                    matiere=matiere,
+                    mois=mois,
+                    annee_scolaire=matiere.classe.annee_scolaire
+                ).first()
+                if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
+                    total_notes += Decimal(str(note_mensuelle.note))
+                    count_notes += 1
+                    moyennes_detail.append({
+                        'libelle': mois[:3] + '.',
+                        'moyenne': float(note_mensuelle.note),
+                        'absent': False
+                    })
+                else:
                     moyennes_detail.append({
                         'libelle': mois[:3] + '.',
                         'moyenne': None,
-                        'absent': True
+                        'absent': note_mensuelle.absent if note_mensuelle else True
                     })
             
             result['moyennes_mensuelles'] = moyennes_detail
@@ -1094,17 +1084,14 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
                 result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
         
         # Récupérer la note de composition
-        try:
-            compo = CompositionNote.objects.get(
-                eleve=eleve,
-                matiere=matiere,
-                periode=periode,
-                annee_scolaire=matiere.classe.annee_scolaire
-            )
-            if not compo.absent and compo.note is not None:
-                result['note_composition'] = float(compo.note)
-        except CompositionNote.DoesNotExist:
-            pass
+        compo = CompositionNote.objects.filter(
+            eleve=eleve,
+            matiere=matiere,
+            periode=periode,
+            annee_scolaire=matiere.classe.annee_scolaire
+        ).first()
+        if compo and not compo.absent and compo.note is not None:
+            result['note_composition'] = float(compo.note)
         
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
         # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
@@ -1135,32 +1122,25 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             moyennes_detail = []
             
             for mois in mois_periode:
-                try:
-                    note_mensuelle = NoteMensuelle.objects.get(
-                        eleve=eleve,
-                        matiere=matiere,
-                        mois=mois,
-                        annee_scolaire=matiere.classe.annee_scolaire
-                    )
-                    if not note_mensuelle.absent and note_mensuelle.note is not None:
-                        total_notes += Decimal(str(note_mensuelle.note))
-                        count_notes += 1
-                        moyennes_detail.append({
-                            'libelle': mois[:3] + '.',
-                            'moyenne': float(note_mensuelle.note),
-                            'absent': False
-                        })
-                    else:
-                        moyennes_detail.append({
-                            'libelle': mois[:3] + '.',
-                            'moyenne': None,
-                            'absent': True
-                        })
-                except NoteMensuelle.DoesNotExist:
+                note_mensuelle = NoteMensuelle.objects.filter(
+                    eleve=eleve,
+                    matiere=matiere,
+                    mois=mois,
+                    annee_scolaire=matiere.classe.annee_scolaire
+                ).first()
+                if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
+                    total_notes += Decimal(str(note_mensuelle.note))
+                    count_notes += 1
+                    moyennes_detail.append({
+                        'libelle': mois[:3] + '.',
+                        'moyenne': float(note_mensuelle.note),
+                        'absent': False
+                    })
+                else:
                     moyennes_detail.append({
                         'libelle': mois[:3] + '.',
                         'moyenne': None,
-                        'absent': True
+                        'absent': note_mensuelle.absent if note_mensuelle else True
                     })
             
             result['moyennes_mensuelles'] = moyennes_detail
@@ -1169,17 +1149,14 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
                 result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
         
         # Récupérer la note de composition
-        try:
-            compo = CompositionNote.objects.get(
-                eleve=eleve,
-                matiere=matiere,
-                periode=periode,
-                annee_scolaire=matiere.classe.annee_scolaire
-            )
-            if not compo.absent and compo.note is not None:
-                result['note_composition'] = float(compo.note)
-        except CompositionNote.DoesNotExist:
-            pass
+        compo = CompositionNote.objects.filter(
+            eleve=eleve,
+            matiere=matiere,
+            periode=periode,
+            annee_scolaire=matiere.classe.annee_scolaire
+        ).first()
+        if compo and not compo.absent and compo.note is not None:
+            result['note_composition'] = float(compo.note)
         
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
         # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2

@@ -6588,6 +6588,15 @@ def sauvegarder_notes(request):
         
         logger.info(f"Sauvegarde terminée: {total_notes} notes traitées, {len(erreurs)} erreurs")
         
+        # Invalider le cache des rangs/classements pour que les bulletins soient à jour
+        if total_notes > 0:
+            try:
+                from .utils_rangs import invalider_cache_rangs
+                invalider_cache_rangs(matiere.classe, periode)
+                logger.info(f"Cache invalidé pour classe {matiere.classe.id}, période {periode}")
+            except Exception as e:
+                logger.warning(f"Erreur invalidation cache: {e}")
+        
         return JsonResponse(response_data)
         
     except json.JSONDecodeError:

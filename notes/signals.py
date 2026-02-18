@@ -64,9 +64,9 @@ def sync_note_eleve_to_mensuelle(sender, instance, created, **kwargs):
                 }
             )
             
-            # Invalider le cache des rangs
-            cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
-            cache.delete(cache_key)
+            # Invalider tous les caches liés (rangs + classements)
+            from .utils_rangs import invalider_cache_rangs
+            invalider_cache_rangs(classe_note, periode)
             
             logger.debug(f"Note mensuelle synchronisée: {instance.eleve} - {matiere.nom} - {periode}")
         
@@ -90,9 +90,9 @@ def sync_note_eleve_to_mensuelle(sender, instance, created, **kwargs):
                 }
             )
             
-            # Invalider le cache des rangs
-            cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
-            cache.delete(cache_key)
+            # Invalider tous les caches liés (rangs + classements)
+            from .utils_rangs import invalider_cache_rangs
+            invalider_cache_rangs(classe_note, periode)
             
             logger.debug(f"Note composition synchronisée: {instance.eleve} - {matiere.nom} - {periode}")
             
@@ -145,9 +145,9 @@ def delete_note_mensuelle_on_note_eleve_delete(sender, instance, **kwargs):
                 ).delete()
                 logger.debug(f"CompositionNote supprimée: {instance.eleve} - {matiere.nom} - {periode}")
             
-            # Invalider le cache
-            cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
-            cache.delete(cache_key)
+            # Invalider tous les caches liés
+            from .utils_rangs import invalider_cache_rangs
+            invalider_cache_rangs(classe_note, periode)
                 
     except Exception as e:
         logger.error(f"Erreur suppression NoteMensuelle/CompositionNote: {e}")
