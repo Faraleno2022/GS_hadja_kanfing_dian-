@@ -111,7 +111,7 @@
         transform: translateY(0);
     }
     
-    .toast {
+    .custom-toast {
         position: fixed;
         top: 20px;
         right: 20px;
@@ -123,11 +123,11 @@
         animation: slideIn 0.3s ease;
     }
     
-    .toast.success {
+    .custom-toast.success {
         background: #16a34a;
     }
     
-    .toast.error {
+    .custom-toast.error {
         background: #dc2626;
     }
     
@@ -741,7 +741,7 @@ let originalValues = {};
 // Toast notification
 function showToast(message, type = 'success') {
     const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
+    toast.className = `custom-toast ${type}`;
     toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'} me-2"></i>${message}`;
     document.body.appendChild(toast);
     
@@ -1004,9 +1004,12 @@ async function sauvegarderToutesLesNotes() {
 }
 
 // Recharger les périodes selon le type de note
-document.getElementById('typeNoteSelect').addEventListener('change', function() {
-    document.getElementById('selectionForm').submit();
-});
+const _typeNoteEl = document.getElementById('typeNoteSelect');
+if (_typeNoteEl) {
+    _typeNoteEl.addEventListener('change', function() {
+        document.getElementById('selectionForm').submit();
+    });
+}
 
 // Recharger quand on change le système (semestriel/trimestriel)
 const systemTypeSelect = document.getElementById('systemTypeSelect');
@@ -1017,18 +1020,22 @@ if (systemTypeSelect) {
 }
 
 // Recharger les matières quand on change de classe
-document.getElementById('classeSelect').addEventListener('change', function() {
-    if (this.value) {
-        window.location.href = `?classe_id=${this.value}`;
-    }
-});
+const _classeEl = document.getElementById('classeSelect');
+if (_classeEl) {
+    _classeEl.addEventListener('change', function() {
+        if (this.value) {
+            window.location.href = `?classe_id=${this.value}`;
+        }
+    });
+}
 
 // Validation dynamique
+const noteSur = {{ note_sur|default:20 }};
 document.querySelectorAll('.note-input').forEach(input => {
     input.addEventListener('input', function() {
         const value = parseFloat(this.value);
         if (value < 0) this.value = 0;
-        if (value > 20) this.value = 20;
+        if (value > noteSur) this.value = noteSur;
     });
 });
 

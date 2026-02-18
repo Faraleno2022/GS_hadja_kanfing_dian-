@@ -6385,19 +6385,25 @@ def sauvegarder_notes(request):
                 # Utiliser le coefficient de la matière, ou 1 par défaut si None
                 coef = matiere.coefficient if matiere.coefficient is not None else 1
                 
-                evaluation, created = Evaluation.objects.get_or_create(
+                # Utiliser filter().first() pour éviter MultipleObjectsReturned
+                evaluation = Evaluation.objects.filter(
                     matiere=matiere,
-                    periode=periode,
-                    defaults={
-                        'titre': titre_eval,
-                        'type_evaluation': type_eval,
-                        'date_evaluation': timezone.now().date(),
-                        'note_sur': 20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
-                        'coefficient': coef,
-                        'cree_par': request.user,
-                    }
-                )
-                logger.info(f"Évaluation {'créée' if created else 'récupérée'}: {evaluation.id}")
+                    periode=periode
+                ).first()
+                if not evaluation:
+                    evaluation = Evaluation.objects.create(
+                        matiere=matiere,
+                        periode=periode,
+                        titre=titre_eval,
+                        type_evaluation=type_eval,
+                        date_evaluation=timezone.now().date(),
+                        note_sur=20 if matiere.classe.niveau_enseignement == 'SECONDAIRE' else 10,
+                        coefficient=coef,
+                        cree_par=request.user,
+                    )
+                    logger.info(f"Évaluation créée: {evaluation.id}")
+                else:
+                    logger.info(f"Évaluation récupérée: {evaluation.id}")
             else:
                 evaluation = get_object_or_404(Evaluation, pk=evaluation_id)
         
