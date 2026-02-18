@@ -630,6 +630,20 @@ def saisie_intelligente_save(request):
                 errors.append(str(e))
         
         total_saved = created_count + updated_count + absent_count
+        
+        # Invalider le cache des rangs/classements pour que les bulletins soient à jour
+        if total_saved > 0:
+            try:
+                from .utils_rangs import invalider_cache_rangs
+                # Récupérer la classe depuis la première note pour invalider le cache
+                first_note = notes[0] if notes else None
+                if first_note:
+                    matiere_obj = MatiereNote.objects.filter(id=first_note.get('matiere_id')).first()
+                    if matiere_obj:
+                        invalider_cache_rangs(matiere_obj.classe, periode)
+            except Exception:
+                pass
+        
         return JsonResponse({
             'success': True,
             'saved': total_saved,
