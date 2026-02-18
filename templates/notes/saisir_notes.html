@@ -1084,7 +1084,7 @@ function compterNotesSaisies() {
             }
         } else {
             const noteInput = row.querySelector('[data-field="note"]');
-            if (noteInput && (noteInput.value || absentCheckbox.checked)) {
+            if (noteInput && (noteInput.value !== "" || absentCheckbox.checked)) {
                 count++;
             }
         }
