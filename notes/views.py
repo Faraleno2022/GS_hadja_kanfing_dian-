@@ -6497,7 +6497,7 @@ def sauvegarder_notes(request):
                                 mois=periode.upper(),
                                 annee_scolaire=annee_scolaire,
                                 defaults={
-                                    'note': note_decimal if not absent else None,
+                                    'note': note_decimal if not absent else Decimal('0'),
                                     'absent': absent,
                                     'cree_par': request.user,
                                 }
@@ -6524,7 +6524,7 @@ def sauvegarder_notes(request):
                                 eleve=eleve,
                                 evaluation=evaluation,
                                 defaults={
-                                    'note': note_decimal if not absent else None,
+                                    'note': note_decimal if not absent else Decimal('0'),
                                     'absent': absent,
                                     'cree_par': request.user,
                                 }
