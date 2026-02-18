@@ -426,6 +426,7 @@ class CSPMiddleware(MiddlewareMixin):
             # Autoriser CDN utilisés par base.html
             script_src = [
                 "'self'",
+                "'unsafe-inline'",
                 "https://cdn.jsdelivr.net",
             ]
             style_src = [
