@@ -895,6 +895,25 @@ async function sauvegarderToutesLesNotes() {
         
         clearInterval(progressInterval);
         
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Erreur serveur:', response.status, errorText);
+            showToast(`❌ Erreur serveur (${response.status}). Voir console pour détails.`, 'error');
+            
+            let resultsHTML = '<div class="error-details">';
+            resultsHTML += `<h5><i class="fas fa-exclamation-triangle me-2"></i>Erreur serveur (${response.status})</h5>`;
+            resultsHTML += `<p>Le serveur a retourné une erreur. Essayez de recharger la page et réessayer.</p>`;
+            resultsHTML += `<p class="small text-muted">Si le problème persiste, vérifiez que votre session n'a pas expiré.</p>`;
+            resultsHTML += '</div>';
+            saveResults.innerHTML = resultsHTML;
+            saveResults.style.display = 'block';
+            saveProgress.style.display = 'none';
+            
+            saveBtn.disabled = false;
+            saveBtnText.innerHTML = '<i class="fas fa-save me-2"></i>Réessayer la sauvegarde';
+            return;
+        }
+        
         const data = await response.json();
         
         // Compléter la barre de progression
