@@ -555,8 +555,8 @@ console.log('Type note:', typeNote, 'Période:', periode);
 
 // Fonction d'impression PDF - définie en premier pour être toujours disponible
 function imprimerListePDF() {
-    const classeIdPDF = '{{ classe_selectionnee.id|default:"" }}';
-    const matiereIdPDF = '{{ matiere_selectionnee.id|default:"" }}';
+    const classeIdPDF = '{{ classe_selectionnee.id|stringformat:"d"|default:"" }}';
+    const matiereIdPDF = '{{ matiere_selectionnee.id|stringformat:"d"|default:"" }}';
     const periodePDF = '{{ periode|default:"" }}';
     const typeNotePDF = '{{ type_note|default:"" }}';
     
@@ -1049,7 +1049,7 @@ if (_classeEl) {
 }
 
 // Validation dynamique
-const noteSur = {{ note_sur|default:20 }};
+const noteSur = {{ note_sur|default:20|stringformat:"d" }};
 document.querySelectorAll('.note-input').forEach(input => {
     input.addEventListener('input', function() {
         const value = parseFloat(this.value);
@@ -1131,7 +1131,7 @@ console.log('💡 Astuce: Utilisez Ctrl+S pour sauvegarder rapidement les notes'
 
 // Fonction de confirmation de suppression
 function confirmerSuppression() {
-    const nombreNotes = {{ nombre_notes_existantes|default:0 }};
+    const nombreNotes = {{ nombre_notes_existantes|default:0|stringformat:"d" }};
     
     if (nombreNotes === 0) {
         showToast('⚠️ Aucune note à supprimer', 'error');
