@@ -542,7 +542,7 @@
 </div>
 
 <script>
-const notesExistantes = JSON.parse('{{ notes_existantes_json|escapejs }}');
+const notesExistantes = {{ notes_existantes_json|safe }};
 const typeNote = '{{ type_note|default:"" }}';
 const periode = '{{ periode|default:"" }}';
 const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id }}{% else %}null{% endif %};
@@ -1084,7 +1084,7 @@ function compterNotesSaisies() {
             }
         } else {
             const noteInput = row.querySelector('[data-field="note"]');
-            if (noteInput && (noteInput.value || absentCheckbox.checked)) {
+            if (noteInput && (noteInput.value !== "" || absentCheckbox.checked)) {
                 count++;
             }
         }
