@@ -452,7 +452,7 @@
                 </thead>
                 <tbody id="elevesTableBody">
                     {% for eleve in eleves %}
-                    <tr data-eleve-id="{{ eleve.id|unlocalize }}">
+                    <tr data-eleve-id="{{ eleve.id|stringformat:"d" }}">
                         <td>{{ forloop.counter }}</td>
                         <td>{{ eleve.matricule }}</td>
                         <td>{{ eleve.prenom }}</td>
