@@ -429,7 +429,7 @@ def saisie_notes(request, evaluation_id):
     try:
         import json as _json
         notes_existantes_map = {
-            n.eleve_id: {
+            str(n.eleve_id): {
                 'note': float(n.note) if getattr(n, 'note', None) is not None else None,
                 'absent': bool(getattr(n, 'absent', False)),
             }
@@ -6025,7 +6025,7 @@ def saisir_notes(request):
                 for n in qs_notes:
                     try:
                         # Dernière valeur écrase la précédente si plusieurs evals
-                        notes_map[n.eleve_id] = {
+                        notes_map[str(n.eleve_id)] = {
                             'note': float(n.note) if getattr(n, 'note', None) is not None else None,
                             'absent': bool(getattr(n, 'absent', False)),
                             'appreciation': getattr(n, 'appreciation_finale', None),
