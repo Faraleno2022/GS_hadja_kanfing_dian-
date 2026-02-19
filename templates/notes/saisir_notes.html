@@ -452,7 +452,7 @@
                 </thead>
                 <tbody id="elevesTableBody">
                     {% for eleve in eleves %}
-                    <tr data-eleve-id="{{ eleve.id }}">
+                    <tr data-eleve-id="{{ eleve.id|unlocalize }}">
                         <td>{{ forloop.counter }}</td>
                         <td>{{ eleve.matricule }}</td>
                         <td>{{ eleve.prenom }}</td>
@@ -887,7 +887,7 @@ async function sauvegarderToutesLesNotes() {
             },
             body: JSON.stringify({
                 notes: notes,
-                evaluation_id: {{ evaluations.0.id|default:'null' }},
+                evaluation_id: {{ evaluations.0.id|unlocalize|default:'null' }},
                 matiere_id: matiereId,
                 periode: periode
             })
