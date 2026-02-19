@@ -770,17 +770,17 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             {% if eleve.echeancier %}
             serverEcheancier = {
-                inscription_du: {{ eleve.echeancier.frais_inscription_du|default:0 }},
-                inscription_paye: {{ eleve.echeancier.frais_inscription_paye|default:0 }},
-                tranche_1_du: {{ eleve.echeancier.tranche_1_due|default:0 }},
-                tranche_1_payee: {{ eleve.echeancier.tranche_1_payee|default:0 }},
-                tranche_2_du: {{ eleve.echeancier.tranche_2_due|default:0 }},
-                tranche_2_payee: {{ eleve.echeancier.tranche_2_payee|default:0 }},
-                tranche_3_du: {{ eleve.echeancier.tranche_3_due|default:0 }},
-                tranche_3_payee: {{ eleve.echeancier.tranche_3_payee|default:0 }},
-                total_du: {{ eleve.echeancier.total_du|default:0 }},
-                total_paye: {{ eleve.echeancier.total_paye|default:0 }},
-                reste: Math.max(0, ({{ eleve.echeancier.total_du|default:0 }}-( {{ eleve.echeancier.total_paye|default:0 }})))
+                inscription_du: {{ eleve.echeancier.frais_inscription_du|default:0|stringformat:"d" }},
+                inscription_paye: {{ eleve.echeancier.frais_inscription_paye|default:0|stringformat:"d" }},
+                tranche_1_du: {{ eleve.echeancier.tranche_1_due|default:0|stringformat:"d" }},
+                tranche_1_payee: {{ eleve.echeancier.tranche_1_payee|default:0|stringformat:"d" }},
+                tranche_2_du: {{ eleve.echeancier.tranche_2_due|default:0|stringformat:"d" }},
+                tranche_2_payee: {{ eleve.echeancier.tranche_2_payee|default:0|stringformat:"d" }},
+                tranche_3_du: {{ eleve.echeancier.tranche_3_due|default:0|stringformat:"d" }},
+                tranche_3_payee: {{ eleve.echeancier.tranche_3_payee|default:0|stringformat:"d" }},
+                total_du: {{ eleve.echeancier.total_du|default:0|stringformat:"d" }},
+                total_paye: {{ eleve.echeancier.total_paye|default:0|stringformat:"d" }},
+                reste: Math.max(0, ({{ eleve.echeancier.total_du|default:0|stringformat:"d" }}-( {{ eleve.echeancier.total_paye|default:0|stringformat:"d" }})))
             };
             console.log('Server echeancier loaded:', serverEcheancier);
             {% else %}

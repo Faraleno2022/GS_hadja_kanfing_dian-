@@ -463,8 +463,8 @@
 
 {% block extra_js %}
 <script>
-const conversationId = {{ conversation.id }};
-const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id }}{% else %}null{% endif %};
+const conversationId = {{ conversation.id|stringformat:"d" }};
+const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id|stringformat:"d" }}{% else %}null{% endif %};
 const csrfToken = '{{ csrf_token }}';
 
 const chatMessages = document.getElementById('chatMessages');
