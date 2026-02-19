@@ -343,7 +343,7 @@
                         <th rowspan="2" class="align-middle">Rang</th>
                         <th rowspan="2" class="align-middle">{% if est_maternelle %}Acquisition{% elif est_primaire %}Moyenne /10{% else %}Moyenne /20{% endif %}</th>
                         {% for matiere in matieres %}
-                        <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id }}">
+                        <th colspan="{{ evaluations_par_matiere|get_item:matiere.id|length|add:1 }}" class="text-center matiere-col" data-matiere-id="{{ matiere.id|stringformat:"d" }}">
                             {% if est_maternelle or est_primaire %}
                             {{ matiere.nom }}
                             {% else %}
@@ -355,12 +355,12 @@
                     <tr>
                         {% for matiere in matieres %}
                             {% for evaluation in evaluations_par_matiere|get_item:matiere.id %}
-                            <th class="text-center periode-col" data-matiere-id="{{ matiere.id }}" data-periode="{{ evaluation.periode }}" style="font-size: 0.75rem;">
+                            <th class="text-center periode-col" data-matiere-id="{{ matiere.id|stringformat:"d" }}" data-periode="{{ evaluation.periode }}" style="font-size: 0.75rem;">
                                 {% if est_maternelle %}Appréciation{% else %}{{ evaluation.titre|truncatewords:2 }}{% endif %}
                             </th>
                             {% endfor %}
                             {% if not est_maternelle %}
-                            <th class="text-center bg-light periode-col" data-matiere-id="{{ matiere.id }}" data-periode="moyenne" style="font-size: 0.75rem;">Moy</th>
+                            <th class="text-center bg-light periode-col" data-matiere-id="{{ matiere.id|stringformat:"d" }}" data-periode="moyenne" style="font-size: 0.75rem;">Moy</th>
                             {% endif %}
                         {% endfor %}
                     </tr>
@@ -392,7 +392,7 @@
                         {% for matiere in matieres %}
                             {% with notes_matiere=eleve_data.notes_par_matiere|get_item:matiere.id %}
                                 {% for note_info in notes_matiere.notes %}
-                                <td class="text-center note-cell" data-matiere-id="{{ matiere.id }}" data-periode="{% if note_info.evaluation %}{{ note_info.evaluation.periode }}{% else %}mensuelle{% endif %}">
+                                <td class="text-center note-cell" data-matiere-id="{{ matiere.id|stringformat:"d" }}" data-periode="{% if note_info.evaluation %}{{ note_info.evaluation.periode }}{% else %}mensuelle{% endif %}">
                                     {% if note_info.absent %}
                                         <span class="text-danger">ABS</span>
                                     {% elif est_maternelle %}
@@ -425,7 +425,7 @@
                                 </td>
                                 {% endfor %}
                                 {% if not est_maternelle %}
-                                <td class="text-center bg-light note-cell" data-matiere-id="{{ matiere.id }}" data-periode="moyenne">
+                                <td class="text-center bg-light note-cell" data-matiere-id="{{ matiere.id|stringformat:"d" }}" data-periode="moyenne">
                                     {% if notes_matiere.moyenne %}
                                         <strong class="text-primary">{{ notes_matiere.moyenne }}</strong>
                                     {% else %}
