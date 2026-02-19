@@ -545,7 +545,7 @@
 const notesExistantes = {{ notes_existantes_json|safe }};
 const typeNote = '{{ type_note|default:"" }}';
 const periode = '{{ periode|default:"" }}';
-const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id }}{% else %}null{% endif %};
+const matiereId = {% if matiere_selectionnee %}{{ matiere_selectionnee.id|stringformat:"d" }}{% else %}null{% endif %};
 const anneeScolaire = '{{ classe_selectionnee.annee_scolaire|default:"" }}';
 
 // Debug: afficher les notes existantes dans la console
