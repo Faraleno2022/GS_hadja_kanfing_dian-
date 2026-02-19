@@ -509,8 +509,8 @@ def saisie_intelligente(request):
                     
                     if note_obj:
                         notes_list.append({
-                            'eleve_id': eleve.id,
-                            'matiere_id': matiere.id,
+                            'eleve_id': str(eleve.id),
+                            'matiere_id': str(matiere.id),
                             'note': float(note_obj.note) if note_obj.note is not None else None,
                             'absent': note_obj.absent if hasattr(note_obj, 'absent') else False
                         })

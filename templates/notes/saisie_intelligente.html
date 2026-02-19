@@ -356,7 +356,7 @@
                 </thead>
                 <tbody id="notesTableBody">
                     {% for eleve in eleves %}
-                    <tr data-eleve-id="{{ eleve.id }}" data-matricule="{{ eleve.matricule }}">
+                    <tr data-eleve-id="{{ eleve.id|stringformat:"d" }}" data-matricule="{{ eleve.matricule }}">
                         <td>{{ forloop.counter }}</td>
                         <td style="font-size:10px;">{{ eleve.matricule }}</td>
                         <td class="nom-col">{{ eleve.prenom }}</td>
@@ -365,7 +365,7 @@
                         <td>
                             <input type="number" 
                                    class="note-input" 
-                                   data-eleve-id="{{ eleve.id }}"
+                                   data-eleve-id="{{ eleve.id|stringformat:"d" }}"
                                    data-matiere-id="{{ matiere.id }}"
                                    data-matiere-nom="{{ matiere.nom }}"
                                    step="0.01" 
