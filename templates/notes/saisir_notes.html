@@ -887,7 +887,7 @@ async function sauvegarderToutesLesNotes() {
             },
             body: JSON.stringify({
                 notes: notes,
-                evaluation_id: {{ evaluations.0.id|unlocalize|default:'null' }},
+                evaluation_id: {{ evaluations.0.id|stringformat:"d"|default:'null' }},
                 matiere_id: matiereId,
                 periode: periode
             })
