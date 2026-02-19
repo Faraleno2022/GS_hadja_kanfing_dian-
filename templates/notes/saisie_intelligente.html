@@ -415,7 +415,7 @@
 
 {% block extra_js %}
 <script>
-const NOTE_MAX = {{ note_max|default:20 }};
+const NOTE_MAX = {{ note_max|default:20|stringformat:"d" }};
 const CSRF_TOKEN = '{{ csrf_token }}';
 const TYPE_NOTE = '{{ type_note }}';
 const PERIODE = '{{ periode }}';
@@ -442,7 +442,7 @@ function validateNote(input) {
 function handleKeyDown(event, input) {
     const inputs = Array.from(document.querySelectorAll('.note-input'));
     const currentIndex = inputs.indexOf(input);
-    const cols = {{ matieres|length }};
+    const cols = {{ matieres|length|stringformat:"d" }};
     
     switch(event.key) {
         case 'ArrowDown':
