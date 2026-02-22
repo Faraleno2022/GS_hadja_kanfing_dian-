@@ -898,26 +898,69 @@ def _generer_methodes_suivi():
     ]
 
 
+def _detecter_niveau_classe(classe_nom):
+    """Détecte le niveau scolaire à partir du nom de la classe pour les lettres"""
+    from .calculs_moyennes import detecter_niveau_scolaire
+    return detecter_niveau_scolaire(classe_nom)
+
+
+def _get_titres_signataires(niveau):
+    """Retourne les titres des signataires selon le niveau scolaire"""
+    if niveau == 'MATERNELLE':
+        return 'La Monitrice', 'La Coordinatrice'
+    elif niveau == 'PRIMAIRE':
+        return 'Le Maître de la classe', 'Le Directeur du Primaire'
+    else:
+        return 'Le Professeur Principal', 'Le Directeur'
+
+
 def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
-    """Génère le contenu d'une lettre aux parents"""
+    """Génère le contenu d'une lettre aux parents avec analyse intelligente
+    (genre de l'élève, niveau scolaire, titres adaptés)"""
     eleve = eleve_data['eleve']
     moyenne = eleve_data['moyenne']
     matieres_sans_notes = eleve_data.get('matieres_sans_notes', [])
     
+    # Analyse intelligente du genre
+    est_fille = getattr(eleve, 'sexe', 'M') == 'F'
+    pronom_il = 'elle' if est_fille else 'il'
+    pronom_le = 'la' if est_fille else 'le'
+    pronom_son = 'sa' if est_fille else 'son'
+    accord_e = 'e' if est_fille else ''
+    mot_fils = 'votre fille' if est_fille else 'votre fils'
+    
+    # Analyse intelligente du niveau scolaire
+    niveau = _detecter_niveau_classe(classe_nom)
+    titre_enseignant, titre_direction = _get_titres_signataires(niveau)
+    
+    # Adapter le vocabulaire au niveau
+    if niveau == 'MATERNELLE':
+        mot_eleve = 'votre enfant'
+        mot_travail = 'les activités et apprentissages'
+        mot_evaluation = 'les activités d\'évaluation'
+    elif niveau == 'PRIMAIRE':
+        mot_eleve = mot_fils
+        mot_travail = 'les devoirs et leçons'
+        mot_evaluation = 'les évaluations'
+    else:
+        mot_eleve = mot_fils
+        mot_travail = 'les devoirs, leçons et révisions'
+        mot_evaluation = 'les évaluations et compositions'
+    
     # Déterminer le niveau de gravité
     if moyenne < 6:
-        niveau = 'critique'
+        niveau_gravite = 'critique'
         urgence = 'URGENT'
     elif moyenne < 8:
-        niveau = 'grave'
+        niveau_gravite = 'grave'
         urgence = 'IMPORTANT'
     else:
-        niveau = 'preoccupant'
+        niveau_gravite = 'preoccupant'
         urgence = 'À NOTER'
     
-    # Construire le constat
+    # Construire le constat avec genre
     constat = f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/20, "
-    constat += f"ce qui le/la place en situation de {'grande difficulté' if moyenne < 8 else 'difficulté'}."
+    constat += f"ce qui {pronom_le} place en situation de {'grande difficulté' if moyenne < 8 else 'difficulté'}."
     
     # Ajouter l'alerte sur les matières sans notes
     if matieres_sans_notes:
@@ -928,47 +971,78 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         constat += ". Ces matières sont comptées comme 0/20 dans le calcul de la moyenne."
     
     consequences = [
-        "Risque de redoublement si la situation ne s'améliore pas",
-        "Accumulation de lacunes pouvant compromettre la suite de la scolarité",
-        "Perte de confiance et de motivation possible"
+        f"Risque de redoublement si la situation ne s'améliore pas",
+        f"Accumulation de lacunes pouvant compromettre la suite de {pronom_son} parcours scolaire",
+        f"Perte de confiance et de motivation possible chez {mot_eleve}"
     ]
     
     # Ajouter conséquence spécifique si matières sans notes
     if matieres_sans_notes:
         consequences.insert(0, f"Les {len(matieres_sans_notes)} matière(s) sans notes pénalisent fortement la moyenne")
     
+    # Adapter les demandes au niveau
     demandes = [
-        "Vérifier quotidiennement les devoirs et leçons",
-        "Assurer un environnement calme et propice au travail à la maison",
-        "Limiter les distractions (téléphone, télévision, jeux vidéo)",
-        "Encourager et valoriser les efforts, même minimes",
-        "Vous présenter à l'école pour un entretien avec le professeur principal"
+        f"Vérifier quotidiennement {mot_travail}",
+        f"Assurer un environnement calme et propice au travail à la maison",
     ]
+    
+    if niveau == 'MATERNELLE':
+        demandes.extend([
+            f"Accompagner {mot_eleve} dans ses activités d'éveil à la maison",
+            f"Encourager {pronom_le} et valoriser ses progrès, même les plus petits",
+            f"Vous présenter à l'école pour un entretien avec {titre_enseignant.lower()}"
+        ])
+    elif niveau == 'PRIMAIRE':
+        demandes.extend([
+            f"Limiter les distractions (télévision, jeux vidéo)",
+            f"Encourager et valoriser les efforts de {mot_eleve}, même minimes",
+            f"Vous présenter à l'école pour un entretien avec {titre_enseignant.lower()}"
+        ])
+    else:
+        demandes.extend([
+            f"Limiter les distractions (téléphone, télévision, jeux vidéo)",
+            f"Encourager et valoriser les efforts de {mot_eleve}, même minimes",
+            f"Vous présenter à l'école pour un entretien avec {titre_enseignant.lower()}"
+        ])
     
     # Ajouter demande spécifique si matières sans notes
     if matieres_sans_notes:
-        demandes.insert(0, "S'assurer que votre enfant participe à TOUTES les évaluations")
+        demandes.insert(0, f"S'assurer que {mot_eleve} participe à TOUTES {mot_evaluation}")
     
     lettre = {
         'objet': f"[{urgence}] Situation scolaire de {eleve.prenom} {eleve.nom}",
-        'intro': f"Nous vous informons que votre enfant {eleve.prenom} {eleve.nom}, "
+        'intro': f"Nous vous informons que {mot_eleve} {eleve.prenom} {eleve.nom}, "
                 f"élève en classe de {classe_nom}, rencontre actuellement des difficultés scolaires importantes.",
         'constat': constat,
         'consequences': consequences,
         'demandes': demandes,
         'matieres_sans_notes': matieres_sans_notes,
-        'conclusion': "Nous restons à votre disposition pour tout entretien. "
-                     "Votre implication est essentielle pour aider votre enfant à surmonter ces difficultés."
+        'conclusion': f"Nous restons à votre disposition pour tout entretien. "
+                     f"Votre implication est essentielle pour aider {mot_eleve} à surmonter ces difficultés.",
+        'titre_enseignant': titre_enseignant,
+        'titre_direction': titre_direction,
+        'niveau': niveau,
+        'est_fille': est_fille,
     }
     
     return lettre
 
 
 def _generer_lettre_eleve(eleve_data, classe_nom, periode):
-    """Génère le contenu d'une lettre à l'élève"""
+    """Génère le contenu d'une lettre à l'élève avec analyse intelligente du genre et du niveau"""
     eleve = eleve_data['eleve']
     moyenne = eleve_data['moyenne']
     matieres_sans_notes = eleve_data.get('matieres_sans_notes', [])
+    
+    # Analyse intelligente du genre
+    est_fille = getattr(eleve, 'sexe', 'M') == 'F'
+    cher = 'Chère' if est_fille else 'Cher'
+    accord_e = 'e' if est_fille else ''
+    sur_e = 'sûre' if est_fille else 'sûr'
+    convaincu = 'convaincus' if est_fille else 'convaincus'
+    
+    # Analyse intelligente du niveau scolaire
+    niveau = _detecter_niveau_classe(classe_nom)
     
     # Construire le constat
     constat = f"Tes résultats de ce {periode} montrent que tu rencontres des difficultés. "
@@ -982,23 +1056,41 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
             constat += f" et {len(matieres_sans_notes) - 3} autre(s)"
         constat += ". Ces matières comptent comme 0/20 et font baisser ta moyenne!"
     
-    conseils = [
-        "Organise ton temps de travail avec un planning régulier",
-        "N'hésite pas à poser des questions en classe quand tu ne comprends pas",
-        "Revois tes leçons chaque soir, même 15-20 minutes",
-        "Travaille en groupe avec des camarades qui peuvent t'aider",
-        "Participe aux séances de soutien scolaire proposées",
-        "Fixe-toi des petits objectifs atteignables chaque semaine"
-    ]
+    # Adapter les conseils au niveau
+    if niveau == 'MATERNELLE':
+        conseils = [
+            "Écoute bien ta monitrice pendant les activités",
+            "Participe à toutes les activités en classe",
+            "Demande de l'aide quand tu ne comprends pas",
+            "Fais les petits exercices que ta monitrice te donne"
+        ]
+    elif niveau == 'PRIMAIRE':
+        conseils = [
+            "Écoute bien ton maître en classe",
+            "Fais tes devoirs chaque soir sans attendre",
+            "N'hésite pas à poser des questions quand tu ne comprends pas",
+            "Revois tes leçons chaque soir, même 15-20 minutes",
+            "Travaille avec tes camarades qui peuvent t'aider",
+            f"Fixe-toi des petits objectifs atteignables chaque semaine"
+        ]
+    else:
+        conseils = [
+            "Organise ton temps de travail avec un planning régulier",
+            "N'hésite pas à poser des questions en classe quand tu ne comprends pas",
+            "Revois tes leçons chaque soir, même 15-20 minutes",
+            "Travaille en groupe avec des camarades qui peuvent t'aider",
+            "Participe aux séances de soutien scolaire proposées",
+            f"Fixe-toi des petits objectifs atteignables chaque semaine"
+        ]
     
     # Ajouter conseil spécifique si matières sans notes
     if matieres_sans_notes:
-        conseils.insert(0, "IMPORTANT: Participe à TOUTES les évaluations, même si tu n'es pas sûr(e) de toi")
+        conseils.insert(0, f"IMPORTANT: Participe à TOUTES les évaluations, même si tu n'es pas {sur_e} de toi")
         conseils.insert(1, f"Rattrape tes notes manquantes en: {', '.join(matieres_sans_notes[:3])}")
     
     lettre = {
         'titre': f"Message personnel pour {eleve.prenom}",
-        'intro': f"Cher(e) {eleve.prenom},",
+        'intro': f"{cher} {eleve.prenom},",
         'constat': constat,
         'encouragements': [
             "Chaque élève peut progresser avec de la volonté et du travail",
@@ -1007,7 +1099,7 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
         ],
         'conseils': conseils,
         'matieres_sans_notes': matieres_sans_notes,
-        'conclusion': "Nous sommes convaincus que tu peux t'améliorer. "
+        'conclusion': f"Nous sommes {convaincu} que tu peux t'améliorer. "
                      "L'important est de ne pas baisser les bras et de demander de l'aide quand tu en as besoin."
     }
     
@@ -1515,10 +1607,10 @@ def exporter_conseils_pdf(request):
             c.drawString(margin, y, "Veuillez agréer, Madame, Monsieur, l'expression de nos salutations distinguées.")
             y -= 1.2*cm
             
-            # Signatures
+            # Signatures dynamiques selon le niveau
             c.setFont("Helvetica-Bold", 9)
-            c.drawString(margin, y, "Le Professeur Principal")
-            c.drawString(width/2, y, "Le Directeur")
+            c.drawString(margin, y, lettre.get('titre_enseignant', 'Le Professeur Principal'))
+            c.drawString(width/2, y, lettre.get('titre_direction', 'Le Directeur'))
             y -= 1.5*cm
             c.line(margin, y, margin + 5*cm, y)
             c.line(width/2, y, width/2 + 5*cm, y)
@@ -1536,13 +1628,14 @@ def exporter_conseils_pdf(request):
             c.drawString(margin, y, "COUPON-RÉPONSE À RETOURNER À L'ÉCOLE")
             y -= 0.5*cm
             
+            titre_rdv = lettre.get('titre_enseignant', 'le professeur principal').lower()
             c.setFont("Helvetica", 8)
             c.setFillColor(colors.black)
             c.drawString(margin, y, f"Je soussigné(e) _________________________, parent de {eleve.prenom} {eleve.nom},")
             y -= 0.4*cm
             c.drawString(margin, y, "□ Ai pris connaissance de cette lettre et m'engage à suivre mon enfant de près.")
             y -= 0.4*cm
-            c.drawString(margin, y, "□ Souhaite un rendez-vous avec le professeur principal le ___/___/______ à ___h___.")
+            c.drawString(margin, y, f"□ Souhaite un rendez-vous avec {titre_rdv} le ___/___/______ à ___h___.")
             y -= 0.4*cm
             c.drawString(margin, y, "□ Souhaite être contacté(e) par téléphone au: _______________________")
             y -= 0.6*cm
