@@ -28,7 +28,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
@@ -92,17 +92,30 @@ def _calculer_statistiques_classe(classe_note, periode):
         for matiere in matieres:
             coef = Decimal('1') if est_primaire else (matiere.coefficient or Decimal('1'))
             
-            # Récupérer les notes pour cette période
-            evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
+            # Déterminer si c'est une période mensuelle
+            mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
             
             notes_matiere = []
-            for evaluation in evaluations:
-                try:
-                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                    if note_obj.note is not None and not note_obj.absent:
-                        notes_matiere.append(float(note_obj.note))
-                except NoteEleve.DoesNotExist:
-                    pass
+            if periode in mois_periodes:
+                # Utiliser NoteMensuelle pour les périodes mensuelles
+                note_mensuelle = NoteMensuelle.objects.filter(
+                    eleve=eleve,
+                    matiere=matiere,
+                    mois=periode,
+                    annee_scolaire=classe_note.annee_scolaire
+                ).first()
+                if note_mensuelle and note_mensuelle.note is not None and not note_mensuelle.absent:
+                    notes_matiere.append(float(note_mensuelle.note))
+            else:
+                # Utiliser Evaluation+NoteEleve pour les trimestres/semestres
+                evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
+                for evaluation in evaluations:
+                    try:
+                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                        if note_obj.note is not None and not note_obj.absent:
+                            notes_matiere.append(float(note_obj.note))
+                    except NoteEleve.DoesNotExist:
+                        pass
             
             # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent
             # Si pas de notes dans une matière = 0 (l'élève ne doit pas être favorisé)
