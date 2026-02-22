@@ -28,7 +28,7 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
@@ -92,8 +92,15 @@ def _calculer_statistiques_classe(classe_note, periode):
         for matiere in matieres:
             coef = Decimal('1') if est_primaire else (matiere.coefficient or Decimal('1'))
             
-            # Déterminer si c'est une période mensuelle
+            # Périodes mensuelles et mapping trimestres/semestres
             mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+            trimestre_mois = {
+                'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
+                'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
+                'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
+                'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
+                'SEMESTRE_2': ['FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+            }
             
             notes_matiere = []
             if periode in mois_periodes:
@@ -106,8 +113,48 @@ def _calculer_statistiques_classe(classe_note, periode):
                 ).first()
                 if note_mensuelle and note_mensuelle.note is not None and not note_mensuelle.absent:
                     notes_matiere.append(float(note_mensuelle.note))
+            elif periode in trimestre_mois:
+                # Système guinéen: NoteMensuelle (moyenne continue) + CompositionNote
+                mois_list = trimestre_mois[periode]
+                notes_mois = NoteMensuelle.objects.filter(
+                    eleve=eleve,
+                    matiere=matiere,
+                    mois__in=mois_list,
+                    annee_scolaire=classe_note.annee_scolaire,
+                    absent=False,
+                    note__isnull=False
+                )
+                
+                moyenne_continue = None
+                if notes_mois.exists():
+                    total_mois = sum(float(n.note) for n in notes_mois)
+                    moyenne_continue = total_mois / notes_mois.count()
+                
+                note_composition = None
+                compo = CompositionNote.objects.filter(
+                    eleve=eleve,
+                    matiere=matiere,
+                    periode=periode,
+                    annee_scolaire=classe_note.annee_scolaire,
+                    absent=False,
+                    note__isnull=False
+                ).first()
+                if compo:
+                    note_composition = float(compo.note)
+                
+                # Calculer la moyenne de la matière
+                moyenne_calc = None
+                if moyenne_continue is not None and note_composition is not None:
+                    moyenne_calc = (moyenne_continue + note_composition) / 2
+                elif note_composition is not None:
+                    moyenne_calc = note_composition
+                elif moyenne_continue is not None:
+                    moyenne_calc = moyenne_continue
+                
+                if moyenne_calc is not None:
+                    notes_matiere.append(moyenne_calc)
             else:
-                # Utiliser Evaluation+NoteEleve pour les trimestres/semestres
+                # Fallback: ancien système Evaluation+NoteEleve
                 evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
                 for evaluation in evaluations:
                     try:

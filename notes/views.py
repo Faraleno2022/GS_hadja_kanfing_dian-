@@ -4969,8 +4969,17 @@ def statistiques(request):
                 has_notes = False
                 
                 for matiere in matieres:
-                    # Vérifier si c'est une période mensuelle (OCTOBRE, NOVEMBRE, etc.)
+                    # Périodes mensuelles
                     mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+                    
+                    # Mapping trimestres/semestres → mois correspondants
+                    trimestre_mois = {
+                        'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
+                        'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
+                        'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
+                        'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
+                        'SEMESTRE_2': ['FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+                    }
                     
                     if periode in mois_periodes:
                         # Utiliser NoteMensuelle pour les périodes mensuelles
@@ -4984,15 +4993,56 @@ def statistiques(request):
                             has_notes = True
                             total_points += note_mensuelle.note * matiere.coefficient
                             total_coefficients += matiere.coefficient
+                    elif periode in trimestre_mois:
+                        # Système guinéen: NoteMensuelle (moyenne continue) + CompositionNote
+                        mois_list = trimestre_mois[periode]
+                        notes_mois = NoteMensuelle.objects.filter(
+                            eleve=eleve,
+                            matiere=matiere,
+                            mois__in=mois_list,
+                            annee_scolaire=classe_selectionnee.annee_scolaire,
+                            absent=False,
+                            note__isnull=False
+                        )
+                        
+                        moyenne_continue = None
+                        if notes_mois.exists():
+                            total_mois = sum(n.note for n in notes_mois)
+                            moyenne_continue = total_mois / Decimal(str(notes_mois.count()))
+                        
+                        note_composition = None
+                        compo = CompositionNote.objects.filter(
+                            eleve=eleve,
+                            matiere=matiere,
+                            periode=periode,
+                            annee_scolaire=classe_selectionnee.annee_scolaire,
+                            absent=False,
+                            note__isnull=False
+                        ).first()
+                        if compo:
+                            note_composition = compo.note
+                        
+                        # Calculer la moyenne de la matière
+                        moyenne_matiere = None
+                        if moyenne_continue is not None and note_composition is not None:
+                            moyenne_matiere = (moyenne_continue + note_composition) / 2
+                        elif note_composition is not None:
+                            moyenne_matiere = note_composition
+                        elif moyenne_continue is not None:
+                            moyenne_matiere = moyenne_continue
+                        
+                        if moyenne_matiere is not None:
+                            has_notes = True
+                            total_points += moyenne_matiere * matiere.coefficient
+                            total_coefficients += matiere.coefficient
                     else:
-                        # Utiliser les évaluations (ancien système)
+                        # Fallback: ancien système Evaluation+NoteEleve
                         evaluations = Evaluation.objects.filter(
                             matiere=matiere,
                             periode=periode
                         )
                         
                         if evaluations.exists():
-                            # Calculer la moyenne de la matière
                             total_devoirs = Decimal('0')
                             count_devoirs = 0
                             total_compo = Decimal('0')
@@ -5012,13 +5062,11 @@ def statistiques(request):
                                 except NoteEleve.DoesNotExist:
                                     pass
                             
-                            # Calculer la moyenne de la matière
                             moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
                             note_composition = total_compo / count_compo if count_compo > 0 else None
                             
                             moyenne_matiere = None
                             if moyenne_continue is not None and note_composition is not None:
-                                # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
                                 moyenne_matiere = (moyenne_continue + note_composition) / 2
                             elif note_composition is not None:
                                 moyenne_matiere = note_composition
