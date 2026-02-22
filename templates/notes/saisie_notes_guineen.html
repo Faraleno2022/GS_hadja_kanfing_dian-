@@ -365,7 +365,7 @@
 </div>
 
 <script>
-const eleveId = {{ eleve_selectionne.id|default:'null' }};
+const eleveId = {{ eleve_selectionne.id|stringformat:"d"|default:'null' }};
 const anneeScolaire = '{{ classe_selectionnee.annee_scolaire|default:'' }}';
 const systemType = '{{ system_type }}';
 

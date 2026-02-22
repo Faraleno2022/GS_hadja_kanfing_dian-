@@ -4973,20 +4973,17 @@ def statistiques(request):
                     mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
                     
                     if periode in mois_periodes:
-                        # Utiliser les évaluations avec NoteEleve (système moderne)
-                        evaluations = Evaluation.objects.filter(
+                        # Utiliser NoteMensuelle pour les périodes mensuelles
+                        note_mensuelle = NoteMensuelle.objects.filter(
+                            eleve=eleve,
                             matiere=matiere,
-                            periode=periode
-                        )
-                        for evaluation in evaluations:
-                            try:
-                                note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                                if note_obj.note is not None and not note_obj.absent:
-                                    has_notes = True
-                                    total_points += note_obj.note * matiere.coefficient
-                                    total_coefficients += matiere.coefficient
-                            except NoteEleve.DoesNotExist:
-                                pass
+                            mois=periode,
+                            annee_scolaire=classe_selectionnee.annee_scolaire
+                        ).first()
+                        if note_mensuelle and note_mensuelle.note is not None and not note_mensuelle.absent:
+                            has_notes = True
+                            total_points += note_mensuelle.note * matiere.coefficient
+                            total_coefficients += matiere.coefficient
                     else:
                         # Utiliser les évaluations (ancien système)
                         evaluations = Evaluation.objects.filter(
