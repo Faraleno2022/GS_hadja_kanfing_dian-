@@ -193,12 +193,12 @@
                     <tr>
                         <td><strong>{{ stat.matiere }}</strong></td>
                         <td class="text-center">
-                            <span class="badge {% if stat.moyenne >= 14 %}bg-success{% elif stat.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %}">
-                                {{ stat.moyenne }}/20
+                            <span class="badge {% if est_primaire %}{% if stat.moyenne >= 7 %}bg-success{% elif stat.moyenne >= 5 %}bg-warning{% else %}bg-danger{% endif %}{% else %}{% if stat.moyenne >= 14 %}bg-success{% elif stat.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %}{% endif %}">
+                                {{ stat.moyenne }}/{{ note_max }}
                             </span>
                         </td>
-                        <td class="text-center">{{ stat.max }}/20</td>
-                        <td class="text-center">{{ stat.min }}/20</td>
+                        <td class="text-center">{{ stat.max }}/{{ note_max }}</td>
+                        <td class="text-center">{{ stat.min }}/{{ note_max }}</td>
                         <td class="text-center">{{ stat.nb_eleves }}</td>
                     </tr>
                     {% endfor %}
@@ -211,7 +211,7 @@
     <!-- Élèves en difficulté -->
     {% if eleves_non_admis %}
     <div class="chart-container border-danger" style="border-left: 4px solid #dc3545;">
-        <h5 class="mb-4 text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Élèves en difficulté ({{ eleves_non_admis|length }} élève(s) - Moyenne < 10/20)</h5>
+        <h5 class="mb-4 text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Élèves en difficulté ({{ eleves_non_admis|length }} élève(s) - Moyenne < {{ seuil_reussite }}/{{ note_max }})</h5>
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead class="table-danger">
@@ -229,10 +229,10 @@
                         <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
                         <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
                         <td class="text-center">
-                            <span class="badge bg-danger fs-6">{{ eleve_data.moyenne }}/20</span>
+                            <span class="badge bg-danger fs-6">{{ eleve_data.moyenne }}/{{ note_max }}</span>
                         </td>
                         <td class="text-center text-danger">
-                            <strong>-{{ eleve_data.moyenne|add:"-10"|floatformat:2|cut:"-" }} pts</strong>
+                            <strong>-{{ eleve_data.ecart }} pts</strong>
                         </td>
                         <td><small class="text-muted">Soutien scolaire urgent</small></td>
                     </tr>
@@ -250,7 +250,7 @@
     <!-- Élèves à surveiller -->
     {% if eleves_a_suivre %}
     <div class="chart-container border-warning" style="border-left: 4px solid #ffc107;">
-        <h5 class="mb-4 text-warning"><i class="fas fa-eye me-2"></i>Élèves à surveiller ({{ eleves_a_suivre|length }} élève(s) - Moyenne 10-12/20)</h5>
+        <h5 class="mb-4 text-warning"><i class="fas fa-eye me-2"></i>Élèves à surveiller ({{ eleves_a_suivre|length }} élève(s) - Moyenne {% if est_primaire %}5-6{% else %}10-12{% endif %}/{{ note_max }})</h5>
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead class="table-warning">
@@ -267,7 +267,7 @@
                         <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
                         <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
                         <td class="text-center">
-                            <span class="badge bg-warning text-dark fs-6">{{ eleve_data.moyenne }}/20</span>
+                            <span class="badge bg-warning text-dark fs-6">{{ eleve_data.moyenne }}/{{ note_max }}</span>
                         </td>
                         <td><small class="text-muted">Accompagnement personnalisé</small></td>
                     </tr>
@@ -281,7 +281,7 @@
     <!-- Élèves excellents -->
     {% if eleves_excellents %}
     <div class="chart-container border-success" style="border-left: 4px solid #28a745;">
-        <h5 class="mb-4 text-success"><i class="fas fa-star me-2"></i>Élèves excellents ({{ eleves_excellents|length }} élève(s) - Moyenne ≥ 14/20)</h5>
+        <h5 class="mb-4 text-success"><i class="fas fa-star me-2"></i>Élèves excellents ({{ eleves_excellents|length }} élève(s) - Moyenne ≥ {% if est_primaire %}7{% else %}14{% endif %}/{{ note_max }})</h5>
         <div class="table-responsive">
             <table class="table table-hover table-sm">
                 <thead class="table-success">
@@ -298,13 +298,21 @@
                         <td>{{ eleve_data.eleve.matricule|default:"N/A" }}</td>
                         <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
                         <td class="text-center">
-                            <span class="badge {% if eleve_data.moyenne >= 16 %}bg-success{% else %}bg-info{% endif %} fs-6">{{ eleve_data.moyenne }}/20</span>
+                            <span class="badge {% if est_primaire %}{% if eleve_data.moyenne >= 8 %}bg-success{% else %}bg-info{% endif %}{% else %}{% if eleve_data.moyenne >= 16 %}bg-success{% else %}bg-info{% endif %}{% endif %} fs-6">{{ eleve_data.moyenne }}/{{ note_max }}</span>
                         </td>
                         <td class="text-center">
-                            {% if eleve_data.moyenne >= 16 %}
-                                <span class="badge bg-success">Excellent</span>
+                            {% if est_primaire %}
+                                {% if eleve_data.moyenne >= 8 %}
+                                    <span class="badge bg-success">Excellent</span>
+                                {% else %}
+                                    <span class="badge bg-info">Très Bien</span>
+                                {% endif %}
                             {% else %}
-                                <span class="badge bg-info">Très Bien</span>
+                                {% if eleve_data.moyenne >= 16 %}
+                                    <span class="badge bg-success">Excellent</span>
+                                {% else %}
+                                    <span class="badge bg-info">Très Bien</span>
+                                {% endif %}
                             {% endif %}
                         </td>
                     </tr>
@@ -347,19 +355,31 @@
                         <td>{{ eleve_data.eleve.matricule }}</td>
                         <td><strong>{{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</strong></td>
                         <td class="text-center">
-                            <span class="badge {% if eleve_data.moyenne >= 16 %}bg-success{% elif eleve_data.moyenne >= 14 %}bg-info{% elif eleve_data.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %} fs-6">
-                                {{ eleve_data.moyenne }}/20
+                            <span class="badge {% if est_primaire %}{% if eleve_data.moyenne >= 8 %}bg-success{% elif eleve_data.moyenne >= 7 %}bg-info{% elif eleve_data.moyenne >= 5 %}bg-warning{% else %}bg-danger{% endif %}{% else %}{% if eleve_data.moyenne >= 16 %}bg-success{% elif eleve_data.moyenne >= 14 %}bg-info{% elif eleve_data.moyenne >= 10 %}bg-warning{% else %}bg-danger{% endif %}{% endif %} fs-6">
+                                {{ eleve_data.moyenne }}/{{ note_max }}
                             </span>
                         </td>
                         <td class="text-center">
-                            {% if eleve_data.moyenne >= 18 %}Excellent
-                            {% elif eleve_data.moyenne >= 16 %}Très bien
-                            {% elif eleve_data.moyenne >= 14 %}Bien
-                            {% elif eleve_data.moyenne >= 12 %}Assez bien
-                            {% elif eleve_data.moyenne >= 10 %}Passable
-                            {% elif eleve_data.moyenne >= 8 %}Insuffisant
-                            {% elif eleve_data.moyenne >= 6 %}Faible
-                            {% else %}Très faible
+                            {% if est_primaire %}
+                                {% if eleve_data.moyenne >= 9 %}Excellent
+                                {% elif eleve_data.moyenne >= 8 %}Très bien
+                                {% elif eleve_data.moyenne >= 7 %}Bien
+                                {% elif eleve_data.moyenne >= 6 %}Assez bien
+                                {% elif eleve_data.moyenne >= 5 %}Passable
+                                {% elif eleve_data.moyenne >= 4 %}Insuffisant
+                                {% elif eleve_data.moyenne >= 3 %}Faible
+                                {% else %}Très faible
+                                {% endif %}
+                            {% else %}
+                                {% if eleve_data.moyenne >= 18 %}Excellent
+                                {% elif eleve_data.moyenne >= 16 %}Très bien
+                                {% elif eleve_data.moyenne >= 14 %}Bien
+                                {% elif eleve_data.moyenne >= 12 %}Assez bien
+                                {% elif eleve_data.moyenne >= 10 %}Passable
+                                {% elif eleve_data.moyenne >= 8 %}Insuffisant
+                                {% elif eleve_data.moyenne >= 6 %}Faible
+                                {% else %}Très faible
+                                {% endif %}
                             {% endif %}
                         </td>
                     </tr>
@@ -386,6 +406,8 @@ window.chartData = {
     matieres: {{ stats_matieres_json|safe }},
     evolution: {{ evolution_json|safe }}
 };
+var noteMax = {{ note_max|default:"20" }};
+var estPrimaire = {% if est_primaire %}true{% else %}false{% endif %};
 
 // Répartition des notes
 const repartitionData = window.chartData.repartition;
@@ -394,7 +416,9 @@ if (repartitionData && (repartitionData.excellent > 0 || repartitionData.tres_bi
     new Chart(repartitionCtx, {
         type: 'doughnut',
         data: {
-            labels: ['Excellent (≥18)', 'Très bien (≥16)', 'Bien (≥14)', 'Assez bien (≥12)', 'Passable (≥10)', 'Insuffisant (≥8)', 'Faible (≥6)', 'Très faible (<6)'],
+            labels: estPrimaire
+                ? ['Excellent (≥9)', 'Très bien (≥8)', 'Bien (≥7)', 'Assez bien (≥6)', 'Passable (≥5)', 'Insuffisant (≥4)', 'Faible (≥3)', 'Très faible (<3)']
+                : ['Excellent (≥18)', 'Très bien (≥16)', 'Bien (≥14)', 'Assez bien (≥12)', 'Passable (≥10)', 'Insuffisant (≥8)', 'Faible (≥6)', 'Très faible (<6)'],
             datasets: [{
                 data: [
                     repartitionData.excellent,
@@ -450,7 +474,7 @@ if (matieresData.length > 0) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: 20
+                    max: noteMax
                 }
             },
             plugins: {
@@ -484,7 +508,7 @@ if (evolutionData.length > 0) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    max: 20
+                    max: noteMax
                 }
             },
             plugins: {

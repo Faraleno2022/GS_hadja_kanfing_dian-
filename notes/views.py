@@ -4961,6 +4961,13 @@ def statistiques(request):
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
         
+        # Détecter le niveau scolaire pour adapter le barème
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau = detecter_niveau_scolaire(classe_selectionnee.nom)
+        est_primaire = (niveau == 'PRIMAIRE')
+        note_max = 10 if est_primaire else 20
+        seuil_reussite = 5 if est_primaire else 10
+        
         if eleves.exists() and matieres.exists():
             # Pour chaque élève, calculer sa moyenne
             for eleve in eleves:
@@ -5088,13 +5095,18 @@ def statistiques(request):
                         'moyenne': round(moyenne_generale, 2)
                     }
                     
-                    if moyenne_generale < 10:
+                    # Seuils adaptés: primaire /10, secondaire /20
+                    seuil_suivre = seuil_reussite + (1 if est_primaire else 2)
+                    seuil_precaution = seuil_reussite + (2 if est_primaire else 4)
+                    
+                    if moyenne_generale < seuil_reussite:
                         nb_non_admis += 1
+                        eleve_data['ecart'] = round(seuil_reussite - moyenne_generale, 2)
                         eleves_non_admis.append(eleve_data)
-                    elif moyenne_generale < 12:
+                    elif moyenne_generale < seuil_suivre:
                         nb_a_suivre += 1
                         eleves_a_suivre.append(eleve_data)
-                    elif moyenne_generale < 14:
+                    elif moyenne_generale < seuil_precaution:
                         nb_precaution += 1
                         eleves_precaution.append(eleve_data)
                     else:
@@ -5112,21 +5124,21 @@ def statistiques(request):
             if nb_non_admis > 0:
                 recommandations.append({
                     'type': 'DANGER',
-                    'message': f'{nb_non_admis} élève(s) en difficulté (moyenne < 10/20). Mise en place de soutien scolaire recommandée.',
+                    'message': f'{nb_non_admis} élève(s) en difficulté (moyenne < {seuil_reussite}/{note_max}). Mise en place de soutien scolaire recommandée.',
                     'couleur': 'danger'
                 })
             
             if nb_a_suivre > 0:
                 recommandations.append({
                     'type': 'WARNING',
-                    'message': f'{nb_a_suivre} élève(s) à suivre (moyenne entre 10 et 12/20). Accompagnement personnalisé conseillé.',
+                    'message': f'{nb_a_suivre} élève(s) à suivre (moyenne entre {seuil_reussite} et {seuil_reussite + (1 if est_primaire else 2)}/{note_max}). Accompagnement personnalisé conseillé.',
                     'couleur': 'warning'
                 })
             
             if nb_excellents > 0:
                 recommandations.append({
                     'type': 'SUCCESS',
-                    'message': f'{nb_excellents} élève(s) excellent(s) (moyenne ≥ 14/20). Félicitations !',
+                    'message': f'{nb_excellents} élève(s) excellent(s) (moyenne ≥ {seuil_reussite + (2 if est_primaire else 4)}/{note_max}). Félicitations !',
                     'couleur': 'success'
                 })
             
@@ -5162,7 +5174,7 @@ def statistiques(request):
         # Calculer la moyenne de classe
         total_moyennes = 0
         moyenne_max = 0
-        moyenne_min = 20
+        moyenne_min = note_max if classe_selectionnee else 20
         
         for data in eleves_non_admis + eleves_a_suivre + eleves_excellents + eleves_precaution:
             moyenne = data['moyenne']
@@ -5187,11 +5199,18 @@ def statistiques(request):
         # Répartition des notes
         all_eleves = eleves_non_admis + eleves_a_suivre + eleves_excellents + eleves_precaution
         
-        excellent = len([e for e in all_eleves if e['moyenne'] >= 16])
-        tres_bien = len([e for e in all_eleves if 14 <= e['moyenne'] < 16])
-        bien = len([e for e in all_eleves if 12 <= e['moyenne'] < 14])
-        assez_bien = len([e for e in all_eleves if 10 <= e['moyenne'] < 12])
-        insuffisant = len([e for e in all_eleves if e['moyenne'] < 10])
+        if est_primaire:
+            excellent = len([e for e in all_eleves if e['moyenne'] >= 8])
+            tres_bien = len([e for e in all_eleves if 7 <= e['moyenne'] < 8])
+            bien = len([e for e in all_eleves if 6 <= e['moyenne'] < 7])
+            assez_bien = len([e for e in all_eleves if 5 <= e['moyenne'] < 6])
+            insuffisant = len([e for e in all_eleves if e['moyenne'] < 5])
+        else:
+            excellent = len([e for e in all_eleves if e['moyenne'] >= 16])
+            tres_bien = len([e for e in all_eleves if 14 <= e['moyenne'] < 16])
+            bien = len([e for e in all_eleves if 12 <= e['moyenne'] < 14])
+            assez_bien = len([e for e in all_eleves if 10 <= e['moyenne'] < 12])
+            insuffisant = len([e for e in all_eleves if e['moyenne'] < 10])
         
         repartition_json = json.dumps({
             'excellent': excellent,
@@ -5201,23 +5220,62 @@ def statistiques(request):
             'insuffisant': insuffisant
         })
         
-        # Statistiques par matière
+        # Statistiques par matière (même logique que le calcul des moyennes)
+        mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+        trimestre_mois = {
+            'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
+            'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
+            'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
+            'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
+            'SEMESTRE_2': ['FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+        }
         stats_matieres = []
         for matiere in matieres:
             notes_matiere = []
             for eleve in eleves:
-                # Chercher les évaluations pour cette période
-                evaluations = Evaluation.objects.filter(
-                    matiere=matiere,
-                    periode=periode
-                )
-                for evaluation in evaluations:
-                    try:
-                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                        if note_obj.note is not None and not note_obj.absent:
-                            notes_matiere.append(float(note_obj.note))
-                    except NoteEleve.DoesNotExist:
-                        pass
+                if periode in mois_periodes:
+                    nm = NoteMensuelle.objects.filter(
+                        eleve=eleve, matiere=matiere, mois=periode,
+                        annee_scolaire=classe_selectionnee.annee_scolaire
+                    ).first()
+                    if nm and nm.note is not None and not nm.absent:
+                        notes_matiere.append(float(nm.note))
+                elif periode in trimestre_mois:
+                    mois_list = trimestre_mois[periode]
+                    nms = NoteMensuelle.objects.filter(
+                        eleve=eleve, matiere=matiere, mois__in=mois_list,
+                        annee_scolaire=classe_selectionnee.annee_scolaire,
+                        absent=False, note__isnull=False
+                    )
+                    mc = None
+                    if nms.exists():
+                        mc = sum(float(n.note) for n in nms) / nms.count()
+                    nc = None
+                    comp = CompositionNote.objects.filter(
+                        eleve=eleve, matiere=matiere, periode=periode,
+                        annee_scolaire=classe_selectionnee.annee_scolaire,
+                        absent=False, note__isnull=False
+                    ).first()
+                    if comp:
+                        nc = float(comp.note)
+                    mm = None
+                    if mc is not None and nc is not None:
+                        mm = (mc + nc) / 2
+                    elif nc is not None:
+                        mm = nc
+                    elif mc is not None:
+                        mm = mc
+                    if mm is not None:
+                        notes_matiere.append(mm)
+                else:
+                    evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
+                    for evaluation in evaluations:
+                        try:
+                            note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
+                            if note_obj.note is not None and not note_obj.absent:
+                                notes_matiere.append(float(note_obj.note))
+                        except NoteEleve.DoesNotExist:
+                            pass
             
             if notes_matiere:
                 stats_matieres.append({
@@ -5266,6 +5324,9 @@ def statistiques(request):
         'eleves_a_suivre': eleves_a_suivre,
         'eleves_excellents': eleves_excellents,
         'eleves_precaution': eleves_precaution,
+        'note_max': note_max if classe_selectionnee else 20,
+        'est_primaire': est_primaire if classe_selectionnee else False,
+        'seuil_reussite': seuil_reussite if classe_selectionnee else 10,
         'strategies': [],
         'recommandations': recommandations,
         'periodes': [

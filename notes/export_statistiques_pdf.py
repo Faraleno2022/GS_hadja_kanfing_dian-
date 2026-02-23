@@ -70,6 +70,8 @@ def _calculer_statistiques_classe(classe_note, periode):
     # Détecter le niveau scolaire
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
+    note_max = 10 if est_primaire else 20
+    seuil_reussite = 5 if est_primaire else 10
     
     # Calculer les moyennes pour chaque élève
     eleves_data = []
@@ -186,31 +188,41 @@ def _calculer_statistiques_classe(classe_note, periode):
         if total_coefficients > 0:
             moyenne_generale = float(total_points / total_coefficients)
             
-            # Classifier l'élève
-            if moyenne_generale >= 18:
-                categorie = 'excellent'
-                mention = 'Excellent'
-            elif moyenne_generale >= 16:
-                categorie = 'tres_bien'
-                mention = 'Très Bien'
-            elif moyenne_generale >= 14:
-                categorie = 'bien'
-                mention = 'Bien'
-            elif moyenne_generale >= 12:
-                categorie = 'assez_bien'
-                mention = 'Assez Bien'
-            elif moyenne_generale >= 10:
-                categorie = 'passable'
-                mention = 'Passable'
-            elif moyenne_generale >= 8:
-                categorie = 'insuffisant'
-                mention = 'Insuffisant'
-            elif moyenne_generale >= 6:
-                categorie = 'faible'
-                mention = 'Faible'
+            # Classifier l'élève (seuils adaptés: /10 primaire, /20 secondaire)
+            if est_primaire:
+                if moyenne_generale >= 9:
+                    categorie, mention = 'excellent', 'Excellent'
+                elif moyenne_generale >= 8:
+                    categorie, mention = 'tres_bien', 'Très Bien'
+                elif moyenne_generale >= 7:
+                    categorie, mention = 'bien', 'Bien'
+                elif moyenne_generale >= 6:
+                    categorie, mention = 'assez_bien', 'Assez Bien'
+                elif moyenne_generale >= 5:
+                    categorie, mention = 'passable', 'Passable'
+                elif moyenne_generale >= 4:
+                    categorie, mention = 'insuffisant', 'Insuffisant'
+                elif moyenne_generale >= 3:
+                    categorie, mention = 'faible', 'Faible'
+                else:
+                    categorie, mention = 'tres_faible', 'Très faible'
             else:
-                categorie = 'tres_faible'
-                mention = 'Très faible'
+                if moyenne_generale >= 18:
+                    categorie, mention = 'excellent', 'Excellent'
+                elif moyenne_generale >= 16:
+                    categorie, mention = 'tres_bien', 'Très Bien'
+                elif moyenne_generale >= 14:
+                    categorie, mention = 'bien', 'Bien'
+                elif moyenne_generale >= 12:
+                    categorie, mention = 'assez_bien', 'Assez Bien'
+                elif moyenne_generale >= 10:
+                    categorie, mention = 'passable', 'Passable'
+                elif moyenne_generale >= 8:
+                    categorie, mention = 'insuffisant', 'Insuffisant'
+                elif moyenne_generale >= 6:
+                    categorie, mention = 'faible', 'Faible'
+                else:
+                    categorie, mention = 'tres_faible', 'Très faible'
             
             eleves_data.append({
                 'eleve': eleve,
@@ -267,16 +279,23 @@ def _calculer_statistiques_classe(classe_note, periode):
     else:
         stats_globales = None
     
+    # Seuils adaptés au niveau
+    seuil_suivre = seuil_reussite + (2 if est_primaire else 2)
+    seuil_excellent = seuil_reussite + (2 if est_primaire else 4)
+    
     return {
         'classe': classe_note,
         'periode': periode,
         'niveau': niveau,
+        'est_primaire': est_primaire,
+        'note_max': note_max,
+        'seuil_reussite': seuil_reussite,
         'eleves_data': eleves_data,
         'stats_matieres': stats_matieres_final,
         'stats_globales': stats_globales,
-        'eleves_en_difficulte': [e for e in eleves_data if e['moyenne'] < 10],
-        'eleves_a_suivre': [e for e in eleves_data if 10 <= e['moyenne'] < 12],
-        'eleves_excellents': [e for e in eleves_data if e['moyenne'] >= 14],
+        'eleves_en_difficulte': [e for e in eleves_data if e['moyenne'] < seuil_reussite],
+        'eleves_a_suivre': [e for e in eleves_data if seuil_reussite <= e['moyenne'] < seuil_suivre],
+        'eleves_excellents': [e for e in eleves_data if e['moyenne'] >= seuil_excellent],
     }
 
 
@@ -287,7 +306,11 @@ def _generer_graphique_repartition(stats):
     
     fig, ax = plt.subplots(figsize=(6, 4))
     
-    labels = ['Excellent\n(≥18)', 'Très Bien\n(≥16)', 'Bien\n(≥14)', 'Assez Bien\n(≥12)', 'Passable\n(≥10)', 'Insuffisant\n(≥8)', 'Faible\n(≥6)', 'Très faible\n(<6)']
+    est_primaire = stats.get('est_primaire', False)
+    if est_primaire:
+        labels = ['Excellent\n(≥9)', 'Très Bien\n(≥8)', 'Bien\n(≥7)', 'Assez Bien\n(≥6)', 'Passable\n(≥5)', 'Insuffisant\n(≥4)', 'Faible\n(≥3)', 'Très faible\n(<3)']
+    else:
+        labels = ['Excellent\n(≥18)', 'Très Bien\n(≥16)', 'Bien\n(≥14)', 'Assez Bien\n(≥12)', 'Passable\n(≥10)', 'Insuffisant\n(≥8)', 'Faible\n(≥6)', 'Très faible\n(<6)']
     sg = stats['stats_globales']
     sizes = [
         sg.get('nb_excellent', 0),
@@ -334,14 +357,20 @@ def _generer_graphique_matieres(stats):
         plt.close(fig)
         return None
     
+    # Adapter au niveau (primaire /10, secondaire /20)
+    est_primaire = stats.get('est_primaire', False)
+    note_max = stats.get('note_max', 20)
+    seuil = stats.get('seuil_reussite', 10)
+    seuil_bien = 7 if est_primaire else 14
+    
     # Couleurs selon la moyenne
-    colors_bar = ['#28a745' if m >= 14 else '#ffc107' if m >= 10 else '#dc3545' for m in moyennes]
+    colors_bar = ['#28a745' if m >= seuil_bien else '#ffc107' if m >= seuil else '#dc3545' for m in moyennes]
     
     bars = ax.bar(matieres, moyennes, color=colors_bar)
-    ax.set_ylabel('Moyenne /20')
+    ax.set_ylabel(f'Moyenne /{note_max}')
     ax.set_title('Moyennes par Matière', fontsize=12, fontweight='bold')
-    ax.set_ylim(0, 20)
-    ax.axhline(y=10, color='red', linestyle='--', alpha=0.5, label='Seuil de réussite')
+    ax.set_ylim(0, note_max)
+    ax.axhline(y=seuil, color='red', linestyle='--', alpha=0.5, label='Seuil de réussite')
     
     # Rotation des labels si nécessaire
     if len(matieres) > 5:
@@ -358,6 +387,8 @@ def _generer_graphique_matieres(stats):
 
 def _generer_recommandations(stats):
     """Génère des recommandations pédagogiques basées sur les statistiques"""
+    note_max = stats.get('note_max', 20) if stats else 20
+    seuil = stats.get('seuil_reussite', 10) if stats else 10
     recommandations = []
     
     if not stats or not stats.get('stats_globales'):
@@ -410,7 +441,7 @@ def _generer_recommandations(stats):
         recommandations.append({
             'type': 'DANGER',
             'titre': f'{len(eleves_diff)} élève(s) en grande difficulté',
-            'message': "Ces élèves ont une moyenne inférieure à 10/20 et nécessitent une intervention immédiate.",
+            'message': f"Ces élèves ont une moyenne inférieure à {seuil}/{note_max} et nécessitent une intervention immédiate.",
             'actions': [
                 "Organiser des cours de rattrapage hebdomadaires",
                 "Mettre en place un tutorat par les pairs",
@@ -425,7 +456,7 @@ def _generer_recommandations(stats):
         recommandations.append({
             'type': 'WARNING',
             'titre': f'{len(eleves_suivre)} élève(s) à surveiller',
-            'message': "Ces élèves ont une moyenne entre 10 et 12/20. Ils risquent de basculer en difficulté.",
+            'message': f"Ces élèves ont une moyenne entre {seuil} et {seuil + 2}/{note_max}. Ils risquent de basculer en difficulté.",
             'actions': [
                 "Renforcer l'accompagnement dans les matières faibles",
                 "Encourager la participation en classe",
@@ -435,13 +466,13 @@ def _generer_recommandations(stats):
         })
     
     # Analyse par matière
-    matieres_faibles = [m for m in stats_matieres if m['moyenne'] < 10]
+    matieres_faibles = [m for m in stats_matieres if m['moyenne'] < seuil]
     if matieres_faibles:
         noms_matieres = ', '.join([m['nom'] for m in matieres_faibles])
         recommandations.append({
             'type': 'DANGER',
             'titre': 'Matières en difficulté',
-            'message': f"Les matières suivantes ont une moyenne de classe inférieure à 10/20 : {noms_matieres}",
+            'message': f"Les matières suivantes ont une moyenne de classe inférieure à {seuil}/{note_max} : {noms_matieres}",
             'actions': [
                 "Revoir la méthodologie d'enseignement de ces matières",
                 "Organiser des séances de remédiation",
@@ -524,6 +555,10 @@ def exporter_statistiques_pdf(request):
     if not stats or not stats.get('stats_globales'):
         return HttpResponse("Aucune donnée disponible pour cette classe et cette période", status=404)
     
+    note_max = stats.get('note_max', 20)
+    seuil_reussite = stats.get('seuil_reussite', 10)
+    est_primaire = stats.get('est_primaire', False)
+    
     # Créer le PDF
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
@@ -587,12 +622,12 @@ def exporter_statistiques_pdf(request):
     stats_data = [
         ['Indicateur', 'Valeur'],
         ['Nombre d\'élèves évalués', str(sg['total_eleves'])],
-        ['Moyenne de classe', f"{sg['moyenne_classe']}/20"],
-        ['Meilleure moyenne', f"{sg['moyenne_max']}/20"],
-        ['Plus faible moyenne', f"{sg['moyenne_min']}/20"],
+        ['Moyenne de classe', f"{sg['moyenne_classe']}/{note_max}"],
+        ['Meilleure moyenne', f"{sg['moyenne_max']}/{note_max}"],
+        ['Plus faible moyenne', f"{sg['moyenne_min']}/{note_max}"],
         ['Taux de réussite', f"{sg['taux_reussite']}%"],
-        ['Élèves en difficulté (<10)', str(sg['nb_insuffisant'])],
-        ['Élèves excellents (≥14)', str(sg['nb_excellent'] + sg['nb_tres_bien'])],
+        [f'Élèves en difficulté (<{seuil_reussite})', str(sg['nb_insuffisant'])],
+        [f'Élèves excellents (≥{seuil_reussite + (2 if est_primaire else 4)})', str(sg['nb_excellent'] + sg['nb_tres_bien'])],
     ]
     
     table = Table(stats_data, colWidths=[8*cm, 4*cm])
@@ -636,18 +671,18 @@ def exporter_statistiques_pdf(request):
     eleves_diff = stats.get('eleves_en_difficulte', [])
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.HexColor('#E74C3C'))
-    c.drawString(margin, y, f"3. ÉLÈVES EN DIFFICULTÉ ({len(eleves_diff)} élève(s) - Moyenne < 10/20)")
+    c.drawString(margin, y, f"3. ÉLÈVES EN DIFFICULTÉ ({len(eleves_diff)} élève(s) - Moyenne < {seuil_reussite}/{note_max})")
     y -= 0.6*cm
     
     if eleves_diff:
         eleves_data = [['Rang', 'Matricule', 'Nom & Prénom', 'Moyenne', 'Écart']]
         for e in eleves_diff:
-            ecart = round(10 - e['moyenne'], 2)
+            ecart = round(seuil_reussite - e['moyenne'], 2)
             eleves_data.append([
                 str(e['rang']),
                 e['eleve'].matricule or 'N/A',
                 f"{e['eleve'].prenom} {e['eleve'].nom}",
-                f"{e['moyenne']}/20",
+                f"{e['moyenne']}/{note_max}",
                 f"-{ecart} pts"
             ])
         
@@ -680,7 +715,7 @@ def exporter_statistiques_pdf(request):
     eleves_suivre = stats.get('eleves_a_suivre', [])
     c.setFont("Helvetica-Bold", 12)
     c.setFillColor(colors.HexColor('#F39C12'))
-    c.drawString(margin, y, f"4. ÉLÈVES À SURVEILLER ({len(eleves_suivre)} élève(s) - Moyenne 10-12/20)")
+    c.drawString(margin, y, f"4. ÉLÈVES À SURVEILLER ({len(eleves_suivre)} élève(s) - Moyenne {seuil_reussite}-{seuil_reussite + 2}/{note_max})")
     y -= 0.6*cm
     
     if eleves_suivre:
@@ -690,7 +725,7 @@ def exporter_statistiques_pdf(request):
                 str(e['rang']),
                 e['eleve'].matricule or 'N/A',
                 f"{e['eleve'].prenom} {e['eleve'].nom}",
-                f"{e['moyenne']}/20"
+                f"{e['moyenne']}/{note_max}"
             ])
         
         table = Table(eleves_data, colWidths=[1.5*cm, 3*cm, 7*cm, 2.5*cm])
@@ -834,6 +869,7 @@ def _generer_analyse_approfondie(stats):
     sg = stats.get('stats_globales', {})
     eleves_diff = stats.get('eleves_en_difficulte', [])
     eleves_suivre = stats.get('eleves_a_suivre', [])
+    note_max = stats.get('note_max', 20)
     
     taux = sg.get('taux_reussite', 0)
     moyenne = sg.get('moyenne_classe', 0)
@@ -844,7 +880,7 @@ def _generer_analyse_approfondie(stats):
         analyses.append({
             'titre': 'Performance globale excellente',
             'diagnostic': f"Avec un taux de réussite de {taux:.1f}%, la classe affiche d'excellents résultats. "
-                         f"La moyenne de classe de {moyenne:.2f}/20 témoigne d'un bon niveau général.",
+                         f"La moyenne de classe de {moyenne:.2f}/{note_max} témoigne d'un bon niveau général.",
             'causes_probables': [
                 "Bonne assimilation des cours par la majorité des élèves",
                 "Méthodes pédagogiques adaptées au niveau de la classe",
@@ -856,7 +892,7 @@ def _generer_analyse_approfondie(stats):
         analyses.append({
             'titre': 'Performance globale satisfaisante avec marge de progression',
             'diagnostic': f"Le taux de réussite de {taux:.1f}% est acceptable mais perfectible. "
-                         f"La moyenne de {moyenne:.2f}/20 indique un niveau moyen qui peut être amélioré.",
+                         f"La moyenne de {moyenne:.2f}/{note_max} indique un niveau moyen qui peut être amélioré.",
             'causes_probables': [
                 "Hétérogénéité du niveau des élèves",
                 "Certaines notions mal assimilées par une partie de la classe",
@@ -868,7 +904,7 @@ def _generer_analyse_approfondie(stats):
         analyses.append({
             'titre': 'Situation préoccupante nécessitant une intervention urgente',
             'diagnostic': f"Le taux de réussite de {taux:.1f}% est alarmant. "
-                         f"Avec une moyenne de classe de {moyenne:.2f}/20, des mesures correctives s'imposent.",
+                         f"Avec une moyenne de classe de {moyenne:.2f}/{note_max}, des mesures correctives s'imposent.",
             'causes_probables': [
                 "Difficultés généralisées de compréhension",
                 "Lacunes accumulées des années précédentes",
@@ -979,6 +1015,8 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
     # Analyse intelligente du niveau scolaire
     niveau = _detecter_niveau_classe(classe_nom)
     titre_enseignant, titre_direction = _get_titres_signataires(niveau)
+    note_max = 10 if niveau == 'PRIMAIRE' else 20
+    seuil_diff = 4 if niveau == 'PRIMAIRE' else 8
     
     # Adapter le vocabulaire au niveau
     if niveau == 'MATERNELLE':
@@ -994,11 +1032,13 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         mot_travail = 'les devoirs, leçons et révisions'
         mot_evaluation = 'les évaluations et compositions'
     
-    # Déterminer le niveau de gravité
-    if moyenne < 6:
+    # Déterminer le niveau de gravité (adapté au barème)
+    seuil_critique = 3 if niveau == 'PRIMAIRE' else 6
+    seuil_grave = 4 if niveau == 'PRIMAIRE' else 8
+    if moyenne < seuil_critique:
         niveau_gravite = 'critique'
         urgence = 'URGENT'
-    elif moyenne < 8:
+    elif moyenne < seuil_grave:
         niveau_gravite = 'grave'
         urgence = 'IMPORTANT'
     else:
@@ -1006,8 +1046,8 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         urgence = 'À NOTER'
     
     # Construire le constat avec genre
-    constat = f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/20, "
-    constat += f"ce qui {pronom_le} place en situation de {'grande difficulté' if moyenne < 8 else 'difficulté'}."
+    constat = f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/{note_max}, "
+    constat += f"ce qui {pronom_le} place en situation de {'grande difficulté' if moyenne < seuil_diff else 'difficulté'}."
     
     # Ajouter l'alerte sur les matières sans notes
     if matieres_sans_notes:
@@ -1015,7 +1055,7 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         constat += ", ".join(matieres_sans_notes[:5])
         if len(matieres_sans_notes) > 5:
             constat += f" et {len(matieres_sans_notes) - 5} autre(s)"
-        constat += ". Ces matières sont comptées comme 0/20 dans le calcul de la moyenne."
+        constat += f". Ces matières sont comptées comme 0/{note_max} dans le calcul de la moyenne."
     
     consequences = [
         f"Risque de redoublement si la situation ne s'améliore pas",
@@ -1090,10 +1130,11 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
     
     # Analyse intelligente du niveau scolaire
     niveau = _detecter_niveau_classe(classe_nom)
+    note_max = 10 if niveau == 'PRIMAIRE' else 20
     
     # Construire le constat
     constat = f"Tes résultats de ce {periode} montrent que tu rencontres des difficultés. "
-    constat += f"Ta moyenne de {moyenne:.2f}/20 n'est pas à la hauteur de ce que tu peux accomplir."
+    constat += f"Ta moyenne de {moyenne:.2f}/{note_max} n'est pas à la hauteur de ce que tu peux accomplir."
     
     # Ajouter l'alerte sur les matières sans notes
     if matieres_sans_notes:
@@ -1101,7 +1142,7 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
         constat += ", ".join(matieres_sans_notes[:3])
         if len(matieres_sans_notes) > 3:
             constat += f" et {len(matieres_sans_notes) - 3} autre(s)"
-        constat += ". Ces matières comptent comme 0/20 et font baisser ta moyenne!"
+        constat += f". Ces matières comptent comme 0/{note_max} et font baisser ta moyenne!"
     
     # Adapter les conseils au niveau
     if niveau == 'MATERNELLE':
@@ -1176,6 +1217,10 @@ def exporter_conseils_pdf(request):
     
     if not stats:
         return HttpResponse("Aucune donnée disponible pour cette classe et période", status=404)
+    
+    note_max = stats.get('note_max', 20)
+    seuil_reussite = stats.get('seuil_reussite', 10)
+    est_primaire = stats.get('est_primaire', False)
     
     # Créer le PDF
     buffer = io.BytesIO()
@@ -1306,7 +1351,7 @@ def exporter_conseils_pdf(request):
     c.setFont("Helvetica-Bold", 11)
     c.setFillColor(colors.black)
     c.drawString(margin + 0.3*cm, y - 0.5*cm, f"Effectif: {effectif} élèves")
-    c.drawString(margin + 6*cm, y - 0.5*cm, f"Moyenne de classe: {moyenne_classe:.2f}/20")
+    c.drawString(margin + 6*cm, y - 0.5*cm, f"Moyenne de classe: {moyenne_classe:.2f}/{note_max}")
     
     # Taux de réussite avec couleur
     taux = taux_reussite
@@ -1324,8 +1369,8 @@ def exporter_conseils_pdf(request):
     c.drawString(margin + 6*cm, y - 1.1*cm, f"Admis: {nb_admis} | Non admis: {nb_non_admis}")
     
     c.setFont("Helvetica", 10)
-    c.drawString(margin + 0.3*cm, y - 1.7*cm, f"Meilleure moyenne: {meilleure_moy:.2f}/20")
-    c.drawString(margin + 6*cm, y - 1.7*cm, f"Plus faible moyenne: {plus_faible_moy:.2f}/20")
+    c.drawString(margin + 0.3*cm, y - 1.7*cm, f"Meilleure moyenne: {meilleure_moy:.2f}/{note_max}")
+    c.drawString(margin + 6*cm, y - 1.7*cm, f"Plus faible moyenne: {plus_faible_moy:.2f}/{note_max}")
     c.drawString(margin + 0.3*cm, y - 2.2*cm, f"Écart-type: {ecart_type:.2f}")
     
     y -= 3.2*cm
@@ -1407,7 +1452,7 @@ def exporter_conseils_pdf(request):
     if eleves_diff:
         c.setFont("Helvetica-Bold", 11)
         c.setFillColor(ROUGE)
-        c.drawString(margin, y, f"⚠ Élèves en grande difficulté ({len(eleves_diff)} élève(s) - Moyenne < 10/20)")
+        c.drawString(margin, y, f"⚠ Élèves en grande difficulté ({len(eleves_diff)} élève(s) - Moyenne < {seuil_reussite}/{note_max})")
         y -= 0.5*cm
         
         # Tableau des élèves en difficulté
@@ -1415,8 +1460,9 @@ def exporter_conseils_pdf(request):
         for eleve_data in eleves_diff[:10]:  # Max 10 élèves
             eleve = eleve_data['eleve']
             moy = eleve_data['moyenne']
-            decision = "Soutien scolaire urgent" if moy < 8 else "Accompagnement renforcé"
-            data.append([f"{eleve.prenom} {eleve.nom}", f"{moy:.2f}/20", decision])
+            seuil_urgent = 4 if est_primaire else 8
+            decision = "Soutien scolaire urgent" if moy < seuil_urgent else "Accompagnement renforcé"
+            data.append([f"{eleve.prenom} {eleve.nom}", f"{moy:.2f}/{note_max}", decision])
         
         table = Table(data, colWidths=[7*cm, 3*cm, 6*cm])
         table.setStyle(TableStyle([
@@ -1449,7 +1495,7 @@ def exporter_conseils_pdf(request):
         
         c.setFont("Helvetica-Bold", 11)
         c.setFillColor(ORANGE)
-        c.drawString(margin, y, f"⚡ Élèves à surveiller ({len(eleves_suivre)} élève(s) - Moyenne 10-12/20)")
+        c.drawString(margin, y, f"⚡ Élèves à surveiller ({len(eleves_suivre)} élève(s) - Moyenne {seuil_reussite}-{seuil_reussite + 2}/{note_max})")
         y -= 0.5*cm
         
         # Liste des élèves à surveiller
@@ -1458,7 +1504,7 @@ def exporter_conseils_pdf(request):
         for eleve_data in eleves_suivre[:8]:  # Max 8 élèves
             eleve = eleve_data['eleve']
             moy = eleve_data['moyenne']
-            c.drawString(margin + 0.3*cm, y, f"• {eleve.prenom} {eleve.nom} ({moy:.2f}/20) - Accompagnement personnalisé recommandé")
+            c.drawString(margin + 0.3*cm, y, f"• {eleve.prenom} {eleve.nom} ({moy:.2f}/{note_max}) - Accompagnement personnalisé recommandé")
             y -= 0.35*cm
         
         if len(eleves_suivre) > 8:
