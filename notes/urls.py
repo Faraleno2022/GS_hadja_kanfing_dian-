@@ -31,6 +31,7 @@ from .export_notes_complet import exporter_notes_complet_pdf, exporter_notes_com
 from .bulletin_public import bulletin_public_pdf
 from .export_statistiques_pdf import exporter_statistiques_pdf, exporter_conseils_pdf
 from .certificats import certificats_appreciation_pdf
+from .tableau_honneur import tableau_honneur, tableau_honneur_pdf
 
 app_name = 'notes'
 
@@ -105,6 +106,10 @@ urlpatterns = [
     
     # Certificats d'appréciation pour les 5 premiers
     path('certificats-appreciation-pdf/', certificats_appreciation_pdf, name='certificats_appreciation_pdf'),
+    
+    # Tableau d'Honneur
+    path('tableau-honneur/', tableau_honneur, name='tableau_honneur'),
+    path('tableau-honneur-pdf/', tableau_honneur_pdf, name='tableau_honneur_pdf'),
     
     # ============================================================================
     # MODULE MATERNELLE - Évaluation et Bulletins

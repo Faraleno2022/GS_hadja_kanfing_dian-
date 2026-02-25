@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Tableau d'Honneur{% endblock %}
+
+{% block extra_css %}
+<style>
+    .honneur-header {
+        background: linear-gradient(135deg, #ffd700 0%, #ff8c00 100%);
+        color: #333;
+        padding: 2rem;
+        border-radius: 15px;
+        margin-bottom: 2rem;
+        box-shadow: 0 5px 20px rgba(255, 215, 0, 0.3);
+        text-align: center;
+    }
+    .honneur-header h1 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 700;
+        color: #333;
+    }
+    .honneur-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.8;
+    }
+
+    .filter-bar {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+
+    /* Podium styles */
+    .podium-section {
+        margin-bottom: 2rem;
+    }
+    .podium {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        gap: 1rem;
+        padding: 2rem 0;
+    }
+    .podium-item {
+        text-align: center;
+        transition: transform 0.3s;
+    }
+    .podium-item:hover {
+        transform: translateY(-5px);
+    }
+    .podium-photo {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 4px solid #ffd700;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .podium-photo-placeholder {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #e0e0e0, #bdbdbd);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 0.5rem;
+        border: 4px solid #ffd700;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .podium-photo-placeholder i {
+        font-size: 2.5rem;
+        color: #999;
+    }
+
+    .podium-1 .podium-block { background: linear-gradient(135deg, #ffd700, #ffb300); height: 160px; }
+    .podium-1 .podium-photo, .podium-1 .podium-photo-placeholder { border-color: #ffd700; width: 120px; height: 120px; }
+    .podium-1 .podium-photo-placeholder i { font-size: 3rem; }
+    .podium-2 .podium-block { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); height: 120px; }
+    .podium-2 .podium-photo, .podium-2 .podium-photo-placeholder { border-color: #c0c0c0; }
+    .podium-3 .podium-block { background: linear-gradient(135deg, #cd7f32, #a0522d); height: 90px; }
+    .podium-3 .podium-photo, .podium-3 .podium-photo-placeholder { border-color: #cd7f32; }
+
+    .podium-block {
+        border-radius: 10px 10px 0 0;
+        width: 160px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 700;
+        font-size: 1.8rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+    .podium-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 0.3rem;
+        color: #333;
+    }
+    .podium-classe {
+        font-size: 0.8rem;
+        color: #666;
+    }
+    .podium-moyenne {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #007bff;
+    }
+
+    /* Table */
+    .honneur-table {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    }
+    .honneur-table table {
+        margin: 0;
+    }
+    .honneur-table thead th {
+        background: linear-gradient(135deg, #1a1a2e, #16213e);
+        color: white;
+        font-weight: 600;
+        padding: 1rem;
+        white-space: nowrap;
+    }
+    .honneur-table tbody tr:hover {
+        background-color: #fff9e6;
+    }
+    .honneur-table tbody td {
+        padding: 0.8rem 1rem;
+        vertical-align: middle;
+    }
+    .photo-cell img {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #ffd700;
+    }
+    .photo-cell .photo-placeholder-sm {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .photo-cell .photo-placeholder-sm i {
+        font-size: 1.2rem;
+        color: #999;
+    }
+    .badge-rang-1 { background: linear-gradient(135deg, #ffd700, #ffb300); color: #333; font-weight: 700; }
+    .badge-rang-2 { background: linear-gradient(135deg, #c0c0c0, #a0a0a0); color: #333; font-weight: 700; }
+    .badge-rang-3 { background: linear-gradient(135deg, #cd7f32, #a0522d); color: white; font-weight: 700; }
+    .badge-rang-other { background: #e9ecef; color: #333; }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .empty-state i {
+        font-size: 4rem;
+        color: #ccc;
+        margin-bottom: 1rem;
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="honneur-header">
+        <h1><i class="fas fa-trophy me-2"></i> Tableau d'Honneur</h1>
+        <p>Les meilleurs élèves de l'établissement — Premiers de chaque classe</p>
+    </div>
+
+    <!-- Filtre période -->
+    <div class="filter-bar">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Période</label>
+                <select name="periode" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Sélectionner une période --</option>
+                    {% for code, label in periodes %}
+                    <option value="{{ code }}" {% if code == periode %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-1"></i> Afficher
+                </button>
+                {% if premiers %}
+                <a href="{% url 'notes:tableau_honneur_pdf' %}?periode={{ periode }}" target="_blank" class="btn btn-danger">
+                    <i class="fas fa-file-pdf me-1"></i> Télécharger PDF
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    {% if periode and premiers %}
+    <h4 class="text-center text-muted mb-4">
+        Période : <strong>{{ periode_label }}</strong> — {{ premiers|length }} classe{{ premiers|length|pluralize:"s" }}
+    </h4>
+
+    <!-- Podium (top 3) -->
+    {% if premiers|length >= 3 %}
+    <div class="podium-section">
+        <div class="podium">
+            <!-- 2ème -->
+            <div class="podium-item podium-2">
+                {% with p=premiers.1 %}
+                {% if p.photo_base64 %}
+                <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" class="podium-photo" alt="Photo">
+                {% else %}
+                <div class="podium-photo-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div class="podium-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
+                <div class="podium-classe">{{ p.classe_nom }}</div>
+                <div class="podium-moyenne">{{ p.moyenne }}/{{ p.note_max }}</div>
+                <div class="podium-block">2</div>
+                {% endwith %}
+            </div>
+            <!-- 1er -->
+            <div class="podium-item podium-1">
+                {% with p=premiers.0 %}
+                {% if p.photo_base64 %}
+                <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" class="podium-photo" alt="Photo">
+                {% else %}
+                <div class="podium-photo-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div class="podium-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
+                <div class="podium-classe">{{ p.classe_nom }}</div>
+                <div class="podium-moyenne">{{ p.moyenne }}/{{ p.note_max }}</div>
+                <div class="podium-block"><i class="fas fa-crown"></i></div>
+                {% endwith %}
+            </div>
+            <!-- 3ème -->
+            <div class="podium-item podium-3">
+                {% with p=premiers.2 %}
+                {% if p.photo_base64 %}
+                <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" class="podium-photo" alt="Photo">
+                {% else %}
+                <div class="podium-photo-placeholder"><i class="fas fa-user"></i></div>
+                {% endif %}
+                <div class="podium-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
+                <div class="podium-classe">{{ p.classe_nom }}</div>
+                <div class="podium-moyenne">{{ p.moyenne }}/{{ p.note_max }}</div>
+                <div class="podium-block">3</div>
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tableau complet -->
+    <div class="honneur-table">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th class="text-center">Rang</th>
+                    <th class="text-center">Photo</th>
+                    <th>Prénom</th>
+                    <th>Nom</th>
+                    <th>Classe</th>
+                    <th class="text-center">Rang de classe</th>
+                    <th class="text-center">Moyenne</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in premiers %}
+                <tr>
+                    <td class="text-center">
+                        <span class="badge {% if p.rang_premiers == 1 %}badge-rang-1{% elif p.rang_premiers == 2 %}badge-rang-2{% elif p.rang_premiers == 3 %}badge-rang-3{% else %}badge-rang-other{% endif %} px-3 py-2" style="font-size:0.95rem;">
+                            {{ p.rang_premiers_formate }}
+                        </span>
+                    </td>
+                    <td class="text-center photo-cell">
+                        {% if p.photo_base64 %}
+                        <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" alt="Photo">
+                        {% else %}
+                        <div class="photo-placeholder-sm mx-auto"><i class="fas fa-user"></i></div>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold">{{ p.eleve.prenom }}</td>
+                    <td>{{ p.eleve.nom }}</td>
+                    <td>{{ p.classe_nom }}</td>
+                    <td class="text-center">
+                        {{ p.rang_formate }} / {{ p.total_eleves }}
+                    </td>
+                    <td class="text-center">
+                        <span class="fw-bold text-primary" style="font-size:1.1rem;">
+                            {{ p.moyenne }}/{{ p.note_max }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% elif periode and not premiers %}
+    <div class="empty-state">
+        <i class="fas fa-info-circle"></i>
+        <h5>Aucun résultat pour cette période</h5>
+        <p class="text-muted">Vérifiez que des notes ont été saisies pour la période <strong>{{ periode_label }}</strong>.</p>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <i class="fas fa-trophy"></i>
+        <h5>Sélectionnez une période</h5>
+        <p class="text-muted">Choisissez une période ci-dessus pour afficher le tableau d'honneur.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
