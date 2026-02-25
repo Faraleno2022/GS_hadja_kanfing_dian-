@@ -624,6 +624,9 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
     moyennes_par_eleve = {}
     details_par_eleve = {}
     
+    # Collecter tous les IDs des élèves pour garantir que chacun ait un rang
+    all_eleve_ids = set(eleve.id for eleve in eleves)
+    
     # OPTIMISATION: Utiliser la fonction optimisée pour les systèmes non-annuels
     if system_type not in ['annuel_trimestriel', 'annuel_semestriel']:
         # Calcul en lot (2-3 requêtes au lieu de N*M)
@@ -641,6 +644,20 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
             if result['moyenne_generale'] is not None:
                 moyennes_par_eleve[eleve.id] = result['moyenne_generale']
                 details_par_eleve[eleve.id] = result
+    
+    # Élèves sans notes = moyenne 0 par défaut (évite de favoriser les absents)
+    for eleve_id in all_eleve_ids:
+        if eleve_id not in moyennes_par_eleve:
+            moyennes_par_eleve[eleve_id] = 0.0
+            details_par_eleve[eleve_id] = {
+                'moyenne_generale': 0.0,
+                'total_points': 0,
+                'total_coefficients': 0,
+                'details_matieres': [],
+                'niveau': 'INCONNU',
+                'appreciations_only': False,
+                'sans_notes': True,
+            }
     
     # Créer le classement trié (tri par moyenne puis par matricule pour stabiliser les ex-æquo)
     # Récupérer les matricules pour le tri secondaire
@@ -669,7 +686,7 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
         'classement': classement,
         'rang_map': rang_map,
         'details_par_eleve': details_par_eleve,
-        'total_eleves': len(classement),
+        'total_eleves': len(all_eleve_ids),
     }
     
     # Mesurer et logger le temps
