@@ -373,6 +373,7 @@
                                    max="{{ note_max }}"
                                    placeholder="--"
                                    onchange="validateNote(this)"
+                                   oninput="onNoteInput(this)"
                                    onkeydown="handleKeyDown(event, this)">
                         </td>
                         {% endfor %}
@@ -423,7 +424,14 @@ const PERIODE = '{{ periode }}';
 // Validation d'une note
 function validateNote(input) {
     const value = parseFloat(input.value);
-    input.classList.remove('valid', 'invalid', 'absent');
+    
+    // Si une note est saisie, désactiver automatiquement le statut absent
+    if (input.value !== '' && input.value !== null && !isNaN(value)) {
+        input.classList.remove('absent');
+        delete input.dataset.absent;
+    }
+    
+    input.classList.remove('valid', 'invalid');
     
     if (input.value === '' || input.value === null) {
         return;
@@ -436,6 +444,19 @@ function validateNote(input) {
     }
     
     updateStats();
+}
+
+// Réaction immédiate à la saisie d'une note (désactive absent en temps réel)
+function onNoteInput(input) {
+    if (input.value !== '') {
+        // Dès qu'un caractère est tapé, désactiver le statut absent
+        if (input.classList.contains('absent') || input.dataset.absent === 'true') {
+            input.classList.remove('absent');
+            delete input.dataset.absent;
+            updateStats();
+        }
+    }
+    validateNote(input);
 }
 
 // Navigation au clavier

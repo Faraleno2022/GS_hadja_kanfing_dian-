@@ -341,8 +341,8 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
             'matiere': matiere,
             'moyenne_continue': result['moyenne_continue'],
             'note_composition': result['note_composition'],
-            'moyenne': moyenne_matiere if result['moyenne_matiere'] is not None else None,  # Garder None pour affichage
-            'moyenne_calculee': moyenne_matiere,  # Valeur utilisée dans le calcul (0 si None)
+            'moyenne': moyenne_matiere,  # 0 si non évalué (évite de favoriser les absents)
+            'moyenne_calculee': moyenne_matiere,
             'coefficient': coefficient if niveau != 'PRIMAIRE' else 1,
             'points': points,
         })
@@ -540,8 +540,11 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                 # CAS 3: Seulement notes mensuelles → Utiliser directement
                 moyenne_matiere = moyenne_continue
             
-            # Valeur pour le calcul (0 si None)
-            moyenne_calculee = moyenne_matiere if moyenne_matiere is not None else 0.0
+            # Élève non évalué dans cette matière = note 0 par défaut
+            if moyenne_matiere is None:
+                moyenne_matiere = 0.0
+            
+            moyenne_calculee = moyenne_matiere
             points = round(moyenne_calculee * float(coefficient), 2)
             
             total_points += Decimal(str(moyenne_calculee)) * coefficient
@@ -1243,7 +1246,10 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
     # ============================================================
     # CALCULER LES POINTS
     # ============================================================
-    if result['moyenne'] is not None:
-        result['points'] = round(result['moyenne'] * float(coefficient_effectif), 2)
+    # Élève non évalué dans cette matière = note 0 par défaut
+    if result['moyenne'] is None:
+        result['moyenne'] = 0.0
+    
+    result['points'] = round(result['moyenne'] * float(coefficient_effectif), 2)
     
     return result
