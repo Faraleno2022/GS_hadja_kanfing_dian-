@@ -1484,7 +1484,7 @@
         <div class="footer-section" style="border-top: 1px solid #ddd; margin-top: 5px; padding-top: 3px; font-size: 7px; text-align: center;">
             <p style="margin: 0; color: #666;">
                 © 2025 {{ bulletin_data.classe.ecole.nom|default:"Myschool" }}. Tous droits réservés.
-                {% if bulletin_data.classe.ecole.telephone %} | Tél: {{ bulletin_data.classe.ecole.telephone }}{% endif %}
+                {% if bulletin_data.classe.ecole.telephone %} | Tél: {{ bulletin_data.classe.ecole.tous_telephones }}{% endif %}
                 {% if bulletin_data.classe.ecole.email %} | {{ bulletin_data.classe.ecole.email }}{% endif %}
             </p>
         </div>

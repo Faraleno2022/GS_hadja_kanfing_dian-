@@ -1021,7 +1021,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     # Construire le footer avec les infos de l'école
     footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
     if ecole and ecole.telephone:
-        footer_parts.append(f"Tél: {ecole.telephone}")
+        footer_parts.append(f"Tél: {ecole.tous_telephones}")
     if ecole and ecole.email:
         footer_parts.append(ecole.email)
     c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))
@@ -1267,7 +1267,7 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     c.setFont("Helvetica", 6)
     footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
     if ecole and ecole.telephone:
-        footer_parts.append(f"Tél: {ecole.telephone}")
+        footer_parts.append(f"Tél: {ecole.tous_telephones}")
     if ecole and ecole.email:
         footer_parts.append(ecole.email)
     c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))
@@ -2420,7 +2420,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # Construire le footer avec les infos de l'école
     footer_parts = [f"© 2025 {ecole.nom if ecole else 'Myschool'}. Tous droits réservés."]
     if ecole and ecole.telephone:
-        footer_parts.append(f"Tél: {ecole.telephone}")
+        footer_parts.append(f"Tél: {ecole.tous_telephones}")
     if ecole and ecole.email:
         footer_parts.append(ecole.email)
     c.drawCentredString(width/2, 0.8*cm, " | ".join(footer_parts))

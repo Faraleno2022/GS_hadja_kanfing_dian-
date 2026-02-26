@@ -18,7 +18,7 @@ class EcoleAdmin(admin.ModelAdmin):
             "description": "Préfixe d'école pour les matricules (ex: AL-FUR/). Laissez vide pour ne pas utiliser de préfixe explicite."
         }),
         ("Coordonnées", {
-            "fields": ("adresse", "telephone", "email")
+            "fields": ("adresse", "telephone", "telephone2", "telephone3", "email")
         }),
         ("Logo", {
             "fields": ("logo", "logo_preview"),

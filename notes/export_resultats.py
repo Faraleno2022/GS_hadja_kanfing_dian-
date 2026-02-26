@@ -437,7 +437,7 @@ def exporter_resultats_excel(request):
             if ecole.adresse:
                 adresse_parts.append(ecole.adresse)
             if ecole.telephone:
-                adresse_parts.append(f"Tél: {ecole.telephone}")
+                adresse_parts.append(f"Tél: {ecole.tous_telephones}")
             if ecole.email:
                 adresse_parts.append(f"Email: {ecole.email}")
             ws['A4'] = " | ".join(adresse_parts) if adresse_parts else ""

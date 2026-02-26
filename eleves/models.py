@@ -17,7 +17,17 @@ class Ecole(models.Model):
     telephone = models.CharField(
         max_length=20, 
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
-        verbose_name="Téléphone"
+        verbose_name="Téléphone principal"
+    )
+    telephone2 = models.CharField(
+        max_length=20, blank=True, null=True,
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
+        verbose_name="Téléphone 2"
+    )
+    telephone3 = models.CharField(
+        max_length=20, blank=True, null=True,
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
+        verbose_name="Téléphone 3"
     )
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     directeur = models.CharField(max_length=100, verbose_name="Directeur")
@@ -50,6 +60,16 @@ class Ecole(models.Model):
         except Exception:
             pass
         super().save(*args, **kwargs)
+    
+    @property
+    def tous_telephones(self):
+        """Retourne tous les numéros de téléphone séparés par ' / '"""
+        nums = [self.telephone]
+        if self.telephone2:
+            nums.append(self.telephone2)
+        if self.telephone3:
+            nums.append(self.telephone3)
+        return ' / '.join(nums)
     
     def __str__(self):
         return self.nom

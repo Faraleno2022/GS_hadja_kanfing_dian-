@@ -49,7 +49,7 @@ class WhatsAppBusSender:
         eleve = abonnement.eleve
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
-        tel_ecole = ecole.telephone if ecole else ""
+        tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
         
         # Formater le montant
@@ -106,7 +106,7 @@ Cordialement,
         eleve = abonnement.eleve
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
-        tel_ecole = ecole.telephone if ecole else ""
+        tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
         
         # Formater le montant

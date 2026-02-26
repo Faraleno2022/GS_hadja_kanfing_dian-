@@ -577,7 +577,7 @@ def exporter_statistiques_pdf(request):
                 c.drawCentredString(width/2, y_pos, ecole.adresse)
                 y_pos -= 0.4*cm
             if ecole.telephone:
-                c.drawCentredString(width/2, y_pos, f"Tél: {ecole.telephone}")
+                c.drawCentredString(width/2, y_pos, f"Tél: {ecole.tous_telephones}")
                 y_pos -= 0.6*cm
         
         # Titre du rapport

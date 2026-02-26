@@ -3855,7 +3855,7 @@ def generer_carte_scolaire_pdf(request, eleve_id):
         c.drawString(x_margin, 10, adresse_courte)
     
     if eleve.classe.ecole.telephone:
-        c.drawString(x_margin, 4, f"Tél: {eleve.classe.ecole.telephone}")
+        c.drawString(x_margin, 4, f"Tél: {eleve.classe.ecole.tous_telephones}")
     
     c.setFont(main_font, 6)
     c.drawRightString(width - 5, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y')}")

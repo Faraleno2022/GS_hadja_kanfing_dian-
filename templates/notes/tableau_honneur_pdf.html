@@ -210,7 +210,7 @@
                 <div class="school-name">{{ ecole.nom|default:"Établissement" }}</div>
                 <div class="school-details">
                     {% if ecole.adresse %}{{ ecole.adresse }}{% endif %}
-                    {% if ecole.telephone %} — Tél: {{ ecole.telephone }}{% endif %}
+                    {% if ecole.telephone %} — Tél: {{ ecole.tous_telephones }}{% endif %}
                 </div>
             </div>
         </div>

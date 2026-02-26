@@ -370,7 +370,7 @@
         </div>
         
         <div class="footer">
-            {{ ecole.nom }} | {{ ecole.telephone|default:"" }} | Imprimé le {{ date_impression|date:"d/m/Y" }}
+            {{ ecole.nom }} | {{ ecole.tous_telephones|default:"" }} | Imprimé le {{ date_impression|date:"d/m/Y" }}
         </div>
     </div>
     {% endfor %}

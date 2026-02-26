@@ -53,7 +53,7 @@ class WhatsAppRecuSender:
         eleve = paiement.eleve
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
-        tel_ecole = ecole.telephone if ecole else ""
+        tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
         
         # Formater le montant avec séparateur de milliers
@@ -222,7 +222,7 @@ class WhatsAppNoteRappelSender:
         """Génère le message WhatsApp pour la note de rappel"""
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
-        tel_ecole = ecole.telephone if ecole else ""
+        tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
         
         # Formater les montants

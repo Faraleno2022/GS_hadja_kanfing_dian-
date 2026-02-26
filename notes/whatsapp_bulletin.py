@@ -289,7 +289,7 @@ class WhatsAppBulletinSender:
         # Récupérer les infos de l'école
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
-        tel_ecole = ecole.telephone if ecole else ""
+        tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
         
         # Construire le message
