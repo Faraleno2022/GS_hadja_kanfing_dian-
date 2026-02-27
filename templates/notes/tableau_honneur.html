@@ -190,25 +190,33 @@
         <p>Les meilleurs élèves de l'établissement — Premiers de chaque classe</p>
     </div>
 
-    <!-- Filtre période -->
+    <!-- Filtres -->
     <div class="filter-bar">
         <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-6">
+            <div class="col-md-5">
                 <label class="form-label fw-bold">Période</label>
-                <select name="periode" class="form-select" onchange="this.form.submit()">
+                <select name="periode" class="form-select">
                     <option value="">-- Sélectionner une période --</option>
                     {% for code, label in periodes %}
                     <option value="{{ code }}" {% if code == periode %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-6 d-flex gap-2">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Niveau</label>
+                <select name="niveau" class="form-select">
+                    {% for code, label in niveaux %}
+                    <option value="{{ code }}" {% if code == niveau_filtre %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-search me-1"></i> Afficher
                 </button>
                 {% if premiers %}
-                <a href="{% url 'notes:tableau_honneur_pdf' %}?periode={{ periode }}" target="_blank" class="btn btn-danger">
-                    <i class="fas fa-file-pdf me-1"></i> Télécharger PDF
+                <a href="{% url 'notes:tableau_honneur_pdf' %}?periode={{ periode }}&niveau={{ niveau_filtre }}" target="_blank" class="btn btn-danger">
+                    <i class="fas fa-file-pdf me-1"></i> PDF
                 </a>
                 {% endif %}
             </div>
@@ -217,7 +225,9 @@
 
     {% if periode and premiers %}
     <h4 class="text-center text-muted mb-4">
-        Période : <strong>{{ periode_label }}</strong> — {{ premiers|length }} classe{{ premiers|length|pluralize:"s" }}
+        Période : <strong>{{ periode_label }}</strong>
+        {% if niveau_filtre %} — Niveau : <strong>{{ niveau_filtre|capfirst }}</strong>{% endif %}
+        — {{ premiers|length }} classe{{ premiers|length|pluralize:"s" }}
     </h4>
 
     <!-- Grille de cartes paysage : 3 par ligne -->
@@ -243,7 +253,9 @@
             <!-- Infos élève -->
             <div class="card-info">
                 <div class="card-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
-                <div class="card-classe"><i class="fas fa-school me-1"></i>{{ p.classe_nom }}</div>
+                <div class="card-classe"><i class="fas fa-school me-1"></i>{{ p.classe_nom }}
+                    {% if not niveau_filtre %}<span class="badge ms-1 {% if p.niveau == 'MATERNELLE' %}bg-success{% elif p.niveau == 'PRIMAIRE' %}bg-primary{% else %}bg-secondary{% endif %}" style="font-size:0.65rem;">{{ p.niveau|capfirst }}</span>{% endif %}
+                </div>
                 <div class="card-stats">
                     <div class="card-stat">
                         <span class="stat-label">Moyenne</span>
@@ -262,8 +274,8 @@
     {% elif periode and not premiers %}
     <div class="empty-state">
         <i class="fas fa-info-circle"></i>
-        <h5>Aucun résultat pour cette période</h5>
-        <p class="text-muted">Vérifiez que des notes ont été saisies pour la période <strong>{{ periode_label }}</strong>.</p>
+        <h5>Aucun résultat pour cette période{% if niveau_filtre %} / ce niveau{% endif %}</h5>
+        <p class="text-muted">Vérifiez que des notes ont été saisies pour la période <strong>{{ periode_label }}</strong>{% if niveau_filtre %} au niveau <strong>{{ niveau_filtre|capfirst }}</strong>{% endif %}.</p>
     </div>
     {% else %}
     <div class="empty-state">

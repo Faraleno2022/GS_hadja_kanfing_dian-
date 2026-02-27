@@ -84,22 +84,24 @@
         color: #666;
     }
 
-    /* Grille de cartes — 3 par ligne */
+    /* Grille de cartes — 3 par ligne, 3 lignes = 9 par page */
     .cards-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 14px;
         justify-content: flex-start;
+        align-content: flex-start;
     }
 
     .card {
-        width: calc(33.333% - 8px);
-        border: 1px solid #ddd;
+        width: calc(33.333% - 10px);
+        border: 1px solid #e0e0e0;
         border-radius: 10px;
         overflow: hidden;
         background: white;
         page-break-inside: avoid;
         position: relative;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.07);
     }
 
     /* Bordure top 3 */
@@ -132,7 +134,7 @@
     /* Zone photo */
     .card-photo {
         width: 100%;
-        height: 140px;
+        height: 120px;
         overflow: hidden;
         background: linear-gradient(135deg, #f0f4ff, #e8eaf6);
         display: flex;
@@ -152,21 +154,35 @@
 
     /* Zone infos */
     .card-body {
-        padding: 8px 10px 10px;
+        padding: 6px 8px 8px;
         text-align: center;
     }
     .card-name {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         color: #1a1a2e;
         margin-bottom: 2px;
         line-height: 1.3;
     }
     .card-classe {
-        font-size: 9px;
+        font-size: 8px;
         color: #666;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
+    .card-niveau {
+        display: inline-block;
+        font-size: 7px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        margin-bottom: 5px;
+        color: white;
+    }
+    .niveau-maternelle { background: #28a745; }
+    .niveau-primaire { background: #007bff; }
+    .niveau-secondaire { background: #6c757d; }
     .card-stats {
         display: flex;
         justify-content: center;
@@ -247,7 +263,7 @@
     <!-- Titre -->
     <div class="main-title">
         <h1><span class="trophy">★</span> Tableau d'Honneur <span class="trophy">★</span></h1>
-        <div class="subtitle">Premiers de chaque classe — Période : {{ periode_label }}</div>
+        <div class="subtitle">Premiers de chaque classe — Période : {{ periode_label }}{% if niveau_filtre %} — Niveau : {{ niveau_label }}{% endif %}</div>
     </div>
 
     <!-- Grille de cartes : 3 par ligne -->
@@ -272,6 +288,11 @@
             <div class="card-body">
                 <div class="card-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
                 <div class="card-classe">{{ p.classe_nom }}</div>
+                {% if not niveau_filtre %}
+                <div>
+                    <span class="card-niveau {% if p.niveau == 'MATERNELLE' %}niveau-maternelle{% elif p.niveau == 'PRIMAIRE' %}niveau-primaire{% else %}niveau-secondaire{% endif %}">{{ p.niveau }}</span>
+                </div>
+                {% endif %}
                 <div class="card-stats">
                     <div class="stat-box">
                         <span class="stat-label">Moyenne</span>

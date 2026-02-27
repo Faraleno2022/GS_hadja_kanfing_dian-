@@ -119,6 +119,7 @@ def _get_top1_par_classe(request, periode):
                             'note_max': 100,  # Taux d'acquisition en %
                             'est_maternelle': True,
                             'est_primaire': False,
+                            'niveau': 'MATERNELLE',
                             'photo_base64': photo_base64,
                             'rang_formate': formater_rang(1, getattr(eleve, 'sexe', 'M')),
                         })
@@ -155,6 +156,7 @@ def _get_top1_par_classe(request, periode):
                     'note_max': note_max,
                     'est_maternelle': False,
                     'est_primaire': est_primaire,
+                    'niveau': 'PRIMAIRE' if est_primaire else 'SECONDAIRE',
                     'photo_base64': photo_base64,
                     'rang_formate': formater_rang(1, getattr(eleve, 'sexe', 'M')),
                 })
@@ -196,10 +198,19 @@ def _encode_photo(eleve):
     return None
 
 
+NIVEAUX_CHOICES = [
+    ('', 'Tous les niveaux'),
+    ('MATERNELLE', 'Maternelle'),
+    ('PRIMAIRE', 'Primaire'),
+    ('SECONDAIRE', 'Secondaire'),
+]
+
+
 @login_required
 def tableau_honneur(request):
     """Vue HTML du tableau d'honneur"""
     periode = request.GET.get('periode', '')
+    niveau_filtre = request.GET.get('niveau', '')
 
     # Récupérer l'école
     from utilisateurs.utils import user_school
@@ -207,7 +218,9 @@ def tableau_honneur(request):
 
     context = {
         'periodes': PERIODES_CHOICES,
+        'niveaux': NIVEAUX_CHOICES,
         'periode': periode,
+        'niveau_filtre': niveau_filtre,
         'periode_label': _get_periode_label(periode) if periode else '',
         'ecole': ecole,
         'premiers': [],
@@ -215,6 +228,8 @@ def tableau_honneur(request):
 
     if periode:
         premiers = _get_top1_par_classe(request, periode)
+        if niveau_filtre:
+            premiers = [p for p in premiers if p.get('niveau') == niveau_filtre]
         context['premiers'] = premiers
 
     return render(request, 'notes/tableau_honneur.html', context)
@@ -224,6 +239,7 @@ def tableau_honneur(request):
 def tableau_honneur_pdf(request):
     """Export PDF du tableau d'honneur"""
     periode = request.GET.get('periode', '')
+    niveau_filtre = request.GET.get('niveau', '')
 
     if not periode:
         return HttpResponse("Période non spécifiée", status=400)
@@ -232,6 +248,8 @@ def tableau_honneur_pdf(request):
     ecole = user_school(request.user)
 
     premiers = _get_top1_par_classe(request, periode)
+    if niveau_filtre:
+        premiers = [p for p in premiers if p.get('niveau') == niveau_filtre]
 
     if not premiers:
         return HttpResponse("Aucun premier trouvé pour cette période", status=404)
@@ -254,10 +272,16 @@ def tableau_honneur_pdf(request):
     if first_classe:
         annee_scolaire = first_classe.annee_scolaire
 
+    niveau_label = dict([
+        ('MATERNELLE', 'Maternelle'), ('PRIMAIRE', 'Primaire'), ('SECONDAIRE', 'Secondaire')
+    ]).get(niveau_filtre, 'Tous les niveaux')
+
     context = {
         'premiers': premiers,
         'periode': periode,
         'periode_label': _get_periode_label(periode),
+        'niveau_filtre': niveau_filtre,
+        'niveau_label': niveau_label,
         'ecole': ecole,
         'logo_base64': logo_base64,
         'annee_scolaire': annee_scolaire,
@@ -277,7 +301,8 @@ def tableau_honneur_pdf(request):
     pdf = html.write_pdf(stylesheets=[css])
 
     response = HttpResponse(pdf, content_type='application/pdf')
+    suffix = f"_{niveau_filtre.lower()}" if niveau_filtre else ""
     response['Content-Disposition'] = (
-        f'inline; filename="tableau_honneur_{periode}.pdf"'
+        f'inline; filename="tableau_honneur_{periode}{suffix}.pdf"'
     )
     return response
