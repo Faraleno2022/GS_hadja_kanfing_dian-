@@ -619,21 +619,45 @@ class Eleve(models.Model):
         
         try:
             # Trouver la ClasseNote correspondant à la nouvelle classe (élèves)
-            # On cherche par nom de classe et école
+            annee = nouvelle_classe.annee_scolaire
+
+            # Essai 1: correspondance exacte nom + année
             nouvelle_classe_note = ClasseNote.objects.filter(
                 ecole=nouvelle_classe.ecole,
                 nom__iexact=nouvelle_classe.nom,
+                annee_scolaire=annee,
                 actif=True
             ).first()
-            
+
+            # Essai 2: correspondance nom sans année
             if not nouvelle_classe_note:
-                # Essayer de trouver par niveau si le nom exact ne correspond pas
+                nouvelle_classe_note = ClasseNote.objects.filter(
+                    ecole=nouvelle_classe.ecole,
+                    nom__iexact=nouvelle_classe.nom,
+                    actif=True
+                ).first()
+
+            # Essai 3: correspondance partielle sur le nom (ex: "3ÈME ANNÉE A" contient "3")
+            if not nouvelle_classe_note:
+                import re as _re
+                chiffres = _re.findall(r'\d+', nouvelle_classe.nom)
+                if chiffres:
+                    nouvelle_classe_note = ClasseNote.objects.filter(
+                        ecole=nouvelle_classe.ecole,
+                        nom__icontains=chiffres[0],
+                        annee_scolaire=annee,
+                        actif=True
+                    ).first()
+
+            # Essai 4: correspondance par niveau
+            if not nouvelle_classe_note:
                 nouvelle_classe_note = ClasseNote.objects.filter(
                     ecole=nouvelle_classe.ecole,
                     niveau=nouvelle_classe.niveau,
+                    annee_scolaire=annee,
                     actif=True
                 ).first()
-            
+
             if not nouvelle_classe_note:
                 # Pas de ClasseNote correspondante, on ne peut pas transférer
                 return 0
