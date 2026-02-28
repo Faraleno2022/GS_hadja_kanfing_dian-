@@ -208,7 +208,7 @@ def exporter_classement_classe(request):
     )
     
     # Titre
-    ws.merge_cells('A1:D1')
+    ws.merge_cells('A1:E1')
     title_cell = ws['A1']
     title_cell.value = titre_export
     title_cell.font = Font(bold=True, size=14)
@@ -216,7 +216,7 @@ def exporter_classement_classe(request):
     ws.row_dimensions[1].height = 30
     
     # Date d'export
-    ws.merge_cells('A2:D2')
+    ws.merge_cells('A2:E2')
     date_cell = ws['A2']
     date_cell.value = f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
     date_cell.alignment = Alignment(horizontal='center')
@@ -225,7 +225,7 @@ def exporter_classement_classe(request):
     
     # En-têtes (adapter selon le niveau)
     moyenne_header = 'Moyenne /10' if est_primaire else 'Moyenne /20'
-    headers = ['Rang', 'Matricule', 'Nom Complet', moyenne_header]
+    headers = ['Rang', 'Matricule', 'Nom Complet', 'Sexe', moyenne_header]
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=4, column=col_num)
         cell.value = header
@@ -275,8 +275,19 @@ def exporter_classement_classe(request):
         nom_cell.border = border
         nom_cell.font = Font(size=11)
         
+        # Sexe
+        sexe_cell = ws.cell(row=row_num, column=4)
+        sexe_val = eleve_data.get('sexe', '')
+        sexe_cell.value = 'Fille' if sexe_val == 'F' else 'Garçon'
+        sexe_cell.alignment = Alignment(horizontal='center', vertical='center')
+        sexe_cell.border = border
+        if sexe_val == 'F':
+            sexe_cell.font = Font(color='C0008A', size=10)
+        else:
+            sexe_cell.font = Font(color='0055CC', size=10)
+
         # Moyenne
-        moyenne_cell = ws.cell(row=row_num, column=4)
+        moyenne_cell = ws.cell(row=row_num, column=5)
         if eleve_data['moyenne'] is not None:
             moyenne_cell.value = eleve_data['moyenne']
             moyenne_cell.number_format = '0.00'
@@ -303,7 +314,8 @@ def exporter_classement_classe(request):
         
         moyenne_cell.alignment = Alignment(horizontal='center', vertical='center')
         moyenne_cell.border = border
-        moyenne_cell.font = Font(bold=True, size=11)
+        if eleve_data['moyenne'] is not None:
+            moyenne_cell.font = Font(bold=True, size=11)
         
         ws.row_dimensions[row_num].height = 20
     
@@ -311,53 +323,67 @@ def exporter_classement_classe(request):
     ws.column_dimensions['A'].width = 12
     ws.column_dimensions['B'].width = 18
     ws.column_dimensions['C'].width = 35
-    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 15
     
-    # Statistiques
+    # Statistiques enrichies
+    seuil_admission = 5 if est_primaire else 10
     eleves_avec_moyenne = [e for e in classement_data if e.get('moyenne') is not None]
     eleves_sans_notes = [e for e in classement_data if e.get('moyenne') is None]
-    
+    nb_total = len(classement_data)
+    nb_filles = sum(1 for e in classement_data if e.get('sexe') == 'F')
+    nb_garcons = nb_total - nb_filles
+    nb_admis = sum(1 for e in eleves_avec_moyenne if e['moyenne'] >= seuil_admission)
+    nb_redoubles = sum(1 for e in eleves_avec_moyenne if e['moyenne'] < seuil_admission)
+    taux_reussite = round((nb_admis / len(eleves_avec_moyenne)) * 100, 1) if eleves_avec_moyenne else 0
+
     if eleves_avec_moyenne or eleves_sans_notes:
         stats_row = row_num + 2
-        
-        ws.merge_cells(f'A{stats_row}:D{stats_row}')
+
+        ws.merge_cells(f'A{stats_row}:E{stats_row}')
         stats_title = ws[f'A{stats_row}']
-        stats_title.value = "STATISTIQUES"
-        stats_title.font = Font(bold=True, size=12)
+        stats_title.value = "STATISTIQUES DE LA CLASSE"
+        stats_title.font = Font(bold=True, size=12, color='FFFFFF')
+        stats_title.fill = PatternFill(start_color='2C3E50', end_color='2C3E50', fill_type='solid')
         stats_title.alignment = Alignment(horizontal='center')
-        
+
         stats_data = [
-            ('Nombre total d\'élèves:', len(classement_data)),
-            ('Élèves avec notes:', len(eleves_avec_moyenne)),
-            ('Élèves sans notes:', len(eleves_sans_notes)),
+            ('Effectif total :', nb_total),
+            ('Nombre de filles :', nb_filles),
+            ('Nombre de garçons :', nb_garcons),
+            ('Élèves évalués :', len(eleves_avec_moyenne)),
+            ('Élèves non évalués :', len(eleves_sans_notes)),
+            ('Admis (moy ≥ {}) :'.format(seuil_admission), nb_admis),
+            ('Redoublants (moy < {}) :'.format(seuil_admission), nb_redoubles),
+            ('Taux de réussite :', f"{taux_reussite} %"),
         ]
-        
+
         if eleves_avec_moyenne:
             moyennes = [e['moyenne'] for e in eleves_avec_moyenne]
             moyenne_classe = sum(moyennes) / len(moyennes)
             note_max = max(moyennes)
             note_min = min(moyennes)
-            
+            base = '/10' if est_primaire else '/20'
             stats_data.extend([
-                ('Moyenne de classe:', f"{moyenne_classe:.2f}"),
-                ('Note maximale:', f"{note_max:.2f}"),
-                ('Note minimale:', f"{note_min:.2f}"),
+                ('Moyenne de classe :', f"{moyenne_classe:.2f}{base}"),
+                ('Note maximale :', f"{note_max:.2f}{base}"),
+                ('Note minimale :', f"{note_min:.2f}{base}"),
             ])
-        
+
         for i, (label, value) in enumerate(stats_data, stats_row + 1):
             label_cell = ws.cell(row=i, column=2)
             label_cell.value = label
             label_cell.font = Font(bold=True)
             label_cell.alignment = Alignment(horizontal='right')
-            
+
             value_cell = ws.cell(row=i, column=3)
             value_cell.value = value
             value_cell.alignment = Alignment(horizontal='left')
-    
+
     # Avertissement si des élèves n'ont pas de notes
     if eleves_sans_notes:
         warning_row = ws.max_row + 2
-        ws.merge_cells(f'A{warning_row}:D{warning_row}')
+        ws.merge_cells(f'A{warning_row}:E{warning_row}')
         warning_cell = ws[f'A{warning_row}']
         warning_cell.value = f" ATTENTION: {len(eleves_sans_notes)} élève(s) n'ont pas de notes pour cette période"
         warning_cell.font = Font(color="FF0000", bold=True)
@@ -847,23 +873,23 @@ def exporter_classement_classe_pdf(request):
     y -= 20
     
     # En-têtes du tableau
-    col_widths = [2*cm, 3*cm, 8*cm, 3*cm]  # Rang, Matricule, Nom, Moyenne
+    col_widths = [2*cm, 3*cm, 7*cm, 2*cm, 3*cm]  # Rang, Matricule, Nom, Sexe, Moyenne
     col_x = [margin]
     for w in col_widths[:-1]:
         col_x.append(col_x[-1] + w)
-    
+
     # Fond gris pour les en-têtes
     c.setFillColorRGB(0.2, 0.3, 0.4)
     c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
-    
+
     # Texte des en-têtes (adapter selon le niveau)
     c.setFillColorRGB(1, 1, 1)
     c.setFont('Helvetica-Bold', 10)
-    moyenne_header = 'Moyenne /10' if est_primaire else 'Moyenne /20'
-    headers = ['Rang', 'Matricule', 'Nom Complet', moyenne_header]
+    moyenne_header = 'Moy /10' if est_primaire else 'Moy /20'
+    headers = ['Rang', 'Matricule', 'Nom Complet', 'Sexe', moyenne_header]
     for i, header in enumerate(headers):
         c.drawString(col_x[i] + 0.2*cm, y - 10, header)
-    
+
     c.setFillColorRGB(0, 0, 0)
     y -= 20
     
@@ -936,36 +962,48 @@ def exporter_classement_classe_pdf(request):
         # Matricule
         matricule = eleve_data.get('matricule', 'N/A')
         c.drawString(col_x[1] + 0.2*cm, y - 10, matricule)
-        
+
         # Nom complet (tronqué si trop long)
         nom_complet = eleve_data.get('nom_complet', '')
-        if len(nom_complet) > 35:
-            nom_complet = nom_complet[:32] + "..."
+        if len(nom_complet) > 32:
+            nom_complet = nom_complet[:29] + "..."
         c.drawString(col_x[2] + 0.2*cm, y - 10, nom_complet)
-        
+
+        # Sexe
+        sexe_val = eleve_data.get('sexe', '')
+        c.setFont('Helvetica', 9)
+        if sexe_val == 'F':
+            c.setFillColorRGB(0.75, 0, 0.55)
+            c.drawString(col_x[3] + 0.2*cm, y - 10, 'F')
+        else:
+            c.setFillColorRGB(0, 0.33, 0.8)
+            c.drawString(col_x[3] + 0.2*cm, y - 10, 'G')
+        c.setFillColorRGB(0, 0, 0)
+
         # Moyenne avec couleur selon performance
         moyenne = eleve_data.get('moyenne')
+        seuil_admission = 5 if est_primaire else 10
         if moyenne is not None:
             c.setFont('Helvetica-Bold', 9)
-            if moyenne >= 16:
+            if moyenne >= (8 if est_primaire else 16):
                 c.setFillColorRGB(0, 0.6, 0)  # Vert
-            elif moyenne >= 14:
+            elif moyenne >= (6 if est_primaire else 14):
                 c.setFillColorRGB(0, 0.5, 0.8)  # Bleu
-            elif moyenne >= 10:
+            elif moyenne >= seuil_admission:
                 c.setFillColorRGB(0.8, 0.6, 0)  # Orange
             else:
                 c.setFillColorRGB(0.8, 0, 0)  # Rouge
-            c.drawString(col_x[3] + 0.2*cm, y - 10, f"{moyenne:.2f}")
+            c.drawString(col_x[4] + 0.2*cm, y - 10, f"{moyenne:.2f}")
             c.setFillColorRGB(0, 0, 0)
         else:
             c.setFont('Helvetica-Oblique', 8)
             c.setFillColorRGB(0.5, 0.5, 0.5)
             if eleve_data.get('absent'):
-                c.drawString(col_x[3] + 0.2*cm, y - 10, "Absent")
+                c.drawString(col_x[4] + 0.2*cm, y - 10, "Absent")
             elif eleve_data.get('pas_de_notes'):
-                c.drawString(col_x[3] + 0.2*cm, y - 10, "Pas de notes")
+                c.drawString(col_x[4] + 0.2*cm, y - 10, "Pas de notes")
             else:
-                c.drawString(col_x[3] + 0.2*cm, y - 10, "Non saisi")
+                c.drawString(col_x[4] + 0.2*cm, y - 10, "Non saisi")
             c.setFillColorRGB(0, 0, 0)
         
         c.setFont('Helvetica', 9)
@@ -990,39 +1028,72 @@ def exporter_classement_classe_pdf(request):
     y -= 15
     
     c.setFont('Helvetica', 9)
+    seuil_admission = 5 if est_primaire else 10
+    base_note = '/10' if est_primaire else '/20'
     eleves_avec_moyenne = [e for e in classement_data if e.get('moyenne') is not None]
     eleves_sans_notes = [e for e in classement_data if e.get('moyenne') is None]
-    
-    stats = [
-        f"Nombre total d'élèves: {len(classement_data)}",
-        f"Élèves avec notes: {len(eleves_avec_moyenne)}",
-        f"Élèves sans notes: {len(eleves_sans_notes)}",
+    nb_total = len(classement_data)
+    nb_filles = sum(1 for e in classement_data if e.get('sexe') == 'F')
+    nb_garcons = nb_total - nb_filles
+    nb_admis = sum(1 for e in eleves_avec_moyenne if e['moyenne'] >= seuil_admission)
+    nb_redoubles = sum(1 for e in eleves_avec_moyenne if e['moyenne'] < seuil_admission)
+    taux_reussite = round((nb_admis / len(eleves_avec_moyenne)) * 100, 1) if eleves_avec_moyenne else 0
+
+    # Boîtes de statistiques en 2 colonnes
+    box_w = (sum(col_widths) / 2) - 0.3*cm
+    box_h = 14
+    col_left = margin
+    col_right = margin + (sum(col_widths) / 2) + 0.3*cm
+
+    def draw_stat_box(cx, cy, label, value, r, g, b):
+        c.setFillColorRGB(r, g, b)
+        c.rect(cx, cy - box_h + 3, box_w, box_h, fill=1, stroke=0)
+        c.setFillColorRGB(1, 1, 1)
+        c.setFont('Helvetica-Bold', 8)
+        c.drawString(cx + 4, cy - 4, label)
+        c.setFont('Helvetica-Bold', 10)
+        c.drawRightString(cx + box_w - 4, cy - 4, str(value))
+        c.setFillColorRGB(0, 0, 0)
+
+    stats_boxes = [
+        (col_left,  y,      "Effectif total",     nb_total,       0.13, 0.19, 0.25),
+        (col_right, y,      "Filles",              nb_filles,      0.75, 0.00, 0.55),
+        (col_left,  y-18,   "Garçons",             nb_garcons,     0.00, 0.33, 0.80),
+        (col_right, y-18,   "Élèves évalués",      len(eleves_avec_moyenne), 0.10, 0.50, 0.40),
+        (col_left,  y-36,   f"Admis (≥{seuil_admission})",   nb_admis,       0.00, 0.55, 0.30),
+        (col_right, y-36,   f"Redoublants (<{seuil_admission})", nb_redoubles, 0.72, 0.15, 0.15),
+        (col_left,  y-54,   "Taux de réussite",   f"{taux_reussite}%", 0.20, 0.40, 0.70),
+        (col_right, y-54,   "Non évalués",         len(eleves_sans_notes), 0.50, 0.50, 0.50),
     ]
-    
+
+    for bx, by, lbl, val, r, g, b in stats_boxes:
+        draw_stat_box(bx, by, lbl, val, r, g, b)
+
+    y -= 72
+
     if eleves_avec_moyenne:
         moyennes = [e['moyenne'] for e in eleves_avec_moyenne]
         moyenne_classe = sum(moyennes) / len(moyennes)
         note_max = max(moyennes)
         note_min = min(moyennes)
-        
-        # Adapter le format selon le niveau
-        base_note = '/10' if est_primaire else '/20'
-        stats.extend([
-            f"Moyenne de classe: {moyenne_classe:.2f}{base_note}",
-            f"Note maximale: {note_max:.2f}{base_note}",
-            f"Note minimale: {note_min:.2f}{base_note}",
-        ])
-    
-    for stat in stats:
-        c.drawString(margin + 1*cm, y, f"• {stat}")
-        y -= 12
-    
+
+        y -= 8
+        c.setFont('Helvetica-Bold', 9)
+        c.setFillColorRGB(0.2, 0.3, 0.4)
+        for stat in [
+            f"Moyenne de classe : {moyenne_classe:.2f}{base_note}",
+            f"Note maximale : {note_max:.2f}{base_note}   |   Note minimale : {note_min:.2f}{base_note}",
+        ]:
+            c.drawString(margin + 0.5*cm, y, stat)
+            y -= 13
+        c.setFillColorRGB(0, 0, 0)
+
     # Avertissement si élèves sans notes
     if eleves_sans_notes:
-        y -= 10
+        y -= 8
         c.setFillColorRGB(0.8, 0, 0)
         c.setFont('Helvetica-Bold', 10)
-        c.drawString(margin, y, f"⚠ ATTENTION: {len(eleves_sans_notes)} élève(s) n'ont pas de notes pour cette période")
+        c.drawString(margin, y, f"ATTENTION: {len(eleves_sans_notes)} eleve(s) sans notes pour cette periode")
         c.setFillColorRGB(0, 0, 0)
     
     # Finaliser
