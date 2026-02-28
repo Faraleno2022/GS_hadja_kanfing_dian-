@@ -1,0 +1,295 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'eleves:liste_eleves' %}">Élèves</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'eleves:gestion_classes' %}">Classes</a></li>
+    <li class="breadcrumb-item active">Nouvelle Année</li>
+{% endblock %}
+
+{% block page_actions %}
+    <a href="{% url 'eleves:gestion_classes' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Retour aux classes
+    </a>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- En-tête -->
+    <div class="card border-0 shadow-sm mb-4" style="background: linear-gradient(135deg,#1a6fc4,#0d47a1);">
+        <div class="card-body py-4 text-white d-flex align-items-center gap-3">
+            <div style="font-size:3rem;">🗓️</div>
+            <div>
+                <h2 class="mb-1 fw-bold">Nouvelle Année Scolaire</h2>
+                <p class="mb-0 opacity-75">
+                    Transition de <strong>{{ annee_courante }}</strong>
+                    vers <strong>{{ annee_nouvelle }}</strong>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% if deja_existante %}
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="fas fa-exclamation-triangle fa-lg"></i>
+        <div>
+            <strong>Attention :</strong> Des classes pour l'année <strong>{{ annee_nouvelle }}</strong>
+            existent déjà. La création ne créera que les éléments manquants (sans écraser l'existant).
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Résumé des données actuelles -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-school fa-2x text-primary mb-2"></i>
+                    <h3 class="mb-0 text-primary">{{ preview_classes|length }}</h3>
+                    <small class="text-muted">Classes à dupliquer</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-users fa-2x text-success mb-2"></i>
+                    <h3 class="mb-0 text-success">{{ nb_total_eleves }}</h3>
+                    <small class="text-muted">Élèves actifs</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-warning h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-money-bill-wave fa-2x text-warning mb-2"></i>
+                    <h3 class="mb-0 text-warning">{{ grilles|length }}</h3>
+                    <small class="text-muted">Grilles tarifaires</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info h-100">
+                <div class="card-body text-center">
+                    <i class="fas fa-book fa-2x text-info mb-2"></i>
+                    <h3 class="mb-0 text-info">{{ preview_notes|length }}</h3>
+                    <small class="text-muted">Classes (Notes)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulaire de configuration -->
+    <form method="post" action="{% url 'eleves:nouvelle_annee_creer' %}" id="form-nouvelle-annee">
+        {% csrf_token %}
+        <input type="hidden" name="annee_courante" value="{{ annee_courante }}">
+        <input type="hidden" name="annee_nouvelle" value="{{ annee_nouvelle }}">
+
+        <div class="row g-4">
+            <!-- Options -->
+            <div class="col-lg-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-dark text-white">
+                        <i class="fas fa-cogs me-2"></i>Options de duplication
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">
+                            Choisissez ce qui sera copié vers <strong>{{ annee_nouvelle }}</strong>.
+                        </p>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="dupliquer_classes"
+                                   name="dupliquer_classes" value="1" checked disabled>
+                            <label class="form-check-label fw-bold" for="dupliquer_classes">
+                                <i class="fas fa-school text-primary me-1"></i>
+                                Dupliquer les classes
+                            </label>
+                            <div class="text-muted small">Toujours effectué (obligatoire)</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="dupliquer_grilles"
+                                   name="dupliquer_grilles" value="1" checked>
+                            <label class="form-check-label fw-bold" for="dupliquer_grilles">
+                                <i class="fas fa-money-bill-wave text-warning me-1"></i>
+                                Copier les grilles tarifaires
+                            </label>
+                            <div class="text-muted small">Frais de scolarité, tranches de paiement</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="dupliquer_notes_classes"
+                                   name="dupliquer_notes_classes" value="1" checked>
+                            <label class="form-check-label fw-bold" for="dupliquer_notes_classes">
+                                <i class="fas fa-book text-info me-1"></i>
+                                Copier les classes & matières (Notes)
+                            </label>
+                            <div class="text-muted small">Structure des matières avec coefficients</div>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="faire_passer_eleves"
+                                   name="faire_passer_eleves" value="1" checked>
+                            <label class="form-check-label fw-bold" for="faire_passer_eleves">
+                                <i class="fas fa-graduation-cap text-success me-1"></i>
+                                Faire passer les élèves admis
+                            </label>
+                            <div class="text-muted small">Les élèves actifs sont déplacés en classe supérieure</div>
+                        </div>
+
+                        <hr>
+                        <div class="alert alert-info py-2 small">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Les notes de l'année <strong>{{ annee_courante }}</strong> sont conservées
+                            dans l'historique. Seule la structure est copiée.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Aperçu des classes -->
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-eye me-2"></i>Aperçu du passage en classe supérieure</span>
+                        <span class="badge bg-white text-primary">{{ preview_classes|length }} classes</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+                            <table class="table table-hover table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Classe actuelle ({{ annee_courante }})</th>
+                                        <th class="text-center">Élèves actifs</th>
+                                        <th>→ Classe {{ annee_nouvelle }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in preview_classes %}
+                                    <tr>
+                                        <td>
+                                            <span class="fw-semibold">{{ p.classe.nom }}</span>
+                                            <div class="text-muted small">{{ p.classe.get_niveau_display }}</div>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-success">{{ p.nb_eleves }}</span>
+                                        </td>
+                                        <td>
+                                            {% if p.classe_superieure %}
+                                                <span class="text-success fw-semibold">
+                                                    <i class="fas fa-arrow-up me-1"></i>{{ p.classe_superieure }}
+                                                </span>
+                                            {% else %}
+                                                <span class="text-muted small">
+                                                    <i class="fas fa-minus me-1"></i>Même classe (dernière année)
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% empty %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-3">
+                                            Aucune classe trouvée
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {% if preview_notes %}
+                <div class="card shadow-sm mt-3">
+                    <div class="card-header bg-info text-white">
+                        <i class="fas fa-book me-2"></i>Classes & Matières (module Notes)
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height:200px;overflow-y:auto;">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Classe Notes</th>
+                                        <th class="text-center">Matières</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for n in preview_notes %}
+                                    <tr>
+                                        <td>{{ n.classe_note.nom }}</td>
+                                        <td class="text-center">
+                                            <span class="badge bg-info">{{ n.nb_matieres }}</span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Bouton de confirmation -->
+        <div class="card mt-4 border-danger">
+            <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div>
+                    <h5 class="mb-1 text-danger fw-bold">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Confirmer la création
+                    </h5>
+                    <p class="mb-0 text-muted">
+                        Cette action va créer l'année scolaire <strong>{{ annee_nouvelle }}</strong>
+                        et déplacer les élèves actifs selon les options choisies ci-dessus.
+                    </p>
+                </div>
+                <button type="button" class="btn btn-danger btn-lg px-4" onclick="confirmerCreation()">
+                    <i class="fas fa-play-circle me-2"></i>
+                    Lancer la nouvelle année {{ annee_nouvelle }}
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modal de confirmation -->
+<div class="modal fade" id="modalConfirmation" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-calendar-plus me-2"></i>Confirmer la nouvelle année
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Vous êtes sur le point de créer l'année scolaire <strong>{{ annee_nouvelle }}</strong>.</p>
+                <ul class="mb-0">
+                    <li>Les <strong>{{ preview_classes|length }} classes</strong> seront dupliquées</li>
+                    <li>Les <strong>{{ nb_total_eleves }} élèves actifs</strong> seront passés en classe supérieure</li>
+                    <li>Les <strong>notes de {{ annee_courante }}</strong> restent intactes dans l'historique</li>
+                </ul>
+                <div class="alert alert-warning mt-3 mb-0 small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Cette opération est réversible manuellement mais peut prendre quelques secondes.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" onclick="document.getElementById('form-nouvelle-annee').submit()">
+                    <i class="fas fa-check me-1"></i>Oui, créer {{ annee_nouvelle }}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmerCreation() {
+    const modal = new bootstrap.Modal(document.getElementById('modalConfirmation'));
+    modal.show();
+}
+</script>
+{% endblock %}
