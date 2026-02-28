@@ -2,6 +2,7 @@
 Vue pour démarrer une nouvelle année scolaire :
 - Duplique les classes (eleves + notes), matières, grilles tarifaires
 - Fait passer automatiquement les élèves admis en classe supérieure
+- Permet de revenir à une année scolaire passée (via session)
 """
 
 import logging
@@ -10,9 +11,90 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
+from django.db.models import Count
 
 from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
+
+# Clé de session pour l'année active
+SESSION_ANNEE_ACTIVE = 'annee_scolaire_active'
+
+
+def get_annee_active(request, ecole):
+    """Retourne l'année scolaire active (session ou la plus récente)."""
+    annees = (Classe.objects
+              .filter(ecole=ecole)
+              .values_list('annee_scolaire', flat=True)
+              .distinct()
+              .order_by('-annee_scolaire'))
+    if not annees:
+        return None
+    annee_session = request.session.get(SESSION_ANNEE_ACTIVE)
+    if annee_session and annee_session in list(annees):
+        return annee_session
+    return annees[0]
+
+
+@login_required
+def gestion_annees(request):
+    """Liste toutes les années scolaires et permet de basculer l'année active."""
+    ecole = user_school(request.user)
+    if not ecole:
+        messages.error(request, "Aucune école associée à votre compte.")
+        return redirect('eleves:liste_eleves')
+
+    annees_qs = (Classe.objects
+                 .filter(ecole=ecole)
+                 .values('annee_scolaire')
+                 .annotate(nb_classes=Count('id'), nb_eleves=Count('eleves'))
+                 .order_by('-annee_scolaire'))
+
+    annee_active = get_annee_active(request, ecole)
+
+    annees = []
+    for a in annees_qs:
+        annees.append({
+            'annee': a['annee_scolaire'],
+            'nb_classes': a['nb_classes'],
+            'nb_eleves': a['nb_eleves'],
+            'est_active': a['annee_scolaire'] == annee_active,
+            'est_recente': a == annees_qs[0],
+        })
+
+    context = {
+        'ecole': ecole,
+        'annees': annees,
+        'annee_active': annee_active,
+        'titre_page': 'Gestion des années scolaires',
+    }
+    return render(request, 'eleves/gestion_annees.html', context)
+
+
+@login_required
+def changer_annee_active(request):
+    """Bascule l'année scolaire active en session."""
+    if request.method != 'POST':
+        return redirect('eleves:gestion_annees')
+
+    ecole = user_school(request.user)
+    if not ecole:
+        messages.error(request, "Aucune école associée à votre compte.")
+        return redirect('eleves:liste_eleves')
+
+    annee = request.POST.get('annee', '').strip()
+    if not annee:
+        messages.error(request, "Année scolaire manquante.")
+        return redirect('eleves:gestion_annees')
+
+    # Vérifier que cette année existe bien pour cette école
+    existe = Classe.objects.filter(ecole=ecole, annee_scolaire=annee).exists()
+    if not existe:
+        messages.error(request, f"L'année {annee} n'existe pas pour cet établissement.")
+        return redirect('eleves:gestion_annees')
+
+    request.session[SESSION_ANNEE_ACTIVE] = annee
+    messages.success(request, f"✅ Vous consultez maintenant l'année scolaire {annee}.")
+    return redirect('eleves:gestion_annees')
 
 logger = logging.getLogger(__name__)
 

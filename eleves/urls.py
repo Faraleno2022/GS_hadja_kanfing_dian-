@@ -1,7 +1,12 @@
 from django.urls import path
 from . import views
 from .views_import import importer_eleves, telecharger_template_eleves, exporter_eleves_classe
-from .views_nouvelle_annee import nouvelle_annee_apercu, nouvelle_annee_creer
+from .views_nouvelle_annee import (
+    nouvelle_annee_apercu,
+    nouvelle_annee_creer,
+    gestion_annees,
+    changer_annee_active,
+)
 
 app_name = 'eleves'
 
@@ -23,6 +28,8 @@ urlpatterns = [
     path('classes/', views.gestion_classes, name='gestion_classes'),
 
     # Nouvelle année scolaire
+    path('annees/', gestion_annees, name='gestion_annees'),
+    path('annees/changer/', changer_annee_active, name='changer_annee_active'),
     path('nouvelle-annee/', nouvelle_annee_apercu, name='nouvelle_annee_apercu'),
     path('nouvelle-annee/creer/', nouvelle_annee_creer, name='nouvelle_annee_creer'),
 
