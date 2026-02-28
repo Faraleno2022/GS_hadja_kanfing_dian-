@@ -5,11 +5,11 @@ Vue pour démarrer une nouvelle année scolaire :
 """
 
 import logging
+from typing import Optional
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import transaction
-from django.http import JsonResponse
 
 from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
@@ -77,7 +77,7 @@ def _nom_base(nom_classe: str) -> str:
     return nom_classe.strip()
 
 
-def _classe_superieure_nom(nom_classe: str) -> str | None:
+def _classe_superieure_nom(nom_classe: str) -> Optional[str]:
     """Retourne le nom de la classe supérieure correspondante ou None."""
     base = _nom_base(nom_classe.upper())
     return PROGRESSION_CLASSES.get(base)
@@ -283,20 +283,14 @@ def nouvelle_annee_creer(request):
                     sup_nom = _classe_superieure_nom(ancienne_classe.nom)
 
                     if sup_nom:
-                        # Chercher la nouvelle classe avec ce nom dans la nouvelle année
-                        # Essai exact, puis partiel
-                        nouvelle_cls = (
-                            map_anciennes_nouvelles.get(ancienne_classe.pk)
-                            # Si la classe supérieure a un nom différent
-                        )
-                        # Trouver la vraie classe supérieure
+                        # Chercher la classe supérieure dans la nouvelle année (nom contient le 1er mot)
                         sup_cls = Classe.objects.filter(
                             ecole=ecole,
                             annee_scolaire=annee_nouvelle,
                             nom__icontains=sup_nom.split()[0],
                         ).first()
                         if not sup_cls:
-                            # Fallback : même classe, nouvelle année
+                            # Fallback : même classe dupliquée dans la nouvelle année
                             sup_cls = map_anciennes_nouvelles.get(ancienne_classe.pk)
 
                         if sup_cls:
