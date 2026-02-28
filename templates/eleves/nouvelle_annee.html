@@ -245,51 +245,24 @@
                         et déplacer les élèves actifs selon les options choisies ci-dessus.
                     </p>
                 </div>
-                <button type="button" class="btn btn-danger btn-lg px-4" onclick="confirmerCreation()">
+                <button type="submit" id="btn-lancer" class="btn btn-danger btn-lg px-4"
+                        onclick="return lancerAnnee(this)">
                     <i class="fas fa-play-circle me-2"></i>
-                    Lancer la nouvelle année {{ annee_nouvelle }}
+                    Oui, créer {{ annee_nouvelle }}
                 </button>
             </div>
         </div>
     </form>
 </div>
 
-<!-- Modal de confirmation -->
-<div class="modal fade" id="modalConfirmation" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-calendar-plus me-2"></i>Confirmer la nouvelle année
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Vous êtes sur le point de créer l'année scolaire <strong>{{ annee_nouvelle }}</strong>.</p>
-                <ul class="mb-0">
-                    <li>Les <strong>{{ preview_classes|length }} classes</strong> seront dupliquées</li>
-                    <li>Les <strong>{{ nb_total_eleves }} élèves actifs</strong> seront passés en classe supérieure</li>
-                    <li>Les <strong>notes de {{ annee_courante }}</strong> restent intactes dans l'historique</li>
-                </ul>
-                <div class="alert alert-warning mt-3 mb-0 small">
-                    <i class="fas fa-info-circle me-1"></i>
-                    Cette opération est réversible manuellement mais peut prendre quelques secondes.
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-                <button type="button" class="btn btn-danger" onclick="document.getElementById('form-nouvelle-annee').submit()">
-                    <i class="fas fa-check me-1"></i>Oui, créer {{ annee_nouvelle }}
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
-function confirmerCreation() {
-    const modal = new bootstrap.Modal(document.getElementById('modalConfirmation'));
-    modal.show();
+function lancerAnnee(btn) {
+    if (!confirm("Confirmer la création de l'année scolaire {{ annee_nouvelle }} ?\n\n• {{ preview_classes|length }} classes seront dupliquées\n• {{ nb_total_eleves }} élèves seront passés en classe supérieure\n• Les notes de {{ annee_courante }} restent intactes")) {
+        return false;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Création en cours…';
+    return true;
 }
 </script>
 {% endblock %}
