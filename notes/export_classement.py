@@ -1056,14 +1056,14 @@ def exporter_classement_classe_pdf(request):
         c.setFillColorRGB(0, 0, 0)
 
     stats_boxes = [
-        (col_left,  y,      "Effectif total",     nb_total,       0.13, 0.19, 0.25),
-        (col_right, y,      "Filles",              nb_filles,      0.75, 0.00, 0.55),
-        (col_left,  y-18,   "Garçons",             nb_garcons,     0.00, 0.33, 0.80),
-        (col_right, y-18,   "Élèves évalués",      len(eleves_avec_moyenne), 0.10, 0.50, 0.40),
-        (col_left,  y-36,   f"Admis (≥{seuil_admission})",   nb_admis,       0.00, 0.55, 0.30),
-        (col_right, y-36,   f"Redoublants (<{seuil_admission})", nb_redoubles, 0.72, 0.15, 0.15),
-        (col_left,  y-54,   "Taux de réussite",   f"{taux_reussite}%", 0.20, 0.40, 0.70),
-        (col_right, y-54,   "Non évalués",         len(eleves_sans_notes), 0.50, 0.50, 0.50),
+        (col_left,  y,      "Effectif de la classe", nb_total,                    0.13, 0.19, 0.25),
+        (col_right, y,      "Filles",                 nb_filles,                   0.75, 0.00, 0.55),
+        (col_left,  y-18,   "Garçons",                nb_garcons,                  0.00, 0.33, 0.80),
+        (col_right, y-18,   "Élèves évalués",         len(eleves_avec_moyenne),    0.10, 0.50, 0.40),
+        (col_left,  y-36,   f"Admis (≥{seuil_admission})",        nb_admis,        0.00, 0.55, 0.30),
+        (col_right, y-36,   f"Redoublants (<{seuil_admission})",  nb_redoubles,    0.72, 0.15, 0.15),
+        (col_left,  y-54,   "Taux de réussite",       f"{taux_reussite}%",         0.20, 0.40, 0.70),
+        (col_right, y-54,   "Non évalués",            len(eleves_sans_notes),      0.50, 0.50, 0.50),
     ]
 
     for bx, by, lbl, val, r, g, b in stats_boxes:
