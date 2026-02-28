@@ -84,17 +84,23 @@
         color: #666;
     }
 
-    /* Grille de cartes — 3 par ligne, 3 lignes = 9 par page */
+    /* Grille de cartes — 3 par ligne, WeasyPrint compatible */
     .cards-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-        justify-content: flex-start;
-        align-content: flex-start;
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
     }
-
+    .cards-row {
+        display: block;
+        width: 100%;
+        overflow: hidden;
+        margin-bottom: 10px;
+    }
     .card {
-        width: calc(33.333% - 10px);
+        display: inline-block;
+        vertical-align: top;
+        width: 31.8%;
+        margin-right: 2.3%;
         border: 1px solid #e0e0e0;
         border-radius: 10px;
         overflow: hidden;
@@ -102,6 +108,9 @@
         page-break-inside: avoid;
         position: relative;
         box-shadow: 0 2px 6px rgba(0,0,0,0.07);
+    }
+    .card:nth-child(3n) {
+        margin-right: 0;
     }
 
     /* Bordure top 3 */
@@ -269,6 +278,7 @@
     <!-- Grille de cartes : 3 par ligne -->
     <div class="cards-grid">
         {% for p in premiers %}
+        {% if forloop.counter0|divisibleby:3 %}<div class="cards-row">{% endif %}
         <div class="card {% if p.rang_premiers == 1 %}top-1{% elif p.rang_premiers == 2 %}top-2{% elif p.rang_premiers == 3 %}top-3{% endif %}">
             <!-- Badge rang -->
             <div class="card-rang {% if p.rang_premiers == 1 %}rang-1{% elif p.rang_premiers == 2 %}rang-2{% elif p.rang_premiers == 3 %}rang-3{% else %}rang-other{% endif %}">
@@ -280,7 +290,7 @@
                 {% if p.photo_base64 %}
                 <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" alt="Photo">
                 {% else %}
-                <div class="placeholder-icon">👤</div>
+                <div class="placeholder-icon">&#128100;</div>
                 {% endif %}
             </div>
 
@@ -305,6 +315,7 @@
                 </div>
             </div>
         </div>
+        {% if forloop.counter|divisibleby:3 or forloop.last %}</div>{% endif %}
         {% endfor %}
     </div>
 
