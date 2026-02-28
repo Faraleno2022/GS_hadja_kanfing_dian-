@@ -1095,7 +1095,61 @@ def exporter_classement_classe_pdf(request):
         c.setFont('Helvetica-Bold', 10)
         c.drawString(margin, y, f"ATTENTION: {len(eleves_sans_notes)} eleve(s) sans notes pour cette periode")
         c.setFillColorRGB(0, 0, 0)
-    
+
+    # ── Zone de signatures ──
+    # Déterminer le titre du signataire selon le niveau
+    niveau_scolaire_local = detecter_niveau_scolaire(classe_note.nom)
+    if niveau_scolaire_local == 'MATERNELLE':
+        signataire_titre = "La Coordinatrice de la Maternelle"
+    elif niveau_scolaire_local == 'PRIMAIRE':
+        signataire_titre = "Le Directeur du Primaire"
+    else:
+        signataire_titre = "Le Censeur de l'Établissement"
+
+    sig_y = max(y - 30, 2.5 * cm)  # au moins 2.5cm du bas, ou sous les stats
+
+    # Si pas assez de place, nouvelle page
+    if sig_y < 2.2 * cm:
+        c.showPage()
+        _draw_watermark(c, classe_note.ecole, page_width, page_height)
+        sig_y = 4 * cm
+
+    # Ligne de séparation fine
+    c.setStrokeColorRGB(0.7, 0.7, 0.7)
+    c.setLineWidth(0.5)
+    c.line(margin, sig_y + 35, page_width - margin, sig_y + 35)
+
+    # Titre de section
+    c.setFont('Helvetica-Bold', 9)
+    c.setFillColorRGB(0.2, 0.3, 0.4)
+    c.drawString(margin, sig_y + 22, "VISA ET SIGNATURE :")
+    c.setFillColorRGB(0, 0, 0)
+
+    # Bloc signataire centré à droite
+    sig_block_x = page_width - margin - 7 * cm
+    sig_block_w = 7 * cm
+
+    c.setFont('Helvetica-Bold', 10)
+    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y + 20, signataire_titre)
+
+    # Ville + date
+    c.setFont('Helvetica-Oblique', 8)
+    c.setFillColorRGB(0.4, 0.4, 0.4)
+    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y + 7,
+                        f"Conakry, le {datetime.now().strftime('%d/%m/%Y')}")
+    c.setFillColorRGB(0, 0, 0)
+
+    # Ligne de signature
+    c.setStrokeColorRGB(0.2, 0.2, 0.2)
+    c.setLineWidth(1)
+    c.line(sig_block_x, sig_y - 10, sig_block_x + sig_block_w, sig_y - 10)
+
+    # Mention "Signature"
+    c.setFont('Helvetica-Oblique', 7)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y - 18, "(Signature et cachet)")
+    c.setFillColorRGB(0, 0, 0)
+
     # Finaliser
     c.save()
     

@@ -240,7 +240,7 @@
                     {% if p.rang_premiers == 1 %}&#9733;{% else %}{{ p.rang_premiers_formate }}{% endif %}
                 </div>
                 {% if p.photo_base64 %}
-                <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" alt="Photo">
+                <img src="data:{{ p.photo_mime }};base64,{{ p.photo_base64 }}" alt="Photo">
                 {% else %}
                 <div class="no-photo">&#128100;</div>
                 {% endif %}

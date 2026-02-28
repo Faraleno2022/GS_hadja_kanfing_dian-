@@ -109,7 +109,7 @@ def _get_top1_par_classe(request, periode):
                 for eleve in eleves:
                     rang_info = rangs_dict.get(eleve.id)
                     if rang_info and rang_info.get('rang_num') == 1:
-                        photo_base64 = _encode_photo(eleve)
+                        photo_base64, photo_mime = _encode_photo(eleve)
                         premiers.append({
                             'eleve': eleve,
                             'classe_nom': classe_note.nom,
@@ -121,6 +121,7 @@ def _get_top1_par_classe(request, periode):
                             'est_primaire': False,
                             'niveau': 'MATERNELLE',
                             'photo_base64': photo_base64,
+                            'photo_mime': photo_mime or 'image/jpeg',
                             'rang_formate': formater_rang(1, getattr(eleve, 'sexe', 'M')),
                         })
                         break
@@ -146,7 +147,7 @@ def _get_top1_par_classe(request, periode):
                 except Eleve.DoesNotExist:
                     continue
 
-                photo_base64 = _encode_photo(eleve)
+                photo_base64, photo_mime = _encode_photo(eleve)
                 premiers.append({
                     'eleve': eleve,
                     'classe_nom': classe_note.nom,
@@ -158,6 +159,7 @@ def _get_top1_par_classe(request, periode):
                     'est_primaire': est_primaire,
                     'niveau': 'PRIMAIRE' if est_primaire else 'SECONDAIRE',
                     'photo_base64': photo_base64,
+                    'photo_mime': photo_mime or 'image/jpeg',
                     'rang_formate': formater_rang(1, getattr(eleve, 'sexe', 'M')),
                 })
 
@@ -186,16 +188,21 @@ def _get_top1_par_classe(request, periode):
 
 
 def _encode_photo(eleve):
-    """Encode la photo d'un élève en base64, retourne None si pas de photo"""
+    """Encode la photo d'un élève en base64, retourne (base64_str, mime_type) ou (None, None)"""
     if eleve.photo:
         try:
             photo_path = eleve.photo.path
             if os.path.exists(photo_path):
+                ext = os.path.splitext(photo_path)[1].lower()
+                mime_map = {'.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                            '.png': 'image/png', '.gif': 'image/gif',
+                            '.webp': 'image/webp'}
+                mime = mime_map.get(ext, 'image/jpeg')
                 with open(photo_path, 'rb') as f:
-                    return base64.b64encode(f.read()).decode('utf-8')
+                    return base64.b64encode(f.read()).decode('utf-8'), mime
         except Exception:
             pass
-    return None
+    return None, None
 
 
 NIVEAUX_CHOICES = [
