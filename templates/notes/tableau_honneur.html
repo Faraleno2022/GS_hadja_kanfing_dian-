@@ -34,7 +34,7 @@
         margin-bottom: 2rem;
     }
 
-    /* Grille de cartes paysage — 3 par ligne */
+    /* Grille de badges paysage — 3 par ligne */
     .honneur-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -42,6 +42,7 @@
         margin-bottom: 2rem;
     }
 
+    /* ── Badge carte paysage (horizontal) ── */
     .honneur-card {
         background: white;
         border-radius: 16px;
@@ -49,44 +50,32 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.10);
         transition: transform 0.25s, box-shadow 0.25s;
         position: relative;
+        display: flex;
+        flex-direction: row;
+        border: 2px solid #1a6fc4;
+        min-height: 200px;
     }
     .honneur-card:hover {
         transform: translateY(-6px);
         box-shadow: 0 8px 30px rgba(0,0,0,0.18);
     }
 
-    /* Badge rang en haut à gauche */
-    .card-rang-badge {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        font-size: 1rem;
-        color: #333;
-        z-index: 2;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
-    }
-    .card-rang-1 { background: linear-gradient(135deg, #ffd700, #ffb300); }
-    .card-rang-2 { background: linear-gradient(135deg, #d4d4d4, #b0b0b0); }
-    .card-rang-3 { background: linear-gradient(135deg, #cd7f32, #b8860b); color: white; }
-    .card-rang-other { background: #e9ecef; }
+    /* Bordure top 3 */
+    .honneur-card.top-1 { border-color: #d4a017; }
+    .honneur-card.top-2 { border-color: #8a8a8a; }
+    .honneur-card.top-3 { border-color: #b87333; }
 
-    /* Zone photo — grande, paysage */
+    /* Photo à gauche */
     .card-photo-wrapper {
-        width: 100%;
-        height: 220px;
+        width: 180px;
+        min-width: 180px;
         overflow: hidden;
-        background: linear-gradient(135deg, #f0f4ff 0%, #e8eaf6 100%);
+        background: linear-gradient(135deg, #4a90d9 0%, #1a6fc4 50%, #0d3b8c 100%);
         display: flex;
         align-items: center;
         justify-content: center;
         position: relative;
+        flex-shrink: 0;
     }
     .card-photo-wrapper img {
         width: 100%;
@@ -101,43 +90,90 @@
         height: 100%;
     }
     .card-photo-placeholder i {
-        font-size: 5rem;
-        color: #c0c0c0;
+        font-size: 4rem;
+        color: rgba(255,255,255,0.35);
     }
 
-    /* Bordure dorée top 3 */
-    .honneur-card.top-1 { border-top: 5px solid #ffd700; }
-    .honneur-card.top-2 { border-top: 5px solid #c0c0c0; }
-    .honneur-card.top-3 { border-top: 5px solid #cd7f32; }
+    /* Badge rang en haut à gauche sur la photo */
+    .card-rang-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1rem;
+        color: #fff;
+        z-index: 2;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        border: 2px solid #fff;
+    }
+    .card-rang-1 { background: linear-gradient(135deg, #ffd700, #d4a017); color: #333; }
+    .card-rang-2 { background: linear-gradient(135deg, #d4d4d4, #8a8a8a); color: #333; }
+    .card-rang-3 { background: linear-gradient(135deg, #cd7f32, #b87333); }
+    .card-rang-other { background: #1a6fc4; }
 
-    /* Zone infos sous la photo */
+    /* Ruban décoratif top 3 */
+    .card-ribbon {
+        position: absolute;
+        top: -1px;
+        right: -1px;
+        width: 0;
+        height: 0;
+        border-style: solid;
+        border-width: 0 45px 45px 0;
+        z-index: 1;
+    }
+    .ribbon-gold   { border-color: transparent #ffd700 transparent transparent; }
+    .ribbon-silver { border-color: transparent #c0c0c0 transparent transparent; }
+    .ribbon-bronze { border-color: transparent #cd7f32 transparent transparent; }
+
+    /* Infos à droite */
     .card-info {
-        padding: 1rem 1.2rem 1.2rem;
-        text-align: center;
+        padding: 1.2rem 1.4rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        flex: 1;
     }
     .card-info .card-name {
-        font-size: 1.1rem;
-        font-weight: 700;
+        font-size: 1.15rem;
+        font-weight: 800;
         color: #1a1a2e;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.2rem;
         line-height: 1.3;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
     }
     .card-info .card-classe {
-        font-size: 0.85rem;
-        color: #666;
-        margin-bottom: 0.6rem;
+        font-size: 0.9rem;
+        color: #1a6fc4;
+        font-weight: 600;
+        margin-bottom: 0.8rem;
     }
     .card-stats {
         display: flex;
-        justify-content: center;
-        gap: 1rem;
+        gap: 0.8rem;
         flex-wrap: wrap;
     }
     .card-stat {
-        background: #f8f9fa;
-        border-radius: 8px;
-        padding: 0.4rem 0.8rem;
+        border-radius: 10px;
+        padding: 0.5rem 0.9rem;
         text-align: center;
+        flex: 1;
+        min-width: 90px;
+    }
+    .card-stat-moyenne {
+        background: #eef4ff;
+        border: 1px solid #c7deff;
+    }
+    .card-stat-rang {
+        background: #eefbf0;
+        border: 1px solid #b8e6c0;
     }
     .card-stat .stat-label {
         font-size: 0.7rem;
@@ -147,10 +183,10 @@
         display: block;
     }
     .card-stat .stat-value {
-        font-size: 1rem;
-        font-weight: 700;
+        font-size: 1.1rem;
+        font-weight: 800;
     }
-    .card-stat .stat-value.moyenne-val { color: #007bff; }
+    .card-stat .stat-value.moyenne-val { color: #1a6fc4; }
     .card-stat .stat-value.rang-val { color: #28a745; }
 
     .empty-state {
@@ -167,16 +203,22 @@
         display: block;
     }
 
-    @media (max-width: 992px) {
+    @media (max-width: 1200px) {
         .honneur-grid {
             grid-template-columns: repeat(2, 1fr);
         }
     }
-    @media (max-width: 576px) {
+    @media (max-width: 768px) {
         .honneur-grid {
             grid-template-columns: 1fr;
         }
+        .honneur-card {
+            flex-direction: column;
+            min-height: auto;
+        }
         .card-photo-wrapper {
+            width: 100%;
+            min-width: auto;
             height: 200px;
         }
     }
@@ -231,17 +273,16 @@
         — {{ premiers|length }} classe{{ premiers|length|pluralize:"s" }}
     </h4>
 
-    <!-- Grille de cartes paysage : 3 par ligne -->
+    <!-- Grille de badges paysage : 3 par ligne -->
     <div class="honneur-grid">
         {% for p in premiers %}
         <div class="honneur-card {% if p.rang_premiers == 1 %}top-1{% elif p.rang_premiers == 2 %}top-2{% elif p.rang_premiers == 3 %}top-3{% endif %}">
-            <!-- Badge rang -->
-            <div class="card-rang-badge {% if p.rang_premiers == 1 %}card-rang-1{% elif p.rang_premiers == 2 %}card-rang-2{% elif p.rang_premiers == 3 %}card-rang-3{% else %}card-rang-other{% endif %}">
-                {% if p.rang_premiers == 1 %}<i class="fas fa-crown" style="font-size:0.9rem;"></i>{% else %}{{ p.rang_premiers_formate }}{% endif %}
-            </div>
-
-            <!-- Grande photo paysage -->
+            <!-- Photo à gauche -->
             <div class="card-photo-wrapper">
+                <!-- Badge rang -->
+                <div class="card-rang-badge {% if p.rang_premiers == 1 %}card-rang-1{% elif p.rang_premiers == 2 %}card-rang-2{% elif p.rang_premiers == 3 %}card-rang-3{% else %}card-rang-other{% endif %}">
+                    {% if p.rang_premiers == 1 %}<i class="fas fa-crown" style="font-size:0.9rem;"></i>{% else %}{{ p.rang_premiers_formate }}{% endif %}
+                </div>
                 {% if p.photo_base64 %}
                 <img src="data:image/jpeg;base64,{{ p.photo_base64 }}" alt="Photo de {{ p.eleve.prenom }}">
                 {% else %}
@@ -251,18 +292,22 @@
                 {% endif %}
             </div>
 
-            <!-- Infos élève -->
+            <!-- Infos à droite -->
             <div class="card-info">
+                {% if p.rang_premiers <= 3 %}
+                <div class="card-ribbon {% if p.rang_premiers == 1 %}ribbon-gold{% elif p.rang_premiers == 2 %}ribbon-silver{% elif p.rang_premiers == 3 %}ribbon-bronze{% endif %}"></div>
+                {% endif %}
+
                 <div class="card-name">{{ p.eleve.prenom }} {{ p.eleve.nom }}</div>
                 <div class="card-classe"><i class="fas fa-school me-1"></i>{{ p.classe_nom }}
                     {% if not niveau_filtre %}<span class="badge ms-1 {% if p.niveau == 'MATERNELLE' %}bg-success{% elif p.niveau == 'PRIMAIRE' %}bg-primary{% else %}bg-secondary{% endif %}" style="font-size:0.65rem;">{{ p.niveau|capfirst }}</span>{% endif %}
                 </div>
                 <div class="card-stats">
-                    <div class="card-stat">
+                    <div class="card-stat card-stat-moyenne">
                         <span class="stat-label">Moyenne</span>
                         <span class="stat-value moyenne-val">{{ p.moyenne }}/{{ p.note_max }}</span>
                     </div>
-                    <div class="card-stat">
+                    <div class="card-stat card-stat-rang">
                         <span class="stat-label">Rang classe</span>
                         <span class="stat-value rang-val">{{ p.rang_formate }}/{{ p.total_eleves }}</span>
                     </div>
