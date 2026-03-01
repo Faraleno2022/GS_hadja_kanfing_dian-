@@ -157,81 +157,122 @@ def recu_public_pdf(request, paiement_id):
         
         # Calcul total remises
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-        
+        montant_net = paiement.montant - remises_total if remises_total > 0 else paiement.montant
+
+        # Situation financière globale de l'élève (via échéancier)
+        from .models import EcheancierPaiement
+        from decimal import Decimal
+        ech = None
+        try:
+            ech = paiement.eleve.echeancier
+        except EcheancierPaiement.DoesNotExist:
+            ech = None
+        total_du = ech.total_du if ech else Decimal('0')
+        total_paye = ech.total_paye if ech else Decimal('0')
+        solde_restant = ech.solde_restant if ech else Decimal('0')
+
         # Préparer le buffer et le canvas
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
-        
+
         # Filigrane
         try:
             ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
             draw_logo_watermark(c, width, height, ecole=ecole_obj)
         except Exception:
             pass
-        
+
         # Mise en page simple
         left = 40
         top = height - 40
         line_h = 18
-        
+
         # En-tête
         c.setFont('Helvetica-Bold', 18)
         c.drawString(left, top, "REÇU DE PAIEMENT")
         top -= 25
-        
+
         ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
         if ecole_obj:
             c.setFont('Helvetica-Bold', 12)
             c.drawString(left, top, ecole_obj.nom)
             top -= 15
             c.setFont('Helvetica', 9)
-            if ecole_obj.telephone:
+            if getattr(ecole_obj, 'telephone', None):
                 c.drawString(left, top, f"Tél: {ecole_obj.telephone}")
                 top -= 12
-            if ecole_obj.email:
+            if getattr(ecole_obj, 'email', None):
                 c.drawString(left, top, f"Email: {ecole_obj.email}")
                 top -= 12
-        
+
         top -= 20
-        
+
         # Informations du reçu
         c.setFont('Helvetica-Bold', 11)
-        c.drawString(left, top, f"Numéro de reçu: {paiement.numero_recu}")
+        c.drawString(left, top, f"Numéro de reçu: {paiement.numero_recu or 'N/A'}")
         top -= line_h
         c.drawString(left, top, f"Date: {paiement.date_paiement.strftime('%d/%m/%Y')}")
         top -= line_h * 2
-        
+
         # Informations élève
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "ÉLÈVE")
         top -= line_h
         c.setFont('Helvetica', 11)
-        c.drawString(left, top, f"Nom: {paiement.eleve.prenom} {paiement.eleve.nom}")
+        c.drawString(left, top, f"Nom: {paiement.eleve.prenom or ''} {paiement.eleve.nom or ''}")
         top -= line_h
-        c.drawString(left, top, f"Matricule: {paiement.eleve.matricule}")
+        c.drawString(left, top, f"Matricule: {paiement.eleve.matricule or 'N/A'}")
         top -= line_h
         if paiement.eleve.classe:
             c.drawString(left, top, f"Classe: {paiement.eleve.classe.nom}")
             top -= line_h
         top -= line_h
-        
+
         # Détails du paiement
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "DÉTAILS DU PAIEMENT")
         top -= line_h
         c.setFont('Helvetica', 11)
-        c.drawString(left, top, f"Type: {paiement.type_paiement.nom}")
+        c.drawString(left, top, f"Type: {paiement.type_paiement.nom if paiement.type_paiement else 'N/A'}")
         top -= line_h
-        c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom}")
+        c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom if paiement.mode_paiement else 'N/A'}")
         top -= line_h
         c.drawString(left, top, f"Montant: {paiement.montant:,.0f} GNF".replace(",", " "))
         top -= line_h
-        
+
         if remises_total > 0:
             c.drawString(left, top, f"Remises: -{remises_total:,.0f} GNF".replace(",", " "))
             top -= line_h
-        
+            c.setFont('Helvetica-Bold', 11)
+            c.drawString(left, top, f"Net payé: {montant_net:,.0f} GNF".replace(",", " "))
+            c.setFont('Helvetica', 11)
+            top -= line_h
+
+        top -= 10
+
+        # Situation financière globale
+        if total_du > 0:
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, top, "SITUATION FINANCIÈRE")
+            top -= line_h
+            c.setFont('Helvetica', 11)
+            c.drawString(left, top, f"Total frais de scolarité: {total_du:,.0f} GNF".replace(",", " "))
+            top -= line_h
+            c.drawString(left, top, f"Total déjà payé: {total_paye:,.0f} GNF".replace(",", " "))
+            top -= line_h
+            c.setFont('Helvetica-Bold', 11)
+            if solde_restant > 0:
+                c.setFillColorRGB(0.8, 0, 0)
+                c.drawString(left, top, f"Reste à payer: {solde_restant:,.0f} GNF".replace(",", " "))
+                c.setFillColorRGB(0, 0, 0)
+            else:
+                c.setFillColorRGB(0, 0.5, 0)
+                c.drawString(left, top, "Scolarité entièrement payée")
+                c.setFillColorRGB(0, 0, 0)
+            top -= line_h
+
+        top -= 10
         c.setFont('Helvetica-Bold', 11)
         c.drawString(left, top, f"Statut: {paiement.get_statut_display()}")
         
@@ -280,18 +321,35 @@ def note_rappel_public_pdf(request, eleve_id):
             Eleve.objects.select_related('classe', 'classe__ecole'),
             id=eleve_id
         )
-        
-        # Calculer le solde
+
+        # Calculer le solde via l'échéancier (source de vérité) ou ConfigurationPaiement
+        from .models import EcheancierPaiement, ConfigurationPaiement
         montant_total = Decimal('0')
-        if eleve.classe and hasattr(eleve.classe, 'frais_scolarite'):
-            montant_total = eleve.classe.frais_scolarite or Decimal('0')
-        
-        montant_paye = Paiement.objects.filter(
-            eleve=eleve,
-            statut='VALIDE'
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
-        
-        reste_a_payer = max(montant_total - montant_paye, Decimal('0'))
+        montant_paye = Decimal('0')
+        reste_a_payer = Decimal('0')
+
+        ech = None
+        try:
+            ech = eleve.echeancier
+        except EcheancierPaiement.DoesNotExist:
+            ech = None
+
+        if ech and ech.total_du > 0:
+            montant_total = ech.total_du
+            montant_paye = ech.total_paye
+            reste_a_payer = ech.solde_restant
+        else:
+            # Fallback: ConfigurationPaiement
+            try:
+                config = ConfigurationPaiement.objects.get(classe=eleve.classe)
+                montant_total = (config.montant_inscription or 0) + (config.montant_scolarite or 0)
+            except (ConfigurationPaiement.DoesNotExist, Exception):
+                montant_total = Decimal('0')
+
+            montant_paye = Paiement.objects.filter(
+                eleve=eleve, statut='VALIDE'
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+            reste_a_payer = max(montant_total - montant_paye, Decimal('0'))
         
         # Préparer le buffer et le canvas
         buffer = BytesIO()

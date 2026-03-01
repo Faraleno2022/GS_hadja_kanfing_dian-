@@ -109,52 +109,71 @@ def generer_note_rappel_eleve(eleve, response=None):
         except:
             logo_path = None
     
-    # Calcul des paiements et soldes
-    from paiements.models import Paiement, ConfigurationPaiement
-    
-    # Récupérer la configuration de paiement pour la classe
+    # Calcul des paiements et soldes — utilise l'échéancier réel (source de vérité)
+    from paiements.models import Paiement, ConfigurationPaiement, EcheancierPaiement
+    from decimal import Decimal
+
+    tranches_payees = []
+    tranches_restantes = []
+    montant_total = Decimal('0')
+    reste_a_payer = Decimal('0')
+
+    # Priorité 1 : utiliser l'échéancier (source de vérité par tranche)
+    ech = None
     try:
-        config = ConfigurationPaiement.objects.get(classe=eleve.classe)
-        montant_total = config.montant_inscription + config.montant_scolarite
-        
-        # Récupérer les paiements effectués
-        paiements_effectues = Paiement.objects.filter(
-            eleve=eleve,
-            statut='VALIDE'
-        ).aggregate(total=Sum('montant'))['total'] or 0
-        
-        # Calculer le reste à payer
-        reste_a_payer = montant_total - paiements_effectues
-        
-        # Déterminer les tranches restantes
-        tranches_payees = []
-        tranches_restantes = []
-        
-        # Vérifier inscription
-        if config.montant_inscription > 0:
-            if paiements_effectues >= config.montant_inscription:
+        ech = eleve.echeancier
+    except EcheancierPaiement.DoesNotExist:
+        ech = None
+
+    if ech and ech.total_du > 0:
+        montant_total = ech.total_du
+        reste_a_payer = ech.solde_restant
+
+        # Inscription
+        fi_du = Decimal(str(ech.frais_inscription_du or 0))
+        fi_paye = Decimal(str(ech.frais_inscription_paye or 0))
+        if fi_du > 0:
+            fi_reste = max(Decimal('0'), fi_du - fi_paye)
+            if fi_reste <= 0:
                 tranches_payees.append("Inscription")
-                paiements_effectues -= config.montant_inscription
             else:
-                tranches_restantes.append(f"Inscription ({config.montant_inscription:,.0f} GNF)")
-        
-        # Vérifier les tranches de scolarité
-        nb_tranches = config.nombre_tranches or 3
-        montant_par_tranche = config.montant_par_tranche  # utilise la propriété avec arrondi Decimal
-        
-        for i in range(1, nb_tranches + 1):
-            if paiements_effectues >= montant_par_tranche:
-                tranches_payees.append(f"Tranche {i}")
-                paiements_effectues -= montant_par_tranche
+                tranches_restantes.append(f"Inscription ({fi_reste:,.0f} GNF restant)")
+
+        # Tranches 1, 2, 3
+        for i, (due_field, paye_field) in enumerate([
+            ('tranche_1_due', 'tranche_1_payee'),
+            ('tranche_2_due', 'tranche_2_payee'),
+            ('tranche_3_due', 'tranche_3_payee'),
+        ], start=1):
+            t_du = Decimal(str(getattr(ech, due_field, 0) or 0))
+            t_paye = Decimal(str(getattr(ech, paye_field, 0) or 0))
+            if t_du > 0:
+                t_reste = max(Decimal('0'), t_du - t_paye)
+                if t_reste <= 0:
+                    tranches_payees.append(f"Tranche {i}")
+                else:
+                    tranches_restantes.append(f"Tranche {i} ({t_reste:,.0f} GNF restant)")
+
+    else:
+        # Fallback : utiliser ConfigurationPaiement si pas d'échéancier
+        try:
+            config = ConfigurationPaiement.objects.get(classe=eleve.classe)
+            montant_total = config.montant_inscription + config.montant_scolarite
+
+            total_paye = Paiement.objects.filter(
+                eleve=eleve, statut='VALIDE'
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+            reste_a_payer = max(Decimal('0'), montant_total - total_paye)
+
+            if reste_a_payer > 0:
+                tranches_restantes.append(f"Solde total restant ({reste_a_payer:,.0f} GNF)")
             else:
-                tranches_restantes.append(f"Tranche {i} ({montant_par_tranche:,.0f} GNF)")
-        
-    except ConfigurationPaiement.DoesNotExist:
-        # Utiliser des valeurs par défaut si pas de configuration
-        montant_total = 0
-        montant_paye = 0
-        reste_a_payer = 0
-        tranches_restantes = ["Configuration de paiement non définie"]
+                tranches_payees.append("Scolarité complète")
+
+        except ConfigurationPaiement.DoesNotExist:
+            montant_total = Decimal('0')
+            reste_a_payer = Decimal('0')
+            tranches_restantes = ["Configuration de paiement non définie"]
     
     # Texte principal (sans balises, sur une seule note compacte)
     texte_principal = (

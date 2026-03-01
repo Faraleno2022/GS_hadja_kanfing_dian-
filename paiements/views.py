@@ -299,139 +299,146 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
 
     try:
         eleve = paiement.eleve
-        ech = getattr(eleve, 'echeancier', None) or EcheancierPaiement.objects.filter(eleve=eleve).first()
-        if not ech:
-            ech = ensure_echeancier_for_eleve(eleve, created_by=getattr(paiement, 'cree_par', None))
 
-        montant = Decimal(str(paiement.montant or 0))
-        if montant <= _ZERO:
-            return
+        # Tout le bloc d'allocation est atomique avec verrouillage (select_for_update)
+        with transaction.atomic():
+            # Verrouiller l'échéancier pour éviter les écritures concurrentes
+            ech = EcheancierPaiement.objects.select_for_update().filter(eleve=eleve).first()
+            if not ech:
+                ech = ensure_echeancier_for_eleve(eleve, created_by=getattr(paiement, 'cree_par', None))
+                if ech:
+                    # Re-verrouiller après création
+                    ech = EcheancierPaiement.objects.select_for_update().filter(pk=ech.pk).first()
 
-        # Récupérer dû et payé actuels (garder en Decimal)
-        fi_due = Decimal(str(ech.frais_inscription_du or 0))
-        fi_payee = Decimal(str(ech.frais_inscription_paye or 0))
-        t1_due = Decimal(str(ech.tranche_1_due or 0))
-        t1_payee = Decimal(str(ech.tranche_1_payee or 0))
-        t2_due = Decimal(str(ech.tranche_2_due or 0))
-        t2_payee = Decimal(str(ech.tranche_2_payee or 0))
-        t3_due = Decimal(str(ech.tranche_3_due or 0))
-        t3_payee = Decimal(str(ech.tranche_3_payee or 0))
+            if not ech:
+                logging.getLogger(__name__).error(
+                    "Impossible de créer/verrouiller l'échéancier pour l'élève %s", eleve.id
+                )
+                return
 
-        type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
+            montant = Decimal(str(paiement.montant or 0))
+            if montant <= _ZERO:
+                return
 
-        remaining = montant
-        changed = False
+            # Récupérer dû et payé actuels (garder en Decimal)
+            fi_due = Decimal(str(ech.frais_inscription_du or 0))
+            fi_payee = Decimal(str(ech.frais_inscription_paye or 0))
+            t1_due = Decimal(str(ech.tranche_1_due or 0))
+            t1_payee = Decimal(str(ech.tranche_1_payee or 0))
+            t2_due = Decimal(str(ech.tranche_2_due or 0))
+            t2_payee = Decimal(str(ech.tranche_2_payee or 0))
+            t3_due = Decimal(str(ech.tranche_3_due or 0))
+            t3_payee = Decimal(str(ech.tranche_3_payee or 0))
 
-        # 1) Inscription d'abord si due, quel que soit le type (règle métier: priorité à l'inscription)
-        manque_insc = max(_ZERO, fi_due - fi_payee)
-        take = min(remaining, manque_insc)
-        if take > _ZERO:
-            ech.frais_inscription_paye = fi_payee + take
-            remaining -= take
-            fi_payee += take
-            changed = True
+            type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
 
-        # Helper pour allocation séquentielle
-        def alloc_seq(current_due, current_paid):
-            nonlocal remaining, changed
-            manque = max(_ZERO, Decimal(str(current_due or 0)) - Decimal(str(current_paid or 0)))
-            if manque <= _ZERO or remaining <= _ZERO:
-                return _ZERO
-            take_local = min(remaining, manque)
-            remaining -= take_local
-            changed = True
-            return take_local
+            remaining = montant
+            changed = False
 
-        # 2) Mode proportionnel si 'annuel' est indiqué (après inscription)
-        if 'annuel' in type_nom and remaining > _ZERO:
-            # Parts restantes par tranche
-            r1 = max(_ZERO, t1_due - t1_payee)
-            r2 = max(_ZERO, t2_due - t2_payee)
-            r3 = max(_ZERO, t3_due - t3_payee)
-            total_rest = r1 + r2 + r3
-            if total_rest > _ZERO:
-                # Montant effectivement répartissable = min(remaining, total_rest)
-                a_repartir = min(remaining, total_rest)
-
-                # Répartition proportionnelle en Decimal avec arrondi correct
-                from decimal import ROUND_DOWN
-                p1 = (a_repartir * r1 / total_rest).quantize(Decimal('1'), rounding=ROUND_DOWN) if r1 > _ZERO else _ZERO
-                p2 = (a_repartir * r2 / total_rest).quantize(Decimal('1'), rounding=ROUND_DOWN) if r2 > _ZERO else _ZERO
-                # Le reste pour T3 pour garantir la somme exacte (absorbe l'arrondi)
-                p3 = a_repartir - (p1 + p2)
-
-                # Appliquer avec plafond par tranche
-                take1 = min(p1, r1) if p1 > _ZERO else _ZERO
-                take2 = min(p2, r2) if p2 > _ZERO else _ZERO
-                take3 = min(p3, r3) if p3 > _ZERO else _ZERO
-
-                # Redistribuer le reste après plafonnement (si une tranche a été cappée)
-                reste_cap = a_repartir - (take1 + take2 + take3)
-                if reste_cap > _ZERO:
-                    # Redistribuer séquentiellement dans les tranches pas encore pleines
-                    for idx, (tk, rk) in enumerate([(take1, r1), (take2, r2), (take3, r3)]):
-                        dispo = rk - tk
-                        if dispo > _ZERO and reste_cap > _ZERO:
-                            extra = min(reste_cap, dispo)
-                            if idx == 0:
-                                take1 += extra
-                            elif idx == 1:
-                                take2 += extra
-                            else:
-                                take3 += extra
-                            reste_cap -= extra
-
-                if take1 > _ZERO:
-                    ech.tranche_1_payee = t1_payee + take1
-                    t1_payee += take1
-                    changed = True
-                if take2 > _ZERO:
-                    ech.tranche_2_payee = t2_payee + take2
-                    t2_payee += take2
-                    changed = True
-                if take3 > _ZERO:
-                    ech.tranche_3_payee = t3_payee + take3
-                    t3_payee += take3
-                    changed = True
-
-                remaining -= (take1 + take2 + take3)
-
-        # 3) Allocation séquentielle pour le reste (ou si non-annuel)
-        if remaining > _ZERO:
-            take = alloc_seq(t1_due, t1_payee)
+            # 1) Inscription d'abord si due, quel que soit le type (règle métier: priorité à l'inscription)
+            manque_insc = max(_ZERO, fi_due - fi_payee)
+            take = min(remaining, manque_insc)
             if take > _ZERO:
-                ech.tranche_1_payee = t1_payee + take
-                t1_payee += take
+                ech.frais_inscription_paye = fi_payee + take
+                remaining -= take
+                fi_payee += take
+                changed = True
 
-        if remaining > _ZERO:
-            take = alloc_seq(t2_due, t2_payee)
-            if take > _ZERO:
-                ech.tranche_2_payee = t2_payee + take
-                t2_payee += take
+            # Helper pour allocation séquentielle
+            def alloc_seq(current_due, current_paid):
+                nonlocal remaining, changed
+                manque = max(_ZERO, Decimal(str(current_due or 0)) - Decimal(str(current_paid or 0)))
+                if manque <= _ZERO or remaining <= _ZERO:
+                    return _ZERO
+                take_local = min(remaining, manque)
+                remaining -= take_local
+                changed = True
+                return take_local
 
-        if remaining > _ZERO:
-            take = alloc_seq(t3_due, t3_payee)
-            if take > _ZERO:
-                ech.tranche_3_payee = t3_payee + take
-                t3_payee += take
+            # 2) Mode proportionnel si 'annuel' est indiqué (après inscription)
+            if 'annuel' in type_nom and remaining > _ZERO:
+                r1 = max(_ZERO, t1_due - t1_payee)
+                r2 = max(_ZERO, t2_due - t2_payee)
+                r3 = max(_ZERO, t3_due - t3_payee)
+                total_rest = r1 + r2 + r3
+                if total_rest > _ZERO:
+                    a_repartir = min(remaining, total_rest)
 
-        # Sauvegarder seulement si des changements ont été effectués
-        if changed:
-            ech.save()
+                    from decimal import ROUND_DOWN
+                    p1 = (a_repartir * r1 / total_rest).quantize(Decimal('1'), rounding=ROUND_DOWN) if r1 > _ZERO else _ZERO
+                    p2 = (a_repartir * r2 / total_rest).quantize(Decimal('1'), rounding=ROUND_DOWN) if r2 > _ZERO else _ZERO
+                    p3 = a_repartir - (p1 + p2)
 
-            # Mettre à jour le statut/global de l'échéancier après allocation
-            try:
-                _auto_validate_echeancier_for_eleve(eleve)
-            except Exception:
-                logging.getLogger(__name__).exception("Auto-validation après allocation")
+                    take1 = min(p1, r1) if p1 > _ZERO else _ZERO
+                    take2 = min(p2, r2) if p2 > _ZERO else _ZERO
+                    take3 = min(p3, r3) if p3 > _ZERO else _ZERO
 
-        # Log pour debug si montant non alloué
-        if remaining > _ZERO:
-            logging.getLogger(__name__).warning(
-                "Allocation incomplète: %s GNF non alloués pour paiement %s "
-                "(élève %s, type '%s')",
-                remaining, paiement.id, eleve.id, type_nom
-            )
+                    # Redistribuer le reste après plafonnement
+                    reste_cap = a_repartir - (take1 + take2 + take3)
+                    if reste_cap > _ZERO:
+                        for idx, (tk, rk) in enumerate([(take1, r1), (take2, r2), (take3, r3)]):
+                            dispo = rk - tk
+                            if dispo > _ZERO and reste_cap > _ZERO:
+                                extra = min(reste_cap, dispo)
+                                if idx == 0:
+                                    take1 += extra
+                                elif idx == 1:
+                                    take2 += extra
+                                else:
+                                    take3 += extra
+                                reste_cap -= extra
+
+                    if take1 > _ZERO:
+                        ech.tranche_1_payee = t1_payee + take1
+                        t1_payee += take1
+                        changed = True
+                    if take2 > _ZERO:
+                        ech.tranche_2_payee = t2_payee + take2
+                        t2_payee += take2
+                        changed = True
+                    if take3 > _ZERO:
+                        ech.tranche_3_payee = t3_payee + take3
+                        t3_payee += take3
+                        changed = True
+
+                    remaining -= (take1 + take2 + take3)
+
+            # 3) Allocation séquentielle pour le reste (ou si non-annuel)
+            if remaining > _ZERO:
+                take = alloc_seq(t1_due, t1_payee)
+                if take > _ZERO:
+                    ech.tranche_1_payee = t1_payee + take
+                    t1_payee += take
+
+            if remaining > _ZERO:
+                take = alloc_seq(t2_due, t2_payee)
+                if take > _ZERO:
+                    ech.tranche_2_payee = t2_payee + take
+                    t2_payee += take
+
+            if remaining > _ZERO:
+                take = alloc_seq(t3_due, t3_payee)
+                if take > _ZERO:
+                    ech.tranche_3_payee = t3_payee + take
+                    t3_payee += take
+
+            # Sauvegarder seulement si des changements ont été effectués
+            if changed:
+                ech.save()
+
+                # Mettre à jour le statut/global de l'échéancier après allocation
+                try:
+                    _auto_validate_echeancier_for_eleve(eleve)
+                except Exception:
+                    logging.getLogger(__name__).exception("Auto-validation après allocation")
+
+            # Log pour debug si montant non alloué
+            if remaining > _ZERO:
+                logging.getLogger(__name__).warning(
+                    "Allocation incomplète: %s GNF non alloués pour paiement %s "
+                    "(élève %s, type '%s')",
+                    remaining, paiement.id, eleve.id, type_nom
+                )
 
     except Exception:
         logging.getLogger(__name__).exception("Erreur allocation paiement -> échéancier")
@@ -1822,7 +1829,10 @@ def valider_paiement(request, paiement_id:int):
     - Optionnel: tente d'allouer le paiement à l'échéancier si une fonction utilitaire existe
     - Notifie le responsable (WhatsApp/SMS) avec le reçu
     """
-    paiement_qs = filter_by_user_school(Paiement.objects.all(), request.user, 'eleve__classe__ecole')
+    paiement_qs = filter_by_user_school(
+        Paiement.objects.select_related('type_paiement', 'mode_paiement', 'eleve', 'eleve__classe', 'eleve__classe__ecole'),
+        request.user, 'eleve__classe__ecole'
+    )
     paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
     # Contrôle serveur strict: seuls admin ou détenteurs de la permission explicite peuvent valider
