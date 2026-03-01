@@ -210,13 +210,16 @@ class EcheancierPaiement(models.Model):
     
     @property
     def solde_restant(self):
-        return self.total_du - self.total_paye
-    
+        """Solde restant à payer (ne peut jamais être négatif)"""
+        return max(Decimal('0'), self.total_du - self.total_paye)
+
     @property
     def pourcentage_paye(self):
+        """Pourcentage payé, borné entre 0 et 100"""
         if self.total_du > 0:
-            return (self.total_paye / self.total_du) * 100
-        return 0
+            pct = (self.total_paye / self.total_du) * 100
+            return min(pct, Decimal('100'))
+        return Decimal('0')
 
 class RemiseReduction(models.Model):
     """Modèle pour les remises et réductions"""
@@ -263,11 +266,21 @@ class RemiseReduction(models.Model):
             return f"{self.nom} - {self.valeur:,.0f} GNF"
     
     def calculer_remise(self, montant_base):
-        """Calcule le montant de la remise sur un montant de base"""
+        """Calcule le montant de la remise sur un montant de base.
+
+        Retourne un Decimal arrondi à l'entier (GNF, pas de centimes).
+        La remise ne peut jamais dépasser le montant de base.
+        """
+        from decimal import ROUND_HALF_UP
+        montant_base = Decimal(str(montant_base))
         if self.type_remise == 'POURCENTAGE':
-            return (montant_base * self.valeur) / 100
+            remise = (montant_base * self.valeur / Decimal('100')).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP
+            )
         else:
-            return min(self.valeur, montant_base)  # La remise ne peut pas être supérieure au montant
+            remise = self.valeur
+        # La remise ne peut pas dépasser le montant de base ni être négative
+        return max(Decimal('0'), min(remise, montant_base))
 
 class PaiementRemise(models.Model):
     """Modèle pour associer des remises aux paiements"""
@@ -419,7 +432,10 @@ class ConfigurationPaiement(models.Model):
     
     @property
     def montant_par_tranche(self):
-        """Calcule le montant par tranche de scolarité"""
+        """Calcule le montant par tranche de scolarité (arrondi à l'entier GNF)"""
+        from decimal import ROUND_HALF_UP
         if self.nombre_tranches > 0:
-            return self.montant_scolarite / self.nombre_tranches
+            return (self.montant_scolarite / Decimal(str(self.nombre_tranches))).quantize(
+                Decimal('1'), rounding=ROUND_HALF_UP
+            )
         return self.montant_scolarite

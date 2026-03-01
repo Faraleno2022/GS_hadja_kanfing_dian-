@@ -140,7 +140,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         
         # Vérifier les tranches de scolarité
         nb_tranches = config.nombre_tranches or 3
-        montant_par_tranche = config.montant_scolarite / nb_tranches
+        montant_par_tranche = config.montant_par_tranche  # utilise la propriété avec arrondi Decimal
         
         for i in range(1, nb_tranches + 1):
             if paiements_effectues >= montant_par_tranche:
