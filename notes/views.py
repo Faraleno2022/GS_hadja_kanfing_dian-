@@ -15,6 +15,7 @@ import io
 from datetime import datetime
 from eleves.models import Classe as ClasseEleve, Eleve
 from utilisateurs.utils import filter_by_user_school, user_school
+from eleves.utils_annee import get_annee_active
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
@@ -4907,12 +4908,15 @@ def statistiques(request):
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else Ecole.objects.first()
     
-    # Récupérer les classes disponibles
-    if ecole:
+    # Récupérer les classes disponibles (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('nom')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('nom')
-    
+
     # Classe sélectionnée
     classe_id = request.GET.get('classe_id')
     classe_selectionnee = None
@@ -5358,12 +5362,15 @@ def gerer_classes(request):
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
     
-    # Récupérer les classes
-    if ecole:
+    # Récupérer les classes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, annee_scolaire=annee_active).order_by('-date_creation')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole).order_by('-date_creation')
     else:
         classes = ClasseNote.objects.all().order_by('-date_creation')
-    
+
     # Statistiques
     total_classes = classes.count()
     classes_actives = classes.filter(actif=True).count()
@@ -5493,9 +5500,12 @@ def gerer_matieres(request):
     """Gérer les matières par classe"""
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    
-    # Récupérer les classes
-    if ecole:
+
+    # Récupérer les classes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
@@ -5725,12 +5735,15 @@ def creer_evaluation(request):
 @login_required
 def gerer_eleves(request):
     """Gérer les élèves - Consultation par classe"""
-    
+
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    
-    # Récupérer les classes de notes
-    if ecole:
+
+    # Récupérer les classes de notes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes_notes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
+    elif ecole:
         classes_notes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes_notes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
@@ -5839,12 +5852,15 @@ def gerer_eleves(request):
 @login_required
 def saisir_notes(request):
     """Saisir les notes"""
-    
+
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    
-    # Récupérer les classes
-    if ecole:
+
+    # Récupérer les classes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
@@ -6829,12 +6845,15 @@ def supprimer_notes(request):
 def consulter_notes(request):
     """Consulter les notes - Vue complète par classe"""
     from decimal import Decimal
-    
+
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    
-    # Récupérer les classes
-    if ecole:
+
+    # Récupérer les classes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')

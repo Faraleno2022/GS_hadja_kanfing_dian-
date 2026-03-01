@@ -15,24 +15,7 @@ from django.db.models import Count
 
 from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
-
-# Clé de session pour l'année active
-SESSION_ANNEE_ACTIVE = 'annee_scolaire_active'
-
-
-def get_annee_active(request, ecole):
-    """Retourne l'année scolaire active (session ou la plus récente)."""
-    annees = (Classe.objects
-              .filter(ecole=ecole)
-              .values_list('annee_scolaire', flat=True)
-              .distinct()
-              .order_by('-annee_scolaire'))
-    if not annees:
-        return None
-    annee_session = request.session.get(SESSION_ANNEE_ACTIVE)
-    if annee_session and annee_session in list(annees):
-        return annee_session
-    return annees[0]
+from .utils_annee import get_annee_active, SESSION_ANNEE_ACTIVE
 
 
 @login_required

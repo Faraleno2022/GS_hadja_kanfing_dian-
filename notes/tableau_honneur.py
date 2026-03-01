@@ -15,7 +15,8 @@ from weasyprint import HTML, CSS
 
 from .models import ClasseNote, MatiereNote
 from eleves.models import Eleve, Classe as ClasseEleve
-from utilisateurs.utils import filter_by_user_school
+from utilisateurs.utils import filter_by_user_school, user_school
+from eleves.utils_annee import get_annee_active
 from .calculs_moyennes import calculer_classement_classe, detecter_niveau_scolaire
 from .export_classement import formater_rang
 
@@ -68,8 +69,13 @@ def _get_top1_par_classe(request, periode):
     Récupère le premier élève de chaque classe pour une période donnée.
     Retourne une liste triée par moyenne décroissante (premier des premiers en tête).
     """
+    ecole = user_school(request.user)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    qs = ClasseNote.objects.filter(actif=True)
+    if annee_active:
+        qs = qs.filter(annee_scolaire=annee_active)
     classes_note = filter_by_user_school(
-        ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom'),
+        qs.order_by('niveau', 'nom'),
         request.user, 'ecole'
     )
 
@@ -272,12 +278,7 @@ def tableau_honneur_pdf(request):
         except Exception:
             pass
 
-    annee_scolaire = ''
-    first_classe = filter_by_user_school(
-        ClasseNote.objects.filter(actif=True), request.user, 'ecole'
-    ).first()
-    if first_classe:
-        annee_scolaire = first_classe.annee_scolaire
+    annee_scolaire = get_annee_active(request, ecole) or ''
 
     niveau_label = dict([
         ('MATERNELLE', 'Maternelle'), ('PRIMAIRE', 'Primaire'), ('SECONDAIRE', 'Secondaire')

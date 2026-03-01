@@ -16,6 +16,7 @@ from .models import (
     AnalyseTravailMaternelle, RecommandationMaternelle
 )
 from eleves.models import Eleve, Classe
+from eleves.utils_annee import get_annee_active
 from .analyse_maternelle_intelligente import AnalyseMaternelleIntelligente
 
 
@@ -33,21 +34,21 @@ def saisie_evaluation_maternelle(request):
     """Vue principale pour la saisie des évaluations maternelle"""
     user = request.user
     
-    # Filtrer les classes maternelles
+    # Filtrer les classes maternelles (par année active)
+    ecole = user.profil.ecole if hasattr(user, 'profil') else None
+    annee_active = get_annee_active(request, ecole) if ecole else None
+
     if user.is_superuser:
-        classes = ClasseNote.objects.filter(
-            niveau__in=['GARDERIE', 'MATERNELLE'],
-            actif=True
-        ).order_by('nom')
+        qs = ClasseNote.objects.filter(niveau__in=['GARDERIE', 'MATERNELLE'], actif=True)
     else:
-        ecole = user.profil.ecole if hasattr(user, 'profil') else None
-        classes = ClasseNote.objects.filter(
-            ecole=ecole,
-            niveau__in=['GARDERIE', 'MATERNELLE'],
-            actif=True
-        ).order_by('nom')
-    
-    annee_scolaire = get_annee_scolaire_courante()
+        qs = ClasseNote.objects.filter(ecole=ecole, niveau__in=['GARDERIE', 'MATERNELLE'], actif=True)
+
+    if annee_active:
+        classes = qs.filter(annee_scolaire=annee_active).order_by('nom')
+    else:
+        classes = qs.order_by('nom')
+
+    annee_scolaire = annee_active or get_annee_scolaire_courante()
     
     # Récupérer les paramètres de filtrage
     classe_id = request.GET.get('classe')

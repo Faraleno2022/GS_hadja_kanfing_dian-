@@ -195,9 +195,17 @@ class AffectationClasseForm(forms.ModelForm):
         self.fields['classe'].required = True
         self.fields['date_debut'].required = True
 
-        # Restreindre les classes à l'école de l'enseignant
+        # Restreindre les classes à l'école de l'enseignant (année la plus récente)
         if self.enseignant and getattr(self.enseignant, 'ecole_id', None):
-            self.fields['classe'].queryset = Classe.objects.filter(ecole_id=self.enseignant.ecole_id)
+            qs = Classe.objects.filter(ecole_id=self.enseignant.ecole_id)
+            annee_recente = (
+                Classe.objects.filter(ecole_id=self.enseignant.ecole_id)
+                .values_list('annee_scolaire', flat=True)
+                .distinct().order_by('-annee_scolaire').first()
+            )
+            if annee_recente:
+                qs = qs.filter(annee_scolaire=annee_recente)
+            self.fields['classe'].queryset = qs
         else:
             self.fields['classe'].queryset = Classe.objects.none()
 

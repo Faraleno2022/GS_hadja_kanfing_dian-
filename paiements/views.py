@@ -33,6 +33,7 @@ from ecole_moderne.security_decorators import require_school_object
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance, TwilioInboundMessage
 from eleves.models import Eleve, GrilleTarifaire, Classe
+from eleves.utils_annee import get_annee_active
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
@@ -3140,8 +3141,12 @@ def liste_eleves_soldes(request):
                 ecoles_qs = ecoles_qs.none()
     except Exception:
         ecoles_qs = []
+    ecole_paiement = user_school(request.user)
+    annee_active_p = get_annee_active(request, ecole_paiement) if ecole_paiement else None
     classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
     classes = filter_by_user_school(classes, request.user, 'ecole')
+    if annee_active_p:
+        classes = classes.filter(annee_scolaire=annee_active_p)
 
     # Proposer quelques années autour de l'année active pour la sélection
     try:
@@ -3222,8 +3227,12 @@ def eleves_soldes_simple(request):
         ecoles_qs = []
     
     try:
+        ecole_resume = user_school(request.user)
+        annee_active_r = get_annee_active(request, ecole_resume) if ecole_resume else None
         classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
         classes = filter_by_user_school(classes, request.user, 'ecole')
+        if annee_active_r:
+            classes = classes.filter(annee_scolaire=annee_active_r)
     except Exception:
         classes = []
 

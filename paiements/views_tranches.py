@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from eleves.models import Classe
+from eleves.utils_annee import get_annee_active
 from paiements.models import Paiement
 from utilisateurs.utils import user_is_admin, user_school
 from rapports.utils import _draw_header_and_watermark
@@ -65,9 +66,10 @@ def export_tranches_par_classe_pdf(request):
     ecole_id = parse_int(raw_ecole) if raw_ecole else None
     classe_id = parse_int(raw_classe) if raw_classe else None
 
-    # Scope classes
+    # Scope classes (filtrées par année active)
     classes = Classe.objects.select_related('ecole').all()
     ecole_user = user_school(request.user)
+    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
     restreindre = not user_is_admin(request.user) and ecole_user is not None
     if restreindre:
         classes = classes.filter(ecole=ecole_user)
@@ -75,6 +77,10 @@ def export_tranches_par_classe_pdf(request):
         classes = classes.filter(ecole_id=ecole_id)
     if classe_id:
         classes = classes.filter(id=classe_id)
+    if annee_active and not annee_scolaire:
+        classes = classes.filter(annee_scolaire=annee_active)
+    elif annee_scolaire:
+        classes = classes.filter(annee_scolaire=annee_scolaire)
 
     # Anti-abus: limiter le nombre de classes exportées en une requête
     classes = classes.order_by('ecole__nom', 'niveau', 'nom')[:200]
@@ -242,6 +248,7 @@ def export_tranches_par_classe_excel(request):
 
     classes = Classe.objects.select_related('ecole').all()
     ecole_user = user_school(request.user)
+    annee_active_xl = get_annee_active(request, ecole_user) if ecole_user else None
     restreindre = not user_is_admin(request.user) and ecole_user is not None
     if restreindre:
         classes = classes.filter(ecole=ecole_user)
@@ -249,6 +256,10 @@ def export_tranches_par_classe_excel(request):
         classes = classes.filter(ecole_id=ecole_id)
     if classe_id:
         classes = classes.filter(id=classe_id)
+    if annee_active_xl and not annee_scolaire:
+        classes = classes.filter(annee_scolaire=annee_active_xl)
+    elif annee_scolaire:
+        classes = classes.filter(annee_scolaire=annee_scolaire)
     classes = classes.order_by('ecole__nom', 'niveau', 'nom')[:200]
 
     wb = Workbook()

@@ -22,6 +22,7 @@ from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, E
 from utilisateurs.forms import SignupInlineForm
 from utilisateurs.models import JournalActivite
 from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
+from .utils_annee import get_annee_active
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 
@@ -136,16 +137,23 @@ def liste_eleves(request):
         if user_ecole is None:
             classes = Classe.objects.none()
         else:
+            annee_active = get_annee_active(request, user_ecole)
+            qs_filter = {'ecole': user_ecole, 'ecole__etat': 'VALIDE'}
+            if annee_active:
+                qs_filter['annee_scolaire'] = annee_active
             classes = (
                 Classe.objects.select_related('ecole')
-                .filter(ecole=user_ecole, ecole__etat='VALIDE')
+                .filter(**qs_filter)
                 .order_by('niveau', 'nom')
             )
             # Fallback: si l'école de l'utilisateur n'est pas encore validée, proposer quand même ses classes
             if not classes.exists():
+                qs_fallback = {'ecole': user_ecole}
+                if annee_active:
+                    qs_fallback['annee_scolaire'] = annee_active
                 classes = (
                     Classe.objects.select_related('ecole')
-                    .filter(ecole=user_ecole)
+                    .filter(**qs_fallback)
                     .order_by('niveau', 'nom')
                 )
 
@@ -493,9 +501,14 @@ def configurer_ecole(request, ecole_id: int):
             messages.error(request, f"Erreur: {e}")
             return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
 
-    # Données d'affichage
-    classes = Classe.objects.filter(ecole=ecole).order_by('niveau', 'nom')
-    grilles = GrilleTarifaire.objects.filter(ecole=ecole).order_by('annee_scolaire', 'niveau')
+    # Données d'affichage (filtrées par année active)
+    annee_active = get_annee_active(request, ecole)
+    if annee_active:
+        classes = Classe.objects.filter(ecole=ecole, annee_scolaire=annee_active).order_by('niveau', 'nom')
+        grilles = GrilleTarifaire.objects.filter(ecole=ecole, annee_scolaire=annee_active).order_by('niveau')
+    else:
+        classes = Classe.objects.filter(ecole=ecole).order_by('niveau', 'nom')
+        grilles = GrilleTarifaire.objects.filter(ecole=ecole).order_by('annee_scolaire', 'niveau')
 
     # Niveaux affichables (depuis modèle Classe)
     niveaux = getattr(Classe, 'NIVEAUX_CHOICES', [])
@@ -570,12 +583,16 @@ def ajouter_eleve(request):
         # Optimisation: Créer les formulaires seulement si nécessaire
         form = EleveForm(request.POST, request.FILES, user=request.user)
         
-        # Cache des classes pour éviter les requêtes répétées
+        # Cache des classes pour éviter les requêtes répétées (filtrées par année active)
         if not user_is_admin(request.user):
-            classes_cache_key = f'classes_ecole_{user_school_obj.id}'
+            annee_active = get_annee_active(request, user_school_obj)
+            classes_cache_key = f'classes_ecole_{user_school_obj.id}_{annee_active}'
             classes_qs = cache.get(classes_cache_key)
             if classes_qs is None:
-                classes_qs = Classe.objects.filter(ecole=user_school_obj).select_related('ecole')
+                qs = Classe.objects.filter(ecole=user_school_obj).select_related('ecole')
+                if annee_active:
+                    qs = qs.filter(annee_scolaire=annee_active)
+                classes_qs = qs
                 cache.set(classes_cache_key, classes_qs, 600)  # Cache 10 minutes
             form.fields['classe'].queryset = classes_qs
         
@@ -677,12 +694,16 @@ def ajouter_eleve(request):
         # GET: Initialisation optimisée des formulaires
         form = EleveForm(user=request.user)
         
-        # Cache des classes pour le formulaire GET
+        # Cache des classes pour le formulaire GET (filtrées par année active)
         if not user_is_admin(request.user) and user_school_obj:
-            classes_cache_key = f'classes_ecole_{user_school_obj.id}'
+            annee_active = get_annee_active(request, user_school_obj)
+            classes_cache_key = f'classes_ecole_{user_school_obj.id}_{annee_active}'
             classes_qs = cache.get(classes_cache_key)
             if classes_qs is None:
-                classes_qs = Classe.objects.filter(ecole=user_school_obj).select_related('ecole')
+                qs = Classe.objects.filter(ecole=user_school_obj).select_related('ecole')
+                if annee_active:
+                    qs = qs.filter(annee_scolaire=annee_active)
+                classes_qs = qs
                 cache.set(classes_cache_key, classes_qs, 600)
             form.fields['classe'].queryset = classes_qs
         
@@ -746,7 +767,12 @@ def modifier_eleve(request, eleve_id):
         form = EleveForm(request.POST, request.FILES, instance=eleve)
         if not user_is_admin(request.user):
             try:
-                form.fields['classe'].queryset = Classe.objects.filter(ecole=user_school(request.user))
+                ecole_u = user_school(request.user)
+                qs = Classe.objects.filter(ecole=ecole_u)
+                annee_active = get_annee_active(request, ecole_u)
+                if annee_active:
+                    qs = qs.filter(annee_scolaire=annee_active)
+                form.fields['classe'].queryset = qs
             except Exception:
                 pass
         
@@ -836,7 +862,12 @@ def modifier_eleve(request, eleve_id):
         form = EleveForm(instance=eleve)
         if not user_is_admin(request.user):
             try:
-                form.fields['classe'].queryset = Classe.objects.filter(ecole=user_school(request.user))
+                ecole_u = user_school(request.user)
+                qs = Classe.objects.filter(ecole=ecole_u)
+                annee_active = get_annee_active(request, ecole_u)
+                if annee_active:
+                    qs = qs.filter(annee_scolaire=annee_active)
+                form.fields['classe'].queryset = qs
             except Exception:
                 pass
     
@@ -1622,7 +1653,11 @@ def ajax_classes_par_ecole(request, ecole_id):
             if str(user_school(request.user).id) != str(ecole_id):
                 return JsonResponse({'success': False, 'error': "Accès non autorisé à cette école."}, status=403)
         ecole = get_object_or_404(Ecole, id=ecole_id)
-        classes = Classe.objects.filter(ecole=ecole).values('id', 'nom')
+        annee_active = get_annee_active(request, ecole)
+        qs = Classe.objects.filter(ecole=ecole)
+        if annee_active:
+            qs = qs.filter(annee_scolaire=annee_active)
+        classes = qs.values('id', 'nom')
         return JsonResponse({
             'success': True,
             'classes': list(classes)
@@ -1686,8 +1721,12 @@ def statistiques_eleves(request):
             responsables_base = Responsable.objects.none()
             ecoles_base = Ecole.objects.none()
         else:
-            eleves_base = Eleve.objects.filter(classe__ecole=ecole_u)
-            classes_base = Classe.objects.filter(ecole=ecole_u)
+            annee_active = get_annee_active(request, ecole_u)
+            qs_classe_filter = {'ecole': ecole_u}
+            if annee_active:
+                qs_classe_filter['annee_scolaire'] = annee_active
+            classes_base = Classe.objects.filter(**qs_classe_filter)
+            eleves_base = Eleve.objects.filter(classe__in=classes_base)
             # Filtrer les responsables par école
             responsables_base = Responsable.objects.filter(
                 Q(eleves_principal__classe__ecole=ecole_u) |

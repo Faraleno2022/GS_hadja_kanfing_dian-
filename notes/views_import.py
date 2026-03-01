@@ -19,6 +19,7 @@ from .import_notes import (
     generer_template_excel
 )
 from utilisateurs.permissions import can_manage_notes
+from eleves.utils_annee import get_annee_active
 
 
 @login_required
@@ -30,16 +31,18 @@ def importer_notes(request):
     if not can_manage_notes(request.user):
         messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
         return redirect('notes:liste_classes')
-    
-    # Récupérer les classes, matières et évaluations
-    classes = ClasseNote.objects.filter(actif=True).order_by('nom')
-    
-    # Filtrage par école si nécessaire
-    if not request.user.is_superuser:
-        from utilisateurs.utils import user_school
-        ecole = user_school(request.user)
-        if ecole:
-            classes = classes.filter(ecole=ecole)
+
+    # Récupérer les classes (filtrées par année active)
+    from utilisateurs.utils import user_school
+    ecole = user_school(request.user) if not request.user.is_superuser else None
+    annee_active = get_annee_active(request, ecole) if ecole else None
+
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('nom')
+    elif ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('nom')
     
     context = {
         'classes': classes,
@@ -283,16 +286,18 @@ def import_intelligent(request):
         messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
         return redirect('notes:liste_classes')
     
-    # Récupérer les classes
-    classes = ClasseNote.objects.filter(actif=True).order_by('nom')
-    
-    # Filtrage par école si nécessaire
-    if not request.user.is_superuser:
-        from utilisateurs.utils import user_school
-        ecole = user_school(request.user)
-        if ecole:
-            classes = classes.filter(ecole=ecole)
-    
+    # Récupérer les classes (filtrées par année active)
+    from utilisateurs.utils import user_school
+    ecole = user_school(request.user) if not request.user.is_superuser else None
+    annee_active = get_annee_active(request, ecole) if ecole else None
+
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('nom')
+    elif ecole:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom')
+    else:
+        classes = ClasseNote.objects.filter(actif=True).order_by('nom')
+
     context = {
         'classes': classes,
         'periodes_mensuelles': [
@@ -419,18 +424,21 @@ def saisie_intelligente(request):
     
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    
-    # Récupérer les classes
-    if ecole:
+
+    # Récupérer les classes (filtrées par année active)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    if ecole and annee_active:
+        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
+    elif ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
-    
+
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
     type_note = request.GET.get('type_note', '')
     periode = request.GET.get('periode', '')
-    
+
     classe_selectionnee = None
     matieres = []
     eleves = []
