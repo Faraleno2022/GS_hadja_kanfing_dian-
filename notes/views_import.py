@@ -30,7 +30,7 @@ def importer_notes(request):
     """
     if not can_manage_notes(request.user):
         messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
-        return redirect('notes:liste_classes')
+        return redirect('notes:consulter_notes')
 
     # Récupérer les classes (filtrées par année active)
     from utilisateurs.utils import user_school
@@ -284,7 +284,7 @@ def import_intelligent(request):
     
     if not can_manage_notes(request.user):
         messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
-        return redirect('notes:liste_classes')
+        return redirect('notes:consulter_notes')
     
     # Récupérer les classes (filtrées par année active)
     from utilisateurs.utils import user_school
@@ -420,12 +420,17 @@ def saisie_intelligente(request):
     from eleves.models import Eleve, Classe as ClasseEleve
     from .models import NoteMensuelle, CompositionNote
     from .calculs_moyennes import detecter_niveau_scolaire
+    from utilisateurs.utils import user_school
     import json
-    
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else None
 
-    # Récupérer les classes (filtrées par année active)
+    # Vérification des permissions
+    if not can_manage_notes(request.user):
+        messages.error(request, "Vous n'avez pas la permission de gérer les notes.")
+        return redirect('notes:consulter_notes')
+
+    ecole = user_school(request.user) if not request.user.is_superuser else None
+
+    # Récupérer les classes (filtrées par année active et école)
     annee_active = get_annee_active(request, ecole) if ecole else None
     if ecole and annee_active:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
@@ -434,10 +439,21 @@ def saisie_intelligente(request):
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
 
-    # Paramètres de sélection
+    # Paramètres de sélection — validation whitelist
     classe_id = request.GET.get('classe_id')
+    VALID_TYPE_NOTES = {'mensuelle', 'composition'}
+    VALID_PERIODES = {
+        'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
+        'AVRIL', 'MAI', 'JUIN',
+        'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
+        'SEMESTRE_1', 'SEMESTRE_2',
+    }
     type_note = request.GET.get('type_note', '')
+    if type_note and type_note not in VALID_TYPE_NOTES:
+        type_note = ''
     periode = request.GET.get('periode', '')
+    if periode and periode not in VALID_PERIODES:
+        periode = ''
 
     classe_selectionnee = None
     matieres = []
@@ -449,7 +465,11 @@ def saisie_intelligente(request):
     periodes_disponibles = []
     
     if classe_id:
-        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        # Sécurité: vérifier que la classe appartient à l'école de l'utilisateur
+        if ecole:
+            classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id, ecole=ecole)
+        else:
+            classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
         matieres = list(MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom'))
         
         # Détecter le niveau scolaire pour la note max
@@ -562,17 +582,37 @@ def saisie_intelligente_save(request):
     """
     from eleves.models import Eleve
     from .models import NoteMensuelle, CompositionNote
+    from utilisateurs.utils import user_school
     from decimal import Decimal
     import json
-    
+    import logging
+
+    # Vérification des permissions
+    if not can_manage_notes(request.user):
+        return JsonResponse({'success': False, 'error': 'Permission refusée'}, status=403)
+
     try:
         data = json.loads(request.body)
         type_note = data.get('type_note')
         periode = data.get('periode')
         notes = data.get('notes', [])
-        
-        if not type_note or not periode:
-            return JsonResponse({'success': False, 'error': 'Type de note et période requis'})
+
+        # Validation whitelist des paramètres
+        VALID_TYPE_NOTES = {'mensuelle', 'composition'}
+        VALID_PERIODES = {
+            'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
+            'AVRIL', 'MAI', 'JUIN',
+            'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
+            'SEMESTRE_1', 'SEMESTRE_2',
+        }
+
+        if not type_note or type_note not in VALID_TYPE_NOTES:
+            return JsonResponse({'success': False, 'error': 'Type de note invalide'})
+        if not periode or periode not in VALID_PERIODES:
+            return JsonResponse({'success': False, 'error': 'Période invalide'})
+
+        # École de l'utilisateur (pour filtrage sécuritaire)
+        ecole_user = user_school(request.user) if not request.user.is_superuser else None
         
         created_count = 0
         updated_count = 0
@@ -592,13 +632,26 @@ def saisie_intelligente_save(request):
             try:
                 eleve = Eleve.objects.get(id=eleve_id)
                 matiere = MatiereNote.objects.get(id=matiere_id)
+
+                # Sécurité: vérifier que la matière appartient à l'école de l'utilisateur
+                if ecole_user and matiere.classe.ecole != ecole_user:
+                    errors.append(f"Matière {matiere_id} n'appartient pas à votre école")
+                    continue
+
                 annee_scolaire = matiere.classe.annee_scolaire
                 
+                # Déterminer la note max pour validation serveur
+                from .calculs_moyennes import detecter_niveau_scolaire
+                _note_max = 10 if detecter_niveau_scolaire(matiere.classe.nom) == 'PRIMAIRE' else 20
+
                 # Pour les absents, stocker note=0 avec absent=True
                 if is_absent:
                     note_decimal = Decimal('0')
                 else:
                     note_decimal = Decimal(str(note_value))
+                    if note_decimal < 0 or note_decimal > _note_max:
+                        errors.append(f"Note {note_value} hors limites [0-{_note_max}]")
+                        continue
                 
                 if type_note == 'mensuelle':
                     note_obj, created = NoteMensuelle.objects.update_or_create(

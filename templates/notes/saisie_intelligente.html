@@ -418,8 +418,8 @@
 <script>
 const NOTE_MAX = {{ note_max|default:20|stringformat:"d" }};
 const CSRF_TOKEN = '{{ csrf_token }}';
-const TYPE_NOTE = '{{ type_note }}';
-const PERIODE = '{{ periode }}';
+const TYPE_NOTE = '{{ type_note|escapejs }}';
+const PERIODE = '{{ periode|escapejs }}';
 
 // Validation d'une note
 function validateNote(input) {

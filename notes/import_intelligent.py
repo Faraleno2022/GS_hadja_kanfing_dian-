@@ -249,8 +249,8 @@ def importer_notes_intelligent(fichier, classe_id, periode, annee_scolaire, type
         matieres_mapping[m.nom[:15].strip().lower()] = m
         matieres_mapping[m.nom[:10].strip().lower()] = m
     
-    # Charger tous les élèves en mémoire
-    eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+    # Charger les élèves de l'école de la classe (pas tous les élèves !)
+    eleves_dict = {e.matricule: e for e in Eleve.objects.filter(classe__ecole=classe.ecole)}
     
     # Détecter le niveau scolaire pour la note max
     from .calculs_moyennes import detecter_niveau_scolaire
