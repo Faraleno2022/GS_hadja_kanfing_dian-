@@ -20,7 +20,7 @@
     <!-- En-tête -->
     <div class="card border-0 shadow-sm mb-4" style="background: linear-gradient(135deg,#1a6fc4,#0d47a1);">
         <div class="card-body py-4 text-white d-flex align-items-center gap-3">
-            <div style="font-size:3rem;">🗓️</div>
+            <div style="font-size:3rem;"><i class="fas fa-calendar-plus"></i></div>
             <div>
                 <h2 class="mb-1 fw-bold">Nouvelle Année Scolaire</h2>
                 <p class="mb-0 opacity-75">
@@ -136,14 +136,15 @@
                                 <i class="fas fa-graduation-cap text-success me-1"></i>
                                 Faire passer les élèves admis
                             </label>
-                            <div class="text-muted small">Les élèves actifs sont déplacés en classe supérieure</div>
+                            <div class="text-muted small">Détection intelligente de la classe supérieure</div>
                         </div>
 
                         <hr>
-                        <div class="alert alert-info py-2 small">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Les notes de l'année <strong>{{ annee_courante }}</strong> sont conservées
-                            dans l'historique. Seule la structure est copiée.
+                        <div class="alert alert-info py-2 small mb-0">
+                            <i class="fas fa-robot me-1"></i>
+                            <strong>Transfert intelligent :</strong> Le système détecte automatiquement
+                            la classe supérieure en préservant les sections (A, B, C…) et gère
+                            les séries du Lycée (Littéraire, Scientifique).
                         </div>
                     </div>
                 </div>
@@ -153,17 +154,17 @@
             <div class="col-lg-8">
                 <div class="card shadow-sm">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <span><i class="fas fa-eye me-2"></i>Aperçu du passage en classe supérieure</span>
+                        <span><i class="fas fa-exchange-alt me-2"></i>Aperçu du passage en classe supérieure</span>
                         <span class="badge bg-white text-primary">{{ preview_classes|length }} classes</span>
                     </div>
                     <div class="card-body p-0">
-                        <div class="table-responsive" style="max-height:420px;overflow-y:auto;">
+                        <div class="table-responsive" style="max-height:460px;overflow-y:auto;">
                             <table class="table table-hover table-sm mb-0">
                                 <thead class="table-light sticky-top">
                                     <tr>
-                                        <th>Classe actuelle ({{ annee_courante }})</th>
-                                        <th class="text-center">Élèves actifs</th>
-                                        <th>→ Classe {{ annee_nouvelle }}</th>
+                                        <th style="width:40%">Classe actuelle ({{ annee_courante }})</th>
+                                        <th class="text-center" style="width:15%">Élèves actifs</th>
+                                        <th style="width:45%"><i class="fas fa-arrow-right me-1"></i> Classe {{ annee_nouvelle }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -174,7 +175,11 @@
                                             <div class="text-muted small">{{ p.classe.get_niveau_display }}</div>
                                         </td>
                                         <td class="text-center">
+                                            {% if p.nb_eleves > 0 %}
                                             <span class="badge bg-success">{{ p.nb_eleves }}</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">0</span>
+                                            {% endif %}
                                         </td>
                                         <td>
                                             {% if p.classe_superieure %}
@@ -182,8 +187,8 @@
                                                     <i class="fas fa-arrow-up me-1"></i>{{ p.classe_superieure }}
                                                 </span>
                                             {% else %}
-                                                <span class="text-muted small">
-                                                    <i class="fas fa-minus me-1"></i>Même classe (dernière année)
+                                                <span class="text-warning">
+                                                    <i class="fas fa-redo me-1"></i>Même classe (dernière année)
                                                 </span>
                                             {% endif %}
                                         </td>
@@ -257,7 +262,7 @@
 
 <script>
 function lancerAnnee(btn) {
-    if (!confirm("Confirmer la création de l'année scolaire {{ annee_nouvelle }} ?\n\n• {{ preview_classes|length }} classes seront dupliquées\n• {{ nb_total_eleves }} élèves seront passés en classe supérieure\n• Les notes de {{ annee_courante }} restent intactes")) {
+    if (!confirm("Confirmer la création de l'année scolaire {{ annee_nouvelle }} ?\n\n\u2022 {{ preview_classes|length }} classes seront dupliquées\n\u2022 {{ nb_total_eleves }} élèves seront transférés intelligemment\n\u2022 Les notes de {{ annee_courante }} restent intactes")) {
         return false;
     }
     btn.disabled = true;

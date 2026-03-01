@@ -2,11 +2,15 @@
 Vue pour démarrer une nouvelle année scolaire :
 - Duplique les classes (eleves + notes), matières, grilles tarifaires
 - Fait passer automatiquement les élèves admis en classe supérieure
+  avec détection INTELLIGENTE de la classe correspondante
 - Permet de revenir à une année scolaire passée (via session)
 """
 
 import logging
-from typing import Optional
+import re
+import unicodedata
+from typing import Optional, List, Tuple
+
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -17,6 +21,12 @@ from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
 from .utils_annee import get_annee_active, SESSION_ANNEE_ACTIVE
 
+logger = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GESTION DES ANNÉES SCOLAIRES
+# ══════════════════════════════════════════════════════════════════════════════
 
 @login_required
 def gestion_annees(request):
@@ -76,50 +86,126 @@ def changer_annee_active(request):
         return redirect('eleves:gestion_annees')
 
     request.session[SESSION_ANNEE_ACTIVE] = annee
-    messages.success(request, f"✅ Vous consultez maintenant l'année scolaire {annee}.")
+    messages.success(request, f"Vous consultez maintenant l'année scolaire {annee}.")
     return redirect('eleves:gestion_annees')
 
-logger = logging.getLogger(__name__)
 
-# ── Mapping : classe actuelle → classe supérieure (par nom normalisé) ──────────
+# ══════════════════════════════════════════════════════════════════════════════
+#  SYSTÈME INTELLIGENT DE PROGRESSION DES CLASSES
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _normaliser(texte: str) -> str:
+    """Normalise un nom de classe : MAJUSCULES, sans accents, sans parenthèses.
+
+    Exemples:
+        '10ÈME ANNÉE (A)' → '10EME ANNEE A'
+        'Petite Section B'  → 'PETITE SECTION B'
+        '11 Série Scientifique (B)' → '11 SERIE SCIENTIFIQUE B'
+    """
+    texte = texte.upper().strip()
+    # Retirer les accents
+    texte = unicodedata.normalize('NFD', texte)
+    texte = ''.join(c for c in texte if unicodedata.category(c) != 'Mn')
+    # Retirer les parenthèses
+    texte = texte.replace('(', '').replace(')', '')
+    # Normaliser les espaces multiples
+    texte = ' '.join(texte.split())
+    return texte
+
+
+def _extraire_base_et_lettre(nom_classe: str) -> Tuple[str, Optional[str]]:
+    """Extraire le nom de base normalisé et le suffixe lettre (A, B, C…).
+
+    Exemples:
+        '10ÈME ANNÉE (A)'             → ('10EME ANNEE', 'A')
+        'PETITE SECTION B'             → ('PETITE SECTION', 'B')
+        'GARDERIE'                     → ('GARDERIE', None)
+        '11 SÉRIE SCIENTIFIQUE (B)'    → ('11 SERIE SCIENTIFIQUE', 'B')
+        '12 SCIENCES MATHS'            → ('12 SCIENCES MATHS', None)
+        'TERMINALE SCIENCES SOCIALES'  → ('TERMINALE SCIENCES SOCIALES', None)
+    """
+    nom = _normaliser(nom_classe)
+    # Un suffixe lettre = une seule lettre A-Z isolée en fin de chaîne
+    match = re.match(r'^(.+?)\s+([A-Z])$', nom)
+    if match:
+        return match.group(1).strip(), match.group(2)
+    return nom, None
+
+
+# ── Mapping de progression (toutes les clés sont normalisées) ─────────────────
+# None = classe terminale → l'élève reste dans la même classe (nouvelle année)
 PROGRESSION_CLASSES = {
-    # Maternelle
-    'PETITE SECTION':  'MOYENNE SECTION',
-    'PS':              'MS',
-    'MOYENNE SECTION': 'GRANDE SECTION',
-    'MS':              'GS',
-    'GRANDE SECTION':  None,   # sortie de maternelle → primaire (manuel)
-    'GS':              None,
+    # ── Maternelle ──────────────────────────────────────────────
+    'TOUT PETITE SECTION':   'PETITE SECTION',
+    'TOUTE PETITE SECTION':  'PETITE SECTION',
+    'TPS':                   'PS',
+    'PETITE SECTION':        'MOYENNE SECTION',
+    'PS':                    'MS',
+    'MOYENNE SECTION':       'GRANDE SECTION',
+    'MS':                    'GS',
+    'GRANDE SECTION':        '1ERE ANNEE',      # passage automatique vers primaire
+    'GS':                    '1ERE ANNEE',
 
-    # Primaire
-    '1ÈRE ANNÉE':  '2ÈME ANNÉE',
+    # ── Primaire (1ère → 6ème) ──────────────────────────────────
     '1ERE ANNEE':  '2EME ANNEE',
-    '2ÈME ANNÉE':  '3ÈME ANNÉE',
     '2EME ANNEE':  '3EME ANNEE',
-    '3ÈME ANNÉE':  '4ÈME ANNÉE',
     '3EME ANNEE':  '4EME ANNEE',
-    '4ÈME ANNÉE':  '5ÈME ANNÉE',
     '4EME ANNEE':  '5EME ANNEE',
-    '5ÈME ANNÉE':  '6ÈME ANNÉE',
     '5EME ANNEE':  '6EME ANNEE',
-    '6ÈME ANNÉE':  '7ÈME ANNÉE',
     '6EME ANNEE':  '7EME ANNEE',
 
-    # Collège
-    '7ÈME ANNÉE':  '8ÈME ANNÉE',
-    '7EME ANNEE':  '8EME ANNEE',
-    '8ÈME ANNÉE':  '9ÈME ANNÉE',
-    '8EME ANNEE':  '9EME ANNEE',
-    '9ÈME ANNÉE':  '10ÈME ANNÉE',
+    # ── Collège (7ème → 10ème) ──────────────────────────────────
+    '7EME ANNEE':   '8EME ANNEE',
+    '8EME ANNEE':   '9EME ANNEE',
     '9EME ANNEE':  '10EME ANNEE',
-    '10ÈME ANNÉE': '11ÈME ANNÉE',
     '10EME ANNEE': '11EME ANNEE',
 
-    # Lycée
-    '11ÈME ANNÉE': '12ÈME ANNÉE',
-    '11EME ANNEE': '12EME ANNEE',
-    '12ÈME ANNÉE': 'TERMINALE',
-    '12EME ANNEE': 'TERMINALE',
+    # ── Lycée 11ème → 12ème ─────────────────────────────────────
+    '11EME ANNEE':           '12EME ANNEE',
+    '11 SERIE LITTERAIRE':   '12 SCIENCES SOCIALES',
+    '11 SERIE SCIENTIFIQUE': '12 SCIENCES',  # → 12 Sc. MATHS ou EXPERIMENTALES
+
+    # ── Lycée 12ème → Terminale ─────────────────────────────────
+    '12EME ANNEE':                    'TERMINALE',
+    '12 SCIENCES EXPERIMENTALES':     'TERMINALE SCIENCES EXPERIMENTALES',
+    '12 SCIENCES MATHS':              'TERMINALE SCIENCES MATHS',
+    '12 SCIENCES SOCIALES':           'TERMINALE SCIENCES SOCIALES',
+    '12 SERIE LITTERAIRE':            'TERMINALE SCIENCES SOCIALES',
+
+    # ── Garderie / Terminale : fin de cycle ─────────────────────
+    'GARDERIE':                           None,
+    'TERMINALE':                          None,
+    'TERMINALE SCIENCES EXPERIMENTALES':  None,
+    'TERMINALE SCIENCES MATHS':           None,
+    'TERMINALE SCIENCES SOCIALES':        None,
+}
+
+# Labels lisibles pour l'affichage dans le tableau de prévisualisation
+PROGRESSION_LABELS = {
+    'PETITE SECTION':         'Petite Section',
+    'PS':                     'PS',
+    'MOYENNE SECTION':        'Moyenne Section',
+    'MS':                     'MS',
+    'GRANDE SECTION':         'Grande Section',
+    'GS':                     'GS',
+    '1ERE ANNEE':             '1ère Année',
+    '2EME ANNEE':             '2ème Année',
+    '3EME ANNEE':             '3ème Année',
+    '4EME ANNEE':             '4ème Année',
+    '5EME ANNEE':             '5ème Année',
+    '6EME ANNEE':             '6ème Année',
+    '7EME ANNEE':             '7ème Année',
+    '8EME ANNEE':             '8ème Année',
+    '9EME ANNEE':             '9ème Année',
+    '10EME ANNEE':            '10ème Année',
+    '11EME ANNEE':            '11ème Année',
+    '12EME ANNEE':            '12ème Année',
+    '12 SCIENCES':            '12 Sciences (Maths ou Exp.)',
+    '12 SCIENCES SOCIALES':   '12 Sciences Sociales',
+    'TERMINALE':                          'Terminale',
+    'TERMINALE SCIENCES EXPERIMENTALES':  'Terminale Sciences Expérimentales',
+    'TERMINALE SCIENCES MATHS':           'Terminale Sciences Maths',
+    'TERMINALE SCIENCES SOCIALES':        'Terminale Sciences Sociales',
 }
 
 
@@ -132,21 +218,110 @@ def _annee_suivante(annee: str) -> str:
         return annee
 
 
-def _nom_base(nom_classe: str) -> str:
-    """Retourne le radical du nom de classe sans suffixe lettre (A, B, C…).
-    Ex: '3ÈME ANNÉE A' → '3ÈME ANNÉE'
+def _classe_superieure_label(nom_classe: str) -> Optional[str]:
+    """Retourne le libellé lisible de la classe supérieure, ou None si terminale.
+
+    Exemples:
+        '10ÈME ANNÉE (A)' → '11ème Année A'
+        'GRANDE SECTION (A)' → '1ère Année A'
+        '11 SÉRIE LITTÉRAIRE (A)' → '12 Sciences Sociales A'
+        'GARDERIE' → None  (dernière année)
+        'TERMINALE SCIENCES MATHS' → None  (dernière année)
     """
-    parts = nom_classe.strip().rsplit(' ', 1)
-    if len(parts) == 2 and len(parts[1]) == 1 and parts[1].isalpha():
-        return parts[0].strip()
-    return nom_classe.strip()
+    base, lettre = _extraire_base_et_lettre(nom_classe)
+    cible_base = PROGRESSION_CLASSES.get(base)
+
+    if cible_base is None:
+        return None  # Classe terminale ou inconnue
+
+    label = PROGRESSION_LABELS.get(cible_base, cible_base)
+    if lettre:
+        label += f' {lettre}'
+    return label
 
 
-def _classe_superieure_nom(nom_classe: str) -> Optional[str]:
-    """Retourne le nom de la classe supérieure correspondante ou None."""
-    base = _nom_base(nom_classe.upper())
-    return PROGRESSION_CLASSES.get(base)
+def _construire_index_classes(classes) -> List[Tuple]:
+    """Construit un index normalisé (base, lettre) pour chaque classe.
 
+    Retourne une liste de tuples (classe_obj, base_normalisée, lettre).
+    """
+    index = []
+    for cls in classes:
+        base, lettre = _extraire_base_et_lettre(cls.nom)
+        index.append((cls, base, lettre))
+    return index
+
+
+def _trouver_classe_cible(nom_classe_actuelle: str, index_nouvelles: List[Tuple]) -> Optional[Classe]:
+    """Trouve la meilleure classe cible par matching intelligent multi-niveaux.
+
+    Algorithme de correspondance (du plus précis au plus souple) :
+
+    Niveau 1 — Match exact : base normalisée + même lettre
+        Ex: cible '2EME ANNEE' + lettre 'A' → trouve '2ÈME ANNÉE A'
+
+    Niveau 2 — Match base exacte sans contrainte de lettre
+        Ex: cible 'MOYENNE SECTION' → trouve 'MOYENNE SECTION' (unique)
+
+    Niveau 3 — Match par préfixe (pour séries scientifiques)
+        Ex: cible '12 SCIENCES' → trouve '12 SCIENCES MATHS' ou '12 SCIENCES EXPERIMENTALES'
+
+    Niveau 4 — Match par numéro de niveau + lettre
+        Ex: cible '11EME ANNEE' → trouve '11 SÉRIE LITTÉRAIRE (A)' si pas de 11ème générique
+
+    Retourne la classe trouvée ou None.
+    """
+    base_actuelle, lettre = _extraire_base_et_lettre(nom_classe_actuelle)
+    cible_base = PROGRESSION_CLASSES.get(base_actuelle)
+
+    if cible_base is None:
+        return None  # Classe terminale → pas de progression
+
+    # ── Niveau 1 : Base exacte + même lettre ──
+    for cls, c_base, c_lettre in index_nouvelles:
+        if c_base == cible_base and c_lettre == lettre:
+            return cls
+
+    # ── Niveau 2 : Base exacte, n'importe quelle lettre ──
+    for cls, c_base, c_lettre in index_nouvelles:
+        if c_base == cible_base:
+            return cls
+
+    # ── Niveau 3 : Préfixe de la base cible ──
+    # Utile pour '12 SCIENCES' → '12 SCIENCES MATHS', '12 SCIENCES EXPERIMENTALES'
+    prefix = cible_base + ' '
+    # D'abord avec la même lettre
+    if lettre:
+        for cls, c_base, c_lettre in index_nouvelles:
+            if c_base.startswith(prefix) and c_lettre == lettre:
+                return cls
+    # Puis sans contrainte de lettre
+    for cls, c_base, c_lettre in index_nouvelles:
+        if c_base.startswith(prefix):
+            return cls
+
+    # ── Niveau 4 : Numéro de niveau (ex: 11 → n'importe quelle 11ème) ──
+    num_match = re.match(r'^(\d+)', cible_base)
+    if num_match:
+        num_str = num_match.group(1)
+        # Pattern : le numéro suivi de EME, ERE, un espace, ou fin de chaîne
+        pattern = re.compile(rf'^{re.escape(num_str)}(?:EME|ERE|\s|$)')
+        # D'abord avec la même lettre
+        if lettre:
+            for cls, c_base, c_lettre in index_nouvelles:
+                if pattern.match(c_base) and c_lettre == lettre:
+                    return cls
+        # Puis sans contrainte de lettre
+        for cls, c_base, c_lettre in index_nouvelles:
+            if pattern.match(c_base):
+                return cls
+
+    return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  VUES : APERÇU & CRÉATION DE LA NOUVELLE ANNÉE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @login_required
 def nouvelle_annee_apercu(request):
@@ -179,12 +354,12 @@ def nouvelle_annee_apercu(request):
 
     preview_classes = []
     for cls in classes_actuelles:
-        sup_nom = _classe_superieure_nom(cls.nom)
+        sup_label = _classe_superieure_label(cls.nom)
         nb_eleves = cls.eleves.filter(statut='ACTIF').count()
         preview_classes.append({
             'classe': cls,
             'nb_eleves': nb_eleves,
-            'classe_superieure': sup_nom,
+            'classe_superieure': sup_label,
         })
 
     # Grilles tarifaires courantes
@@ -250,12 +425,12 @@ def nouvelle_annee_creer(request):
 
     try:
         with transaction.atomic():
-            # 1. Dupliquer les classes (eleves.Classe)
+            # ─── Étape 1 : Dupliquer les classes (eleves.Classe) ─────────
             classes_actuelles = Classe.objects.filter(
                 ecole=ecole, annee_scolaire=annee_courante
             ).order_by('niveau', 'nom')
 
-            map_anciennes_nouvelles = {}  # ancienne classe → nouvelle classe
+            map_anciennes_nouvelles = {}  # ancienne_pk → nouvelle_classe
 
             for cls in classes_actuelles:
                 nouvelle_cls, created = Classe.objects.get_or_create(
@@ -272,7 +447,7 @@ def nouvelle_annee_creer(request):
                     resultats['classes_creees'] += 1
                 map_anciennes_nouvelles[cls.pk] = nouvelle_cls
 
-            # 2. Dupliquer les grilles tarifaires
+            # ─── Étape 2 : Dupliquer les grilles tarifaires ─────────────
             if dupliquer_grilles:
                 from .models import GrilleTarifaire
                 grilles = GrilleTarifaire.objects.filter(
@@ -297,7 +472,7 @@ def nouvelle_annee_creer(request):
                     if created:
                         resultats['grilles_creees'] += 1
 
-            # 3. Dupliquer les ClasseNote + MatiereNote (module notes)
+            # ─── Étape 3 : Dupliquer ClasseNote + MatiereNote ───────────
             if dupliquer_notes_classes:
                 from notes.models import ClasseNote, MatiereNote
                 classes_notes = ClasseNote.objects.filter(
@@ -335,7 +510,7 @@ def nouvelle_annee_creer(request):
                             if m_created:
                                 resultats['matieres_creees'] += 1
 
-            # 4. Faire passer les élèves en classe supérieure
+            # ─── Étape 4 : Passage intelligent des élèves ───────────────
             if faire_passer_eleves:
                 eleves_actifs = Eleve.objects.filter(
                     classe__ecole=ecole,
@@ -343,48 +518,66 @@ def nouvelle_annee_creer(request):
                     statut='ACTIF'
                 ).select_related('classe')
 
+                # Construire l'index des classes de la nouvelle année (une seule fois)
+                classes_nouvelles = list(Classe.objects.filter(
+                    ecole=ecole, annee_scolaire=annee_nouvelle
+                ))
+                index_nouvelles = _construire_index_classes(classes_nouvelles)
+
                 for eleve in eleves_actifs:
                     ancienne_classe = eleve.classe
-                    sup_nom = _classe_superieure_nom(ancienne_classe.nom)
+                    base_actuelle, _ = _extraire_base_et_lettre(ancienne_classe.nom)
 
-                    if sup_nom:
-                        # Chercher la classe supérieure dans la nouvelle année (nom contient le 1er mot)
-                        sup_cls = Classe.objects.filter(
-                            ecole=ecole,
-                            annee_scolaire=annee_nouvelle,
-                            nom__icontains=sup_nom.split()[0],
-                        ).first()
-                        if not sup_cls:
-                            # Fallback : même classe dupliquée dans la nouvelle année
-                            sup_cls = map_anciennes_nouvelles.get(ancienne_classe.pk)
+                    # Vérifier si c'est une classe terminale
+                    est_terminale = (
+                        base_actuelle in PROGRESSION_CLASSES
+                        and PROGRESSION_CLASSES[base_actuelle] is None
+                    )
 
-                        if sup_cls:
+                    if est_terminale:
+                        # Classe terminale → garder dans la même classe (nouvelle année)
+                        nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
+                        if nouvelle_meme:
                             eleve._current_user = request.user
-                            eleve.classe = sup_cls
+                            eleve.classe = nouvelle_meme
+                            eleve.save()
+                            resultats['eleves_conserves'] += 1
+                        continue
+
+                    # Matching intelligent de la classe supérieure
+                    sup_cls = _trouver_classe_cible(ancienne_classe.nom, index_nouvelles)
+
+                    if sup_cls:
+                        eleve._current_user = request.user
+                        eleve.classe = sup_cls
+                        eleve.save()
+                        HistoriqueEleve.objects.create(
+                            eleve=eleve,
+                            action='CHANGEMENT_CLASSE',
+                            description=(
+                                f"Passage automatique nouvelle année {annee_nouvelle}: "
+                                f"{ancienne_classe.nom} → {sup_cls.nom}"
+                            ),
+                            utilisateur=request.user,
+                        )
+                        resultats['eleves_passes'] += 1
+                    else:
+                        # Aucune correspondance → garder dans même classe (nouvelle année)
+                        nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
+                        if nouvelle_meme:
+                            eleve._current_user = request.user
+                            eleve.classe = nouvelle_meme
                             eleve.save()
                             HistoriqueEleve.objects.create(
                                 eleve=eleve,
                                 action='CHANGEMENT_CLASSE',
                                 description=(
-                                    f"Passage automatique nouvelle année {annee_nouvelle}: "
-                                    f"{ancienne_classe.nom} → {sup_cls.nom}"
+                                    f"Conservation nouvelle année {annee_nouvelle}: "
+                                    f"{ancienne_classe.nom} → {nouvelle_meme.nom} "
+                                    f"(classe supérieure non trouvée)"
                                 ),
                                 utilisateur=request.user,
                             )
-                            resultats['eleves_passes'] += 1
-                        else:
-                            # Laisser dans la même classe mais nouvelle année
-                            nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
-                            if nouvelle_meme:
-                                eleve.classe = nouvelle_meme
-                                eleve.save()
-                                resultats['eleves_conserves'] += 1
-                    else:
-                        # Classe terminale ou maternelle → garder dans même classe de la nouvelle année
-                        nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
-                        if nouvelle_meme:
-                            eleve.classe = nouvelle_meme
-                            eleve.save()
                             resultats['eleves_conserves'] += 1
 
     except Exception as e:
@@ -407,7 +600,7 @@ def nouvelle_annee_creer(request):
 
     messages.success(
         request,
-        f"✅ Année scolaire {annee_nouvelle} créée avec succès ! "
+        f"Année scolaire {annee_nouvelle} créée avec succès ! "
         + ((' | '.join(msg_parts)) if msg_parts else '')
     )
     return redirect('eleves:gestion_classes')
