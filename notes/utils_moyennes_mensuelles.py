@@ -343,17 +343,18 @@ def calculer_bulletin_avec_details_mensuels(eleve, matiere, periode_type, period
     
     moyenne_finale = None
     if moyenne_continue is not None and note_composition is not None:
-        # Formule corrigée : (Moyenne Continue + Composition) / 2
-        moyenne_finale = round((moyenne_continue + note_composition) / 2, 2)
+        # Formule : (Moyenne Continue + Composition) / 2
+        # PAS d'arrondi — garder la précision complète pour le calcul des points
+        moyenne_finale = (moyenne_continue + note_composition) / 2
     elif note_composition is not None:
         moyenne_finale = note_composition
     elif moyenne_continue is not None:
         moyenne_finale = moyenne_continue
-    
-    # Calculer les points
+
+    # Calculer les points (valeur EXACTE, arrondir à l'affichage seulement)
     points = None
     if moyenne_finale is not None:
-        points = round(moyenne_finale * float(matiere.coefficient), 2)
+        points = moyenne_finale * float(matiere.coefficient)
     
     return {
         'matiere': matiere,

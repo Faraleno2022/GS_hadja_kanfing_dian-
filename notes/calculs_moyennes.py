@@ -225,8 +225,9 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                     continue
             
             if count_notes > 0:
-                moyenne_continue = round(float(total_notes / count_notes), 2)
-        
+                # Garder la précision complète (arrondi à l'affichage seulement)
+                moyenne_continue = float(total_notes / count_notes)
+
         # Récupérer la note de composition (TOUJOURS chercher, même sans notes mensuelles)
         try:
             compo = CompositionNote.objects.get(
@@ -247,24 +248,25 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
         moyenne_matiere = moyenne_continue
     elif moyenne_continue is not None and note_composition is not None:
         # CAS 1: Les deux existent → Formule : (Moyenne Continue + Composition) / 2
-        moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
+        # PAS d'arrondi ici — garder la précision complète pour le calcul des points
+        moyenne_matiere = (moyenne_continue + note_composition) / 2
     elif note_composition is not None:
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
         moyenne_matiere = note_composition
     elif moyenne_continue is not None:
         # CAS 3: Seulement notes mensuelles (pas de composition) → Utiliser directement
         moyenne_matiere = moyenne_continue
-    
+
     # Calculer les points (avec validation du coefficient)
+    # RÈGLE: multiplier la valeur EXACTE par le coefficient, arrondir à l'affichage seulement
     points = None
     if moyenne_matiere is not None:
-        # Validation et conversion sécurisée du coefficient
         try:
             coefficient = float(matiere.coefficient) if matiere.coefficient and matiere.coefficient > 0 else 1.0
         except (TypeError, ValueError):
             coefficient = 1.0
-        points = round(moyenne_matiere * coefficient, 2)
-    
+        points = moyenne_matiere * coefficient
+
     return {
         'moyenne_continue': moyenne_continue,
         'note_composition': note_composition,
@@ -330,13 +332,13 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
         else:
             coefficient = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
         
-        # Calculer les points
-        points = round(moyenne_matiere * float(coefficient), 2)
-        
+        # Calculer les points (valeur EXACTE, pas d'arrondi intermédiaire)
+        points = moyenne_matiere * float(coefficient)
+
         # Ajouter au total (toutes les matières comptent)
         total_points += Decimal(str(moyenne_matiere)) * coefficient
         total_coefficients += coefficient
-        
+
         details_matieres.append({
             'matiere': matiere,
             'moyenne_continue': result['moyenne_continue'],
@@ -346,14 +348,14 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
             'coefficient': coefficient if niveau != 'PRIMAIRE' else 1,
             'points': points,
         })
-    
+
     # Calculer la moyenne générale (avec protection contre division par zéro)
+    # Arrondir UNIQUEMENT le résultat final
     moyenne_generale = None
     if total_coefficients and total_coefficients > 0:
         try:
             moyenne_generale = round(float(total_points / total_coefficients), 2)
         except (ZeroDivisionError, ValueError, TypeError) as e:
-            # En cas d'erreur de calcul, retourner None
             moyenne_generale = None
     
     return {
@@ -517,7 +519,8 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                             total_notes += Decimal(str(note_data['note']))
                             count_notes += 1
                     if count_notes > 0:
-                        moyenne_continue = round(float(total_notes / count_notes), 2)
+                        # Garder la précision complète (arrondi à l'affichage seulement)
+                        moyenne_continue = float(total_notes / count_notes)
                 
                 # Note de composition
                 compo_key = (eleve.id, matiere_id)
@@ -532,21 +535,23 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                 moyenne_matiere = moyenne_continue
             elif moyenne_continue is not None and note_composition is not None:
                 # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
-                moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
+                # PAS d'arrondi — garder la précision complète
+                moyenne_matiere = (moyenne_continue + note_composition) / 2
             elif note_composition is not None:
                 # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
                 moyenne_matiere = note_composition
             elif moyenne_continue is not None:
                 # CAS 3: Seulement notes mensuelles → Utiliser directement
                 moyenne_matiere = moyenne_continue
-            
+
             # Élève non évalué dans cette matière = note 0 par défaut
             if moyenne_matiere is None:
                 moyenne_matiere = 0.0
-            
+
             moyenne_calculee = moyenne_matiere
-            points = round(moyenne_calculee * float(coefficient), 2)
-            
+            # Points: valeur EXACTE, pas d'arrondi intermédiaire
+            points = moyenne_calculee * float(coefficient)
+
             total_points += Decimal(str(moyenne_calculee)) * coefficient
             total_coefficients += coefficient
             
@@ -878,14 +883,14 @@ def calculer_moyenne_annuelle_matiere(eleve, matiere, system_type='annuel_trimes
     if moyennes_valides:
         moyenne_annuelle = round(sum(moyennes_valides) / len(moyennes_valides), 2)
     
-    # Calculer les points
+    # Calculer les points (valeur EXACTE, pas d'arrondi intermédiaire)
     points = None
     if moyenne_annuelle is not None:
         try:
             coefficient = float(matiere.coefficient) if matiere.coefficient and matiere.coefficient > 0 else 1.0
         except (TypeError, ValueError):
             coefficient = 1.0
-        points = round(moyenne_annuelle * coefficient, 2)
+        points = moyenne_annuelle * coefficient
     
     return {
         'moyenne_annuelle': moyenne_annuelle,
@@ -961,11 +966,12 @@ def calculer_moyenne_generale_annuelle(eleve, matieres, system_type='annuel_trim
         else:
             coefficient = matiere.coefficient if matiere.coefficient and matiere.coefficient > 0 else Decimal('1')
         
-        points = round(moyenne_matiere * float(coefficient), 2)
-        
+        # Points: valeur EXACTE, pas d'arrondi intermédiaire
+        points = moyenne_matiere * float(coefficient)
+
         total_points += Decimal(str(moyenne_matiere)) * coefficient
         total_coefficients += coefficient
-        
+
         details_matieres.append({
             'matiere': matiere,
             'moyenne_annuelle': result['moyenne_annuelle'],
@@ -974,18 +980,18 @@ def calculer_moyenne_generale_annuelle(eleve, matieres, system_type='annuel_trim
             'coefficient': coefficient if niveau != 'PRIMAIRE' else 1,
             'points': points,
         })
-    
-    # Calculer la moyenne générale annuelle
+
+    # Calculer la moyenne générale annuelle (arrondi final seulement)
     moyenne_generale = None
     if total_coefficients and total_coefficients > 0:
         try:
             moyenne_generale = round(float(total_points / total_coefficients), 2)
         except (ZeroDivisionError, ValueError, TypeError):
             moyenne_generale = None
-    
+
     return {
         'moyenne_generale': moyenne_generale,
-        'total_points': round(float(total_points), 2) if total_points > 0 else 0,
+        'total_points': float(total_points) if total_points > 0 else 0,
         'total_coefficients': float(total_coefficients),
         'details_matieres': details_matieres,
         'moyennes_periodes': moyennes_generales_periodes,

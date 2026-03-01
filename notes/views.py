@@ -7526,8 +7526,9 @@ def bulletin_dynamique(request):
                 elif system_type == 'mensuel':
                     moyenne_matiere = moyenne_continue
                 elif moyenne_continue is not None and note_composition is not None:
-                    # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
-                    moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
+                    # Formule : (Moyenne Continue + Composition) / 2 (poids égal)
+                    # PAS d'arrondi — garder la précision complète
+                    moyenne_matiere = (moyenne_continue + note_composition) / 2
                 elif note_composition is not None:
                     # Seulement la composition
                     moyenne_matiere = note_composition
@@ -7548,7 +7549,8 @@ def bulletin_dynamique(request):
                 
                 # Si pas de notes, compter comme 0 (ne pas favoriser l'élève)
                 moyenne_matiere_calcul = moyenne_matiere if moyenne_matiere is not None else 0.0
-                points = round(moyenne_matiere_calcul * float(coefficient_effectif), 2)
+                # Points: valeur EXACTE, pas d'arrondi intermédiaire
+                points = moyenne_matiere_calcul * float(coefficient_effectif)
                 total_points += Decimal(str(moyenne_matiere_calcul)) * coefficient_effectif
                 
                 # Préparer les notes pour l'affichage
