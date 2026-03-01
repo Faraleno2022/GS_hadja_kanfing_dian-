@@ -4901,13 +4901,14 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
+@can_manage_notes
 def statistiques(request):
     """Statistiques globales de l'école"""
     from eleves.models import Ecole
-    
+
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else Ecole.objects.first()
-    
+
     # Récupérer les classes disponibles (filtrées par année active)
     annee_active = get_annee_active(request, ecole) if ecole else None
     if ecole and annee_active:
@@ -4917,7 +4918,7 @@ def statistiques(request):
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('nom')
 
-    # Classe sélectionnée
+    # Classe sélectionnée (déjà filtrée par école via le queryset classes)
     classe_id = request.GET.get('classe_id')
     classe_selectionnee = None
     if classe_id:
@@ -4925,10 +4926,14 @@ def statistiques(request):
             classe_selectionnee = classes.get(id=classe_id)
         except ClasseNote.DoesNotExist:
             pass
-    
-    # Statistiques globales de l'école
-    total_eleves = Eleve.objects.filter(statut='ACTIF').count()
-    total_classes = ClasseEleve.objects.all().count()
+
+    # Statistiques globales de l'école (filtrées par école)
+    if ecole:
+        total_eleves = Eleve.objects.filter(statut='ACTIF', classe__ecole=ecole).count()
+        total_classes = ClasseEleve.objects.filter(ecole=ecole).count()
+    else:
+        total_eleves = Eleve.objects.filter(statut='ACTIF').count()
+        total_classes = ClasseEleve.objects.all().count()
     
     # Période sélectionnée
     periode = request.GET.get('periode', 'TRIMESTRE_1')
@@ -7351,22 +7356,25 @@ def bulletin_dynamique(request):
     classe_id = nettoyer_parametre_numerique(request.GET.get('classe_id'))
     eleve_id = nettoyer_parametre_numerique(request.GET.get('eleve_id'))
     periode = request.GET.get('periode', '').strip()
-    system_type = request.GET.get('system_type', 'trimestre').strip()  # mensuel, trimestre, semestre, annuel_trimestriel, annuel_semestriel
-    
+    system_type = request.GET.get('system_type', 'trimestre').strip()
+
+    # Whitelist validation du system_type
+    VALID_SYSTEM_TYPES = {'mensuel', 'trimestre', 'semestre', 'annuel_trimestriel', 'annuel_semestriel', 'annuel'}
+    if system_type not in VALID_SYSTEM_TYPES:
+        system_type = 'trimestre'
+
     # Valider que la période correspond au system_type sélectionné
-    # Si la période ne correspond pas, la réinitialiser
-    if periode:
-        periodes_valides = {
-            'mensuel': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
-            'trimestre': ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'],
-            'semestre': ['SEMESTRE_1', 'SEMESTRE_2'],
-            'annuel_trimestriel': ['ANNUEL_TRIM'],
-            'annuel_semestriel': ['ANNUEL_SEM'],
-            'annuel': ['ANNUEL_TRIM'],
-        }
-        if system_type in periodes_valides and periode not in periodes_valides.get(system_type, []):
-            periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
-    
+    periodes_valides = {
+        'mensuel': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+        'trimestre': ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'],
+        'semestre': ['SEMESTRE_1', 'SEMESTRE_2'],
+        'annuel_trimestriel': ['ANNUEL_TRIM'],
+        'annuel_semestriel': ['ANNUEL_SEM'],
+        'annuel': ['ANNUEL_TRIM'],
+    }
+    if periode and periode not in periodes_valides.get(system_type, []):
+        periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
+
     classe_selectionnee = None
     eleves = []
     eleve_selectionne = None
@@ -7377,11 +7385,15 @@ def bulletin_dynamique(request):
     
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
+        if ecole and classe_selectionnee.ecole != ecole:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         # Utiliser detecter_niveau_scolaire pour une détection cohérente avec les bulletins PDF
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
-        
+
         # Déterminer les périodes disponibles selon le système
         if system_type == 'mensuel':
             periodes_disponibles = [

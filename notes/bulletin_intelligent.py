@@ -1386,6 +1386,10 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     """Vue pour afficher le bulletin intelligent"""
     eleve = get_object_or_404(Eleve, pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+
+    # Sécurité : vérifier que la classe appartient à la même école que l'élève
+    if classe_note.ecole != eleve.classe.ecole:
+        return HttpResponse("Accès refusé : données incohérentes.", status=403)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1572,9 +1576,15 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
 def bulletins_classe_pdf(request, classe_note_id, periode):
     """Génère tous les bulletins d'une classe en un seul PDF - VERSION OPTIMISÉE"""
     import re
-    
+
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
-    
+
+    # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    if ecole and classe_note.ecole != ecole:
+        return HttpResponse("Accès refusé : cette classe n'appartient pas à votre école.", status=403)
+
     # Récupérer tous les élèves de la classe
     classe_eleve = Classe.objects.filter(
         nom=classe_note.nom,
@@ -1585,8 +1595,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     if not classe_eleve:
         return HttpResponse("Classe non trouvée", status=404)
     
-    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
-    
+    eleves = list(Eleve.objects.select_related('classe', 'classe__ecole').filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+
     if not eleves:
         return HttpResponse("Aucun élève dans cette classe", status=404)
     

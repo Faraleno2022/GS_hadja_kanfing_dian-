@@ -16,6 +16,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
+from utilisateurs.permissions import can_manage_notes
 
 # Pour les graphiques
 try:
@@ -280,7 +281,7 @@ def _calculer_statistiques_classe(classe_note, periode):
         stats_globales = None
     
     # Seuils adaptés au niveau
-    seuil_suivre = seuil_reussite + (2 if est_primaire else 2)
+    seuil_suivre = seuil_reussite + (1 if est_primaire else 2)
     seuil_excellent = seuil_reussite + (2 if est_primaire else 4)
     
     return {
@@ -536,18 +537,24 @@ def _generer_astuces_rehaussement():
 
 
 @login_required
+@can_manage_notes
 def exporter_statistiques_pdf(request):
     """Exporte les statistiques en PDF avec graphiques et recommandations"""
     from reportlab.lib.utils import ImageReader
-    
+
     classe_id = request.GET.get('classe_id')
     periode = request.GET.get('periode', 'TRIMESTRE_1')
-    
+
     if not classe_id:
         return HttpResponse("Veuillez sélectionner une classe", status=400)
-    
-    classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+
     ecole = _get_ecole(request)
+
+    # Sécurité : filtrer par école de l'utilisateur
+    if ecole:
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id, ecole=ecole)
+    else:
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
     
     # Calculer les statistiques
     stats = _calculer_statistiques_classe(classe_note, periode)
@@ -1195,21 +1202,27 @@ def _generer_lettre_eleve(eleve_data, classe_nom, periode):
 
 
 @login_required
+@can_manage_notes
 def exporter_conseils_pdf(request):
     """
     Exporte les conseils et prises de décision en PDF
     Document complet avec analyses approfondies et lettres de recommandation
     """
     from reportlab.lib.utils import ImageReader
-    
+
     classe_id = request.GET.get('classe_id')
     periode = request.GET.get('periode')
-    
+
     if not classe_id or not periode:
         return HttpResponse("Paramètres manquants (classe_id et periode requis)", status=400)
-    
-    classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+
     ecole = _get_ecole(request)
+
+    # Sécurité : filtrer par école de l'utilisateur
+    if ecole:
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id, ecole=ecole)
+    else:
+        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
     ecole_nom = ecole.nom if ecole else "L'École"
     
     # Calculer les statistiques

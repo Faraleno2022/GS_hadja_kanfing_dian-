@@ -402,9 +402,9 @@
 <script>
 // Données injectées depuis Django
 window.chartData = {
-    repartition: {{ repartition_json|safe }},
-    matieres: {{ stats_matieres_json|safe }},
-    evolution: {{ evolution_json|safe }}
+    repartition: JSON.parse('{{ repartition_json|escapejs }}'),
+    matieres: JSON.parse('{{ stats_matieres_json|escapejs }}'),
+    evolution: JSON.parse('{{ evolution_json|escapejs }}')
 };
 var noteMax = {{ note_max|default:"20" }};
 var estPrimaire = {% if est_primaire %}true{% else %}false{% endif %};
