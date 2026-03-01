@@ -5850,6 +5850,7 @@ def gerer_eleves(request):
     return render(request, 'notes/gerer_eleves.html', context)
 
 @login_required
+@can_manage_notes
 def saisir_notes(request):
     """Saisir les notes"""
 
@@ -5864,7 +5865,7 @@ def saisir_notes(request):
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
-    
+
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
     periode_classement = request.GET.get('periode', '')
@@ -5872,7 +5873,7 @@ def saisir_notes(request):
     type_note = request.GET.get('type_note', '')
     periode = request.GET.get('periode', '')
     system_type = request.GET.get('system_type', 'semestre')
-    
+
     classe_selectionnee = None
     matiere_selectionnee = None
     matieres = []
@@ -5880,7 +5881,7 @@ def saisir_notes(request):
     evaluations = []
     niveau_enseignement = 'SECONDAIRE'
     est_maternelle = False
-    
+
     # Types de notes disponibles par défaut
     types_notes_disponibles = [
         ('mensuelle', 'Note Mensuelle'),
@@ -5889,12 +5890,16 @@ def saisir_notes(request):
         ('composition', 'Composition'),
         ('appreciation', 'Appréciation'),
     ]
-    
+
     # Périodes disponibles par défaut
     periodes_disponibles = []
-    
+
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
+        if ecole and classe_selectionnee.ecole != ecole:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
@@ -5969,18 +5974,22 @@ def saisir_notes(request):
         
         if matiere_id:
             matiere_selectionnee = get_object_or_404(MatiereNote, pk=matiere_id)
+            # Sécurité : vérifier que la matière appartient à la classe sélectionnée
+            if matiere_selectionnee.classe_id != classe_selectionnee.id:
+                from django.http import HttpResponseForbidden
+                return HttpResponseForbidden("Accès refusé : cette matière n'appartient pas à la classe sélectionnée.")
             if periode:
                 evaluations = Evaluation.objects.filter(matiere=matiere_selectionnee, periode=periode).order_by('date_evaluation')
             else:
                 evaluations = Evaluation.objects.none()
-            
+
             # Vérifier si des notes existent déjà pour cette période
             notes_existantes_count = 0
             if evaluations.exists():
                 notes_existantes_count = NoteEleve.objects.filter(
                     evaluation__in=evaluations
                 ).count()
-            
+
             # Récupérer les élèves
             try:
                 # Mapping spécial pour les classes avec noms différents (même que consulter_notes)
@@ -6198,9 +6207,10 @@ def saisir_notes(request):
     return render(request, 'notes/saisir_notes.html', context)
 
 @login_required
+@can_manage_notes
 def liste_saisie_pdf(request):
     """Générer un PDF de la liste de saisie des notes"""
-    from django.http import HttpResponse
+    from django.http import HttpResponse, HttpResponseForbidden
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
@@ -6209,21 +6219,29 @@ def liste_saisie_pdf(request):
     from reportlab.lib.enums import TA_CENTER
     import io
     import re
-    
+
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
     matiere_id = request.GET.get('matiere_id')
     periode = request.GET.get('periode')
     type_note = request.GET.get('type_note', '')
-    
+
     if not all([classe_id, matiere_id, periode]):
         return HttpResponse("Paramètres manquants: classe_id, matiere_id et periode sont requis", status=400)
-    
+
     try:
         classe = get_object_or_404(ClasseNote, pk=classe_id)
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
     except Exception as e:
         return HttpResponse(f"Erreur lors de la récupération des données: {str(e)}", status=400)
+
+    # Sécurité : Vérifier que la classe appartient à l'école de l'utilisateur
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else None
+    if ecole and classe.ecole != ecole:
+        return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
+    if ecole and matiere.classe.ecole != ecole:
+        return HttpResponseForbidden("Accès refusé : cette matière n'appartient pas à votre école.")
     
     # Déterminer le type de notation selon le niveau
     niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
@@ -6446,6 +6464,7 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
+@can_manage_notes
 def sauvegarder_notes(request):
     """Sauvegarder les notes saisies avec support des transactions"""
     from django.http import JsonResponse
@@ -6454,26 +6473,36 @@ def sauvegarder_notes(request):
     import json
     from decimal import Decimal, InvalidOperation
     import logging
-    
+
     logger = logging.getLogger(__name__)
-    
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-    
+
     try:
         data = json.loads(request.body)
         notes_data = data.get('notes', [])
         evaluation_id = data.get('evaluation_id')
         matiere_id = data.get('matiere_id')
         periode = data.get('periode')
-        
+
         # Validation des paramètres
         if not all([matiere_id, periode]):
             return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
-        
+
+        # Whitelist validation des périodes
+        VALID_PERIODES = {
+            'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
+            'AVRIL', 'MAI', 'JUIN',
+            'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
+            'SEMESTRE_1', 'SEMESTRE_2',
+        }
+        if str(periode).upper() not in VALID_PERIODES:
+            return JsonResponse({'success': False, 'error': f'Période invalide: {periode}'}, status=400)
+
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
-        
+
         # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
         user_profil = getattr(request.user, 'profil', None)
         ecole = user_profil.ecole if user_profil else None
@@ -6551,8 +6580,13 @@ def sauvegarder_notes(request):
                         erreurs.append(f"ID élève invalide: {eleve_id}")
                         continue
                     
-                    eleve = Eleve.objects.get(pk=int(eleve_id_clean))
-                    
+                    eleve = Eleve.objects.select_related('classe', 'classe__ecole').get(pk=int(eleve_id_clean))
+
+                    # Sécurité : vérifier que l'élève appartient à l'école de l'utilisateur
+                    if ecole and eleve.classe and eleve.classe.ecole != ecole:
+                        erreurs.append(f"Élève {eleve_id} n'appartient pas à votre école")
+                        continue
+
                     # Traiter selon le type de note
                     if 'appreciation' in note_data:
                         # Appréciation (pour maternelle) - utiliser AppreciationMaternelle
@@ -6728,9 +6762,10 @@ def sauvegarder_notes(request):
         return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
 
 @login_required
+@can_manage_notes
 def supprimer_notes(request):
     """Supprimer les notes d'une évaluation ou d'une période spécifique.
-    
+
     Gère tous les types de notes:
     - NoteMensuelle (notes mensuelles)
     - CompositionNote (compositions trimestrielles/semestrielles)
@@ -6743,25 +6778,41 @@ def supprimer_notes(request):
     from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
     import json
     import logging
-    
+
     logger = logging.getLogger(__name__)
-    
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-    
+
     try:
         data = json.loads(request.body)
         matiere_id = data.get('matiere_id')
         periode = data.get('periode')
         eleve_ids = data.get('eleve_ids', [])  # Liste optionnelle d'élèves spécifiques
         type_note = data.get('type_note', '')  # Type de note optionnel
-        
+
         # Validation des paramètres
         if not all([matiere_id, periode]):
             return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
-        
+
+        # Whitelist validation des périodes
+        VALID_PERIODES = {
+            'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
+            'AVRIL', 'MAI', 'JUIN',
+            'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
+            'SEMESTRE_1', 'SEMESTRE_2',
+        }
+        if str(periode).upper() not in VALID_PERIODES:
+            return JsonResponse({'success': False, 'error': f'Période invalide: {periode}'}, status=400)
+
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+
+        # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
+        user_profil = getattr(request.user, 'profil', None)
+        ecole = user_profil.ecole if user_profil else None
+        if ecole and matiere.classe.ecole != ecole:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
         
         # Définir les périodes par type
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
@@ -6857,11 +6908,11 @@ def consulter_notes(request):
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
-    
+
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
     periode_classement = request.GET.get('periode', '')
-    
+
     classe_selectionnee = None
     matieres = []
     eleves_toutes_notes = []
@@ -6869,9 +6920,13 @@ def consulter_notes(request):
     periodes_disponibles = []
     est_maternelle = False
     est_primaire = False
-    
+
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
+        if ecole and classe_selectionnee.ecole != ecole:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
