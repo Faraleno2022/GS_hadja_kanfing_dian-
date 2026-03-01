@@ -205,10 +205,14 @@ class EcheancierForm(forms.ModelForm):
         return cleaned_data
 
 class RechercheForm(forms.Form):
-    """Formulaire de recherche pour les paiements"""
-    
+    """Formulaire de recherche pour les paiements.
+
+    Accepte un paramètre ``user`` optionnel pour restreindre la liste des
+    écoles visibles à l'école de l'utilisateur (sécurité multi-tenant).
+    """
+
     STATUT_CHOICES = [('', 'Tous les statuts')] + Paiement.STATUT_CHOICES
-    
+
     recherche = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={
@@ -216,7 +220,7 @@ class RechercheForm(forms.Form):
             'placeholder': 'Rechercher par nom, matricule, numéro de reçu...'
         })
     )
-    
+
     statut = forms.ChoiceField(
         choices=STATUT_CHOICES,
         required=False,
@@ -224,7 +228,7 @@ class RechercheForm(forms.Form):
             'class': 'form-select'
         })
     )
-    
+
     type_paiement = forms.ModelChoiceField(
         queryset=TypePaiement.objects.filter(actif=True),
         required=False,
@@ -233,7 +237,7 @@ class RechercheForm(forms.Form):
             'class': 'form-select'
         })
     )
-    
+
     date_debut = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={
@@ -241,7 +245,7 @@ class RechercheForm(forms.Form):
             'type': 'date'
         })
     )
-    
+
     date_fin = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={
@@ -249,15 +253,34 @@ class RechercheForm(forms.Form):
             'type': 'date'
         })
     )
-    
+
     ecole = forms.ModelChoiceField(
-        queryset=Ecole.objects.all(),
+        queryset=Ecole.objects.none(),  # Sécurité: vide par défaut, rempli dans __init__
         required=False,
         empty_label="Toutes les écoles",
         widget=forms.Select(attrs={
             'class': 'form-select'
         })
     )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user is not None:
+            from utilisateurs.utils import user_is_admin, user_school
+            if user_is_admin(user):
+                # Les admins voient toutes les écoles
+                self.fields['ecole'].queryset = Ecole.objects.all()
+            else:
+                # Les utilisateurs normaux voient uniquement leur école
+                ecole_user = user_school(user)
+                if ecole_user:
+                    self.fields['ecole'].queryset = Ecole.objects.filter(pk=ecole_user.pk)
+                    self.fields['ecole'].initial = ecole_user
+                else:
+                    self.fields['ecole'].queryset = Ecole.objects.none()
+        else:
+            # Fallback sécurisé: aucune école visible
+            self.fields['ecole'].queryset = Ecole.objects.none()
 
     def clean(self):
         cleaned_data = super().clean()

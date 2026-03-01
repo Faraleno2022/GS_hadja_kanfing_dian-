@@ -807,6 +807,7 @@ def liste_paiements(request):
     titre_page = "Liste des paiements"
     q = (request.GET.get('q') or '').strip()
     statut = (request.GET.get('statut') or '').strip()
+    annee_filtre = (request.GET.get('annee') or '').strip()
     page = request.GET.get('page') or 1
 
     # Cache de l'école utilisateur
@@ -818,12 +819,23 @@ def liste_paiements(request):
         if user_school_obj:
             cache.set(user_school_cache_key, user_school_obj, CACHE_TTL['user_school'])
 
+    # Année scolaire active (utilisée par défaut si pas de filtre explicite)
+    ecole_for_annee = user_school_obj or user_school(request.user) if not user_is_admin(request.user) else None
+    annee_active = get_annee_active(request, ecole_for_annee) if ecole_for_annee else None
+
     # Queryset optimisé avec prefetch
     qs = OptimizedQueryMixin.get_optimized_paiements_queryset(user_school_obj)
-    
+
     # Restreindre par école de l'utilisateur (sauf admin)
     if not user_is_admin(request.user) and user_school_obj:
         qs = qs.filter(eleve__classe__ecole=user_school_obj)
+
+    # Filtre par année scolaire (via la classe de l'élève)
+    if annee_filtre:
+        qs = qs.filter(eleve__classe__annee_scolaire=annee_filtre)
+    elif annee_active:
+        # Par défaut, montrer uniquement l'année active
+        qs = qs.filter(eleve__classe__annee_scolaire=annee_active)
 
     # Filtre recherche optimisé
     if q:
@@ -1026,6 +1038,8 @@ def liste_paiements(request):
         'titre_page': titre_page,
         'q': q,
         'statut': statut,
+        'annee_filtre': annee_filtre or (annee_active or ''),
+        'annee_active': annee_active or '',
         'paiements': page_obj.object_list,
         'page_obj': page_obj,
         # Totaux pour l'UI (utilisés par _paiements_resultats.html)
@@ -3950,28 +3964,37 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:classe_detail', classe_id=classe_id)
     
-    # Récupérer les élèves avec des impayés
+    # Récupérer les élèves avec des impayés (optimisé: 1 requête au lieu de N+1)
     from .models import ConfigurationPaiement
     eleves_avec_impayes = []
-    
+
     try:
         config = ConfigurationPaiement.objects.get(classe=classe)
         montant_total = config.montant_inscription + config.montant_scolarite
-        
-        for eleve in Eleve.objects.filter(classe=classe, statut='ACTIF'):
-            paiements_effectues = Paiement.objects.filter(
-                eleve=eleve,
-                statut='VALIDE'
-            ).aggregate(total=Sum('montant'))['total'] or 0
-            
-            reste_a_payer = montant_total - paiements_effectues
-            
-            if reste_a_payer > 0:
+
+        # Annoter les paiements validés pour éviter N+1 requêtes
+        eleves_qs = (
+            Eleve.objects.filter(classe=classe, statut='ACTIF')
+            .select_related('classe', 'classe__ecole')
+            .annotate(
+                _total_paye=Coalesce(
+                    Sum('paiements__montant', filter=Q(paiements__statut='VALIDE')),
+                    Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                    output_field=DecimalField(max_digits=12, decimal_places=0),
+                ),
+            )
+        )
+        for eleve in eleves_qs:
+            reste = montant_total - eleve._total_paye
+            if reste > 0:
                 eleves_avec_impayes.append(eleve)
-    
+
     except ConfigurationPaiement.DoesNotExist:
         messages.warning(request, "Configuration de paiement non définie pour cette classe.")
-        eleves_avec_impayes = list(Eleve.objects.filter(classe=classe, statut='ACTIF'))
+        eleves_avec_impayes = list(
+            Eleve.objects.filter(classe=classe, statut='ACTIF')
+            .select_related('classe', 'classe__ecole')
+        )
     
     if not eleves_avec_impayes:
         messages.info(request, "Aucun élève avec des impayés dans cette classe.")
@@ -4006,11 +4029,14 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
     return response
 
 
-@login_required 
+@login_required
 def liste_eleves_impayes(request):
-    """Affiche la liste des élèves avec des impayés"""
+    """Affiche la liste des élèves avec des impayés.
+
+    Optimisé: utilise des annotations DB au lieu de boucler avec N+1 requêtes.
+    """
     from .models import ConfigurationPaiement
-    
+
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if user_is_superadmin(request.user):
         eleves = Eleve.objects.filter(statut='ACTIF')
@@ -4020,39 +4046,54 @@ def liste_eleves_impayes(request):
             eleves = Eleve.objects.none()
         else:
             eleves = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
-    
-    # Calculer les impayés pour chaque élève
+
+    # Annoter le montant total payé (validé) et le montant total dû via ConfigurationPaiement
+    # Sous-requête pour le montant total de la configuration de la classe
+    config_montant_sub = ConfigurationPaiement.objects.filter(
+        classe=OuterRef('classe')
+    ).values('classe').annotate(
+        total=F('montant_inscription') + F('montant_scolarite')
+    ).values('total')[:1]
+
+    eleves = (
+        eleves
+        .select_related('classe', 'classe__ecole')
+        .annotate(
+            _config_total=Coalesce(
+                Subquery(config_montant_sub, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+            _total_paye=Coalesce(
+                Sum('paiements__montant', filter=Q(paiements__statut='VALIDE')),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+        )
+        .annotate(
+            _reste_a_payer=F('_config_total') - F('_total_paye'),
+        )
+        # Uniquement les élèves avec un montant dû > 0 et un reste > 0
+        .filter(_config_total__gt=0, _reste_a_payer__gt=0)
+        .order_by('-_reste_a_payer')
+    )
+
     eleves_avec_soldes = []
-    
     for eleve in eleves:
-        try:
-            config = ConfigurationPaiement.objects.get(classe=eleve.classe)
-            montant_total = config.montant_inscription + config.montant_scolarite
-            
-            paiements_effectues = Paiement.objects.filter(
-                eleve=eleve,
-                statut='VALIDE'
-            ).aggregate(total=Sum('montant'))['total'] or 0
-            
-            reste_a_payer = montant_total - paiements_effectues
-            
-            if reste_a_payer > 0:
-                eleves_avec_soldes.append({
-                    'eleve': eleve,
-                    'montant_total': montant_total,
-                    'montant_paye': paiements_effectues,
-                    'reste_a_payer': reste_a_payer,
-                    'pourcentage_paye': int((paiements_effectues / montant_total * 100)) if montant_total > 0 else 0
-                })
-        except ConfigurationPaiement.DoesNotExist:
-            pass
-    
-    # Trier par reste à payer décroissant
-    eleves_avec_soldes.sort(key=lambda x: x['reste_a_payer'], reverse=True)
-    
+        montant_total = int(eleve._config_total)
+        montant_paye = int(eleve._total_paye)
+        reste = int(eleve._reste_a_payer)
+        eleves_avec_soldes.append({
+            'eleve': eleve,
+            'montant_total': montant_total,
+            'montant_paye': montant_paye,
+            'reste_a_payer': reste,
+            'pourcentage_paye': int((montant_paye / montant_total * 100)) if montant_total > 0 else 0,
+        })
+
     context = {
         'eleves_avec_soldes': eleves_avec_soldes,
-        'total_impayes': sum(e['reste_a_payer'] for e in eleves_avec_soldes)
+        'total_impayes': sum(e['reste_a_payer'] for e in eleves_avec_soldes),
     }
-    
+
     return render(request, 'paiements/liste_eleves_impayes.html', context)

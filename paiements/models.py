@@ -85,6 +85,9 @@ class Paiement(models.Model):
             models.Index(fields=['eleve', 'date_paiement']),
             models.Index(fields=['eleve', 'statut']),
             models.Index(fields=['statut', 'date_paiement']),
+            models.Index(fields=['numero_recu']),          # Recherche par numéro de reçu
+            models.Index(fields=['date_paiement']),         # Filtrage par date seule
+            models.Index(fields=['date_creation']),         # Tri par date de création
         ]
     
     def __str__(self):
@@ -196,7 +199,12 @@ class EcheancierPaiement(models.Model):
     class Meta:
         verbose_name = "Échéancier de paiement"
         verbose_name_plural = "Échéanciers de paiements"
-    
+        indexes = [
+            models.Index(fields=['annee_scolaire']),        # Filtrage par année
+            models.Index(fields=['statut']),                 # Filtrage par statut
+            models.Index(fields=['annee_scolaire', 'statut']),  # Combinaison fréquente
+        ]
+
     def __str__(self):
         return f"Échéancier {self.eleve.nom_complet} - {self.annee_scolaire}"
     
