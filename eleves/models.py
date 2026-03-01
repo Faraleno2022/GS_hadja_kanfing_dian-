@@ -604,24 +604,40 @@ class Eleve(models.Model):
     
     def _transferer_notes_vers_nouvelle_classe(self, ancienne_classe, nouvelle_classe):
         """
-        Transfère les notes de l'élève vers la nouvelle classe.
-        
+        Transfère TOUTES les notes de l'élève vers la nouvelle classe.
+
         Cherche les matières équivalentes (par code OU par nom) dans la nouvelle ClasseNote
         et met à jour les références des notes.
-        
+
+        Types transférés :
+        - NoteMensuelle (notes mensuelles)
+        - CompositionNote (compositions)
+        - AppreciationMaternelle (appréciations maternelle)
+        - NoteEleve (notes d'évaluation)
+        - EvaluationMaternelle + NoteMaternelle (évaluations maternelle complètes)
+        - BulletinMaternelle (bulletins maternelle)
+
         Returns:
-            int: Nombre de notes transférées
+            int: Nombre total de notes/éléments transférés
         """
-        from notes.models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, NoteEleve, Evaluation, AppreciationMaternelle, Classement
+        from notes.models import (
+            ClasseNote, MatiereNote,
+            NoteMensuelle, CompositionNote, NoteEleve, Evaluation,
+            AppreciationMaternelle, Classement,
+            EvaluationMaternelle, NoteMaternelle, BulletinMaternelle,
+        )
         from django.core.cache import cache
-        
+        import re as _re
+        import logging as _logging
+
+        _logger = _logging.getLogger(__name__)
         notes_transferees = 0
-        
+
         try:
-            # Trouver la ClasseNote correspondant à la nouvelle classe (élèves)
+            # ── Trouver la ClasseNote correspondant à la nouvelle classe ─────
             annee = nouvelle_classe.annee_scolaire
 
-            # Essai 1: correspondance exacte nom + année
+            # Essai 1 : correspondance exacte nom + année
             nouvelle_classe_note = ClasseNote.objects.filter(
                 ecole=nouvelle_classe.ecole,
                 nom__iexact=nouvelle_classe.nom,
@@ -629,7 +645,7 @@ class Eleve(models.Model):
                 actif=True
             ).first()
 
-            # Essai 2: correspondance nom sans année
+            # Essai 2 : correspondance nom sans filtre année
             if not nouvelle_classe_note:
                 nouvelle_classe_note = ClasseNote.objects.filter(
                     ecole=nouvelle_classe.ecole,
@@ -637,19 +653,26 @@ class Eleve(models.Model):
                     actif=True
                 ).first()
 
-            # Essai 3: correspondance partielle sur le nom (ex: "3ÈME ANNÉE A" contient "3")
+            # Essai 3 : correspondance par numéro de niveau (regex exact, pas icontains)
+            #   Ex: "3ÈME ANNÉE A" → cherche les ClasseNote dont le nom commence par "3"
+            #   IMPORTANT : regex ^\b3\b pour éviter que "3" matche "13"
             if not nouvelle_classe_note:
-                import re as _re
                 chiffres = _re.findall(r'\d+', nouvelle_classe.nom)
                 if chiffres:
-                    nouvelle_classe_note = ClasseNote.objects.filter(
+                    num = chiffres[0]
+                    # Chercher les classes qui commencent par ce numéro
+                    candidats = ClasseNote.objects.filter(
                         ecole=nouvelle_classe.ecole,
-                        nom__icontains=chiffres[0],
                         annee_scolaire=annee,
                         actif=True
-                    ).first()
+                    )
+                    pattern = _re.compile(rf'^{_re.escape(num)}(?:\s|È|E|è|e)', _re.IGNORECASE)
+                    for candidat in candidats:
+                        if pattern.match(candidat.nom.strip()):
+                            nouvelle_classe_note = candidat
+                            break
 
-            # Essai 4: correspondance par niveau
+            # Essai 4 : correspondance par niveau
             if not nouvelle_classe_note:
                 nouvelle_classe_note = ClasseNote.objects.filter(
                     ecole=nouvelle_classe.ecole,
@@ -659,10 +682,13 @@ class Eleve(models.Model):
                 ).first()
 
             if not nouvelle_classe_note:
-                # Pas de ClasseNote correspondante, on ne peut pas transférer
+                _logger.warning(
+                    f"Transfert notes élève {self.id}: aucune ClasseNote trouvée "
+                    f"pour '{nouvelle_classe.nom}' ({annee}). Notes non transférées."
+                )
                 return 0
-            
-            # Récupérer les matières de la nouvelle classe (indexées par code ET par nom)
+
+            # ── Indexer les matières de la nouvelle classe ────────────────────
             nouvelles_matieres_par_code = {}
             nouvelles_matieres_par_nom = {}
             for m in MatiereNote.objects.filter(classe=nouvelle_classe_note, actif=True):
@@ -670,63 +696,73 @@ class Eleve(models.Model):
                     nouvelles_matieres_par_code[m.code.upper()] = m
                 if m.nom:
                     nouvelles_matieres_par_nom[m.nom.upper().strip()] = m
-            
+
             def trouver_matiere_equivalente(ancienne_matiere):
-                """Trouve la matière équivalente par code ou par nom"""
+                """Trouve la matière équivalente par code, puis par nom."""
                 if not ancienne_matiere:
                     return None
-                # Chercher par code d'abord
+                # Priorité 1 : code exact
                 if ancienne_matiere.code:
                     code = ancienne_matiere.code.upper()
                     if code in nouvelles_matieres_par_code:
                         return nouvelles_matieres_par_code[code]
-                # Sinon chercher par nom
+                # Priorité 2 : nom exact
                 if ancienne_matiere.nom:
                     nom = ancienne_matiere.nom.upper().strip()
                     if nom in nouvelles_matieres_par_nom:
                         return nouvelles_matieres_par_nom[nom]
                 return None
-            
+
             if not nouvelles_matieres_par_code and not nouvelles_matieres_par_nom:
+                _logger.warning(
+                    f"Transfert notes élève {self.id}: ClasseNote '{nouvelle_classe_note.nom}' "
+                    f"n'a aucune matière active. Notes non transférées."
+                )
                 return 0
-            
-            # 1. Transférer les NoteMensuelle
+
+            notes_ignorees = 0
+
+            # ── 1. Transférer les NoteMensuelle ──────────────────────────────
             notes_mensuelles = NoteMensuelle.objects.filter(eleve=self).select_related('matiere')
             for note in notes_mensuelles:
                 nouvelle_matiere = trouver_matiere_equivalente(note.matiere)
                 if nouvelle_matiere:
-                    # Vérifier si une note existe déjà pour cette matière/mois/année
                     existe = NoteMensuelle.objects.filter(
                         eleve=self,
                         matiere=nouvelle_matiere,
                         mois=note.mois,
                         annee_scolaire=note.annee_scolaire
                     ).exclude(id=note.id).exists()
-                    
                     if not existe:
                         note.matiere = nouvelle_matiere
                         note.save(update_fields=['matiere'])
                         notes_transferees += 1
-            
-            # 2. Transférer les CompositionNote
+                    else:
+                        notes_ignorees += 1
+                else:
+                    notes_ignorees += 1
+
+            # ── 2. Transférer les CompositionNote ────────────────────────────
             compositions = CompositionNote.objects.filter(eleve=self).select_related('matiere')
             for comp in compositions:
                 nouvelle_matiere = trouver_matiere_equivalente(comp.matiere)
                 if nouvelle_matiere:
-                    # Vérifier si une composition existe déjà
                     existe = CompositionNote.objects.filter(
                         eleve=self,
                         matiere=nouvelle_matiere,
                         periode=comp.periode,
                         annee_scolaire=comp.annee_scolaire
                     ).exclude(id=comp.id).exists()
-                    
                     if not existe:
                         comp.matiere = nouvelle_matiere
                         comp.save(update_fields=['matiere'])
                         notes_transferees += 1
-            
-            # 3. Transférer les AppreciationMaternelle
+                    else:
+                        notes_ignorees += 1
+                else:
+                    notes_ignorees += 1
+
+            # ── 3. Transférer les AppreciationMaternelle ─────────────────────
             appreciations = AppreciationMaternelle.objects.filter(eleve=self).select_related('matiere')
             for appr in appreciations:
                 nouvelle_matiere = trouver_matiere_equivalente(appr.matiere)
@@ -737,42 +773,73 @@ class Eleve(models.Model):
                         trimestre=appr.trimestre,
                         annee_scolaire=appr.annee_scolaire
                     ).exclude(id=appr.id).exists()
-                    
                     if not existe:
                         appr.matiere = nouvelle_matiere
                         appr.save(update_fields=['matiere'])
                         notes_transferees += 1
-            
-            # 4. Transférer les NoteEleve (via Evaluation)
+                    else:
+                        notes_ignorees += 1
+                else:
+                    notes_ignorees += 1
+
+            # ── 4. Transférer les NoteEleve (via Evaluation) ─────────────────
             notes_eleve = NoteEleve.objects.filter(eleve=self).select_related('evaluation__matiere')
             for note_eleve in notes_eleve:
                 if note_eleve.evaluation and note_eleve.evaluation.matiere:
                     nouvelle_matiere = trouver_matiere_equivalente(note_eleve.evaluation.matiere)
                     if nouvelle_matiere:
-                        # Chercher une évaluation équivalente dans la nouvelle classe
                         eval_equivalente = Evaluation.objects.filter(
                             matiere=nouvelle_matiere,
                             type_evaluation=note_eleve.evaluation.type_evaluation,
                             periode=note_eleve.evaluation.periode
                         ).first()
-                        
                         if eval_equivalente:
                             existe = NoteEleve.objects.filter(
                                 eleve=self,
                                 evaluation=eval_equivalente
                             ).exclude(id=note_eleve.id).exists()
-                            
                             if not existe:
                                 note_eleve.evaluation = eval_equivalente
                                 note_eleve.save(update_fields=['evaluation'])
                                 notes_transferees += 1
-            
-            # 5. Supprimer les anciens classements (seront recalculés)
+                            else:
+                                notes_ignorees += 1
+                        else:
+                            notes_ignorees += 1
+                    else:
+                        notes_ignorees += 1
+
+            # ── 5. Transférer les EvaluationMaternelle + NoteMaternelle ──────
+            evals_maternelle = EvaluationMaternelle.objects.filter(
+                eleve=self
+            ).prefetch_related('notes_matieres')
+            for eval_mat in evals_maternelle:
+                # Mettre à jour la classe de l'évaluation
+                eval_mat.classe = nouvelle_classe_note
+                eval_mat.save(update_fields=['classe'])
+                notes_transferees += 1
+                # Transférer les NoteMaternelle liées vers les nouvelles matières
+                for note_mat in eval_mat.notes_matieres.all():
+                    nouvelle_matiere = trouver_matiere_equivalente(note_mat.matiere)
+                    if nouvelle_matiere:
+                        note_mat.matiere = nouvelle_matiere
+                        note_mat.save(update_fields=['matiere'])
+                        notes_transferees += 1
+                    else:
+                        notes_ignorees += 1
+
+            # ── 6. Transférer les BulletinMaternelle ─────────────────────────
+            bulletins_mat = BulletinMaternelle.objects.filter(eleve=self)
+            for bulletin in bulletins_mat:
+                bulletin.classe = nouvelle_classe_note
+                bulletin.save(update_fields=['classe'])
+                notes_transferees += 1
+
+            # ── 7. Supprimer les anciens classements (seront recalculés) ─────
             Classement.objects.filter(eleve=self).delete()
-            
-            # 6. Invalider le cache des rangs pour les deux classes
+
+            # ── 8. Invalider le cache des rangs pour les deux classes ────────
             try:
-                # Invalider le cache de l'ancienne classe
                 if ancienne_classe:
                     ancienne_classe_note = ClasseNote.objects.filter(
                         ecole=ancienne_classe.ecole,
@@ -780,35 +847,41 @@ class Eleve(models.Model):
                         actif=True
                     ).first()
                     if ancienne_classe_note:
-                        cache_patterns = [
+                        for pattern in [
                             f'rangs_classe_{ancienne_classe_note.id}_*',
                             f'classement_*_{ancienne_classe_note.id}_*',
-                        ]
-                        for pattern in cache_patterns:
+                        ]:
                             try:
                                 cache.delete_pattern(pattern)
-                            except:
+                            except Exception:
                                 pass
-                
-                # Invalider le cache de la nouvelle classe
-                cache_patterns = [
+
+                for pattern in [
                     f'rangs_classe_{nouvelle_classe_note.id}_*',
                     f'classement_*_{nouvelle_classe_note.id}_*',
-                ]
-                for pattern in cache_patterns:
+                ]:
                     try:
                         cache.delete_pattern(pattern)
-                    except:
+                    except Exception:
                         pass
-            except:
+            except Exception:
                 pass  # Le cache n'est pas critique
-            
+
+            # ── Log d'avertissement si des notes n'ont pas pu être transférées
+            if notes_ignorees > 0:
+                _logger.warning(
+                    f"Transfert notes élève {self.id} ({self.prenom} {self.nom}): "
+                    f"{notes_transferees} transférée(s), {notes_ignorees} ignorée(s) "
+                    f"(matière ou évaluation équivalente non trouvée dans "
+                    f"'{nouvelle_classe_note.nom}')."
+                )
+
         except Exception as e:
-            # Log l'erreur mais ne pas bloquer le changement de classe
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Erreur lors du transfert des notes pour l'élève {self.id}: {e}")
-        
+            _logger.error(
+                f"Erreur lors du transfert des notes pour l'élève {self.id}: {e}",
+                exc_info=True
+            )
+
         return notes_transferees
 
 class HistoriqueEleve(models.Model):
