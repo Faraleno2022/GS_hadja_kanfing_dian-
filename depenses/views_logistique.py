@@ -22,36 +22,46 @@ from .forms import (
 @login_required
 def dashboard_logistique(request):
     """Dashboard principal de la logistique"""
-    
+    from utilisateurs.utils import user_school
+
+    ecole = user_school(request.user)
+
+    # Filtres de base par école
+    articles_qs = Article.objects.filter(actif=True)
+    biens_qs = BienEtablissement.objects.filter(actif=True)
+    mouvements_qs = MouvementStock.objects.all()
+    if ecole:
+        articles_qs = articles_qs.filter(cree_par__profil__ecole=ecole)
+        biens_qs = biens_qs.filter(cree_par__profil__ecole=ecole)
+        mouvements_qs = mouvements_qs.filter(cree_par__profil__ecole=ecole)
+
     # Statistiques générales
-    total_articles = Article.objects.filter(actif=True).count()
-    total_biens = BienEtablissement.objects.filter(actif=True).count()
-    
+    total_articles = articles_qs.count()
+    total_biens = biens_qs.count()
+
     # Valeur totale du stock
-    valeur_stock = Article.objects.filter(actif=True).aggregate(
+    valeur_stock = articles_qs.aggregate(
         total=Sum('stock_actuel') * Sum('prix_unitaire')
     )
-    
+
     # Articles en alerte (stock minimum)
-    articles_alerte = Article.objects.filter(
-        actif=True,
+    articles_alerte = articles_qs.filter(
         stock_actuel__lte=models.F('stock_minimum')
     ).count()
-    
+
     # Derniers mouvements
-    derniers_mouvements = MouvementStock.objects.select_related(
+    derniers_mouvements = mouvements_qs.select_related(
         'article', 'cree_par'
     ).order_by('-date_mouvement')[:10]
-    
+
     # Répartition par catégorie
     repartition_categories = CategorieArticle.objects.annotate(
         nb_articles=Count('articles'),
         valeur_totale=Sum('articles__stock_actuel') * Sum('articles__prix_unitaire')
     ).filter(actif=True)
-    
+
     # Biens nécessitant une maintenance
-    biens_maintenance = BienEtablissement.objects.filter(
-        actif=True,
+    biens_maintenance = biens_qs.filter(
         date_prochaine_maintenance__lte=date.today()
     ).count()
     
@@ -72,14 +82,19 @@ def dashboard_logistique(request):
 @login_required
 def liste_articles(request):
     """Liste des articles en stock"""
-    
+    from utilisateurs.utils import user_school
+
     # Filtres
     q = request.GET.get('q', '')
     categorie_id = request.GET.get('categorie', '')
     etat = request.GET.get('etat', '')
     alerte = request.GET.get('alerte', '')
-    
+
     articles = Article.objects.select_related('categorie').filter(actif=True)
+    # Sécurité : filtrer par école
+    ecole = user_school(request.user)
+    if ecole:
+        articles = articles.filter(cree_par__profil__ecole=ecole)
     
     if q:
         articles = articles.filter(
@@ -116,13 +131,18 @@ def liste_articles(request):
 @login_required
 def liste_biens(request):
     """Liste des biens de l'établissement"""
-    
+    from utilisateurs.utils import user_school
+
     # Filtres
     q = request.GET.get('q', '')
     type_bien = request.GET.get('type_bien', '')
     etat = request.GET.get('etat', '')
-    
+
     biens = BienEtablissement.objects.filter(actif=True)
+    # Sécurité : filtrer par école
+    ecole = user_school(request.user)
+    if ecole:
+        biens = biens.filter(cree_par__profil__ecole=ecole)
     
     if q:
         biens = biens.filter(
@@ -213,16 +233,21 @@ def modifier_bien(request, bien_id):
 @login_required
 def liste_mouvements(request):
     """Liste des mouvements de stock"""
-    
+    from utilisateurs.utils import user_school
+
     # Filtres
     article_id = request.GET.get('article', '')
     type_mouvement = request.GET.get('type', '')
     date_debut = request.GET.get('date_debut', '')
     date_fin = request.GET.get('date_fin', '')
-    
+
     mouvements = MouvementStock.objects.select_related(
         'article', 'cree_par'
     ).all()
+    # Sécurité : filtrer par école
+    ecole = user_school(request.user)
+    if ecole:
+        mouvements = mouvements.filter(cree_par__profil__ecole=ecole)
     
     if article_id:
         mouvements = mouvements.filter(article_id=article_id)

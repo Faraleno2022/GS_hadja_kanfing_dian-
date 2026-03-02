@@ -17,44 +17,55 @@ from eleves.models import Eleve
 @login_required
 def dashboard_bibliotheque(request):
     """Dashboard principal de la bibliothèque"""
-    
+    from utilisateurs.utils import user_school
+
+    ecole = user_school(request.user)
+
+    # Filtres de base par école
+    livres_qs = Livre.objects.filter(actif=True)
+    emprunts_qs = Emprunt.objects.all()
+    reservations_qs = Reservation.objects.all()
+    if ecole:
+        livres_qs = livres_qs.filter(cree_par__profil__ecole=ecole)
+        emprunts_qs = emprunts_qs.filter(cree_par__profil__ecole=ecole)
+        reservations_qs = reservations_qs.filter(cree_par__profil__ecole=ecole)
+
     # Statistiques générales
-    total_livres = Livre.objects.filter(actif=True).count()
-    total_exemplaires = Livre.objects.filter(actif=True).aggregate(
+    total_livres = livres_qs.count()
+    total_exemplaires = livres_qs.aggregate(
         total=Sum('nombre_exemplaires')
     )['total'] or 0
-    
-    livres_disponibles = Livre.objects.filter(
-        actif=True,
+
+    livres_disponibles = livres_qs.filter(
         statut='DISPONIBLE',
         exemplaires_disponibles__gt=0
     ).count()
-    
+
     # Emprunts
-    emprunts_en_cours = Emprunt.objects.filter(statut='EN_COURS').count()
-    emprunts_en_retard = Emprunt.objects.filter(statut='EN_RETARD').count()
-    
+    emprunts_en_cours = emprunts_qs.filter(statut='EN_COURS').count()
+    emprunts_en_retard = emprunts_qs.filter(statut='EN_RETARD').count()
+
     # Réservations
-    reservations_actives = Reservation.objects.filter(
+    reservations_actives = reservations_qs.filter(
         statut__in=['EN_ATTENTE', 'DISPONIBLE']
     ).count()
-    
+
     # Pénalités à recouvrer
-    penalites_total = Emprunt.objects.filter(
+    penalites_total = emprunts_qs.filter(
         penalite_payee=False,
         montant_penalite__gt=0
     ).aggregate(total=Sum('montant_penalite'))['total'] or 0
-    
+
     # Derniers emprunts
-    derniers_emprunts = Emprunt.objects.select_related(
+    derniers_emprunts = emprunts_qs.select_related(
         'livre', 'eleve', 'cree_par'
     ).order_by('-date_emprunt')[:10]
-    
+
     # Livres les plus empruntés
-    livres_populaires = Livre.objects.annotate(
+    livres_populaires = livres_qs.annotate(
         nb_emprunts=Count('emprunts')
-    ).filter(actif=True).order_by('-nb_emprunts')[:10]
-    
+    ).order_by('-nb_emprunts')[:10]
+
     # Répartition par catégorie
     repartition_categories = CategorieLivre.objects.annotate(
         nb_livres=Count('livres')
@@ -80,14 +91,19 @@ def dashboard_bibliotheque(request):
 @login_required
 def catalogue_livres(request):
     """Catalogue des livres"""
-    
+    from utilisateurs.utils import user_school
+
     # Filtres
     q = request.GET.get('q', '')
     categorie_id = request.GET.get('categorie', '')
     statut = request.GET.get('statut', '')
     langue = request.GET.get('langue', '')
-    
+
     livres = Livre.objects.select_related('categorie').filter(actif=True)
+    # Sécurité : filtrer par école
+    ecole = user_school(request.user)
+    if ecole:
+        livres = livres.filter(cree_par__profil__ecole=ecole)
     
     if q:
         livres = livres.filter(
@@ -126,16 +142,21 @@ def catalogue_livres(request):
 @login_required
 def liste_emprunts(request):
     """Liste des emprunts"""
-    
+    from utilisateurs.utils import user_school
+
     # Filtres
     statut = request.GET.get('statut', '')
     eleve_id = request.GET.get('eleve', '')
     date_debut = request.GET.get('date_debut', '')
     date_fin = request.GET.get('date_fin', '')
-    
+
     emprunts = Emprunt.objects.select_related(
         'livre', 'eleve', 'eleve__classe', 'cree_par'
     ).all()
+    # Sécurité : filtrer par école
+    ecole = user_school(request.user)
+    if ecole:
+        emprunts = emprunts.filter(cree_par__profil__ecole=ecole)
     
     if statut:
         emprunts = emprunts.filter(statut=statut)

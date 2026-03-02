@@ -88,11 +88,11 @@ class Depense(models.Model):
         verbose_name="Taux TVA (%)"
     )
     montant_tva = models.DecimalField(
-        max_digits=12, decimal_places=0, default=Decimal('0'),
+        max_digits=12, decimal_places=2, default=Decimal('0'),
         verbose_name="Montant TVA (GNF)"
     )
     montant_ttc = models.DecimalField(
-        max_digits=12, decimal_places=0, default=Decimal('0'),
+        max_digits=12, decimal_places=2, default=Decimal('0'),
         verbose_name="Montant TTC (GNF)"
     )
     
@@ -128,11 +128,15 @@ class Depense(models.Model):
         return f"{self.numero_facture} - {self.libelle} - {self.montant_ttc:,.0f} GNF"
     
     def save(self, *args, **kwargs):
-        # Calcul automatique de la TVA et du TTC
+        from decimal import ROUND_HALF_UP
+        # Calcul automatique de la TVA et du TTC avec précision Decimal
         if self.montant_ht and self.taux_tva:
-            self.montant_tva = (self.montant_ht * self.taux_tva) / 100
+            self.montant_tva = ((self.montant_ht * self.taux_tva) / Decimal('100')).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
             self.montant_ttc = self.montant_ht + self.montant_tva
         elif self.montant_ht:
+            self.montant_tva = Decimal('0')
             self.montant_ttc = self.montant_ht
         super().save(*args, **kwargs)
     

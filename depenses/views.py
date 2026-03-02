@@ -173,22 +173,25 @@ def detail_depense(request, depense_id):
 @can_add_expenses
 def ajouter_depense(request):
     """Ajouter une nouvelle dépense"""
+    from django.db import transaction
+
     if request.method == 'POST':
         form = DepenseForm(request.POST)
         if form.is_valid():
-            depense = form.save(commit=False)
-            depense.cree_par = request.user
-            depense.save()
-            
-            # Créer l'historique
-            HistoriqueDepense.objects.create(
-                depense=depense,
-                action='CREATION',
-                description=f'Dépense créée: {depense.libelle}',
-                nouveau_statut=depense.statut,
-                utilisateur=request.user
-            )
-            
+            with transaction.atomic():
+                depense = form.save(commit=False)
+                depense.cree_par = request.user
+                depense.save()
+
+                # Créer l'historique
+                HistoriqueDepense.objects.create(
+                    depense=depense,
+                    action='CREATION',
+                    description=f'Dépense créée: {depense.libelle}',
+                    nouveau_statut=depense.statut,
+                    utilisateur=request.user
+                )
+
             messages.success(request, 'Dépense ajoutée avec succès.')
             return redirect('depenses:detail_depense', depense_id=depense.id)
     else:
@@ -217,21 +220,23 @@ def modifier_depense(request, depense_id):
         return redirect('depenses:detail_depense', depense_id=depense.id)
     
     if request.method == 'POST':
+        from django.db import transaction
         form = DepenseForm(request.POST, instance=depense)
         if form.is_valid():
-            ancien_statut = depense.statut
-            depense = form.save()
-            
-            # Créer l'historique
-            HistoriqueDepense.objects.create(
-                depense=depense,
-                action='MODIFICATION',
-                description=f'Dépense modifiée: {depense.libelle}',
-                ancien_statut=ancien_statut,
-                nouveau_statut=depense.statut,
-                utilisateur=request.user
-            )
-            
+            with transaction.atomic():
+                ancien_statut = depense.statut
+                depense = form.save()
+
+                # Créer l'historique
+                HistoriqueDepense.objects.create(
+                    depense=depense,
+                    action='MODIFICATION',
+                    description=f'Dépense modifiée: {depense.libelle}',
+                    ancien_statut=ancien_statut,
+                    nouveau_statut=depense.statut,
+                    utilisateur=request.user
+                )
+
             messages.success(request, 'Dépense modifiée avec succès.')
             return redirect('depenses:detail_depense', depense_id=depense.id)
     else:
@@ -250,65 +255,77 @@ def modifier_depense(request, depense_id):
 @require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def valider_depense(request, depense_id):
     """Valider une dépense"""
+    from django.db import transaction
+
     if request.method == 'POST':
         qs = Depense.objects.all()
         if not user_is_admin(request.user):
             qs = qs.filter(cree_par__profil__ecole=user_school(request.user))
         depense = get_object_or_404(qs, id=depense_id)
-        
+
         if depense.statut != 'EN_ATTENTE':
             messages.error(request, 'Seules les dépenses en attente peuvent être validées.')
         else:
-            ancien_statut = depense.statut
-            depense.statut = 'VALIDEE'
-            depense.valide_par = request.user
-            depense.date_validation = timezone.now()
-            depense.save()
-            
-            # Créer l'historique
-            HistoriqueDepense.objects.create(
-                depense=depense,
-                action='VALIDATION',
-                description=f'Dépense validée: {depense.libelle}',
-                ancien_statut=ancien_statut,
-                nouveau_statut=depense.statut,
-                utilisateur=request.user
-            )
-            
-            messages.success(request, 'Dépense validée avec succès.')
-    
+            with transaction.atomic():
+                # Verrouiller la ligne pour éviter les validations concurrentes
+                depense_locked = Depense.objects.select_for_update().get(pk=depense.pk)
+                if depense_locked.statut != 'EN_ATTENTE':
+                    messages.warning(request, 'Cette dépense a déjà été traitée.')
+                else:
+                    ancien_statut = depense_locked.statut
+                    depense_locked.statut = 'VALIDEE'
+                    depense_locked.valide_par = request.user
+                    depense_locked.date_validation = timezone.now()
+                    depense_locked.save()
+
+                    HistoriqueDepense.objects.create(
+                        depense=depense_locked,
+                        action='VALIDATION',
+                        description=f'Dépense validée: {depense_locked.libelle}',
+                        ancien_statut=ancien_statut,
+                        nouveau_statut=depense_locked.statut,
+                        utilisateur=request.user
+                    )
+                    messages.success(request, 'Dépense validée avec succès.')
+
     return redirect('depenses:detail_depense', depense_id=depense_id)
 
 @login_required
 @require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def marquer_payee(request, depense_id):
     """Marquer une dépense comme payée"""
+    from django.db import transaction
+
     if request.method == 'POST':
         qs = Depense.objects.all()
         if not user_is_admin(request.user):
             qs = qs.filter(cree_par__profil__ecole=user_school(request.user))
         depense = get_object_or_404(qs, id=depense_id)
-        
+
         if depense.statut != 'VALIDEE':
             messages.error(request, 'Seules les dépenses validées peuvent être marquées comme payées.')
         else:
-            ancien_statut = depense.statut
-            depense.statut = 'PAYEE'
-            depense.date_paiement = timezone.now().date()
-            depense.save()
-            
-            # Créer l'historique
-            HistoriqueDepense.objects.create(
-                depense=depense,
-                action='PAIEMENT',
-                description=f'Dépense payée: {depense.libelle}',
-                ancien_statut=ancien_statut,
-                nouveau_statut=depense.statut,
-                utilisateur=request.user
-            )
-            
-            messages.success(request, 'Dépense marquée comme payée.')
-    
+            with transaction.atomic():
+                # Verrouiller la ligne pour éviter les doubles paiements
+                depense_locked = Depense.objects.select_for_update().get(pk=depense.pk)
+                if depense_locked.statut != 'VALIDEE':
+                    messages.warning(request, 'Cette dépense a déjà été traitée.')
+                else:
+                    ancien_statut = depense_locked.statut
+                    depense_locked.statut = 'PAYEE'
+                    depense_locked.date_paiement = timezone.now().date()
+                    depense_locked.save()
+
+                    HistoriqueDepense.objects.create(
+                        depense=depense_locked,
+                        action='PAIEMENT',
+                        description=f'Dépense payée: {depense_locked.libelle}',
+                        ancien_statut=ancien_statut,
+                        nouveau_statut=depense_locked.statut,
+                        utilisateur=request.user
+                    )
+                    messages.success(request, 'Dépense marquée comme payée.')
+
     return redirect('depenses:detail_depense', depense_id=depense_id)
 
 @login_required
@@ -401,6 +418,11 @@ def supprimer_depense(request, depense_id):
     depense = get_object_or_404(qs, id=depense_id)
     
     if request.method == 'POST':
+        # Interdire la suppression des dépenses validées ou payées
+        if depense.statut in ['PAYEE', 'VALIDEE']:
+            messages.error(request, 'Impossible de supprimer une dépense validée ou payée.')
+            return redirect('depenses:detail_depense', depense_id=depense.id)
+
         numero_facture = depense.numero_facture
         libelle = depense.libelle
         depense.delete()
