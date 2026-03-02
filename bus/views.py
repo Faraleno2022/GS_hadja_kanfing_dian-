@@ -31,9 +31,16 @@ def tableau_bord(request):
     if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
+    today = timezone.localdate()
     total = qs.count()
-    exp = sum(1 for a in qs if a.est_expire)
-    proche = sum(1 for a in qs if a.est_proche_expiration)
+    # Optimisation : éviter de charger tous les objets en mémoire
+    exp = qs.filter(date_expiration__lt=today).count()
+    proche = 0
+    for date_exp, alerte_jours in qs.values_list('date_expiration', 'alerte_avant_jours'):
+        if date_exp and date_exp >= today:
+            delta = (date_exp - today).days
+            if 0 <= delta <= (alerte_jours or 7):
+                proche += 1
 
     context = {
         'titre_page': 'Abonnements Bus',
@@ -167,6 +174,15 @@ def abonnement_create(request):
             return redirect('bus:liste')
     else:
         form = AbonnementBusForm(initial=initial)
+
+    # Sécurité : filtrer les élèves par école de l'utilisateur
+    if not user_is_superadmin(request.user):
+        form.fields['eleve'].queryset = filter_by_user_school(
+            Eleve.objects.all(),
+            request.user,
+            'classe__ecole'
+        )
+
     return render(request, 'bus/form.html', {'form': form, 'titre_page': 'Nouvel abonnement Bus'})
 
 
@@ -182,6 +198,15 @@ def abonnement_edit(request, abo_id):
             return redirect('bus:liste')
     else:
         form = AbonnementBusForm(instance=abo)
+
+    # Sécurité : filtrer les élèves par école de l'utilisateur
+    if not user_is_superadmin(request.user):
+        form.fields['eleve'].queryset = filter_by_user_school(
+            Eleve.objects.all(),
+            request.user,
+            'classe__ecole'
+        )
+
     return render(request, 'bus/form.html', {'form': form, 'titre_page': 'Modifier abonnement Bus'})
 
 

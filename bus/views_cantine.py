@@ -37,15 +37,24 @@ def tableau_bord_cantine(request):
     
     # Alertes
     today = timezone.localdate()
-    
-    # Abonnements expirés (non marqués comme EXPIRE)
-    abonnements_expires = [a for a in qs.filter(statut='ACTIF') if a.est_expire]
-    
-    # Abonnements proches de l'expiration (dans les 7 jours)
-    abonnements_proche_expiration = [a for a in qs.filter(statut='ACTIF') if a.est_proche_expiration and not a.est_expire]
-    
+    from datetime import timedelta
+
+    # Abonnements expirés (ACTIF mais date dépassée) — requête DB au lieu de boucle Python
+    abonnements_expires = qs.filter(statut='ACTIF', date_expiration__lt=today)
+
+    # Abonnements proches de l'expiration (dans les 7 jours, pas encore expirés)
+    abonnements_proche_expiration = qs.filter(
+        statut='ACTIF',
+        date_expiration__gte=today,
+        date_expiration__lte=today + timedelta(days=7)
+    )
+
     # Abonnements critiques (expire dans 3 jours ou moins)
-    abonnements_critiques = [a for a in abonnements_proche_expiration if a.jours_restants <= 3]
+    abonnements_critiques = qs.filter(
+        statut='ACTIF',
+        date_expiration__gte=today,
+        date_expiration__lte=today + timedelta(days=3)
+    )
     
     # Statistiques par type de repas
     stats_type_repas = {

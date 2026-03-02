@@ -180,16 +180,33 @@ whatsapp_bus_sender = WhatsAppBusSender()
 @login_required
 def apercu_message_whatsapp_abonnement(request):
     """Aperçu du message WhatsApp pour un abonnement bus (confirmation/reçu)"""
+    from utilisateurs.utils import user_is_superadmin, filter_by_user_school
+
     try:
         abo_id = request.GET.get('abo_id')
-        
+
         if not abo_id:
             return JsonResponse({
                 'success': False,
                 'error': 'ID abonnement manquant'
             })
-        
-        abonnement = get_object_or_404(AbonnementBus, id=abo_id)
+
+        abonnement = get_object_or_404(
+            AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'),
+            id=abo_id
+        )
+
+        # Sécurité : vérifier l'appartenance à l'école de l'utilisateur
+        if not user_is_superadmin(request.user):
+            if not filter_by_user_school(
+                AbonnementBus.objects.filter(pk=abonnement.pk),
+                request.user,
+                'eleve__classe__ecole'
+            ).exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Accès refusé'
+                }, status=403)
         eleve = abonnement.eleve
         telephone = whatsapp_bus_sender._get_telephone_parent(eleve)
         
@@ -245,16 +262,33 @@ def apercu_message_whatsapp_abonnement(request):
 @login_required
 def apercu_message_whatsapp_expiration(request):
     """Aperçu du message WhatsApp pour une alerte d'expiration"""
+    from utilisateurs.utils import user_is_superadmin, filter_by_user_school
+
     try:
         abo_id = request.GET.get('abo_id')
-        
+
         if not abo_id:
             return JsonResponse({
                 'success': False,
                 'error': 'ID abonnement manquant'
             })
-        
-        abonnement = get_object_or_404(AbonnementBus, id=abo_id)
+
+        abonnement = get_object_or_404(
+            AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'),
+            id=abo_id
+        )
+
+        # Sécurité : vérifier l'appartenance à l'école de l'utilisateur
+        if not user_is_superadmin(request.user):
+            if not filter_by_user_school(
+                AbonnementBus.objects.filter(pk=abonnement.pk),
+                request.user,
+                'eleve__classe__ecole'
+            ).exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Accès refusé'
+                }, status=403)
         eleve = abonnement.eleve
         telephone = whatsapp_bus_sender._get_telephone_parent(eleve)
         
