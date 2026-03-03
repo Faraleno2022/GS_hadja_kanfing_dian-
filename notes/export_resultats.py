@@ -318,6 +318,71 @@ def exporter_resultats_pdf(request):
             stats_table.setStyle(stats_style)
             elements.append(stats_table)
         
+        # ── Zone de signature selon le niveau scolaire ──
+        elements.append(Spacer(1, 1*cm))
+
+        # Déterminer le titre du signataire selon le niveau
+        if est_maternelle:
+            signataire_titre = "La Coordinatrice de la Maternelle"
+        elif est_primaire:
+            signataire_titre = "Le Directeur du Primaire"
+        else:
+            signataire_titre = "Le Censeur de l'Établissement"
+
+        from datetime import datetime
+        from reportlab.lib.enums import TA_RIGHT
+
+        # Ligne de séparation
+        sep_style = ParagraphStyle(
+            'Separator', parent=styles['Normal'],
+            fontSize=6, textColor=colors.HexColor('#aaaaaa'),
+            alignment=TA_CENTER, spaceBefore=6, spaceAfter=10
+        )
+        elements.append(Paragraph("─" * 120, sep_style))
+
+        # Bloc signature aligné à droite
+        sig_title_style = ParagraphStyle(
+            'SigTitle', parent=styles['Normal'],
+            fontSize=9, fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#2b3e50'),
+            alignment=TA_RIGHT, spaceAfter=4
+        )
+        elements.append(Paragraph("VISA ET SIGNATURE :", sig_title_style))
+        elements.append(Spacer(1, 0.3*cm))
+
+        # Titre du signataire
+        sig_name_style = ParagraphStyle(
+            'SigName', parent=styles['Normal'],
+            fontSize=11, fontName='Helvetica-Bold',
+            alignment=TA_RIGHT, spaceAfter=2
+        )
+        elements.append(Paragraph(signataire_titre, sig_name_style))
+
+        # Ville et date
+        sig_date_style = ParagraphStyle(
+            'SigDate', parent=styles['Normal'],
+            fontSize=9, fontName='Helvetica-Oblique',
+            textColor=colors.HexColor('#666666'),
+            alignment=TA_RIGHT, spaceAfter=20
+        )
+        date_str = datetime.now().strftime('%d/%m/%Y')
+        elements.append(Paragraph(f"Conakry, le {date_str}", sig_date_style))
+
+        # Ligne de signature (trait) + mention
+        sig_line_style = ParagraphStyle(
+            'SigLine', parent=styles['Normal'],
+            fontSize=10, alignment=TA_RIGHT, spaceAfter=4
+        )
+        elements.append(Paragraph("____________________________", sig_line_style))
+
+        sig_mention_style = ParagraphStyle(
+            'SigMention', parent=styles['Normal'],
+            fontSize=8, fontName='Helvetica-Oblique',
+            textColor=colors.HexColor('#888888'),
+            alignment=TA_RIGHT
+        )
+        elements.append(Paragraph("(Signature et cachet)", sig_mention_style))
+
         # Construire le PDF
         doc.build(elements)
         buffer.seek(0)
