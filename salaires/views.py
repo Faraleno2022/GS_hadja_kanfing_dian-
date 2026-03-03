@@ -216,9 +216,9 @@ def export_enseignants_csv(request):
     statut = request.GET.get('statut', '')
 
     ecole_user = _ecole_utilisateur(request)
+    restreindre = not user_is_admin(request.user) and ecole_user is not None
     enseignants = Enseignant.objects.select_related('ecole')
-    # Sécurité : toujours filtrer par école de l'utilisateur
-    if ecole_user:
+    if restreindre:
         enseignants = enseignants.filter(ecole=ecole_user)
     if search:
         enseignants = enseignants.filter(
@@ -226,7 +226,7 @@ def export_enseignants_csv(request):
             Q(prenoms__icontains=search) |
             Q(email__icontains=search)
         )
-    if ecole_id and not ecole_user:
+    if ecole_id:
         enseignants = enseignants.filter(ecole_id=ecole_id)
     if type_enseignant:
         enseignants = enseignants.filter(type_enseignant=type_enseignant)
@@ -268,9 +268,9 @@ def export_enseignants_pdf(request):
     statut = request.GET.get('statut', '')
 
     ecole_user = _ecole_utilisateur(request)
+    restreindre = not user_is_admin(request.user) and ecole_user is not None
     enseignants = Enseignant.objects.select_related('ecole')
-    # Sécurité : toujours filtrer par école de l'utilisateur
-    if ecole_user:
+    if restreindre:
         enseignants = enseignants.filter(ecole=ecole_user)
     if search:
         enseignants = enseignants.filter(
@@ -278,7 +278,7 @@ def export_enseignants_pdf(request):
             Q(prenoms__icontains=search) |
             Q(email__icontains=search)
         )
-    if ecole_id and not ecole_user:
+    if ecole_id:
         enseignants = enseignants.filter(ecole_id=ecole_id)
     if type_enseignant:
         enseignants = enseignants.filter(type_enseignant=type_enseignant)
@@ -884,82 +884,86 @@ def calculer_salaires(request, periode_id):
         messages.error(request, "Impossible de calculer les salaires d'une période clôturée.")
         return redirect('salaires:etats_salaire')
     
-    # Accepter GET et POST pour le calcul
-    if request.method in ['GET', 'POST']:
-        from django.db import transaction
+    # ── Sécurité: restreindre au POST uniquement (empêche CSRF via GET) ──
+    if request.method != 'POST':
+        messages.error(request, "Le calcul des salaires nécessite une requête POST.")
+        return redirect('salaires:etats_salaire')
+
+    if request.method == 'POST':
         try:
             # Récupérer tous les enseignants actifs de l'école
             enseignants = Enseignant.objects.filter(
                 ecole=periode.ecole,
                 statut='ACTIF'
             )
-
+            
             calculs_effectues = 0
-
-            with transaction.atomic():
-                for enseignant in enseignants:
-                    # Vérifier si l'état de salaire existe déjà
-                    etat_salaire, created = EtatSalaire.objects.get_or_create(
-                        enseignant=enseignant,
-                        periode=periode,
-                        defaults={
-                            'calcule_par': request.user,
-                            'salaire_base': Decimal('0'),
-                            'salaire_net': Decimal('0'),
-                        }
-                    )
-
-                    if created or not etat_salaire.valide:
-                        # Calculer le salaire selon le type d'enseignant
-                        if enseignant.est_salaire_fixe:
-                            # Salaire fixe
-                            etat_salaire.salaire_base = enseignant.salaire_fixe or Decimal('0')
-                            etat_salaire.total_heures = None
-                        else:
-                            # Taux horaire - utiliser les heures mensuelles définies
-                            total_heures = enseignant.heures_mensuelles_effectives
-
-                            # Supprimer les anciens détails
-                            etat_salaire.details_heures.all().delete()
-
-                            # Récupérer les affectations actives pour créer les détails
-                            affectations = enseignant.affectations.filter(
-                                actif=True,
-                                date_debut__lte=timezone.now().date()
-                            ).filter(
-                                Q(date_fin__isnull=True) | Q(date_fin__gte=timezone.now().date())
-                            )
-
-                            # Si l'enseignant a des affectations, répartir les heures
-                            if affectations.exists():
-                                heures_par_affectation = total_heures / len(affectations)
-                                for affectation in affectations:
-                                    DetailHeuresClasse.objects.create(
-                                        etat_salaire=etat_salaire,
-                                        affectation_classe=affectation,
-                                        heures_prevues=heures_par_affectation,
-                                        heures_realisees=heures_par_affectation,
-                                        taux_horaire_applique=enseignant.taux_horaire or Decimal('0'),
-                                    )
-                            else:
-                                # Pas d'affectation, créer un détail générique
+            
+            for enseignant in enseignants:
+                # Vérifier si l'état de salaire existe déjà
+                etat_salaire, created = EtatSalaire.objects.get_or_create(
+                    enseignant=enseignant,
+                    periode=periode,
+                    defaults={
+                        'calcule_par': request.user,
+                        'salaire_base': Decimal('0'),
+                        'salaire_net': Decimal('0'),
+                    }
+                )
+                
+                if created or not etat_salaire.valide:
+                    # Calculer le salaire selon le type d'enseignant
+                    if enseignant.est_salaire_fixe:
+                        # Salaire fixe
+                        etat_salaire.salaire_base = enseignant.salaire_fixe or Decimal('0')
+                        etat_salaire.total_heures = None
+                    else:
+                        # Taux horaire - utiliser les heures mensuelles définies
+                        # Utiliser les heures mensuelles de l'enseignant ou la valeur par défaut
+                        total_heures = enseignant.heures_mensuelles_effectives
+                        
+                        # Supprimer les anciens détails
+                        etat_salaire.details_heures.all().delete()
+                        
+                        # Récupérer les affectations actives pour créer les détails
+                        affectations = enseignant.affectations.filter(
+                            actif=True,
+                            date_debut__lte=timezone.now().date()
+                        ).filter(
+                            Q(date_fin__isnull=True) | Q(date_fin__gte=timezone.now().date())
+                        )
+                        
+                        # Si l'enseignant a des affectations, répartir les heures
+                        if affectations.exists():
+                            heures_par_affectation = total_heures / len(affectations)
+                            for affectation in affectations:
+                                # Créer le détail des heures
                                 DetailHeuresClasse.objects.create(
                                     etat_salaire=etat_salaire,
-                                    affectation_classe=None,
-                                    heures_prevues=total_heures,
-                                    heures_realisees=total_heures,
+                                    affectation_classe=affectation,
+                                    heures_prevues=heures_par_affectation,
+                                    heures_realisees=heures_par_affectation,
                                     taux_horaire_applique=enseignant.taux_horaire or Decimal('0'),
                                 )
-
-                            etat_salaire.total_heures = total_heures
-                            etat_salaire.salaire_base = total_heures * (enseignant.taux_horaire or Decimal('0'))
-
-                        # Sauvegarder (le salaire_net sera calculé automatiquement)
-                        etat_salaire.calcule_par = request.user
-                        etat_salaire.save()
-
-                        calculs_effectues += 1
-
+                        else:
+                            # Pas d'affectation, créer un détail générique
+                            DetailHeuresClasse.objects.create(
+                                etat_salaire=etat_salaire,
+                                affectation_classe=None,
+                                heures_prevues=total_heures,
+                                heures_realisees=total_heures,
+                                taux_horaire_applique=enseignant.taux_horaire or Decimal('0'),
+                            )
+                        
+                        etat_salaire.total_heures = total_heures
+                        etat_salaire.salaire_base = total_heures * (enseignant.taux_horaire or Decimal('0'))
+                    
+                    # Sauvegarder (le salaire_net sera calculé automatiquement)
+                    etat_salaire.calcule_par = request.user
+                    etat_salaire.save()
+                    
+                    calculs_effectues += 1
+            
             messages.success(
                 request, 
                 f"Calcul des salaires terminé. {calculs_effectues} état(s) de salaire calculé(s)."
@@ -972,70 +976,49 @@ def calculer_salaires(request, periode_id):
 
 
 @login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def valider_etat_salaire(request, etat_id):
     """Valider un état de salaire"""
-    from django.db import transaction
+    from django.views.decorators.http import require_http_methods
 
-    etat = get_object_or_404(
-        EtatSalaire.objects.select_related('periode__ecole', 'enseignant'),
-        id=etat_id
-    )
-
-    # Sécurité : vérifier que l'état appartient à l'école de l'utilisateur
-    ecole_user = _ecole_utilisateur(request)
-    if ecole_user and etat.periode.ecole != ecole_user:
-        messages.error(request, "Accès refusé.")
-        return redirect('salaires:etats_salaire')
+    etat = get_object_or_404(EtatSalaire, id=etat_id)
 
     if not etat.peut_etre_valide:
         messages.error(request, "Cet état de salaire ne peut pas être validé.")
         return redirect('salaires:etats_salaire')
 
     if request.method == 'POST':
-        with transaction.atomic():
-            etat_locked = EtatSalaire.objects.select_for_update().get(pk=etat.pk)
-            if not etat_locked.valide:
-                etat_locked.valide = True
-                etat_locked.valide_par = request.user
-                etat_locked.date_validation = timezone.now()
-                etat_locked.save()
-                messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} validé avec succès.")
-            else:
-                messages.warning(request, "Cet état a déjà été validé.")
+        etat.valide = True
+        etat.valide_par = request.user
+        etat.date_validation = timezone.now()
+        etat.save()
+
+        messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} validé avec succès.")
+    else:
+        messages.error(request, "Méthode non autorisée. Utilisez le formulaire de validation.")
 
     return redirect('salaires:etats_salaire')
 
 
 @login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def marquer_paye(request, etat_id):
     """Marquer un état de salaire comme payé"""
-    from django.db import transaction
 
-    etat = get_object_or_404(
-        EtatSalaire.objects.select_related('periode__ecole', 'enseignant'),
-        id=etat_id
-    )
-
-    # Sécurité : vérifier que l'état appartient à l'école de l'utilisateur
-    ecole_user = _ecole_utilisateur(request)
-    if ecole_user and etat.periode.ecole != ecole_user:
-        messages.error(request, "Accès refusé.")
-        return redirect('salaires:etats_salaire')
+    etat = get_object_or_404(EtatSalaire, id=etat_id)
 
     if not etat.peut_etre_paye:
         messages.error(request, "Cet état de salaire ne peut pas être marqué comme payé.")
         return redirect('salaires:etats_salaire')
 
     if request.method == 'POST':
-        with transaction.atomic():
-            etat_locked = EtatSalaire.objects.select_for_update().get(pk=etat.pk)
-            if not etat_locked.paye:
-                etat_locked.paye = True
-                etat_locked.date_paiement = timezone.now()
-                etat_locked.save()
-                messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.")
-            else:
-                messages.warning(request, "Cet état a déjà été marqué comme payé.")
+        etat.paye = True
+        etat.date_paiement = timezone.now()
+        etat.save()
+
+        messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.")
+    else:
+        messages.error(request, "Méthode non autorisée. Utilisez le formulaire.")
 
     return redirect('salaires:etats_salaire')
 
@@ -1051,15 +1034,11 @@ def fiche_paie_pdf(request, etat_id):
     from django.http import HttpResponse
     from datetime import datetime
     
-    etat = get_object_or_404(
-        EtatSalaire.objects.select_related('periode__ecole', 'enseignant'),
-        id=etat_id
-    )
-
-    # Sécurité : vérifier que l'état appartient à l'école de l'utilisateur
+    etat = get_object_or_404(EtatSalaire, id=etat_id)
+    
+    # Vérifier les permissions
     ecole_user = _ecole_utilisateur(request)
-    if ecole_user and etat.periode.ecole != ecole_user:
-        from django.http import Http404
+    if not user_is_admin(request.user) and ecole_user and etat.periode.ecole != ecole_user:
         raise Http404("État de salaire non trouvé")
     
     # Créer la réponse HTTP
@@ -1563,25 +1542,19 @@ def creer_periode(request):
             annee = int(request.POST.get('annee'))
             ecole_id = int(request.POST.get('ecole'))
             nombre_semaines = Decimal(request.POST.get('nombre_semaines', '4.33'))
-
+            
             # Validation des données
             if not (1 <= mois <= 12):
                 messages.error(request, "Le mois doit être entre 1 et 12.")
                 return redirect('salaires:gestion_periodes')
-
+            
             if annee < 2020 or annee > 2030:
                 messages.error(request, "L'année doit être entre 2020 et 2030.")
                 return redirect('salaires:gestion_periodes')
-
-            # Récupérer l'école avec vérification d'appartenance
+            
+            # Récupérer l'école
             from eleves.models import Ecole
             ecole = get_object_or_404(Ecole, id=ecole_id)
-
-            # Sécurité : vérifier que l'école correspond à celle de l'utilisateur
-            ecole_user = _ecole_utilisateur(request)
-            if ecole_user and ecole != ecole_user:
-                messages.error(request, "Accès refusé : vous ne pouvez créer des périodes que pour votre école.")
-                return redirect('salaires:gestion_periodes')
             
             # Vérifier si la période existe déjà
             periode_existante = PeriodeSalaire.objects.filter(
@@ -1625,13 +1598,7 @@ def cloturer_periode(request, periode_id):
     if request.method == 'POST':
         try:
             periode = get_object_or_404(PeriodeSalaire, id=periode_id)
-
-            # Sécurité : vérifier que la période appartient à l'école de l'utilisateur
-            ecole_user = _ecole_utilisateur(request)
-            if ecole_user and periode.ecole != ecole_user:
-                messages.error(request, "Accès refusé.")
-                return redirect('salaires:gestion_periodes')
-
+            
             # Vérifier que la période n'est pas déjà clôturée
             if periode.cloturee:
                 messages.warning(request, f"La période {periode} est déjà clôturée.")
@@ -1690,13 +1657,7 @@ def cloturer_periode(request, periode_id):
 def changer_statut_enseignant(request, enseignant_id):
     """Changement de statut d'un enseignant"""
     enseignant = get_object_or_404(Enseignant, id=enseignant_id)
-
-    # Sécurité : vérifier que l'enseignant appartient à l'école de l'utilisateur
-    ecole_user = _ecole_utilisateur(request)
-    if ecole_user and enseignant.ecole != ecole_user:
-        messages.error(request, "Accès refusé.")
-        return redirect('salaires:liste_enseignants')
-
+    
     if request.method == 'POST':
         nouveau_statut = request.POST.get('nouveau_statut')
         
@@ -1752,13 +1713,7 @@ def ajouter_enseignant(request):
 def modifier_enseignant(request, enseignant_id):
     """Modifier un enseignant existant"""
     enseignant = get_object_or_404(Enseignant, id=enseignant_id)
-
-    # Sécurité : vérifier que l'enseignant appartient à l'école de l'utilisateur
-    ecole_user = _ecole_utilisateur(request)
-    if ecole_user and enseignant.ecole != ecole_user:
-        messages.error(request, "Accès refusé.")
-        return redirect('salaires:liste_enseignants')
-
+    
     if request.method == 'POST':
         form = EnseignantForm(request.POST, instance=enseignant)
         if form.is_valid():

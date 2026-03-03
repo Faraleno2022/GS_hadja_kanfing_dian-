@@ -5,26 +5,52 @@ from django.http import JsonResponse
 from django.db.models import Q, Count
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
+import logging
 
 from .models import (
     TypeAbonnement, Itineraire, MenuCantine,
     AbonnementBus, AbonnementCantine, PresenceCantine
 )
 from eleves.models import Eleve
+from utilisateurs.utils import user_is_admin, user_school, filter_by_user_school
+
+logger = logging.getLogger(__name__)
+
+
+def _get_user_school_or_403(request):
+    """Retourne l'école de l'utilisateur ou None si admin (accès global)."""
+    if user_is_admin(request.user):
+        return None  # Admin voit tout
+    ecole = user_school(request.user)
+    return ecole
+
+
+def _filter_qs_by_school(qs, request, field_path='eleve__classe__ecole'):
+    """Filtre un queryset par l'école de l'utilisateur connecté."""
+    if user_is_admin(request.user):
+        return qs
+    ecole = user_school(request.user)
+    if ecole:
+        return qs.filter(**{field_path: ecole})
+    return qs.none()  # Pas d'école assignée → aucun résultat
 
 
 @login_required
 def tableau_bord_abonnements(request):
     """Tableau de bord des abonnements"""
     
+    # Filtrage par école
+    bus_qs = _filter_qs_by_school(AbonnementBus.objects.all(), request)
+    cantine_qs = _filter_qs_by_school(AbonnementCantine.objects.all(), request)
+
     # Statistiques bus
-    abonnements_bus_actifs = AbonnementBus.objects.filter(statut='ACTIF').count()
-    abonnements_bus_total = AbonnementBus.objects.count()
-    
+    abonnements_bus_actifs = bus_qs.filter(statut='ACTIF').count()
+    abonnements_bus_total = bus_qs.count()
+
     # Statistiques cantine
-    abonnements_cantine_actifs = AbonnementCantine.objects.filter(statut='ACTIF').count()
-    abonnements_cantine_total = AbonnementCantine.objects.count()
-    
+    abonnements_cantine_actifs = cantine_qs.filter(statut='ACTIF').count()
+    abonnements_cantine_total = cantine_qs.count()
+
     # Itinéraires
     itineraires = Itineraire.objects.filter(actif=True)
     
@@ -58,8 +84,11 @@ def liste_abonnements_bus(request):
     statut = request.GET.get('statut')
     search = request.GET.get('search')
     
-    abonnements = AbonnementBus.objects.select_related('eleve', 'itineraire').all()
-    
+    abonnements = _filter_qs_by_school(
+        AbonnementBus.objects.select_related('eleve', 'itineraire', 'eleve__classe', 'eleve__classe__ecole').all(),
+        request
+    )
+
     if itineraire_id:
         abonnements = abonnements.filter(itineraire_id=itineraire_id)
     
@@ -104,9 +133,15 @@ def creer_abonnement_bus(request):
         
         try:
             eleve = Eleve.objects.get(id=eleve_id)
+            # ── Sécurité: vérifier que l'élève appartient à l'école de l'utilisateur ──
+            ecole_user = user_school(request.user)
+            if not user_is_admin(request.user) and ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+                messages.error(request, "Vous ne pouvez pas créer un abonnement pour un élève d'une autre école.")
+                return redirect('abonnements:liste_bus')
+
             itineraire = Itineraire.objects.get(id=itineraire_id)
             type_bus = TypeAbonnement.objects.get(nom='BUS')
-            
+
             # Calculer les dates et montant
             date_debut = date.today()
             if duree == 'MENSUEL':
@@ -138,10 +173,18 @@ def creer_abonnement_bus(request):
             return redirect('abonnements:liste_bus')
             
         except Exception as e:
-            messages.error(request, f'❌ Erreur: {str(e)}')
-    
-    # GET
-    eleves = Eleve.objects.filter(statut='ACTIF').order_by('nom', 'prenom')
+            logger.error(f"Erreur création abonnement bus: {e}")
+            messages.error(request, "Une erreur est survenue lors de la création de l'abonnement.")
+
+    # GET — filtrer les élèves par école
+    eleves_qs = Eleve.objects.filter(statut='ACTIF')
+    if not user_is_admin(request.user):
+        ecole_user = user_school(request.user)
+        if ecole_user:
+            eleves_qs = eleves_qs.filter(classe__ecole=ecole_user)
+        else:
+            eleves_qs = eleves_qs.none()
+    eleves = eleves_qs.order_by('nom', 'prenom')
     itineraires = Itineraire.objects.filter(actif=True)
     type_bus = TypeAbonnement.objects.filter(nom='BUS').first()
     
@@ -163,8 +206,11 @@ def liste_abonnements_cantine(request):
     statut = request.GET.get('statut')
     search = request.GET.get('search')
     
-    abonnements = AbonnementCantine.objects.select_related('eleve').all()
-    
+    abonnements = _filter_qs_by_school(
+        AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole').all(),
+        request
+    )
+
     if regime:
         abonnements = abonnements.filter(regime_alimentaire=regime)
     
@@ -203,8 +249,14 @@ def creer_abonnement_cantine(request):
         
         try:
             eleve = Eleve.objects.get(id=eleve_id)
+            # ── Sécurité: vérifier que l'élève appartient à l'école de l'utilisateur ──
+            ecole_user = user_school(request.user)
+            if not user_is_admin(request.user) and ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+                messages.error(request, "Vous ne pouvez pas créer un abonnement pour un élève d'une autre école.")
+                return redirect('abonnements:liste_cantine')
+
             type_cantine = TypeAbonnement.objects.get(nom='CANTINE')
-            
+
             # Calculer les dates et montant
             date_debut = date.today()
             if duree == 'MENSUEL':
@@ -234,10 +286,18 @@ def creer_abonnement_cantine(request):
             return redirect('abonnements:liste_cantine')
             
         except Exception as e:
-            messages.error(request, f'❌ Erreur: {str(e)}')
-    
-    # GET
-    eleves = Eleve.objects.filter(statut='ACTIF').order_by('nom', 'prenom')
+            logger.error(f"Erreur création abonnement cantine: {e}")
+            messages.error(request, "Une erreur est survenue lors de la création de l'abonnement.")
+
+    # GET — filtrer les élèves par école
+    eleves_qs = Eleve.objects.filter(statut='ACTIF')
+    if not user_is_admin(request.user):
+        ecole_user = user_school(request.user)
+        if ecole_user:
+            eleves_qs = eleves_qs.filter(classe__ecole=ecole_user)
+        else:
+            eleves_qs = eleves_qs.none()
+    eleves = eleves_qs.order_by('nom', 'prenom')
     type_cantine = TypeAbonnement.objects.filter(nom='CANTINE').first()
     
     context = {
@@ -261,12 +321,15 @@ def gerer_presences_cantine(request):
     else:
         date_obj = date.today()
     
-    # Abonnements actifs
-    abonnements_actifs = AbonnementCantine.objects.filter(
-        statut='ACTIF',
-        date_debut__lte=date_obj,
-        date_fin__gte=date_obj
-    ).select_related('eleve')
+    # Abonnements actifs — filtrés par école
+    abonnements_actifs = _filter_qs_by_school(
+        AbonnementCantine.objects.filter(
+            statut='ACTIF',
+            date_debut__lte=date_obj,
+            date_fin__gte=date_obj
+        ).select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'),
+        request
+    )
     
     # Présences du jour
     presences = {}
@@ -297,8 +360,14 @@ def enregistrer_presence_cantine(request):
         
         try:
             abonnement = AbonnementCantine.objects.get(id=abonnement_id)
+            # ── Sécurité: vérifier que l'abonnement appartient à l'école de l'utilisateur ──
+            if not user_is_admin(request.user):
+                ecole_user = user_school(request.user)
+                if ecole_user and abonnement.eleve.classe and abonnement.eleve.classe.ecole != ecole_user:
+                    return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+
             date_obj = date.fromisoformat(date_str)
-            
+
             presence, created = PresenceCantine.objects.update_or_create(
                 abonnement=abonnement,
                 date=date_obj,
@@ -314,9 +383,10 @@ def enregistrer_presence_cantine(request):
             })
             
         except Exception as e:
+            logger.error(f"Erreur enregistrement présence cantine: {e}")
             return JsonResponse({
                 'success': False,
-                'error': str(e)
+                'error': 'Une erreur est survenue.'
             })
     
     return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})

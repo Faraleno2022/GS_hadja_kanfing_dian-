@@ -15,7 +15,6 @@ import io
 from datetime import datetime
 from eleves.models import Classe as ClasseEleve, Eleve
 from utilisateurs.utils import filter_by_user_school, user_school
-from eleves.utils_annee import get_annee_active
 from ecole_moderne.security_decorators import admin_required, require_school_object
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
@@ -4901,24 +4900,20 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
-@can_manage_notes
 def statistiques(request):
     """Statistiques globales de l'école"""
     from eleves.models import Ecole
-
+    
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else Ecole.objects.first()
-
-    # Récupérer les classes disponibles (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('nom')
-    elif ecole:
+    
+    # Récupérer les classes disponibles
+    if ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('nom')
-
-    # Classe sélectionnée (déjà filtrée par école via le queryset classes)
+    
+    # Classe sélectionnée
     classe_id = request.GET.get('classe_id')
     classe_selectionnee = None
     if classe_id:
@@ -4926,14 +4921,10 @@ def statistiques(request):
             classe_selectionnee = classes.get(id=classe_id)
         except ClasseNote.DoesNotExist:
             pass
-
-    # Statistiques globales de l'école (filtrées par école)
-    if ecole:
-        total_eleves = Eleve.objects.filter(statut='ACTIF', classe__ecole=ecole).count()
-        total_classes = ClasseEleve.objects.filter(ecole=ecole).count()
-    else:
-        total_eleves = Eleve.objects.filter(statut='ACTIF').count()
-        total_classes = ClasseEleve.objects.all().count()
+    
+    # Statistiques globales de l'école
+    total_eleves = Eleve.objects.filter(statut='ACTIF').count()
+    total_classes = ClasseEleve.objects.all().count()
     
     # Période sélectionnée
     periode = request.GET.get('periode', 'TRIMESTRE_1')
@@ -5367,15 +5358,12 @@ def gerer_classes(request):
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
     
-    # Récupérer les classes (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes = ClasseNote.objects.filter(ecole=ecole, annee_scolaire=annee_active).order_by('-date_creation')
-    elif ecole:
+    # Récupérer les classes
+    if ecole:
         classes = ClasseNote.objects.filter(ecole=ecole).order_by('-date_creation')
     else:
         classes = ClasseNote.objects.all().order_by('-date_creation')
-
+    
     # Statistiques
     total_classes = classes.count()
     classes_actives = classes.filter(actif=True).count()
@@ -5505,12 +5493,9 @@ def gerer_matieres(request):
     """Gérer les matières par classe"""
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-
-    # Récupérer les classes (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
-    elif ecole:
+    
+    # Récupérer les classes
+    if ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
@@ -5740,15 +5725,12 @@ def creer_evaluation(request):
 @login_required
 def gerer_eleves(request):
     """Gérer les élèves - Consultation par classe"""
-
+    
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-
-    # Récupérer les classes de notes (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes_notes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
-    elif ecole:
+    
+    # Récupérer les classes de notes
+    if ecole:
         classes_notes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes_notes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
@@ -5855,22 +5837,18 @@ def gerer_eleves(request):
     return render(request, 'notes/gerer_eleves.html', context)
 
 @login_required
-@can_manage_notes
 def saisir_notes(request):
     """Saisir les notes"""
-
+    
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-
-    # Récupérer les classes (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
-    elif ecole:
+    
+    # Récupérer les classes
+    if ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
-
+    
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
     periode_classement = request.GET.get('periode', '')
@@ -5878,7 +5856,7 @@ def saisir_notes(request):
     type_note = request.GET.get('type_note', '')
     periode = request.GET.get('periode', '')
     system_type = request.GET.get('system_type', 'semestre')
-
+    
     classe_selectionnee = None
     matiere_selectionnee = None
     matieres = []
@@ -5886,7 +5864,7 @@ def saisir_notes(request):
     evaluations = []
     niveau_enseignement = 'SECONDAIRE'
     est_maternelle = False
-
+    
     # Types de notes disponibles par défaut
     types_notes_disponibles = [
         ('mensuelle', 'Note Mensuelle'),
@@ -5895,16 +5873,12 @@ def saisir_notes(request):
         ('composition', 'Composition'),
         ('appreciation', 'Appréciation'),
     ]
-
+    
     # Périodes disponibles par défaut
     periodes_disponibles = []
-
+    
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
-        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
-        if ecole and classe_selectionnee.ecole != ecole:
-            from django.http import HttpResponseForbidden
-            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
@@ -5979,22 +5953,18 @@ def saisir_notes(request):
         
         if matiere_id:
             matiere_selectionnee = get_object_or_404(MatiereNote, pk=matiere_id)
-            # Sécurité : vérifier que la matière appartient à la classe sélectionnée
-            if matiere_selectionnee.classe_id != classe_selectionnee.id:
-                from django.http import HttpResponseForbidden
-                return HttpResponseForbidden("Accès refusé : cette matière n'appartient pas à la classe sélectionnée.")
             if periode:
                 evaluations = Evaluation.objects.filter(matiere=matiere_selectionnee, periode=periode).order_by('date_evaluation')
             else:
                 evaluations = Evaluation.objects.none()
-
+            
             # Vérifier si des notes existent déjà pour cette période
             notes_existantes_count = 0
             if evaluations.exists():
                 notes_existantes_count = NoteEleve.objects.filter(
                     evaluation__in=evaluations
                 ).count()
-
+            
             # Récupérer les élèves
             try:
                 # Mapping spécial pour les classes avec noms différents (même que consulter_notes)
@@ -6212,10 +6182,9 @@ def saisir_notes(request):
     return render(request, 'notes/saisir_notes.html', context)
 
 @login_required
-@can_manage_notes
 def liste_saisie_pdf(request):
     """Générer un PDF de la liste de saisie des notes"""
-    from django.http import HttpResponse, HttpResponseForbidden
+    from django.http import HttpResponse
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
@@ -6224,29 +6193,21 @@ def liste_saisie_pdf(request):
     from reportlab.lib.enums import TA_CENTER
     import io
     import re
-
+    
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
     matiere_id = request.GET.get('matiere_id')
     periode = request.GET.get('periode')
     type_note = request.GET.get('type_note', '')
-
+    
     if not all([classe_id, matiere_id, periode]):
         return HttpResponse("Paramètres manquants: classe_id, matiere_id et periode sont requis", status=400)
-
+    
     try:
         classe = get_object_or_404(ClasseNote, pk=classe_id)
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
     except Exception as e:
         return HttpResponse(f"Erreur lors de la récupération des données: {str(e)}", status=400)
-
-    # Sécurité : Vérifier que la classe appartient à l'école de l'utilisateur
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else None
-    if ecole and classe.ecole != ecole:
-        return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
-    if ecole and matiere.classe.ecole != ecole:
-        return HttpResponseForbidden("Accès refusé : cette matière n'appartient pas à votre école.")
     
     # Déterminer le type de notation selon le niveau
     niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
@@ -6469,7 +6430,6 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
 @login_required
-@can_manage_notes
 def sauvegarder_notes(request):
     """Sauvegarder les notes saisies avec support des transactions"""
     from django.http import JsonResponse
@@ -6478,36 +6438,26 @@ def sauvegarder_notes(request):
     import json
     from decimal import Decimal, InvalidOperation
     import logging
-
+    
     logger = logging.getLogger(__name__)
-
+    
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-
+    
     try:
         data = json.loads(request.body)
         notes_data = data.get('notes', [])
         evaluation_id = data.get('evaluation_id')
         matiere_id = data.get('matiere_id')
         periode = data.get('periode')
-
+        
         # Validation des paramètres
         if not all([matiere_id, periode]):
             return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
-
-        # Whitelist validation des périodes
-        VALID_PERIODES = {
-            'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
-            'AVRIL', 'MAI', 'JUIN',
-            'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
-            'SEMESTRE_1', 'SEMESTRE_2',
-        }
-        if str(periode).upper() not in VALID_PERIODES:
-            return JsonResponse({'success': False, 'error': f'Période invalide: {periode}'}, status=400)
-
+        
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
-
+        
         # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
         user_profil = getattr(request.user, 'profil', None)
         ecole = user_profil.ecole if user_profil else None
@@ -6585,13 +6535,8 @@ def sauvegarder_notes(request):
                         erreurs.append(f"ID élève invalide: {eleve_id}")
                         continue
                     
-                    eleve = Eleve.objects.select_related('classe', 'classe__ecole').get(pk=int(eleve_id_clean))
-
-                    # Sécurité : vérifier que l'élève appartient à l'école de l'utilisateur
-                    if ecole and eleve.classe and eleve.classe.ecole != ecole:
-                        erreurs.append(f"Élève {eleve_id} n'appartient pas à votre école")
-                        continue
-
+                    eleve = Eleve.objects.get(pk=int(eleve_id_clean))
+                    
                     # Traiter selon le type de note
                     if 'appreciation' in note_data:
                         # Appréciation (pour maternelle) - utiliser AppreciationMaternelle
@@ -6767,10 +6712,9 @@ def sauvegarder_notes(request):
         return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
 
 @login_required
-@can_manage_notes
 def supprimer_notes(request):
     """Supprimer les notes d'une évaluation ou d'une période spécifique.
-
+    
     Gère tous les types de notes:
     - NoteMensuelle (notes mensuelles)
     - CompositionNote (compositions trimestrielles/semestrielles)
@@ -6783,42 +6727,32 @@ def supprimer_notes(request):
     from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
     import json
     import logging
-
+    
     logger = logging.getLogger(__name__)
-
+    
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-
+    
     try:
         data = json.loads(request.body)
         matiere_id = data.get('matiere_id')
         periode = data.get('periode')
         eleve_ids = data.get('eleve_ids', [])  # Liste optionnelle d'élèves spécifiques
         type_note = data.get('type_note', '')  # Type de note optionnel
-
+        
         # Validation des paramètres
         if not all([matiere_id, periode]):
             return JsonResponse({'success': False, 'error': 'Paramètres manquants (matière ou période)'}, status=400)
-
-        # Whitelist validation des périodes
-        VALID_PERIODES = {
-            'OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS',
-            'AVRIL', 'MAI', 'JUIN',
-            'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
-            'SEMESTRE_1', 'SEMESTRE_2',
-        }
-        if str(periode).upper() not in VALID_PERIODES:
-            return JsonResponse({'success': False, 'error': f'Période invalide: {periode}'}, status=400)
-
+        
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
 
-        # Sécurité : Vérifier que la matière appartient à l'école de l'utilisateur
+        # ── Sécurité: vérifier que la matière appartient à l'école de l'utilisateur ──
         user_profil = getattr(request.user, 'profil', None)
-        ecole = user_profil.ecole if user_profil else None
-        if ecole and matiere.classe.ecole != ecole:
+        ecole_user = user_profil.ecole if user_profil else None
+        if ecole_user and matiere.classe.ecole != ecole_user:
             return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
-        
+
         # Définir les périodes par type
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
         periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
@@ -6901,23 +6835,20 @@ def supprimer_notes(request):
 def consulter_notes(request):
     """Consulter les notes - Vue complète par classe"""
     from decimal import Decimal
-
+    
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-
-    # Récupérer les classes (filtrées par année active)
-    annee_active = get_annee_active(request, ecole) if ecole else None
-    if ecole and annee_active:
-        classes = ClasseNote.objects.filter(ecole=ecole, actif=True, annee_scolaire=annee_active).order_by('niveau', 'nom')
-    elif ecole:
+    
+    # Récupérer les classes
+    if ecole:
         classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
     else:
         classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
-
+    
     # Paramètres de sélection
     classe_id = request.GET.get('classe_id')
     periode_classement = request.GET.get('periode', '')
-
+    
     classe_selectionnee = None
     matieres = []
     eleves_toutes_notes = []
@@ -6925,13 +6856,9 @@ def consulter_notes(request):
     periodes_disponibles = []
     est_maternelle = False
     est_primaire = False
-
+    
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
-        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
-        if ecole and classe_selectionnee.ecole != ecole:
-            from django.http import HttpResponseForbidden
-            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
@@ -7356,25 +7283,22 @@ def bulletin_dynamique(request):
     classe_id = nettoyer_parametre_numerique(request.GET.get('classe_id'))
     eleve_id = nettoyer_parametre_numerique(request.GET.get('eleve_id'))
     periode = request.GET.get('periode', '').strip()
-    system_type = request.GET.get('system_type', 'trimestre').strip()
-
-    # Whitelist validation du system_type
-    VALID_SYSTEM_TYPES = {'mensuel', 'trimestre', 'semestre', 'annuel_trimestriel', 'annuel_semestriel', 'annuel'}
-    if system_type not in VALID_SYSTEM_TYPES:
-        system_type = 'trimestre'
-
+    system_type = request.GET.get('system_type', 'trimestre').strip()  # mensuel, trimestre, semestre, annuel_trimestriel, annuel_semestriel
+    
     # Valider que la période correspond au system_type sélectionné
-    periodes_valides = {
-        'mensuel': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
-        'trimestre': ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'],
-        'semestre': ['SEMESTRE_1', 'SEMESTRE_2'],
-        'annuel_trimestriel': ['ANNUEL_TRIM'],
-        'annuel_semestriel': ['ANNUEL_SEM'],
-        'annuel': ['ANNUEL_TRIM'],
-    }
-    if periode and periode not in periodes_valides.get(system_type, []):
-        periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
-
+    # Si la période ne correspond pas, la réinitialiser
+    if periode:
+        periodes_valides = {
+            'mensuel': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
+            'trimestre': ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3'],
+            'semestre': ['SEMESTRE_1', 'SEMESTRE_2'],
+            'annuel_trimestriel': ['ANNUEL_TRIM'],
+            'annuel_semestriel': ['ANNUEL_SEM'],
+            'annuel': ['ANNUEL_TRIM'],
+        }
+        if system_type in periodes_valides and periode not in periodes_valides.get(system_type, []):
+            periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
+    
     classe_selectionnee = None
     eleves = []
     eleve_selectionne = None
@@ -7385,15 +7309,11 @@ def bulletin_dynamique(request):
     
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
-        # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
-        if ecole and classe_selectionnee.ecole != ecole:
-            from django.http import HttpResponseForbidden
-            return HttpResponseForbidden("Accès refusé : cette classe n'appartient pas à votre école.")
         # Utiliser detecter_niveau_scolaire pour une détection cohérente avec les bulletins PDF
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
-
+        
         # Déterminer les périodes disponibles selon le système
         if system_type == 'mensuel':
             periodes_disponibles = [
@@ -7593,9 +7513,8 @@ def bulletin_dynamique(request):
                 elif system_type == 'mensuel':
                     moyenne_matiere = moyenne_continue
                 elif moyenne_continue is not None and note_composition is not None:
-                    # Formule : (Moyenne Continue + Composition) / 2 (poids égal)
-                    # PAS d'arrondi — garder la précision complète
-                    moyenne_matiere = (moyenne_continue + note_composition) / 2
+                    # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
+                    moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
                 elif note_composition is not None:
                     # Seulement la composition
                     moyenne_matiere = note_composition
@@ -7616,8 +7535,7 @@ def bulletin_dynamique(request):
                 
                 # Si pas de notes, compter comme 0 (ne pas favoriser l'élève)
                 moyenne_matiere_calcul = moyenne_matiere if moyenne_matiere is not None else 0.0
-                # Points: valeur EXACTE, pas d'arrondi intermédiaire
-                points = moyenne_matiere_calcul * float(coefficient_effectif)
+                points = round(moyenne_matiere_calcul * float(coefficient_effectif), 2)
                 total_points += Decimal(str(moyenne_matiere_calcul)) * coefficient_effectif
                 
                 # Préparer les notes pour l'affichage
@@ -7961,9 +7879,16 @@ def sauvegarder_appreciations_maternelle(request):
                     
                     if not all([eleve_id, matiere_id, trimestre]):
                         continue
-                    
+
                     eleve = Eleve.objects.get(pk=eleve_id)
                     matiere = MatiereNote.objects.get(pk=matiere_id)
+                    # ── Sécurité: vérifier école ──
+                    user_profil = getattr(request.user, 'profil', None)
+                    ecole_user = user_profil.ecole if user_profil else None
+                    if ecole_user and matiere.classe.ecole != ecole_user:
+                        errors.append(f"Accès non autorisé à la matière {matiere_id}")
+                        continue
+
                     annee_scolaire = matiere.classe.annee_scolaire
                     
                     obj, created = AppreciationMaternelle.objects.update_or_create(
@@ -8012,12 +7937,18 @@ def sauvegarder_appreciations_maternelle(request):
             try:
                 eleve = Eleve.objects.get(pk=eleve_id)
                 matiere = MatiereNote.objects.get(pk=matiere_id)
-                
+
+                # ── Sécurité: vérifier école ──
+                user_profil = getattr(request.user, 'profil', None)
+                ecole_user = user_profil.ecole if user_profil else None
+                if ecole_user and matiere.classe.ecole != ecole_user:
+                    return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+
                 if not annee_scolaire:
                     annee_scolaire = matiere.classe.annee_scolaire
-                
+
                 saved_count = 0
-                
+
                 # Trimestre 1
                 if 'trimestre1' in appreciations:
                     t1 = appreciations['trimestre1']
@@ -8358,14 +8289,22 @@ def sauvegarder_notes_guineen(request):
         
         eleve = Eleve.objects.get(id=eleve_id)
         matiere = MatiereNote.objects.get(id=matiere_id)
-        
+
+        # ── Sécurité: vérifier que l'élève et la matière appartiennent à l'école ──
+        user_profil = getattr(request.user, 'profil', None)
+        ecole_user = user_profil.ecole if user_profil else None
+        if ecole_user and matiere.classe.ecole != ecole_user:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cette matière'}, status=403)
+        if ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cet élève'}, status=403)
+
         # Utiliser l'année scolaire de la matière si non fournie
         if not annee_scolaire:
             annee_scolaire = matiere.classe.annee_scolaire
-        
+
         saved_count = 0
         updated_count = 0
-        
+
         # Sauvegarder les notes mensuelles
         for mois, note_data in notes_mois.items():
             if note_data is not None:
