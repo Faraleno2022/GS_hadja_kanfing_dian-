@@ -1096,8 +1096,7 @@ def exporter_classement_classe_pdf(request):
         c.drawString(margin, y, f"ATTENTION: {len(eleves_sans_notes)} eleve(s) sans notes pour cette periode")
         c.setFillColorRGB(0, 0, 0)
 
-    # ── Zone de signatures ──
-    # Déterminer le titre du signataire selon le niveau
+    # ── Zone de signatures (deux blocs côte à côte, comme sur le bulletin) ──
     niveau_scolaire_local = detecter_niveau_scolaire(classe_note.nom)
     if niveau_scolaire_local == 'MATERNELLE':
         signataire_titre = "La Coordinatrice de la Maternelle"
@@ -1106,7 +1105,7 @@ def exporter_classement_classe_pdf(request):
     else:
         signataire_titre = "Le Censeur de l'Établissement"
 
-    sig_y = max(y - 30, 2.5 * cm)  # au moins 2.5cm du bas, ou sous les stats
+    sig_y = max(y - 30, 2.5 * cm)
 
     # Si pas assez de place, nouvelle page
     if sig_y < 2.2 * cm:
@@ -1125,30 +1124,33 @@ def exporter_classement_classe_pdf(request):
     c.drawString(margin, sig_y + 22, "VISA ET SIGNATURE :")
     c.setFillColorRGB(0, 0, 0)
 
-    # Bloc signataire centré à droite
-    sig_block_x = page_width - margin - 7 * cm
-    sig_block_w = 7 * cm
+    sig_width = 6 * cm
 
-    c.setFont('Helvetica-Bold', 10)
-    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y + 20, signataire_titre)
-
-    # Ville + date
-    c.setFont('Helvetica-Oblique', 8)
-    c.setFillColorRGB(0.4, 0.4, 0.4)
-    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y + 7,
-                        f"Conakry, le {datetime.now().strftime('%d/%m/%Y')}")
+    # ── Bloc GAUCHE : Censeur / Directeur / Coordinatrice ──
+    left_x = margin + 0.2 * cm
+    c.setFont('Helvetica-Bold', 9)
     c.setFillColorRGB(0, 0, 0)
+    c.drawCentredString(left_x + sig_width / 2, sig_y + 5, signataire_titre)
 
-    # Ligne de signature
     c.setStrokeColorRGB(0.2, 0.2, 0.2)
     c.setLineWidth(1)
-    c.line(sig_block_x, sig_y - 10, sig_block_x + sig_block_w, sig_y - 10)
+    c.line(left_x + 0.5 * cm, sig_y - 15, left_x + sig_width - 0.5 * cm, sig_y - 15)
 
-    # Mention "Signature"
-    c.setFont('Helvetica-Oblique', 7)
-    c.setFillColorRGB(0.5, 0.5, 0.5)
-    c.drawCentredString(sig_block_x + sig_block_w / 2, sig_y - 18, "(Signature et cachet)")
+    c.setFont('Helvetica', 8)
+    c.drawCentredString(left_x + sig_width / 2, sig_y - 23, "Signature")
+
+    # ── Bloc DROIT : Directeur Général ──
+    right_x = page_width - margin - sig_width - 0.2 * cm
+    c.setFont('Helvetica-Bold', 9)
     c.setFillColorRGB(0, 0, 0)
+    c.drawCentredString(right_x + sig_width / 2, sig_y + 5, "Le Directeur Général")
+
+    c.setStrokeColorRGB(0.2, 0.2, 0.2)
+    c.setLineWidth(1)
+    c.line(right_x + 0.5 * cm, sig_y - 15, right_x + sig_width - 0.5 * cm, sig_y - 15)
+
+    c.setFont('Helvetica', 8)
+    c.drawCentredString(right_x + sig_width / 2, sig_y - 23, "Signature")
 
     # Finaliser
     c.save()

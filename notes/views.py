@@ -6746,7 +6746,13 @@ def supprimer_notes(request):
         
         # Récupérer la matière
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
-        
+
+        # ── Sécurité: vérifier que la matière appartient à l'école de l'utilisateur ──
+        user_profil = getattr(request.user, 'profil', None)
+        ecole_user = user_profil.ecole if user_profil else None
+        if ecole_user and matiere.classe.ecole != ecole_user:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+
         # Définir les périodes par type
         periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
         periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
@@ -7873,9 +7879,16 @@ def sauvegarder_appreciations_maternelle(request):
                     
                     if not all([eleve_id, matiere_id, trimestre]):
                         continue
-                    
+
                     eleve = Eleve.objects.get(pk=eleve_id)
                     matiere = MatiereNote.objects.get(pk=matiere_id)
+                    # ── Sécurité: vérifier école ──
+                    user_profil = getattr(request.user, 'profil', None)
+                    ecole_user = user_profil.ecole if user_profil else None
+                    if ecole_user and matiere.classe.ecole != ecole_user:
+                        errors.append(f"Accès non autorisé à la matière {matiere_id}")
+                        continue
+
                     annee_scolaire = matiere.classe.annee_scolaire
                     
                     obj, created = AppreciationMaternelle.objects.update_or_create(
@@ -7924,12 +7937,18 @@ def sauvegarder_appreciations_maternelle(request):
             try:
                 eleve = Eleve.objects.get(pk=eleve_id)
                 matiere = MatiereNote.objects.get(pk=matiere_id)
-                
+
+                # ── Sécurité: vérifier école ──
+                user_profil = getattr(request.user, 'profil', None)
+                ecole_user = user_profil.ecole if user_profil else None
+                if ecole_user and matiere.classe.ecole != ecole_user:
+                    return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+
                 if not annee_scolaire:
                     annee_scolaire = matiere.classe.annee_scolaire
-                
+
                 saved_count = 0
-                
+
                 # Trimestre 1
                 if 'trimestre1' in appreciations:
                     t1 = appreciations['trimestre1']
@@ -8270,14 +8289,22 @@ def sauvegarder_notes_guineen(request):
         
         eleve = Eleve.objects.get(id=eleve_id)
         matiere = MatiereNote.objects.get(id=matiere_id)
-        
+
+        # ── Sécurité: vérifier que l'élève et la matière appartiennent à l'école ──
+        user_profil = getattr(request.user, 'profil', None)
+        ecole_user = user_profil.ecole if user_profil else None
+        if ecole_user and matiere.classe.ecole != ecole_user:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cette matière'}, status=403)
+        if ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cet élève'}, status=403)
+
         # Utiliser l'année scolaire de la matière si non fournie
         if not annee_scolaire:
             annee_scolaire = matiere.classe.annee_scolaire
-        
+
         saved_count = 0
         updated_count = 0
-        
+
         # Sauvegarder les notes mensuelles
         for mois, note_data in notes_mois.items():
             if note_data is not None:

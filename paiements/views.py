@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 from django.contrib import messages
 from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Sum, Count, Value, DecimalField, ExpressionWrapper, Case, When, OuterRef, Subquery
@@ -1767,6 +1767,7 @@ def ajouter_paiement(request, eleve_id:int=None):
     return render(request, 'paiements/form_paiement.html', context)
 
 @login_required
+@require_POST
 @require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def valider_paiement(request, paiement_id:int):
     """Valide un paiement en le passant au statut VALIDE.
@@ -1825,6 +1826,7 @@ def valider_paiement(request, paiement_id:int):
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
 @login_required
+@require_POST
 @require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def relancer_eleve(request, eleve_id:int):
     """Crée une relance et envoie la notification (WhatsApp/SMS) au responsable.
@@ -1873,6 +1875,7 @@ def relancer_eleve(request, eleve_id:int):
         return redirect('paiements:liste_paiements')
 
 @login_required
+@require_POST
 def envoyer_notifs_retards(request):
     """Envoie des notifications de retard aux responsables des élèves avec solde > 0.
     Action manuelle: GET uniquement, simple résumé via messages.
@@ -3638,6 +3641,7 @@ def calculateur_remise(request):
     return HttpResponse('Calculateur de remise (placeholder)')
 
 @login_required
+@require_POST
 @can_apply_discounts
 @require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):

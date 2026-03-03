@@ -884,8 +884,12 @@ def calculer_salaires(request, periode_id):
         messages.error(request, "Impossible de calculer les salaires d'une période clôturée.")
         return redirect('salaires:etats_salaire')
     
-    # Accepter GET et POST pour le calcul
-    if request.method in ['GET', 'POST']:
+    # ── Sécurité: restreindre au POST uniquement (empêche CSRF via GET) ──
+    if request.method != 'POST':
+        messages.error(request, "Le calcul des salaires nécessite une requête POST.")
+        return redirect('salaires:etats_salaire')
+
+    if request.method == 'POST':
         try:
             # Récupérer tous les enseignants actifs de l'école
             enseignants = Enseignant.objects.filter(
@@ -972,43 +976,50 @@ def calculer_salaires(request, periode_id):
 
 
 @login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def valider_etat_salaire(request, etat_id):
     """Valider un état de salaire"""
-    
+    from django.views.decorators.http import require_http_methods
+
     etat = get_object_or_404(EtatSalaire, id=etat_id)
-    
+
     if not etat.peut_etre_valide:
         messages.error(request, "Cet état de salaire ne peut pas être validé.")
         return redirect('salaires:etats_salaire')
-    
+
     if request.method == 'POST':
         etat.valide = True
         etat.valide_par = request.user
         etat.date_validation = timezone.now()
         etat.save()
-        
+
         messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} validé avec succès.")
-    
+    else:
+        messages.error(request, "Méthode non autorisée. Utilisez le formulaire de validation.")
+
     return redirect('salaires:etats_salaire')
 
 
 @login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def marquer_paye(request, etat_id):
     """Marquer un état de salaire comme payé"""
-    
+
     etat = get_object_or_404(EtatSalaire, id=etat_id)
-    
+
     if not etat.peut_etre_paye:
         messages.error(request, "Cet état de salaire ne peut pas être marqué comme payé.")
         return redirect('salaires:etats_salaire')
-    
+
     if request.method == 'POST':
         etat.paye = True
         etat.date_paiement = timezone.now()
         etat.save()
-        
+
         messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.")
-    
+    else:
+        messages.error(request, "Méthode non autorisée. Utilisez le formulaire.")
+
     return redirect('salaires:etats_salaire')
 
 

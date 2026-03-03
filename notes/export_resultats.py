@@ -318,7 +318,7 @@ def exporter_resultats_pdf(request):
             stats_table.setStyle(stats_style)
             elements.append(stats_table)
         
-        # ── Zone de signature selon le niveau scolaire ──
+        # ── Zone de signatures (deux blocs côte à côte, comme sur le bulletin) ──
         elements.append(Spacer(1, 1*cm))
 
         # Déterminer le titre du signataire selon le niveau
@@ -330,7 +330,7 @@ def exporter_resultats_pdf(request):
             signataire_titre = "Le Censeur de l'Établissement"
 
         from datetime import datetime
-        from reportlab.lib.enums import TA_RIGHT
+        from reportlab.lib.enums import TA_RIGHT, TA_LEFT
 
         # Ligne de séparation
         sep_style = ParagraphStyle(
@@ -340,48 +340,63 @@ def exporter_resultats_pdf(request):
         )
         elements.append(Paragraph("─" * 120, sep_style))
 
-        # Bloc signature aligné à droite
-        sig_title_style = ParagraphStyle(
-            'SigTitle', parent=styles['Normal'],
+        # Titre de section
+        sig_section_style = ParagraphStyle(
+            'SigSection', parent=styles['Normal'],
             fontSize=9, fontName='Helvetica-Bold',
             textColor=colors.HexColor('#2b3e50'),
-            alignment=TA_RIGHT, spaceAfter=4
+            alignment=TA_LEFT, spaceAfter=4
         )
-        elements.append(Paragraph("VISA ET SIGNATURE :", sig_title_style))
+        elements.append(Paragraph("VISA ET SIGNATURE :", sig_section_style))
         elements.append(Spacer(1, 0.3*cm))
 
-        # Titre du signataire
-        sig_name_style = ParagraphStyle(
-            'SigName', parent=styles['Normal'],
-            fontSize=11, fontName='Helvetica-Bold',
-            alignment=TA_RIGHT, spaceAfter=2
+        # Styles pour les blocs de signature
+        sig_name_left = ParagraphStyle(
+            'SigNameLeft', parent=styles['Normal'],
+            fontSize=9, fontName='Helvetica-Bold',
+            alignment=TA_CENTER, spaceAfter=2
         )
-        elements.append(Paragraph(signataire_titre, sig_name_style))
-
-        # Ville et date
-        sig_date_style = ParagraphStyle(
-            'SigDate', parent=styles['Normal'],
-            fontSize=9, fontName='Helvetica-Oblique',
-            textColor=colors.HexColor('#666666'),
-            alignment=TA_RIGHT, spaceAfter=20
+        sig_name_right = ParagraphStyle(
+            'SigNameRight', parent=styles['Normal'],
+            fontSize=9, fontName='Helvetica-Bold',
+            alignment=TA_CENTER, spaceAfter=2
         )
-        date_str = datetime.now().strftime('%d/%m/%Y')
-        elements.append(Paragraph(f"Conakry, le {date_str}", sig_date_style))
-
-        # Ligne de signature (trait) + mention
         sig_line_style = ParagraphStyle(
             'SigLine', parent=styles['Normal'],
-            fontSize=10, alignment=TA_RIGHT, spaceAfter=4
+            fontSize=10, alignment=TA_CENTER, spaceAfter=4
         )
-        elements.append(Paragraph("____________________________", sig_line_style))
-
         sig_mention_style = ParagraphStyle(
             'SigMention', parent=styles['Normal'],
-            fontSize=8, fontName='Helvetica-Oblique',
-            textColor=colors.HexColor('#888888'),
-            alignment=TA_RIGHT
+            fontSize=8, fontName='Helvetica',
+            textColor=colors.HexColor('#666666'),
+            alignment=TA_CENTER
         )
-        elements.append(Paragraph("(Signature et cachet)", sig_mention_style))
+
+        # Bloc gauche : Censeur / Directeur / Coordinatrice
+        left_block = []
+        left_block.append(Paragraph(signataire_titre, sig_name_left))
+        left_block.append(Spacer(1, 1.2*cm))
+        left_block.append(Paragraph("____________________________", sig_line_style))
+        left_block.append(Paragraph("Signature", sig_mention_style))
+
+        # Bloc droit : Directeur Général
+        right_block = []
+        right_block.append(Paragraph("Le Directeur Général", sig_name_right))
+        right_block.append(Spacer(1, 1.2*cm))
+        right_block.append(Paragraph("____________________________", sig_line_style))
+        right_block.append(Paragraph("Signature", sig_mention_style))
+
+        # Table à 2 colonnes pour disposer les signatures côte à côte
+        sig_table_data = [[left_block, right_block]]
+        sig_table = Table(sig_table_data, colWidths=[None, None])
+        sig_table.setStyle(TableStyle([
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+            ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(sig_table)
 
         # Construire le PDF
         doc.build(elements)
