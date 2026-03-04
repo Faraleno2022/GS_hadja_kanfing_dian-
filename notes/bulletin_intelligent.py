@@ -436,11 +436,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     periode_libelle = _formater_periode_libelle(bulletin_data.get('periode', ''))
     c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {periode_libelle}")
     
-    # Année scolaire dynamique
+    # Année scolaire dynamique - positionnée plus bas pour éviter la photo
     annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.5*cm, y_header, f"Année Scolaire {annee_scolaire}")
+    c.drawRightString(width - 1.5*cm, y_header - 0.35*cm, f"Année Scolaire {annee_scolaire}")
     
     # ===== LIGNE DE SÉPARATION NOIRE =====
     y_header -= 0.4*cm
@@ -2024,7 +2024,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.2*cm, y_header, f"Année Scolaire {annee_scolaire}")
+    c.drawRightString(width - 1.2*cm, y_header - 0.35*cm, f"Année Scolaire {annee_scolaire}")
     
     # Ligne de séparation
     y_header -= 0.4*cm
