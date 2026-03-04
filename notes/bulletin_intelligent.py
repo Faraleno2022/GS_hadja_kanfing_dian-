@@ -352,34 +352,39 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             print(f"Erreur filigrane: {e}")
     
     # ===== EN-TÊTE =====
-    # Photo de l'élève en haut à gauche (si disponible) sinon logo
-    photo_path = bulletin_data.get('photo_path')
-    if photo_path:
+    # Logo de l'établissement en haut à gauche
+    if logo_path:
         try:
-            img_reader = ImageReader(photo_path)
+            img_reader = ImageReader(logo_path)
             c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
                        preserveAspectRatio=True, mask='auto')
         except:
-            # Si la photo échoue, afficher le logo
-            if logo_path:
-                try:
-                    img_reader = ImageReader(logo_path)
-                    c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
-                               preserveAspectRatio=True, mask='auto')
-                except:
-                    pass
-    else:
-        # Logo en haut à gauche si pas de photo
-        if logo_path:
-            try:
-                img_reader = ImageReader(logo_path)
-                c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
-                           preserveAspectRatio=True, mask='auto')
-            except:
-                pass
+            pass
     
-    # Drapeau guinéen en haut à droite - seulement s'il n'y a pas de photo
-    if not photo_path:
+    # Photo de l'élève ou Drapeau guinéen en haut à droite
+    photo_path = bulletin_data.get('photo_path')
+    if photo_path:
+        # Afficher la photo de l'élève en haut à droite
+        try:
+            img_reader = ImageReader(photo_path)
+            c.drawImage(img_reader, width - 3.7*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                       preserveAspectRatio=True, mask='auto')
+        except:
+            # Si la photo échoue, afficher le drapeau
+            drapeau_x = width - 2.5*cm
+            drapeau_y = height - 2.2*cm
+            drapeau_w = 1.2*cm
+            drapeau_h = 0.8*cm
+            c.setFillColor(ROUGE_DRAPEAU)
+            c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setFillColor(JAUNE_DRAPEAU)
+            c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setFillColor(VERT_DRAPEAU)
+            c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setStrokeColor(colors.HexColor('#cccccc'))
+            c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    else:
+        # Drapeau guinéen en haut à droite si pas de photo
         drapeau_x = width - 2.5*cm
         drapeau_y = height - 2.2*cm
         drapeau_w = 1.2*cm
@@ -1750,6 +1755,16 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 bulletin_data['matricule'] = eleve.matricule
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
+                
+                # joindre chemin de la photo élève si disponible
+                photo_path_eleve = None
+                if hasattr(eleve, 'photo') and eleve.photo:
+                    try:
+                        if eleve.photo.path and os.path.exists(eleve.photo.path):
+                            photo_path_eleve = eleve.photo.path
+                    except Exception:
+                        photo_path_eleve = None
+                bulletin_data['photo_path'] = photo_path_eleve
             # Utiliser les données pré-calculées si disponibles
             elif eleve.id in details_map:
                 details = details_map[eleve.id]
@@ -1800,6 +1815,16 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'niveau_scolaire': niveau_scolaire,
                     'has_notes_mensuelles': has_notes_mensuelles,  # Pour masquer colonnes mensuelles si seulement compositions
                 }
+                
+                # joindre chemin de la photo élève si disponible
+                photo_path_eleve = None
+                if hasattr(eleve, 'photo') and eleve.photo:
+                    try:
+                        if eleve.photo.path and os.path.exists(eleve.photo.path):
+                            photo_path_eleve = eleve.photo.path
+                    except Exception:
+                        photo_path_eleve = None
+                bulletin_data['photo_path'] = photo_path_eleve
             else:
                 # Fallback: calculer si pas dans le cache
                 calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
@@ -1817,6 +1842,16 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
                 bulletin_data['has_notes_mensuelles'] = has_notes_mensuelles
+                
+                # joindre chemin de la photo élève si disponible
+                photo_path_eleve = None
+                if hasattr(eleve, 'photo') and eleve.photo:
+                    try:
+                        if eleve.photo.path and os.path.exists(eleve.photo.path):
+                            photo_path_eleve = eleve.photo.path
+                    except Exception:
+                        photo_path_eleve = None
+                bulletin_data['photo_path'] = photo_path_eleve
             
             # Dessiner le bulletin sur la page courante (passer le logo pré-chargé)
             _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader)
@@ -1916,19 +1951,42 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         except:
             pass
     
-    # Drapeau guinéen
-    drapeau_x = width - 2.5*cm
-    drapeau_y = height - 2.2*cm
-    drapeau_w = 1.2*cm
-    drapeau_h = 0.8*cm
-    c.setFillColor(ROUGE_DRAPEAU)
-    c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setFillColor(JAUNE_DRAPEAU)
-    c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setFillColor(VERT_DRAPEAU)
-    c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setStrokeColor(colors.HexColor('#cccccc'))
-    c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    # Photo de l'élève ou Drapeau guinéen en haut à droite
+    photo_path = bulletin_data.get('photo_path')
+    if photo_path:
+        # Afficher la photo de l'élève en haut à droite
+        try:
+            photo_reader = ImageReader(photo_path)
+            c.drawImage(photo_reader, width - 3.7*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                       preserveAspectRatio=True, mask='auto')
+        except:
+            # Si la photo échoue, afficher le drapeau
+            drapeau_x = width - 2.5*cm
+            drapeau_y = height - 2.2*cm
+            drapeau_w = 1.2*cm
+            drapeau_h = 0.8*cm
+            c.setFillColor(ROUGE_DRAPEAU)
+            c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setFillColor(JAUNE_DRAPEAU)
+            c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setFillColor(VERT_DRAPEAU)
+            c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+            c.setStrokeColor(colors.HexColor('#cccccc'))
+            c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    else:
+        # Drapeau guinéen en haut à droite si pas de photo
+        drapeau_x = width - 2.5*cm
+        drapeau_y = height - 2.2*cm
+        drapeau_w = 1.2*cm
+        drapeau_h = 0.8*cm
+        c.setFillColor(ROUGE_DRAPEAU)
+        c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setFillColor(JAUNE_DRAPEAU)
+        c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setFillColor(VERT_DRAPEAU)
+        c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setStrokeColor(colors.HexColor('#cccccc'))
+        c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
     
     # Textes en-tête
     y_header = height - 1.2*cm
