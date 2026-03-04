@@ -13,6 +13,7 @@ from django.utils import timezone
 import logging
 
 from eleves.models import Eleve
+import os
 from .models import ClasseNote
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,16 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
         
         # Ajouter le matricule aux données du bulletin
         bulletin_data['matricule'] = eleve.matricule
+        
+        # joindre chemin de la photo élève si disponible (pour affichage dans le PDF)
+        photo_path = None
+        if hasattr(eleve, 'photo') and eleve.photo:
+            try:
+                if eleve.photo.path and os.path.exists(eleve.photo.path):
+                    photo_path = eleve.photo.path
+            except Exception:
+                photo_path = None
+        bulletin_data['photo_path'] = photo_path
         
         # Générer le PDF avec l'école
         pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path, ecole)

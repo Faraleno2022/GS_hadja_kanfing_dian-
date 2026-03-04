@@ -11,6 +11,7 @@ from django.db.models import Avg, Count
 from decimal import Decimal
 import io
 from datetime import datetime
+import os
 
 # ReportLab pour PDF
 from reportlab.lib.pagesizes import A4
@@ -351,28 +352,46 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             print(f"Erreur filigrane: {e}")
     
     # ===== EN-TÊTE =====
-    # Logo en haut à gauche
-    if logo_path:
+    # Photo de l'élève en haut à gauche (si disponible) sinon logo
+    photo_path = bulletin_data.get('photo_path')
+    if photo_path:
         try:
-            img_reader = ImageReader(logo_path)
+            img_reader = ImageReader(photo_path)
             c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
                        preserveAspectRatio=True, mask='auto')
         except:
-            pass
+            # Si la photo échoue, afficher le logo
+            if logo_path:
+                try:
+                    img_reader = ImageReader(logo_path)
+                    c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                               preserveAspectRatio=True, mask='auto')
+                except:
+                    pass
+    else:
+        # Logo en haut à gauche si pas de photo
+        if logo_path:
+            try:
+                img_reader = ImageReader(logo_path)
+                c.drawImage(img_reader, 1.2*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
+                           preserveAspectRatio=True, mask='auto')
+            except:
+                pass
     
-    # Drapeau guinéen en haut à droite
-    drapeau_x = width - 2.5*cm
-    drapeau_y = height - 2.2*cm
-    drapeau_w = 1.2*cm
-    drapeau_h = 0.8*cm
-    c.setFillColor(ROUGE_DRAPEAU)
-    c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setFillColor(JAUNE_DRAPEAU)
-    c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setFillColor(VERT_DRAPEAU)
-    c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-    c.setStrokeColor(colors.HexColor('#cccccc'))
-    c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    # Drapeau guinéen en haut à droite - seulement s'il n'y a pas de photo
+    if not photo_path:
+        drapeau_x = width - 2.5*cm
+        drapeau_y = height - 2.2*cm
+        drapeau_w = 1.2*cm
+        drapeau_h = 0.8*cm
+        c.setFillColor(ROUGE_DRAPEAU)
+        c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setFillColor(JAUNE_DRAPEAU)
+        c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setFillColor(VERT_DRAPEAU)
+        c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+        c.setStrokeColor(colors.HexColor('#cccccc'))
+        c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
     
     # Textes de l'en-tête
     y_header = height - 1.2*cm
@@ -684,12 +703,38 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     
     # Ligne TOTAL
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
-        # BULLETIN ANNUEL: Ligne total
+        # BULLETIN ANNUEL: Ligne total avec sommes des colonnes appropriées
         if est_primaire:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
+        
+        # Calculer les totaux par période (T1, T2, T3 ou S1, S2)
+        totals_periodes = [0] * len(periodes_labels)
+        nb_matieres_par_periode = [0] * len(periodes_labels)
+        
+        for matiere in bulletin_data['matieres']:
+            moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+            for i, periode_label in enumerate(periodes_labels):
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_per = moyennes_mensuelles[i]
+                    if isinstance(moy_per, dict):
+                        val = moy_per.get('moyenne')
+                        if val is not None:
+                            totals_periodes[i] += float(val)
+                            nb_matieres_par_periode[i] += 1
+                    elif moy_per is not None:
+                        totals_periodes[i] += float(moy_per)
+                        nb_matieres_par_periode[i] += 1
+        
+        # Ajouter les moyennes par période au total
+        for i, periode_label in enumerate(periodes_labels):
+            if nb_matieres_par_periode[i] > 0:
+                moy_periode = totals_periodes[i] / nb_matieres_par_periode[i]
+                total_row.append(f"{moy_periode:.0f}")
+            else:
+                total_row.append('-')
+        
         total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
         if not est_primaire:
             total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
@@ -701,7 +746,32 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         
         if has_notes_mensuelles and mois_labels:
-            total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
+            # Calculer les totaux par mois
+            totals_mois = [0] * len(mois_labels)
+            nb_matieres_par_mois = [0] * len(mois_labels)
+            
+            for matiere in bulletin_data['matieres']:
+                moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+                for i, mois_label in enumerate(mois_labels):
+                    if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                        moy_mens = moyennes_mensuelles[i]
+                        if isinstance(moy_mens, dict):
+                            val = moy_mens.get('moyenne')
+                            if val is not None:
+                                totals_mois[i] += float(val)
+                                nb_matieres_par_mois[i] += 1
+                        elif moy_mens is not None:
+                            totals_mois[i] += float(moy_mens)
+                            nb_matieres_par_mois[i] += 1
+            
+            # Ajouter les totaux par mois
+            for i, mois_label in enumerate(mois_labels):
+                if nb_matieres_par_mois[i] > 0:
+                    moy_mois = totals_mois[i] / nb_matieres_par_mois[i]
+                    total_row.append(f"{moy_mois:.0f}")
+                else:
+                    total_row.append('-')
+            
             total_row.append('-')  # Moy.C
         
         total_row.append('-')  # Compo
@@ -1526,6 +1596,16 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     
     # Ajouter le matricule aux données du bulletin
     bulletin_data['matricule'] = eleve.matricule
+    
+    # joindre chemin de la photo élève si disponible (pour affichage dans le PDF)
+    photo_path = None
+    if hasattr(eleve, 'photo') and eleve.photo:
+        try:
+            if eleve.photo.path and os.path.exists(eleve.photo.path):
+                photo_path = eleve.photo.path
+        except Exception:
+            photo_path = None
+    bulletin_data['photo_path'] = photo_path
     
     # Générer le PDF avec l'école
     pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path, ecole)
