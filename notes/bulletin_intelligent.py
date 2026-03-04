@@ -773,13 +773,14 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             for i, mois_label in enumerate(mois_labels):
                 total_row.append(f"{totals_mois[i]:.2f}")
             
-            # Ajouter le total Moy.C (SOMME, pas moyenne)
+            # Ajouter le total Moy.C (MOYENNE, pas somme)
             if nb_matieres_avec_moy_cont > 0:
-                total_row.append(f"{totals_moy_cont:.2f}")
+                moy_moy_cont = totals_moy_cont / nb_matieres_avec_moy_cont
+                total_row.append(f"{moy_moy_cont:.2f}")
             else:
                 total_row.append('-')
         
-        # Ajouter les totaux Compo et MOY (sommes, pas moyennes)
+        # Ajouter les totaux Compo et MOY
         total_compo = 0
         nb_compo = 0
         for matiere in bulletin_data['matieres']:
@@ -788,7 +789,9 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                 total_compo += float(note_compo)
                 nb_compo += 1
         
-        total_row.append(f"{total_compo:.2f}" if nb_compo > 0 else '-')
+        # Compo = MOYENNE (pas somme)
+        total_row.append(f"{total_compo / nb_compo:.2f}" if nb_compo > 0 else '-')
+        # MOY = SOMME
         total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
         if not est_primaire:
             total_row.append(f"{total_points:.2f}")
@@ -2350,13 +2353,14 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             for i, mois_label in enumerate(mois_labels):
                 total_row.append(f"{totals_mois[i]:.2f}")
             
-            # Ajouter le total Moy.C (SOMME, pas moyenne)
+            # Ajouter le total Moy.C (MOYENNE, pas somme)
             if nb_matieres_avec_moy_cont > 0:
-                total_row.append(f"{totals_moy_cont:.2f}")
+                moy_moy_cont = totals_moy_cont / nb_matieres_avec_moy_cont
+                total_row.append(f"{moy_moy_cont:.2f}")
             else:
                 total_row.append('-')
         
-        # Ajouter les totaux Compo et MOY (sommes, pas moyennes)
+        # Ajouter les totaux Compo et MOY
         total_compo = 0
         nb_compo = 0
         for matiere in bulletin_data['matieres']:
@@ -2365,7 +2369,9 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
                 total_compo += float(note_compo)
                 nb_compo += 1
         
-        total_row.append(f"{total_compo:.2f}" if nb_compo > 0 else '-')
+        # Compo = MOYENNE (pas somme)
+        total_row.append(f"{total_compo / nb_compo:.2f}" if nb_compo > 0 else '-')
+        # MOY = SOMME
         total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")
