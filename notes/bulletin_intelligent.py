@@ -714,9 +714,8 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         
-        # Calculer les totaux par période (T1, T2, T3 ou S1, S2)
+        # Calculer les totaux par période (T1, T2, T3 ou S1, S2) - SOMMES
         totals_periodes = [0] * len(periodes_labels)
-        nb_matieres_par_periode = [0] * len(periodes_labels)
         
         for matiere in bulletin_data['matieres']:
             moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
@@ -727,18 +726,12 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                         val = moy_per.get('moyenne')
                         if val is not None:
                             totals_periodes[i] += float(val)
-                            nb_matieres_par_periode[i] += 1
                     elif moy_per is not None:
                         totals_periodes[i] += float(moy_per)
-                        nb_matieres_par_periode[i] += 1
         
-        # Ajouter les moyennes par période au total
+        # Ajouter les SOMMES par période
         for i, periode_label in enumerate(periodes_labels):
-            if nb_matieres_par_periode[i] > 0:
-                moy_periode = totals_periodes[i] / nb_matieres_par_periode[i]
-                total_row.append(f"{moy_periode:.0f}")
-            else:
-                total_row.append('-')
+            total_row.append(f"{totals_periodes[i]:.2f}")
         
         total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
         if not est_primaire:
@@ -753,10 +746,14 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         if has_notes_mensuelles and mois_labels:
             # Calculer les totaux par mois
             totals_mois = [0] * len(mois_labels)
-            nb_matieres_par_mois = [0] * len(mois_labels)
+            totals_moy_cont = 0
+            nb_matieres_avec_moy_cont = 0
             
             for matiere in bulletin_data['matieres']:
                 moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+                moy_continue = matiere.get('moyenne_continue')
+                
+                # Somme des colonnes mensuelles
                 for i, mois_label in enumerate(mois_labels):
                     if moyennes_mensuelles and i < len(moyennes_mensuelles):
                         moy_mens = moyennes_mensuelles[i]
@@ -764,23 +761,35 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                             val = moy_mens.get('moyenne')
                             if val is not None:
                                 totals_mois[i] += float(val)
-                                nb_matieres_par_mois[i] += 1
                         elif moy_mens is not None:
                             totals_mois[i] += float(moy_mens)
-                            nb_matieres_par_mois[i] += 1
+                
+                # Somme de la Moy.C (moyenne continue)
+                if moy_continue:
+                    totals_moy_cont += float(moy_continue)
+                    nb_matieres_avec_moy_cont += 1
             
-            # Ajouter les totaux par mois
+            # Ajouter les totaux par mois (SOMME, pas moyenne)
             for i, mois_label in enumerate(mois_labels):
-                if nb_matieres_par_mois[i] > 0:
-                    moy_mois = totals_mois[i] / nb_matieres_par_mois[i]
-                    total_row.append(f"{moy_mois:.0f}")
-                else:
-                    total_row.append('-')
+                total_row.append(f"{totals_mois[i]:.2f}")
             
-            total_row.append('-')  # Moy.C
+            # Ajouter le total Moy.C (SOMME, pas moyenne)
+            if nb_matieres_avec_moy_cont > 0:
+                total_row.append(f"{totals_moy_cont:.2f}")
+            else:
+                total_row.append('-')
         
-        total_row.append('-')  # Compo
-        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
+        # Ajouter les totaux Compo et MOY (sommes, pas moyennes)
+        total_compo = 0
+        nb_compo = 0
+        for matiere in bulletin_data['matieres']:
+            note_compo = matiere.get('note_composition')
+            if note_compo:
+                total_compo += float(note_compo)
+                nb_compo += 1
+        
+        total_row.append(f"{total_compo:.2f}" if nb_compo > 0 else '-')
+        total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
         if not est_primaire:
             total_row.append(f"{total_points:.2f}")
         data.append(total_row)
@@ -2276,12 +2285,31 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     # Ligne TOTAL
     if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
-        # BULLETIN ANNUEL: Ligne total
+        # BULLETIN ANNUEL: Ligne total avec sommes des colonnes appropriées
         if est_primaire or est_maternelle:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
+        
+        # Calculer les totaux par période (T1, T2, T3 ou S1, S2) - SOMMES
+        totals_periodes = [0] * len(periodes_labels)
+        
+        for matiere in bulletin_data['matieres']:
+            moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+            for i, periode_label in enumerate(periodes_labels):
+                if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                    moy_per = moyennes_mensuelles[i]
+                    if isinstance(moy_per, dict):
+                        val = moy_per.get('moyenne')
+                        if val is not None:
+                            totals_periodes[i] += float(val)
+                    elif moy_per is not None:
+                        totals_periodes[i] += float(moy_per)
+        
+        # Ajouter les SOMMES par période
+        for i, periode_label in enumerate(periodes_labels):
+            total_row.append(f"{totals_periodes[i]:.2f}")
+        
         total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
@@ -2293,19 +2321,60 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         
         if has_notes_mensuelles and mois_labels:
-            total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
-            total_row.append('-')  # Moy.C
+            # Calculer les totaux par mois
+            totals_mois = [0] * len(mois_labels)
+            totals_moy_cont = 0
+            nb_matieres_avec_moy_cont = 0
+            
+            for matiere in bulletin_data['matieres']:
+                moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
+                moy_continue = matiere.get('moyenne_continue')
+                
+                # Somme des colonnes mensuelles
+                for i, mois_label in enumerate(mois_labels):
+                    if moyennes_mensuelles and i < len(moyennes_mensuelles):
+                        moy_mens = moyennes_mensuelles[i]
+                        if isinstance(moy_mens, dict):
+                            val = moy_mens.get('moyenne')
+                            if val is not None:
+                                totals_mois[i] += float(val)
+                        elif moy_mens is not None:
+                            totals_mois[i] += float(moy_mens)
+                
+                # Somme de la Moy.C (moyenne continue)
+                if moy_continue:
+                    totals_moy_cont += float(moy_continue)
+                    nb_matieres_avec_moy_cont += 1
+            
+            # Ajouter les totaux par mois (SOMME, pas moyenne)
+            for i, mois_label in enumerate(mois_labels):
+                total_row.append(f"{totals_mois[i]:.2f}")
+            
+            # Ajouter le total Moy.C (SOMME, pas moyenne)
+            if nb_matieres_avec_moy_cont > 0:
+                total_row.append(f"{totals_moy_cont:.2f}")
+            else:
+                total_row.append('-')
         
-        total_row.append('-')  # Compo
-        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
+        # Ajouter les totaux Compo et MOY (sommes, pas moyennes)
+        total_compo = 0
+        nb_compo = 0
+        for matiere in bulletin_data['matieres']:
+            note_compo = matiere.get('note_composition')
+            if note_compo:
+                total_compo += float(note_compo)
+                nb_compo += 1
+        
+        total_row.append(f"{total_compo:.2f}" if nb_compo > 0 else '-')
+        total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     else:
         if est_primaire or est_maternelle:
-            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
+            data.append(['TOTAL', '-', f"{total_moy:.2f}" if nb_matieres_avec_moy else '-'])
         else:
-            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.2f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
     # Calculer les largeurs de colonnes
     if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
