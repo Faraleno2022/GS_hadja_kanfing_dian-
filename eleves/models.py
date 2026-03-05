@@ -589,12 +589,18 @@ class Eleve(models.Model):
         # Créer l'historique du changement de classe après la sauvegarde
         if changement_classe_info:
             # Transférer les notes vers la nouvelle classe
-            notes_transferees = self._transferer_notes_vers_nouvelle_classe(ancienne_classe, self.classe)
-            
+            transfert_result = self._transferer_notes_vers_nouvelle_classe(ancienne_classe, self.classe)
+            notes_transferees = transfert_result.get('transferees', 0)
+            notes_ignorees = transfert_result.get('ignorees', 0)
+            # Stocker le résultat sur l'instance pour que la vue puisse l'afficher
+            self._transfert_info = transfert_result
+
             description = f"Changement de classe: {changement_classe_info['ancienne_classe']} → {changement_classe_info['nouvelle_classe']}. Ancien matricule: {changement_classe_info['ancien_matricule']}, Nouveau matricule: {self.matricule}"
             if notes_transferees > 0:
                 description += f". {notes_transferees} note(s) transférée(s) vers la nouvelle classe."
-            
+            if notes_ignorees > 0:
+                description += f" {notes_ignorees} note(s) non transférée(s) (matières sans équivalent)."
+
             HistoriqueEleve.objects.create(
                 eleve=self,
                 action='CHANGEMENT_CLASSE',
@@ -632,6 +638,7 @@ class Eleve(models.Model):
 
         _logger = _logging.getLogger(__name__)
         notes_transferees = 0
+        notes_ignorees = 0
 
         try:
             # ── Trouver la ClasseNote correspondant à la nouvelle classe ─────
@@ -686,7 +693,7 @@ class Eleve(models.Model):
                     f"Transfert notes élève {self.id}: aucune ClasseNote trouvée "
                     f"pour '{nouvelle_classe.nom}' ({annee}). Notes non transférées."
                 )
-                return 0
+                return {'transferees': 0, 'ignorees': 0, 'classe_note_manquante': True}
 
             # ── Indexer les matières de la nouvelle classe ────────────────────
             nouvelles_matieres_par_code = {}
@@ -718,7 +725,7 @@ class Eleve(models.Model):
                     f"Transfert notes élève {self.id}: ClasseNote '{nouvelle_classe_note.nom}' "
                     f"n'a aucune matière active. Notes non transférées."
                 )
-                return 0
+                return {'transferees': 0, 'ignorees': 0, 'matieres_manquantes': True}
 
             notes_ignorees = 0
 
@@ -882,7 +889,7 @@ class Eleve(models.Model):
                 exc_info=True
             )
 
-        return notes_transferees
+        return {'transferees': notes_transferees, 'ignorees': notes_ignorees}
 
 class HistoriqueEleve(models.Model):
     """Modèle pour l'historique des modifications d'un élève"""

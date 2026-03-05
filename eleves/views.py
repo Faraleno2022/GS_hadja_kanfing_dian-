@@ -804,7 +804,23 @@ def modifier_eleve(request, eleve_id):
             
             eleve.save()
             print(f"Eleve saved successfully: {eleve}")  # Debug
-            
+
+            # Afficher le résultat du transfert de notes (si changement de classe)
+            transfert_info = getattr(eleve, '_transfert_info', None)
+            if transfert_info is not None:
+                nb_trans = transfert_info.get('transferees', 0)
+                nb_ign = transfert_info.get('ignorees', 0)
+                if transfert_info.get('classe_note_manquante'):
+                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu être transférées (aucune configuration de notes trouvée pour la nouvelle classe).")
+                elif transfert_info.get('matieres_manquantes'):
+                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu être transférées (la nouvelle classe n'a aucune matière configurée).")
+                elif nb_trans > 0 and nb_ign == 0:
+                    messages.success(request, f"{nb_trans} note(s) transférée(s) automatiquement vers la nouvelle classe.")
+                elif nb_trans > 0 and nb_ign > 0:
+                    messages.warning(request, f"{nb_trans} note(s) transférée(s) vers la nouvelle classe, mais {nb_ign} note(s) n'ont pas pu être transférées (matières sans équivalent dans la nouvelle classe).")
+                elif nb_trans == 0 and nb_ign > 0:
+                    messages.warning(request, f"Attention : {nb_ign} note(s) n'ont pas pu être transférées (matières sans équivalent dans la nouvelle classe).")
+
             # Créer l'historique si des changements ont été effectués
             if changements:
                 try:

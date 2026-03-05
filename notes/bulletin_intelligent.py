@@ -1736,7 +1736,10 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     rang_map = classement_result.get('rang_map', {})
     moyennes_map = classement_result.get('moyennes_par_eleve', {})
     details_map = classement_result.get('details_par_eleve', {})
-    
+
+    # Trier les élèves par classement (1er au dernier)
+    eleves = sorted(eleves, key=lambda e: rang_map.get(e.id, 9999))
+
     total_eleves = len(eleves)
     
     # Pré-charger le logo une seule fois

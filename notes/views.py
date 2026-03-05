@@ -1134,6 +1134,9 @@ def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
         if avg is not None:
             classement_list.append((e, avg))
     classement_list.sort(key=lambda t: t[1], reverse=True)
+    # Trier les élèves par classement mensuel (1er au dernier)
+    rang_map_mensuel = {e.id: idx + 1 for idx, (e, _) in enumerate(classement_list)}
+    eleves = sorted(eleves, key=lambda e: rang_map_mensuel.get(e.id, 9999))
 
     # Page 1: Couverture
     margin = 2 * cm
@@ -1372,6 +1375,8 @@ def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     classement_list = [(e, m) for (e, m) in classement_list if m is not None]
     classement_list.sort(key=lambda t: t[1], reverse=True)
     rang_map = {e.id: idx for idx, (e, _) in enumerate(classement_list, start=1)}
+    # Trier les élèves par classement semestriel (1er au dernier)
+    eleves = sorted(eleves, key=lambda e: rang_map.get(e.id, 9999))
 
     # Page 1: Couverture
     margin = 2 * cm
@@ -2220,8 +2225,10 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     for eleve_id, rang_info in rangs_dict.items():
         moyenne_generale_map[eleve_id] = Decimal(str(rang_info['moyenne']))
         rang_map[eleve_id] = rang_info['rang_num']
-    
+
     total_eleves_ayant_moyenne = len(rangs_dict)
+    # Trier les élèves par classement trimestriel (1er au dernier)
+    eleves = sorted(eleves, key=lambda e: rang_map.get(e.id, 9999))
 
     def mention_for(avg: Decimal | None) -> str:
         if avg is None:
@@ -3327,6 +3334,8 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         key=lambda t: (-float(t[1]), matricules_map.get(t[0], ""))
     )
     rang_map: dict[int, int] = {eid: idx for idx, (eid, _) in enumerate(classement, start=1)}
+    # Trier les élèves par classement annuel (1er au dernier)
+    eleves = sorted(eleves, key=lambda e: rang_map.get(e.id, 9999))
 
     def mention_for(avg: Decimal | None) -> str:
         if avg is None: return ""
