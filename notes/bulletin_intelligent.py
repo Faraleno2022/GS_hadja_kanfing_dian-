@@ -1562,8 +1562,8 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
         from notes.calculs_moyennes import calculer_classement_classe, detecter_niveau_scolaire
         from eleves.models import Classe as ClasseEleve
         
-        # Récupérer les matières de la classe
-        matieres = MatiereNote.objects.filter(classe=classe_note)
+        # Récupérer les matières actives de la classe
+        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
         
         # Récupérer tous les élèves de la classe
         classe_eleve = ClasseEleve.objects.filter(
@@ -1722,8 +1722,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     # ===== OPTIMISATION: Pré-calculer le classement pour tous les élèves =====
     from notes.calculs_moyennes import calculer_classement_classe, detecter_notes_mensuelles_classe
     
-    # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
-    matieres = MatiereNote.objects.filter(classe=classe_note)
+    # Récupérer les matières actives de la classe (MatiereNote.classe est une FK vers ClasseNote)
+    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
     # Détecter si la classe a des notes mensuelles ou seulement des compositions
     detection_notes = detecter_notes_mensuelles_classe(classe_note, periode)
