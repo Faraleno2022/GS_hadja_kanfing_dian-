@@ -1734,14 +1734,15 @@ def exporter_conseils_pdf(request):
             c.drawString(margin, y, "COUPON-RÉPONSE À RETOURNER À L'ÉCOLE")
             y -= 0.5*cm
             
-            titre_rdv = lettre.get('titre_enseignant', 'la Direction').lower()
             c.setFont("Helvetica", 8)
             c.setFillColor(colors.black)
             c.drawString(margin, y, f"Je soussigné(e) _________________________, parent de {eleve.prenom} {eleve.nom},")
             y -= 0.4*cm
             c.drawString(margin, y, "□ Ai pris connaissance de cette lettre et m'engage à suivre mon enfant de près.")
             y -= 0.4*cm
-            c.drawString(margin, y, f"□ Souhaite un rendez-vous avec {titre_rdv} le ___/___/______ à ___h___.")
+            c.drawString(margin, y, "□ Souhaite un rendez-vous avec le professeur principal, la direction,")
+            y -= 0.3*cm
+            c.drawString(margin + 0.5*cm, y, "le Directeur Général ou le Censeur le ___/___/______ à ___h___.")
             y -= 0.4*cm
             c.drawString(margin, y, "□ Souhaite être contacté(e) par téléphone au: _______________________")
             y -= 0.6*cm
