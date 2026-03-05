@@ -588,12 +588,16 @@
             <div class="signatures">
                 <div class="signature-box">
                     <p>{% if est_primaire %}Le Directeur du primaire{% else %}Le Censeur de l'établissement{% endif %}</p>
-                    <div style="height: 60px;"></div>
+                    <p style="font-size: 9px; padding: 2px 0;">
+                        {% if est_primaire %}{{ ecole.directeur|default:"" }}{% else %}{{ ecole.censeur|default:"" }}{% endif %}
+                    </p>
+                    <div style="height: 50px;"></div>
                     <p style="font-size: 10px;">Signature</p>
                 </div>
                 <div class="signature-box">
                     <p>Le Directeur Général</p>
-                    <div style="height: 60px;"></div>
+                    <p style="font-size: 9px; padding: 2px 0;">{{ ecole.directeur|default:"" }}</p>
+                    <div style="height: 50px;"></div>
                     <p style="font-size: 10px;">Signature</p>
                 </div>
             </div>

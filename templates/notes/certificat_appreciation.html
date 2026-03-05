@@ -410,7 +410,7 @@
     <div class="signatures">
         <div class="signature-bloc">
             <div class="signature-titre">{% if est_primaire %}Le Directeur du Primaire{% else %}Le Censeur de l'établissement{% endif %}</div>
-            <div class="signature-ligne">_______________________</div>
+            <div class="signature-ligne">{% if est_primaire %}{{ ecole.directeur }}{% else %}{{ ecole.censeur }}{% endif %}</div>
         </div>
         <div class="signature-bloc">
             <div class="signature-titre">Le Directeur Général</div>

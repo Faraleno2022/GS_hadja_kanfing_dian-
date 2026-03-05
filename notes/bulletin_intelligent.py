@@ -1023,6 +1023,17 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c.setFont("Helvetica-Bold", 9)
     titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
     c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
+    
+    # Afficher le nom du directeur/censeur sous le titre
+    c.setFont("Helvetica", 8)
+    nom_signataire = ""
+    if est_primaire and ecole:
+        nom_signataire = getattr(ecole, 'directeur', '') or ''
+    elif ecole:
+        nom_signataire = getattr(ecole, 'censeur', '') or ''
+    if nom_signataire:
+        c.drawCentredString(1.2*cm + sig_width/2, y - 0.35*cm, nom_signataire)
+    
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
@@ -1032,6 +1043,15 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     dir_x = width - 1.2*cm - sig_width
     c.setFont("Helvetica-Bold", 9)
     c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
+    
+    # Afficher le nom du directeur général sous le titre
+    c.setFont("Helvetica", 8)
+    nom_dir_general = ""
+    if ecole:
+        nom_dir_general = getattr(ecole, 'directeur', '') or ''
+    if nom_dir_general:
+        c.drawCentredString(dir_x + sig_width/2, y - 0.35*cm, nom_dir_general)
+    
     c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
     c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")
@@ -2564,6 +2584,17 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     c.setFont("Helvetica-Bold", 9)
     titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
     c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
+    
+    # Afficher le nom du directeur/censeur sous le titre
+    c.setFont("Helvetica", 8)
+    nom_signataire = ""
+    if est_primaire and ecole:
+        nom_signataire = getattr(ecole, 'directeur', '') or ''
+    elif ecole:
+        nom_signataire = getattr(ecole, 'censeur', '') or ''
+    if nom_signataire:
+        c.drawCentredString(1.2*cm + sig_width/2, y - 0.35*cm, nom_signataire)
+    
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
@@ -2572,6 +2603,15 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     dir_x = width - 1.2*cm - sig_width
     c.setFont("Helvetica-Bold", 9)
     c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
+    
+    # Afficher le nom du directeur général sous le titre
+    c.setFont("Helvetica", 8)
+    nom_dir_general = ""
+    if ecole:
+        nom_dir_general = getattr(ecole, 'directeur', '') or ''
+    if nom_dir_general:
+        c.drawCentredString(dir_x + sig_width/2, y - 0.35*cm, nom_dir_general)
+    
     c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
     c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")

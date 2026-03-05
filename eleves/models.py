@@ -31,6 +31,7 @@ class Ecole(models.Model):
     )
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     directeur = models.CharField(max_length=100, verbose_name="Directeur")
+    censeur = models.CharField(max_length=100, blank=True, null=True, verbose_name="Censeur de l'établissement")
     logo = models.ImageField(upload_to='ecoles/logos/', blank=True, null=True)
     # Préfixe explicite pour les matricules (ex: "AL-FUR/")
     code_prefixe = models.CharField(

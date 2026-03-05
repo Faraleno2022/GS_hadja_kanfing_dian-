@@ -5,13 +5,13 @@ from .models import Ecole, Classe, GrilleTarifaire
 
 @admin.register(Ecole)
 class EcoleAdmin(admin.ModelAdmin):
-    list_display = ("nom", "etat", "code_prefixe", "telephone", "email", "directeur", "created_by", "logo_mini")
+    list_display = ("nom", "etat", "code_prefixe", "telephone", "email", "directeur", "censeur", "created_by", "logo_mini")
     list_filter = ("etat",)
-    search_fields = ("nom", "directeur", "telephone", "email")
+    search_fields = ("nom", "directeur", "censeur", "telephone", "email")
     readonly_fields = ("logo_preview",)
     fieldsets = (
         ("Identité", {
-            "fields": ("nom", "directeur", "etat", "created_by")
+            "fields": ("nom", "directeur", "censeur", "etat", "created_by")
         }),
         ("Paramètres matricules", {
             "fields": ("code_prefixe",),
