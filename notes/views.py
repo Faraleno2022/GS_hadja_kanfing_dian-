@@ -730,16 +730,12 @@ def evaluation_detail(request, evaluation_id):
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
-    """Génère un bulletin de notes PDF pour un élève donné et un trimestre (T1/T2/T3).
-    Calcule la moyenne par matière (pondérée par coefficient d'évaluation) et la moyenne générale (pondérée par coefficient de matière).
-    """
+    """Génère un bulletin de notes PDF en utilisant le système intelligent"""
     # Sécuriser l'accès à la classe / élève
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
     eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
-    # Matières définies pour la classe
-    # Note: MatiereNote est lié à ClasseNote, pas ClasseEleve
-    # Nous devons trouver la ClasseNote correspondante
+    # Trouver la ClasseNote correspondante
     from notes.models import ClasseNote
     
     # Mapping spécial pour certaines classes (ClasseEleve ID → ClasseNote ID)
@@ -759,24 +755,32 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
                 annee_scolaire=classe.annee_scolaire,
                 ecole=classe.ecole
             ).first()
-        
-        if classe_note:
-            matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
-        else:
-            matieres = []
     except Exception:
-        matieres = []
+        classe_note = None
 
-    # Récupérer les évaluations de la classe/matière pour le trimestre
-    # Note: Evaluation est lié à matiere (pas classe), utilise periode (pas trimestre)
-    # Conversion trimestre format court vers format long
-    trimestre_mapping = {'T1': 'TRIMESTRE_1', 'T2': 'TRIMESTRE_2', 'T3': 'TRIMESTRE_3', 'S1': 'SEMESTRE_1', 'S2': 'SEMESTRE_2'}
-    periode_longue = trimestre_mapping.get(trimestre, trimestre)
-    
-    evals_by_matiere = {}
-    for mat in matieres:
-        evals = Evaluation.objects.filter(matiere=mat, periode=periode_longue).order_by('date_evaluation', 'id')
-        evals_by_matiere[mat.id] = list(evals)
+    if not classe_note:
+        # Fallback: chercher un ClasseNote avec l'école
+        classe_note = ClasseNote.objects.filter(
+            ecole=classe.ecole
+        ).order_by('nom').first()
+
+    if not classe_note:
+        return HttpResponse("Classe de notes non trouvée", status=404)
+
+    # Convertir trimestre format court vers format attendu par bulletin_intelligent_pdf
+    # Le système intelligent attend: 'TRIMESTRE_1', 'SEMESTRE_1', ou 'ANNUEL'
+    trimestre_mapping = {
+        'T1': 'TRIMESTRE_1',
+        'T2': 'TRIMESTRE_2',
+        'T3': 'TRIMESTRE_3',
+        'S1': 'SEMESTRE_1',
+        'S2': 'SEMESTRE_2'
+    }
+    periode = trimestre_mapping.get(trimestre, trimestre)
+
+    # Appeler la fonction intelligente qui gère tout (photos, totaux, etc)
+    from .bulletin_intelligent import bulletin_intelligent_pdf as gen_bulletin_intelligent
+    return gen_bulletin_intelligent(request, eleve_id, classe_note.id, periode)
 
     # Récupérer les notes de l'élève pour ces évaluations
     # Filtrer par matières de la période (evaluation__classe n'existe pas)
@@ -2136,13 +2140,8 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Génère en un seul PDF les bulletins de tous les élèves d'une classe pour un trimestre."""
     # Sécuriser la classe
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    # Élèves de la classe (dans le périmètre utilisateur)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
-    eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
-
-    # Précharger matières et évaluations du trimestre
-    # Note: MatiereNote est lié à ClasseNote, pas ClasseEleve
-    # Nous devons trouver la ClasseNote correspondante
+    
+    # Trouver la ClasseNote correspondante
     from notes.models import ClasseNote
     try:
         # Essayer de trouver la ClasseNote correspondante
@@ -2151,13 +2150,31 @@ def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
             annee_scolaire=classe.annee_scolaire,
             ecole=classe.ecole
         ).first()
-        
-        if classe_note:
-            matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
-        else:
-            matieres = []
     except Exception:
-        matieres = []
+        classe_note = None
+
+    if not classe_note:
+        classe_note = ClasseNote.objects.filter(ecole=classe.ecole).order_by('nom').first()
+
+    if not classe_note:
+        return HttpResponse("Classe de notes non trouvée", status=404)
+
+    # Convertir trimestre format court vers format attendu par bulletins_classe_pdf du système intelligent
+    trimestre_mapping = {
+        'T1': 'TRIMESTRE_1',
+        'T2': 'TRIMESTRE_2',
+        'T3': 'TRIMESTRE_3',
+        'S1': 'SEMESTRE_1',
+        'S2': 'SEMESTRE_2'
+    }
+    periode = trimestre_mapping.get(trimestre, trimestre)
+
+    # Appeler la fonction intelligente qui gère tout (photos, totaux, etc)
+    from .bulletin_intelligent import bulletins_classe_pdf as gen_bulletins_classe_intelligent
+    return gen_bulletins_classe_intelligent(request, classe_note.id, periode)
+
+
+@login_required
     # Conversion trimestre format court (T1, T2, T3) vers format long (TRIMESTRE_1, etc.)
     trimestre_mapping = {
         'T1': 'TRIMESTRE_1',
