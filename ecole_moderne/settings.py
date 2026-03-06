@@ -40,11 +40,13 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = [
         'gshadjakanfingdiane.pythonanywhere.com',
+        'myschoolgn.pythonanywhere.com',
         'myschoolgn.space',
         'www.myschoolgn.space',
     ]
     CSRF_TRUSTED_ORIGINS = [
         'https://gshadjakanfingdiane.pythonanywhere.com',
+        'https://myschoolgn.pythonanywhere.com',
         'https://myschoolgn.space',
         'https://www.myschoolgn.space',
     ]
@@ -258,7 +260,7 @@ HF_TOKEN = os.environ.get('HF_TOKEN', '')
 HF_MODEL = os.environ.get('HF_MODEL', 'deepseek-ai/DeepSeek-R1')
 
 # =================== Paramètres de sécurité ===================
-BLOCK_SUPERUSER_PUBLIC_LOGIN = os.environ.get('BLOCK_SUPERUSER_PUBLIC_LOGIN', 'true').lower() == 'true'
+BLOCK_SUPERUSER_PUBLIC_LOGIN = False
 ADMIN_WHITELIST_IPS = [ip.strip() for ip in os.environ.get('ADMIN_WHITELIST_IPS', '').split(',') if ip.strip()]
 MAX_CONNECTIONS_PER_IP = 10
 IP_BLOCK_DURATION = 86400
