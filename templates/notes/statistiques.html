@@ -13,23 +13,23 @@
         margin-bottom: 2rem;
         transition: transform 0.3s ease;
     }
-    
+
     .stat-card:hover {
         transform: translateY(-5px);
     }
-    
+
     .stat-value {
         font-size: 2.5rem;
         font-weight: bold;
         margin: 0;
     }
-    
+
     .stat-label {
         color: #6c757d;
         font-size: 0.9rem;
         margin-top: 0.5rem;
     }
-    
+
     .chart-container {
         background: white;
         border-radius: 15px;
@@ -37,7 +37,7 @@
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         margin-bottom: 2rem;
     }
-    
+
     .selection-card {
         background: white;
         border-radius: 15px;
@@ -45,10 +45,42 @@
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         margin-bottom: 2rem;
     }
+
+    /* Loading overlay */
+    #loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(255,255,255,0.85);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
+    #loading-overlay.active {
+        display: flex;
+    }
+    .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #e9ecef;
+        border-top: 5px solid #007bff;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Loading overlay -->
+<div id="loading-overlay">
+    <div class="loading-spinner mb-3"></div>
+    <p class="text-primary fw-bold">Chargement des statistiques...</p>
+</div>
+
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3"><i class="fas fa-chart-bar me-2"></i>Statistiques</h1>
@@ -58,10 +90,16 @@
                class="btn btn-danger" title="Exporter le rapport statistique complet en PDF">
                 <i class="fas fa-file-pdf me-2"></i>Rapport Complet PDF
             </a>
-            <a href="{% url 'notes:exporter_conseils_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}" 
+            <a href="{% url 'notes:exporter_conseils_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}"
                class="btn btn-warning text-dark" title="Télécharger les conseils et prises de décision en PDF">
                 <i class="fas fa-lightbulb me-2"></i>Conseils & Décisions PDF
             </a>
+            {% if eleves_non_admis %}
+            <a href="{% url 'notes:rapport_eleves_sous_moyenne_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}"
+               class="btn btn-dark" title="Fiches individuelles des élèves sous la moyenne à remettre aux parents">
+                <i class="fas fa-user-times me-2"></i>Fiches Parents ({{ eleves_non_admis|length }})
+            </a>
+            {% endif %}
             {% endif %}
             <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left me-2"></i>Retour
@@ -221,6 +259,7 @@
                         <th class="text-center">Moyenne</th>
                         <th class="text-center">Écart</th>
                         <th>Action recommandée</th>
+                        <th class="text-center">Lettres & Messages</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -235,10 +274,92 @@
                             <strong>-{{ eleve_data.ecart }} pts</strong>
                         </td>
                         <td><small class="text-muted">Soutien scolaire urgent</small></td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-danger me-1" type="button" data-bs-toggle="collapse" data-bs-target="#lettre-parent-{{ forloop.counter }}" aria-expanded="false" title="Lettre aux parents">
+                                <i class="fas fa-envelope me-1"></i>Parents
+                            </button>
+                            <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#message-eleve-{{ forloop.counter }}" aria-expanded="false" title="Message à l'élève">
+                                <i class="fas fa-comment me-1"></i>Élève
+                            </button>
+                        </td>
+                    </tr>
+                    <!-- Lettre aux parents (dépliable) -->
+                    <tr class="collapse" id="lettre-parent-{{ forloop.counter }}">
+                        <td colspan="6" class="p-0">
+                            <div class="card border-danger m-2">
+                                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-envelope me-2"></i>Lettre d'information aux parents - {{ eleve_data.eleve.prenom }} {{ eleve_data.eleve.nom }}</span>
+                                    <span class="badge bg-white text-danger">{{ eleve_data.lettre_parent.urgence }}</span>
+                                </div>
+                                <div class="card-body" id="lettre-parent-content-{{ forloop.counter }}">
+                                    <p class="fw-bold">Objet : {{ eleve_data.lettre_parent.objet }}</p>
+                                    <p>Cher(e) Parent / Tuteur,</p>
+                                    <p>{{ eleve_data.lettre_parent.intro }}</p>
+                                    <p class="fw-bold mt-3">Constat :</p>
+                                    <p>{{ eleve_data.lettre_parent.constat }}</p>
+                                    <p class="fw-bold mt-3">Ce que nous vous demandons :</p>
+                                    <ul>
+                                        {% for demande in eleve_data.lettre_parent.demandes %}
+                                        <li>{{ demande }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                    <p class="mt-3 fst-italic">{{ eleve_data.lettre_parent.conclusion }}</p>
+                                    <hr>
+                                    <p class="text-muted text-end mb-0"><small>L'Administration de l'École</small></p>
+                                </div>
+                                <div class="card-footer text-end">
+                                    <button class="btn btn-sm btn-outline-danger" onclick="imprimerLettre('lettre-parent-content-{{ forloop.counter }}', 'Lettre aux parents')">
+                                        <i class="fas fa-print me-1"></i>Imprimer
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- Message à l'élève (dépliable) -->
+                    <tr class="collapse" id="message-eleve-{{ forloop.counter }}">
+                        <td colspan="6" class="p-0">
+                            <div class="card border-info m-2">
+                                <div class="card-header bg-info text-white">
+                                    <i class="fas fa-comment me-2"></i>{{ eleve_data.message_eleve.titre }}
+                                </div>
+                                <div class="card-body" id="message-eleve-content-{{ forloop.counter }}">
+                                    <p class="fw-bold fs-5">{{ eleve_data.message_eleve.intro }}</p>
+                                    <p>{{ eleve_data.message_eleve.constat }}</p>
+                                    <p class="fw-bold mt-3 text-success"><i class="fas fa-heart me-2"></i>Encouragements :</p>
+                                    <ul class="list-unstyled">
+                                        {% for enc in eleve_data.message_eleve.encouragements %}
+                                        <li class="mb-1"><i class="fas fa-check-circle text-success me-2"></i>{{ enc }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                    <p class="fw-bold mt-3 text-primary"><i class="fas fa-lightbulb me-2"></i>Nos conseils pour toi :</p>
+                                    <ol>
+                                        {% for conseil in eleve_data.message_eleve.conseils %}
+                                        <li class="mb-1">{{ conseil }}</li>
+                                        {% endfor %}
+                                    </ol>
+                                    <div class="alert alert-success mt-3 mb-0">
+                                        <i class="fas fa-star me-2"></i>{{ eleve_data.message_eleve.conclusion }}
+                                    </div>
+                                </div>
+                                <div class="card-footer text-end">
+                                    <button class="btn btn-sm btn-outline-info" onclick="imprimerLettre('message-eleve-content-{{ forloop.counter }}', 'Message eleve')">
+                                        <i class="fas fa-print me-1"></i>Imprimer
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <div class="d-flex gap-2 mt-3 flex-wrap">
+            <button class="btn btn-danger btn-sm" onclick="toggleAllLettres('parent')">
+                <i class="fas fa-envelope-open-text me-1"></i>Afficher toutes les lettres aux parents
+            </button>
+            <button class="btn btn-info btn-sm text-white" onclick="toggleAllLettres('eleve')">
+                <i class="fas fa-comments me-1"></i>Afficher tous les messages aux élèves
+            </button>
         </div>
         <div class="alert alert-danger mt-3 mb-0">
             <i class="fas fa-lightbulb me-2"></i>
@@ -397,8 +518,8 @@
     {% endif %}
 </div>
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- Chart.js (local) -->
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
 <script>
 // Données injectées depuis Django
 window.chartData = {
@@ -519,5 +640,51 @@ if (evolutionData.length > 0) {
         }
     });
 }
+
+// Fonction pour imprimer une lettre ou message
+function imprimerLettre(contentId, titre) {
+    var contenu = document.getElementById(contentId);
+    if (!contenu) return;
+    var fenetre = window.open('', '_blank', 'width=800,height=600');
+    fenetre.document.write('<html><head><title>' + titre + '</title>');
+    fenetre.document.write('<style>body{font-family:Arial,sans-serif;padding:30px;line-height:1.6;} .badge,.btn,.card-footer{display:none;} h5{margin-bottom:10px;} ul,ol{margin-left:20px;} .alert{border:1px solid #ccc;padding:10px;margin-top:15px;background:#f0f8f0;} hr{margin:20px 0;} @media print{body{padding:20px;}}</style>');
+    fenetre.document.write('</head><body>');
+    fenetre.document.write(contenu.innerHTML);
+    fenetre.document.write('</body></html>');
+    fenetre.document.close();
+    fenetre.focus();
+    fenetre.print();
+}
+
+// Fonction pour afficher/masquer toutes les lettres
+function toggleAllLettres(type) {
+    var prefix = type === 'parent' ? 'lettre-parent-' : 'message-eleve-';
+    var elements = document.querySelectorAll('[id^="' + prefix + '"]');
+    var allShown = true;
+    elements.forEach(function(el) {
+        if (!el.id.includes('-content-') && !el.classList.contains('show')) {
+            allShown = false;
+        }
+    });
+    elements.forEach(function(el) {
+        if (!el.id.includes('-content-')) {
+            if (allShown) {
+                el.classList.remove('show');
+            } else {
+                el.classList.add('show');
+            }
+        }
+    });
+}
+
+// Afficher le loading overlay lors de la navigation classe/période
+document.addEventListener('DOMContentLoaded', function() {
+    var selectionLinks = document.querySelectorAll('.selection-card a.btn');
+    selectionLinks.forEach(function(link) {
+        link.addEventListener('click', function() {
+            document.getElementById('loading-overlay').classList.add('active');
+        });
+    });
+});
 </script>
 {% endblock %}
