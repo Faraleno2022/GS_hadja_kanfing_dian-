@@ -234,9 +234,16 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
         if ecole and hasattr(ecole, 'logo') and ecole.logo:
             logo_path = ecole.logo.path
         
-        # Ajouter le matricule aux données du bulletin
+        # Ajouter le matricule et la photo aux données du bulletin
         bulletin_data['matricule'] = eleve.matricule
-        
+        if hasattr(eleve, 'photo') and eleve.photo:
+            try:
+                bulletin_data['photo_path'] = eleve.photo.path
+            except Exception:
+                bulletin_data['photo_path'] = None
+        else:
+            bulletin_data['photo_path'] = None
+
         # Générer le PDF avec l'école
         pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path, ecole)
         

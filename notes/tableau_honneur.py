@@ -206,18 +206,26 @@ def _encode_photo(eleve):
 
 
 NIVEAUX_CHOICES = [
-    ('', 'Tous les niveaux'),
-    ('MATERNELLE', 'Maternelle'),
+    ('ETABLISSEMENT', 'Établissement (Primaire + Secondaire)'),
     ('PRIMAIRE', 'Primaire'),
     ('SECONDAIRE', 'Secondaire'),
+    ('MATERNELLE', 'Maternelle'),
 ]
+
+
+def _identifier_premier_global(premiers):
+    """Identifie le premier global dans une liste de premiers et retourne son index."""
+    if not premiers:
+        return -1
+    # Le premier de la liste triée est le meilleur
+    return 0
 
 
 @login_required
 def tableau_honneur(request):
-    """Vue HTML du tableau d'honneur"""
+    """Vue HTML du tableau d'honneur avec classements par niveau"""
     periode = request.GET.get('periode', '')
-    niveau_filtre = request.GET.get('niveau', '')
+    niveau_filtre = request.GET.get('niveau', 'ETABLISSEMENT')
 
     # Récupérer l'école
     from utilisateurs.utils import user_school
@@ -231,13 +239,29 @@ def tableau_honneur(request):
         'periode_label': _get_periode_label(periode) if periode else '',
         'ecole': ecole,
         'premiers': [],
+        'premier_global': None,
     }
 
     if periode:
-        premiers = _get_top1_par_classe(request, periode)
-        if niveau_filtre:
-            premiers = [p for p in premiers if p.get('niveau') == niveau_filtre]
+        tous_premiers = _get_top1_par_classe(request, periode)
+
+        if niveau_filtre == 'ETABLISSEMENT':
+            # Exclure la maternelle → Primaire + Secondaire ensemble
+            premiers = [p for p in tous_premiers if p.get('niveau') in ('PRIMAIRE', 'SECONDAIRE')]
+        elif niveau_filtre:
+            premiers = [p for p in tous_premiers if p.get('niveau') == niveau_filtre]
+        else:
+            premiers = tous_premiers
+
+        # Re-numéroter les rangs après le filtrage
+        for idx, premier in enumerate(premiers, start=1):
+            premier['rang_premiers'] = idx
+            sexe = getattr(premier['eleve'], 'sexe', 'M') or 'M'
+            premier['rang_premiers_formate'] = formater_rang(idx, sexe)
+
         context['premiers'] = premiers
+        if premiers:
+            context['premier_global'] = premiers[0]
 
     return render(request, 'notes/tableau_honneur.html', context)
 
@@ -246,7 +270,7 @@ def tableau_honneur(request):
 def tableau_honneur_pdf(request):
     """Export PDF du tableau d'honneur"""
     periode = request.GET.get('periode', '')
-    niveau_filtre = request.GET.get('niveau', '')
+    niveau_filtre = request.GET.get('niveau', 'ETABLISSEMENT')
 
     if not periode:
         return HttpResponse("Période non spécifiée", status=400)
@@ -254,9 +278,19 @@ def tableau_honneur_pdf(request):
     from utilisateurs.utils import user_school
     ecole = user_school(request.user)
 
-    premiers = _get_top1_par_classe(request, periode)
-    if niveau_filtre:
-        premiers = [p for p in premiers if p.get('niveau') == niveau_filtre]
+    tous_premiers = _get_top1_par_classe(request, periode)
+    if niveau_filtre == 'ETABLISSEMENT':
+        premiers = [p for p in tous_premiers if p.get('niveau') in ('PRIMAIRE', 'SECONDAIRE')]
+    elif niveau_filtre:
+        premiers = [p for p in tous_premiers if p.get('niveau') == niveau_filtre]
+    else:
+        premiers = tous_premiers
+
+    # Re-numéroter les rangs
+    for idx, premier in enumerate(premiers, start=1):
+        premier['rang_premiers'] = idx
+        sexe = getattr(premier['eleve'], 'sexe', 'M') or 'M'
+        premier['rang_premiers_formate'] = formater_rang(idx, sexe)
 
     if not premiers:
         return HttpResponse("Aucun premier trouvé pour cette période", status=404)
@@ -279,12 +313,17 @@ def tableau_honneur_pdf(request):
     if first_classe:
         annee_scolaire = first_classe.annee_scolaire
 
-    niveau_label = dict([
-        ('MATERNELLE', 'Maternelle'), ('PRIMAIRE', 'Primaire'), ('SECONDAIRE', 'Secondaire')
-    ]).get(niveau_filtre, 'Tous les niveaux')
+    niveau_labels_map = {
+        'ETABLISSEMENT': 'Établissement (Primaire + Secondaire)',
+        'MATERNELLE': 'Maternelle',
+        'PRIMAIRE': 'Primaire',
+        'SECONDAIRE': 'Secondaire',
+    }
+    niveau_label = niveau_labels_map.get(niveau_filtre, 'Tous les niveaux')
 
     context = {
         'premiers': premiers,
+        'premier_global': premiers[0] if premiers else None,
         'periode': periode,
         'periode_label': _get_periode_label(periode),
         'niveau_filtre': niveau_filtre,

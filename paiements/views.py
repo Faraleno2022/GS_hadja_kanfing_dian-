@@ -534,6 +534,38 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
         # Ne jamais bloquer l'impression du reçu à cause de cette étape
         logging.getLogger(__name__).exception("Erreur lors de la validation automatique de l'échéancier")
 
+
+def _is_valid_twilio_request(request):
+    """Valide la signature Twilio sur les webhooks entrants.
+
+    Utilise le RequestValidator officiel de Twilio pour vérifier que la
+    requête provient bien de Twilio (en-tête X-Twilio-Signature).
+    Si TWILIO_AUTH_TOKEN n'est pas configuré, rejette toutes les requêtes.
+    """
+    from django.conf import settings as django_settings
+    auth_token = getattr(django_settings, 'TWILIO_AUTH_TOKEN', '')
+    if not auth_token:
+        logging.getLogger(__name__).warning(
+            "TWILIO_AUTH_TOKEN non configuré — requête Twilio rejetée"
+        )
+        return False
+    try:
+        from twilio.request_validator import RequestValidator
+        validator = RequestValidator(auth_token)
+        # Reconstituer l'URL complète telle que vue par Twilio
+        url = request.build_absolute_uri()
+        signature = request.META.get('HTTP_X_TWILIO_SIGNATURE', '')
+        return validator.validate(url, request.POST.dict(), signature)
+    except ImportError:
+        logging.getLogger(__name__).error(
+            "Le package twilio n'est pas installé — validation impossible"
+        )
+        return False
+    except Exception:
+        logging.getLogger(__name__).exception("Erreur lors de la validation Twilio")
+        return False
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def twilio_inbound(request):

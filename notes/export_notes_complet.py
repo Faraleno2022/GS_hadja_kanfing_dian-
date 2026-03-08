@@ -7,7 +7,10 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from decimal import Decimal
 import io
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
 from eleves.models import Eleve, Classe as ClasseEleve
@@ -322,8 +325,8 @@ def exporter_notes_complet_excel(request):
         return response
         
     except Exception as e:
-        import traceback
-        return HttpResponse(f"Erreur export Excel: {str(e)}\n{traceback.format_exc()}", status=500)
+        logger.exception("Erreur export Excel")
+        return HttpResponse("Une erreur est survenue lors de l'export Excel.", status=500)
 
 
 @login_required
@@ -533,5 +536,5 @@ def exporter_notes_complet_pdf(request):
         return response
         
     except Exception as e:
-        import traceback
-        return HttpResponse(f"Erreur export PDF: {str(e)}\n{traceback.format_exc()}", status=500)
+        logger.exception("Erreur export PDF")
+        return HttpResponse("Une erreur est survenue lors de l'export PDF.", status=500)
