@@ -240,7 +240,8 @@ def secure_logout(request):
 def admin_verify(request):
     """
     Affiche un formulaire public demandant le code administrateur. Tant que le code correct
-    n'est pas saisi (625196629), le formulaire de connexion ne sera pas affiché (redirigé ici).
+    n'est pas saisi (défini via SECURITY_VERIFICATION_CODE dans .env), le formulaire de
+    connexion ne sera pas affiché (redirigé ici).
     Quand le code est bon, marque la session comme vérifiée et retourne vers la page login.
     """
     # Pré-remplir IP/username depuis la query
@@ -255,7 +256,9 @@ def admin_verify(request):
         ip_val = ip_p or ip_q
         username_val = username_p or username_q
 
-        if code == '625196629':
+        from django.conf import settings as django_settings
+        expected_code = django_settings.SECURITY_VERIFICATION_CODE
+        if expected_code and code == expected_code:
             # Nettoyer les verrous pour ip/username si disponibles
             cleared = 0
             try:
@@ -590,8 +593,8 @@ def password_reset_info(request):
 def admin_unlock(request):
     """
     Formulaire de vérification pour administrateur afin de réactiver un compte bloqué.
-    Le code demandé est '625196629'. En cas de validation, supprime les verrous
-    (failed_login_*, blocked_login_*) pour l'IP et/ou l'utilisateur saisis.
+    Le code est défini via SECURITY_VERIFICATION_CODE dans .env. En cas de validation,
+    supprime les verrous (failed_login_*, blocked_login_*) pour l'IP et/ou l'utilisateur saisis.
     Réservé aux utilisateurs staff.
     """
     if not request.user.is_staff:
@@ -604,7 +607,9 @@ def admin_unlock(request):
         username = (request.POST.get('username') or '').strip().lower()
 
         # Valider le code de vérification
-        if code != '625196629':
+        from django.conf import settings as django_settings
+        expected_code = django_settings.SECURITY_VERIFICATION_CODE
+        if not expected_code or code != expected_code:
             messages.error(request, "Code de vérification invalide.")
             context.update({'prefill_ip': ip, 'prefill_username': username})
             return render(request, 'utilisateurs/admin_unlock.html', context)

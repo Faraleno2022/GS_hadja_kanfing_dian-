@@ -251,6 +251,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 
 # =================== Intégrations externes ===================
 TWILIO_ENABLED = os.getenv("TWILIO_ENABLED", "false").lower() in {"1", "true", "yes"}
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 PHONE_VERIFY_TTL_SECONDS = int(os.environ.get('PHONE_VERIFY_TTL_SECONDS', 4 * 3600))
 
 # =================== Configuration IA Chatbot ===================
@@ -266,3 +267,7 @@ MAX_CONNECTIONS_PER_IP = 10
 IP_BLOCK_DURATION = 86400
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_BLOCK_DURATION = 300
+
+# Code de vérification pour les suppressions et déverrouillages critiques.
+# IMPORTANT : Définir via variable d'environnement, ne JAMAIS hardcoder dans le code source.
+SECURITY_VERIFICATION_CODE = os.environ.get('SECURITY_VERIFICATION_CODE', '')

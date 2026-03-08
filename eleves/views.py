@@ -17,6 +17,9 @@ from django.views.decorators.cache import never_cache
 from datetime import date
 import os
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve, GrilleTarifaire
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, EcoleForm
 from utilisateurs.forms import SignupInlineForm
@@ -687,7 +690,8 @@ def ajouter_eleve(request):
                 return redirect('eleves:detail_eleve', eleve_id=eleve.id)
                 
             except Exception as e:
-                messages.error(request, f"Erreur lors de l'enregistrement : {str(e)}")
+                logger.exception("Erreur lors de l'enregistrement d'un élève")
+                messages.error(request, "Une erreur est survenue lors de l'enregistrement.")
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
     else:
@@ -1086,7 +1090,8 @@ def export_eleves_classe_excel(request, classe_id):
         return response
         
     except Exception as e:
-        return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
+        logger.exception("Erreur lors de la génération du fichier Excel")
+        return HttpResponse("Une erreur est survenue lors de la génération du fichier Excel.", status=500)
 
 @login_required
 @vary_on_cookie
@@ -1335,7 +1340,8 @@ def export_tous_eleves_excel(request):
         return response
         
     except Exception as e:
-        return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
+        logger.exception("Erreur lors de la génération du fichier Excel")
+        return HttpResponse("Une erreur est survenue lors de la génération du fichier Excel.", status=500)
 
 @login_required
 def supprimer_eleve(request, eleve_id):
@@ -1381,7 +1387,9 @@ def supprimer_eleve(request, eleve_id):
             logger = logging.getLogger(__name__)
             logger.info(f"Admin {request.user.username} - Suppression définitive: {suppression_definitive}")
         
-        if code_verification != '625196629':
+        from django.conf import settings as django_settings
+        expected_code = django_settings.SECURITY_VERIFICATION_CODE
+        if not expected_code or code_verification != expected_code:
             messages.error(request, "Code de vérification incorrect. Suppression annulée.")
             return render(request, 'eleves/confirmer_suppression.html', {
                 'eleve': eleve,
@@ -1505,7 +1513,9 @@ def supprimer_eleves_masse(request):
     
     # Vérifier le code de sécurité
     code_verification = request.POST.get('code_verification', '').strip()
-    if code_verification != '625196629':
+    from django.conf import settings as django_settings
+    expected_code = django_settings.SECURITY_VERIFICATION_CODE
+    if not expected_code or code_verification != expected_code:
         messages.error(request, "Code de vérification incorrect. Suppression annulée.")
         return redirect('eleves:liste_eleves')
     

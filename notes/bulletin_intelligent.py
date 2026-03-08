@@ -11,7 +11,6 @@ from django.db.models import Avg, Count
 from decimal import Decimal
 import io
 from datetime import datetime
-import os
 
 # ReportLab pour PDF
 from reportlab.lib.pagesizes import A4
@@ -352,7 +351,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             print(f"Erreur filigrane: {e}")
     
     # ===== EN-TÊTE =====
-    # Logo de l'établissement en haut à gauche
+    # Logo en haut à gauche
     if logo_path:
         try:
             img_reader = ImageReader(logo_path)
@@ -361,30 +360,30 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         except:
             pass
     
-    # Photo de l'élève ou Drapeau guinéen en haut à droite
+    # Photo de l'élève en haut à droite (si disponible), sinon drapeau guinéen
     photo_path = bulletin_data.get('photo_path')
+    _photo_affichee = False
     if photo_path:
-        # Afficher la photo de l'élève en haut à droite
         try:
-            img_reader = ImageReader(photo_path)
-            c.drawImage(img_reader, width - 3.7*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
-                       preserveAspectRatio=True, mask='auto')
-        except:
-            # Si la photo échoue, afficher le drapeau
-            drapeau_x = width - 2.5*cm
-            drapeau_y = height - 2.2*cm
-            drapeau_w = 1.2*cm
-            drapeau_h = 0.8*cm
-            c.setFillColor(ROUGE_DRAPEAU)
-            c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setFillColor(JAUNE_DRAPEAU)
-            c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setFillColor(VERT_DRAPEAU)
-            c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setStrokeColor(colors.HexColor('#cccccc'))
-            c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
-    else:
-        # Drapeau guinéen en haut à droite si pas de photo
+            import os
+            if os.path.exists(photo_path):
+                photo_reader = ImageReader(photo_path)
+                photo_w = 2.2*cm
+                photo_h = 2.5*cm
+                photo_x = width - 1.2*cm - photo_w
+                photo_y = height - 3.2*cm
+                c.drawImage(photo_reader, photo_x, photo_y, width=photo_w, height=photo_h,
+                           preserveAspectRatio=True, mask='auto')
+                # Bordure fine autour de la photo
+                c.setStrokeColor(colors.HexColor('#b3d4fc'))
+                c.setLineWidth(0.5)
+                c.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
+                _photo_affichee = True
+        except Exception:
+            pass
+
+    if not _photo_affichee:
+        # Drapeau guinéen par défaut
         drapeau_x = width - 2.5*cm
         drapeau_y = height - 2.2*cm
         drapeau_w = 1.2*cm
@@ -436,11 +435,11 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     periode_libelle = _formater_periode_libelle(bulletin_data.get('periode', ''))
     c.drawCentredString(width/2, y_header, f"BULLETIN DE NOTES - {periode_libelle}")
     
-    # Année scolaire dynamique - positionnée plus bas pour éviter la photo
+    # Année scolaire dynamique
     annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.5*cm, y_header - 0.35*cm, f"Année Scolaire {annee_scolaire}")
+    c.drawRightString(width - 1.5*cm, y_header, f"Année Scolaire {annee_scolaire}")
     
     # ===== LIGNE DE SÉPARATION NOIRE =====
     y_header -= 0.4*cm
@@ -602,12 +601,21 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             # Système mensuel: MATIÈRE | COEF | NOTE | MOY | PTS
             data = [['MATIÈRE', 'COEF', 'NOTE', 'MOY', 'PTS']]
             nb_cols = 5
-    
+
     total_coef = 0
     total_moy = 0
     total_points = 0
     nb_matieres_avec_moy = 0
-    
+    total_moy_continue = 0
+    total_note_compo = 0
+    nb_moy_continue = 0
+    nb_note_compo = 0
+    total_note_cours = 0
+    nb_note_cours = 0
+    # Accumulateurs pour colonnes intermédiaires (mois/périodes)
+    totaux_cols_inter = {}
+    counts_cols_inter = {}
+
     for matiere in bulletin_data['matieres']:
         nom_matiere = str(matiere.get('matiere', '-'))
         if hasattr(matiere.get('matiere'), 'nom'):
@@ -639,27 +647,41 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             nb_matieres_avec_moy += 1
         if points:
             total_points += points
-        
+        if moy_continue:
+            total_moy_continue += moy_continue
+            nb_moy_continue += 1
+        if note_compo:
+            total_note_compo += note_compo
+            nb_note_compo += 1
+        if moy_continue and system_type_indiv == 'mensuel':
+            total_note_cours += moy_continue
+            nb_note_cours += 1
+
         if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
             # BULLETIN ANNUEL: Construire la ligne avec les moyennes par période
             if est_primaire:
-                row = [nom_matiere]  # Sans COEF pour primaire
+                row = [nom_matiere]
             else:
                 row = [nom_matiere, f"{coef:.0f}"]
-            
+
             # Ajouter les moyennes par période (T1, T2, T3 ou S1, S2)
             for i, periode_label in enumerate(periodes_labels):
                 note_periode = '-'
+                val_num = None
                 if moyennes_mensuelles and i < len(moyennes_mensuelles):
                     moy_per = moyennes_mensuelles[i]
                     if isinstance(moy_per, dict):
-                        val = moy_per.get('moyenne')
-                        if val is not None:
-                            note_periode = f"{val:.2f}"
+                        val_num = moy_per.get('moyenne')
+                        if val_num is not None:
+                            note_periode = f"{val_num:.2f}"
                     elif moy_per is not None:
-                        note_periode = f"{moy_per:.2f}"
+                        val_num = float(moy_per)
+                        note_periode = f"{val_num:.2f}"
+                if val_num is not None:
+                    totaux_cols_inter[i] = totaux_cols_inter.get(i, 0) + val_num
+                    counts_cols_inter[i] = counts_cols_inter.get(i, 0) + 1
                 row.append(note_periode)
-            
+
             # Ajouter Moy. Annuelle (et PTS seulement pour collège/lycée)
             row.append(f"{moyenne:.2f}" if moyenne else '-')
             if not est_primaire:
@@ -676,16 +698,21 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
                 # Ajouter les notes mensuelles
                 for i, mois_label in enumerate(mois_labels):
                     note_mois = '-'
+                    val_num = None
                     if moyennes_mensuelles and i < len(moyennes_mensuelles):
                         moy_mens = moyennes_mensuelles[i]
                         if isinstance(moy_mens, dict):
-                            val = moy_mens.get('moyenne')
-                            if val is not None:
-                                note_mois = f"{val:.2f}"
+                            val_num = moy_mens.get('moyenne')
+                            if val_num is not None:
+                                note_mois = f"{val_num:.2f}"
                         elif moy_mens is not None:
-                            note_mois = f"{moy_mens:.2f}"
+                            val_num = float(moy_mens)
+                            note_mois = f"{val_num:.2f}"
+                    if val_num is not None:
+                        totaux_cols_inter[i] = totaux_cols_inter.get(i, 0) + val_num
+                        counts_cols_inter[i] = counts_cols_inter.get(i, 0) + 1
                     row.append(note_mois)
-                
+
                 # Ajouter Moy.C (seulement si notes mensuelles)
                 row.append(f"{moy_continue:.2f}" if moy_continue else '-')
             
@@ -706,102 +733,54 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             else:
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
-    # Ligne TOTAL
+    # Ligne TOTAL — avec totaux de toutes les colonnes
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
-        # BULLETIN ANNUEL: Ligne total avec sommes des colonnes appropriées
+        # BULLETIN ANNUEL: Ligne total
         if est_primaire:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        
-        # Calculer les totaux par période (T1, T2, T3 ou S1, S2) - SOMMES
-        totals_periodes = [0] * len(periodes_labels)
-        
-        for matiere in bulletin_data['matieres']:
-            moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
-            for i, periode_label in enumerate(periodes_labels):
-                if moyennes_mensuelles and i < len(moyennes_mensuelles):
-                    moy_per = moyennes_mensuelles[i]
-                    if isinstance(moy_per, dict):
-                        val = moy_per.get('moyenne')
-                        if val is not None:
-                            totals_periodes[i] += float(val)
-                    elif moy_per is not None:
-                        totals_periodes[i] += float(moy_per)
-        
-        # Ajouter les SOMMES par période
-        for i, periode_label in enumerate(periodes_labels):
-            total_row.append(f"{totals_periodes[i]:.2f}")
-        
-        total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
+        # Totaux par période (T1, T2, T3 ou S1, S2)
+        for i in range(len(periodes_labels)):
+            if i in totaux_cols_inter and counts_cols_inter.get(i, 0) > 0:
+                total_row.append(f"{totaux_cols_inter[i]:.2f}")
+            else:
+                total_row.append('-')
+        # Moy. Annuelle
+        total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
         if not est_primaire:
-            total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
+            total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     elif system_type_indiv in ['trimestriel', 'semestriel']:
         if est_primaire:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        
+
         if has_notes_mensuelles and mois_labels:
-            # Calculer les totaux par mois
-            totals_mois = [0] * len(mois_labels)
-            totals_moy_cont = 0
-            nb_matieres_avec_moy_cont = 0
-            
-            for matiere in bulletin_data['matieres']:
-                moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
-                moy_continue = matiere.get('moyenne_continue')
-                
-                # Somme des colonnes mensuelles
-                for i, mois_label in enumerate(mois_labels):
-                    if moyennes_mensuelles and i < len(moyennes_mensuelles):
-                        moy_mens = moyennes_mensuelles[i]
-                        if isinstance(moy_mens, dict):
-                            val = moy_mens.get('moyenne')
-                            if val is not None:
-                                totals_mois[i] += float(val)
-                        elif moy_mens is not None:
-                            totals_mois[i] += float(moy_mens)
-                
-                # Somme de la Moy.C (moyenne continue)
-                if moy_continue:
-                    totals_moy_cont += float(moy_continue)
-                    nb_matieres_avec_moy_cont += 1
-            
-            # Ajouter les totaux par mois (SOMME, pas moyenne)
-            for i, mois_label in enumerate(mois_labels):
-                total_row.append(f"{totals_mois[i]:.2f}")
-            
-            # Ajouter le total Moy.C (MOYENNE, pas somme)
-            if nb_matieres_avec_moy_cont > 0:
-                moy_moy_cont = totals_moy_cont / nb_matieres_avec_moy_cont
-                total_row.append(f"{moy_moy_cont:.2f}")
-            else:
-                total_row.append('-')
-        
-        # Ajouter les totaux Compo et MOY
-        total_compo = 0
-        nb_compo = 0
-        for matiere in bulletin_data['matieres']:
-            note_compo = matiere.get('note_composition')
-            if note_compo:
-                total_compo += float(note_compo)
-                nb_compo += 1
-        
-        # Compo = MOYENNE (pas somme)
-        total_row.append(f"{total_compo / nb_compo:.2f}" if nb_compo > 0 else '-')
-        # MOY = SOMME
-        total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
+            # Totaux par mois
+            for i in range(len(mois_labels)):
+                if i in totaux_cols_inter and counts_cols_inter.get(i, 0) > 0:
+                    total_row.append(f"{totaux_cols_inter[i]:.2f}")
+                else:
+                    total_row.append('-')
+            # Total Moy.C
+            total_row.append(f"{total_moy_continue:.2f}" if nb_moy_continue else '-')
+
+        # Total Compo
+        total_row.append(f"{total_note_compo:.2f}" if nb_note_compo else '-')
+        # Total MOY
+        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
         if not est_primaire:
             total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     else:
+        # Mensuel
+        note_cours_total = f"{total_note_cours:.2f}" if nb_note_cours else '-'
         if est_primaire:
-            # Primaire: sans COEF ni PTS
-            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
+            data.append(['TOTAL', note_cours_total, f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
         else:
-            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+            data.append(['TOTAL', f"{total_coef:.0f}", note_cours_total, f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
     # Calculer les largeurs de colonnes
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
@@ -1023,17 +1002,6 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c.setFont("Helvetica-Bold", 9)
     titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
     c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
-    
-    # Afficher le nom du directeur/censeur sous le titre
-    c.setFont("Helvetica", 8)
-    nom_signataire = ""
-    if est_primaire and ecole:
-        nom_signataire = getattr(ecole, 'directeur', '') or ''
-    elif ecole:
-        nom_signataire = getattr(ecole, 'censeur', '') or ''
-    if nom_signataire:
-        c.drawCentredString(1.2*cm + sig_width/2, y - 0.35*cm, nom_signataire)
-    
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
@@ -1043,15 +1011,6 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     dir_x = width - 1.2*cm - sig_width
     c.setFont("Helvetica-Bold", 9)
     c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
-    
-    # Afficher le nom du directeur général sous le titre
-    c.setFont("Helvetica", 8)
-    nom_dir_general = ""
-    if ecole:
-        nom_dir_general = getattr(ecole, 'directeur', '') or ''
-    if nom_dir_general:
-        c.drawCentredString(dir_x + sig_width/2, y - 0.35*cm, nom_dir_general)
-    
     c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
     c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")
@@ -1493,10 +1452,6 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     """Vue pour afficher le bulletin intelligent"""
     eleve = get_object_or_404(Eleve, pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
-
-    # Sécurité : vérifier que la classe appartient à la même école que l'élève
-    if classe_note.ecole != eleve.classe.ecole:
-        return HttpResponse("Accès refusé : données incohérentes.", status=403)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1582,8 +1537,8 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
         from notes.calculs_moyennes import calculer_classement_classe, detecter_niveau_scolaire
         from eleves.models import Classe as ClasseEleve
         
-        # Récupérer les matières actives de la classe
-        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+        # Récupérer les matières de la classe
+        matieres = MatiereNote.objects.filter(classe=classe_note)
         
         # Récupérer tous les élèves de la classe
         classe_eleve = ClasseEleve.objects.filter(
@@ -1631,19 +1586,16 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     if hasattr(ecole, 'logo') and ecole.logo:
         logo_path = ecole.logo.path
     
-    # Ajouter le matricule aux données du bulletin
+    # Ajouter le matricule et la photo aux données du bulletin
     bulletin_data['matricule'] = eleve.matricule
-    
-    # joindre chemin de la photo élève si disponible (pour affichage dans le PDF)
-    photo_path = None
     if hasattr(eleve, 'photo') and eleve.photo:
         try:
-            if eleve.photo.path and os.path.exists(eleve.photo.path):
-                photo_path = eleve.photo.path
+            bulletin_data['photo_path'] = eleve.photo.path
         except Exception:
-            photo_path = None
-    bulletin_data['photo_path'] = photo_path
-    
+            bulletin_data['photo_path'] = None
+    else:
+        bulletin_data['photo_path'] = None
+
     # Générer le PDF avec l'école
     pdf_buffer = generer_pdf_avec_filigrane(bulletin_data, logo_path, ecole)
     
@@ -1693,15 +1645,9 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
 def bulletins_classe_pdf(request, classe_note_id, periode):
     """Génère tous les bulletins d'une classe en un seul PDF - VERSION OPTIMISÉE"""
     import re
-
+    
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
-
-    # Sécurité : vérifier que la classe appartient à l'école de l'utilisateur
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else None
-    if ecole and classe_note.ecole != ecole:
-        return HttpResponse("Accès refusé : cette classe n'appartient pas à votre école.", status=403)
-
+    
     # Récupérer tous les élèves de la classe
     classe_eleve = Classe.objects.filter(
         nom=classe_note.nom,
@@ -1712,8 +1658,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     if not classe_eleve:
         return HttpResponse("Classe non trouvée", status=404)
     
-    eleves = list(Eleve.objects.select_related('classe', 'classe__ecole').filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
-
+    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+    
     if not eleves:
         return HttpResponse("Aucun élève dans cette classe", status=404)
     
@@ -1742,8 +1688,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     # ===== OPTIMISATION: Pré-calculer le classement pour tous les élèves =====
     from notes.calculs_moyennes import calculer_classement_classe, detecter_notes_mensuelles_classe
     
-    # Récupérer les matières actives de la classe (MatiereNote.classe est une FK vers ClasseNote)
-    matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
+    # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
+    matieres = MatiereNote.objects.filter(classe=classe_note)
     
     # Détecter si la classe a des notes mensuelles ou seulement des compositions
     detection_notes = detecter_notes_mensuelles_classe(classe_note, periode)
@@ -1756,10 +1702,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     rang_map = classement_result.get('rang_map', {})
     moyennes_map = classement_result.get('moyennes_par_eleve', {})
     details_map = classement_result.get('details_par_eleve', {})
-
-    # Trier les élèves par classement (1er au dernier)
-    eleves = sorted(eleves, key=lambda e: rang_map.get(e.id, 9999))
-
+    
     total_eleves = len(eleves)
     
     # Pré-charger le logo une seule fois
@@ -1790,16 +1733,6 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 bulletin_data['matricule'] = eleve.matricule
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
-                
-                # joindre chemin de la photo élève si disponible
-                photo_path_eleve = None
-                if hasattr(eleve, 'photo') and eleve.photo:
-                    try:
-                        if eleve.photo.path and os.path.exists(eleve.photo.path):
-                            photo_path_eleve = eleve.photo.path
-                    except Exception:
-                        photo_path_eleve = None
-                bulletin_data['photo_path'] = photo_path_eleve
             # Utiliser les données pré-calculées si disponibles
             elif eleve.id in details_map:
                 details = details_map[eleve.id]
@@ -1850,16 +1783,6 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'niveau_scolaire': niveau_scolaire,
                     'has_notes_mensuelles': has_notes_mensuelles,  # Pour masquer colonnes mensuelles si seulement compositions
                 }
-                
-                # joindre chemin de la photo élève si disponible
-                photo_path_eleve = None
-                if hasattr(eleve, 'photo') and eleve.photo:
-                    try:
-                        if eleve.photo.path and os.path.exists(eleve.photo.path):
-                            photo_path_eleve = eleve.photo.path
-                    except Exception:
-                        photo_path_eleve = None
-                bulletin_data['photo_path'] = photo_path_eleve
             else:
                 # Fallback: calculer si pas dans le cache
                 calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
@@ -1877,16 +1800,6 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 bulletin_data['total_eleves'] = total_eleves
                 bulletin_data['system_type'] = system_type
                 bulletin_data['has_notes_mensuelles'] = has_notes_mensuelles
-                
-                # joindre chemin de la photo élève si disponible
-                photo_path_eleve = None
-                if hasattr(eleve, 'photo') and eleve.photo:
-                    try:
-                        if eleve.photo.path and os.path.exists(eleve.photo.path):
-                            photo_path_eleve = eleve.photo.path
-                    except Exception:
-                        photo_path_eleve = None
-                bulletin_data['photo_path'] = photo_path_eleve
             
             # Dessiner le bulletin sur la page courante (passer le logo pré-chargé)
             _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader)
@@ -1986,42 +1899,19 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         except:
             pass
     
-    # Photo de l'élève ou Drapeau guinéen en haut à droite
-    photo_path = bulletin_data.get('photo_path')
-    if photo_path:
-        # Afficher la photo de l'élève en haut à droite
-        try:
-            photo_reader = ImageReader(photo_path)
-            c.drawImage(photo_reader, width - 3.7*cm, height - 3.2*cm, width=2.5*cm, height=2.5*cm, 
-                       preserveAspectRatio=True, mask='auto')
-        except:
-            # Si la photo échoue, afficher le drapeau
-            drapeau_x = width - 2.5*cm
-            drapeau_y = height - 2.2*cm
-            drapeau_w = 1.2*cm
-            drapeau_h = 0.8*cm
-            c.setFillColor(ROUGE_DRAPEAU)
-            c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setFillColor(JAUNE_DRAPEAU)
-            c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setFillColor(VERT_DRAPEAU)
-            c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-            c.setStrokeColor(colors.HexColor('#cccccc'))
-            c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
-    else:
-        # Drapeau guinéen en haut à droite si pas de photo
-        drapeau_x = width - 2.5*cm
-        drapeau_y = height - 2.2*cm
-        drapeau_w = 1.2*cm
-        drapeau_h = 0.8*cm
-        c.setFillColor(ROUGE_DRAPEAU)
-        c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-        c.setFillColor(JAUNE_DRAPEAU)
-        c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-        c.setFillColor(VERT_DRAPEAU)
-        c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
-        c.setStrokeColor(colors.HexColor('#cccccc'))
-        c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
+    # Drapeau guinéen
+    drapeau_x = width - 2.5*cm
+    drapeau_y = height - 2.2*cm
+    drapeau_w = 1.2*cm
+    drapeau_h = 0.8*cm
+    c.setFillColor(ROUGE_DRAPEAU)
+    c.rect(drapeau_x, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(JAUNE_DRAPEAU)
+    c.rect(drapeau_x + drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setFillColor(VERT_DRAPEAU)
+    c.rect(drapeau_x + 2*drapeau_w/3, drapeau_y, drapeau_w/3, drapeau_h, fill=1, stroke=0)
+    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.rect(drapeau_x, drapeau_y, drapeau_w, drapeau_h, fill=0, stroke=1)
     
     # Textes en-tête
     y_header = height - 1.2*cm
@@ -2059,7 +1949,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     annee_scolaire = ecole.annee_scolaire if hasattr(ecole, 'annee_scolaire') and ecole.annee_scolaire else "2025-2026"
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor('#666666'))
-    c.drawRightString(width - 1.2*cm, y_header - 0.35*cm, f"Année Scolaire {annee_scolaire}")
+    c.drawRightString(width - 1.2*cm, y_header, f"Année Scolaire {annee_scolaire}")
     
     # Ligne de séparation
     y_header -= 0.4*cm
@@ -2311,31 +2201,12 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     
     # Ligne TOTAL
     if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
-        # BULLETIN ANNUEL: Ligne total avec sommes des colonnes appropriées
+        # BULLETIN ANNUEL: Ligne total
         if est_primaire or est_maternelle:
             total_row = ['TOTAL']
         else:
             total_row = ['TOTAL', f"{total_coef:.0f}"]
-        
-        # Calculer les totaux par période (T1, T2, T3 ou S1, S2) - SOMMES
-        totals_periodes = [0] * len(periodes_labels)
-        
-        for matiere in bulletin_data['matieres']:
-            moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
-            for i, periode_label in enumerate(periodes_labels):
-                if moyennes_mensuelles and i < len(moyennes_mensuelles):
-                    moy_per = moyennes_mensuelles[i]
-                    if isinstance(moy_per, dict):
-                        val = moy_per.get('moyenne')
-                        if val is not None:
-                            totals_periodes[i] += float(val)
-                    elif moy_per is not None:
-                        totals_periodes[i] += float(moy_per)
-        
-        # Ajouter les SOMMES par période
-        for i, periode_label in enumerate(periodes_labels):
-            total_row.append(f"{totals_periodes[i]:.2f}")
-        
+        total_row += ['-'] * len(periodes_labels)  # Colonnes périodes vides (T1, T2, T3 ou S1, S2)
         total_row.append('-')  # Colonne Moy. Ann. = tiret (pas de somme des moyennes)
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")  # Colonne PTS = total des points
@@ -2347,63 +2218,19 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             total_row = ['TOTAL', f"{total_coef:.0f}"]
         
         if has_notes_mensuelles and mois_labels:
-            # Calculer les totaux par mois
-            totals_mois = [0] * len(mois_labels)
-            totals_moy_cont = 0
-            nb_matieres_avec_moy_cont = 0
-            
-            for matiere in bulletin_data['matieres']:
-                moyennes_mensuelles = matiere.get('moyennes_mensuelles', [])
-                moy_continue = matiere.get('moyenne_continue')
-                
-                # Somme des colonnes mensuelles
-                for i, mois_label in enumerate(mois_labels):
-                    if moyennes_mensuelles and i < len(moyennes_mensuelles):
-                        moy_mens = moyennes_mensuelles[i]
-                        if isinstance(moy_mens, dict):
-                            val = moy_mens.get('moyenne')
-                            if val is not None:
-                                totals_mois[i] += float(val)
-                        elif moy_mens is not None:
-                            totals_mois[i] += float(moy_mens)
-                
-                # Somme de la Moy.C (moyenne continue)
-                if moy_continue:
-                    totals_moy_cont += float(moy_continue)
-                    nb_matieres_avec_moy_cont += 1
-            
-            # Ajouter les totaux par mois (SOMME, pas moyenne)
-            for i, mois_label in enumerate(mois_labels):
-                total_row.append(f"{totals_mois[i]:.2f}")
-            
-            # Ajouter le total Moy.C (MOYENNE, pas somme)
-            if nb_matieres_avec_moy_cont > 0:
-                moy_moy_cont = totals_moy_cont / nb_matieres_avec_moy_cont
-                total_row.append(f"{moy_moy_cont:.2f}")
-            else:
-                total_row.append('-')
+            total_row += ['-'] * len(mois_labels)  # Colonnes mois vides
+            total_row.append('-')  # Moy.C
         
-        # Ajouter les totaux Compo et MOY
-        total_compo = 0
-        nb_compo = 0
-        for matiere in bulletin_data['matieres']:
-            note_compo = matiere.get('note_composition')
-            if note_compo:
-                total_compo += float(note_compo)
-                nb_compo += 1
-        
-        # Compo = MOYENNE (pas somme)
-        total_row.append(f"{total_compo / nb_compo:.2f}" if nb_compo > 0 else '-')
-        # MOY = SOMME
-        total_row.append(f"{total_moy:.2f}" if nb_matieres_avec_moy else '-')
+        total_row.append('-')  # Compo
+        total_row.append(f"{total_moy:.0f}" if nb_matieres_avec_moy else '-')
         if not (est_primaire or est_maternelle):
             total_row.append(f"{total_points:.2f}")
         data.append(total_row)
     else:
         if est_primaire or est_maternelle:
-            data.append(['TOTAL', '-', f"{total_moy:.2f}" if nb_matieres_avec_moy else '-'])
+            data.append(['TOTAL', '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-'])
         else:
-            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.2f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
+            data.append(['TOTAL', f"{total_coef:.0f}", '-', f"{total_moy:.0f}" if nb_matieres_avec_moy else '-', f"{total_points:.2f}"])
     
     # Calculer les largeurs de colonnes
     if system_type in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
@@ -2584,17 +2411,6 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     c.setFont("Helvetica-Bold", 9)
     titre_signataire = "Directeur du primaire" if est_primaire else "Censeur de l'établissement"
     c.drawCentredString(1.2*cm + sig_width/2, y, titre_signataire)
-    
-    # Afficher le nom du directeur/censeur sous le titre
-    c.setFont("Helvetica", 8)
-    nom_signataire = ""
-    if est_primaire and ecole:
-        nom_signataire = getattr(ecole, 'directeur', '') or ''
-    elif ecole:
-        nom_signataire = getattr(ecole, 'censeur', '') or ''
-    if nom_signataire:
-        c.drawCentredString(1.2*cm + sig_width/2, y - 0.35*cm, nom_signataire)
-    
     c.setStrokeColor(colors.black)
     c.line(1.2*cm + 0.5*cm, y - 1.5*cm, 1.2*cm + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
@@ -2603,15 +2419,6 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     dir_x = width - 1.2*cm - sig_width
     c.setFont("Helvetica-Bold", 9)
     c.drawCentredString(dir_x + sig_width/2, y, "Directeur Général")
-    
-    # Afficher le nom du directeur général sous le titre
-    c.setFont("Helvetica", 8)
-    nom_dir_general = ""
-    if ecole:
-        nom_dir_general = getattr(ecole, 'directeur', '') or ''
-    if nom_dir_general:
-        c.drawCentredString(dir_x + sig_width/2, y - 0.35*cm, nom_dir_general)
-    
     c.line(dir_x + 0.5*cm, y - 1.5*cm, dir_x + sig_width - 0.5*cm, y - 1.5*cm)
     c.setFont("Helvetica", 8)
     c.drawCentredString(dir_x + sig_width/2, y - 1.8*cm, "Signature")

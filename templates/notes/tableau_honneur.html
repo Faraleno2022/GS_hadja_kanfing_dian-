@@ -267,9 +267,24 @@
     </div>
 
     {% if periode and premiers %}
+    <!-- Premier global mis en évidence -->
+    {% if premier_global %}
+    <div class="alert alert-warning text-center py-3 mb-4" style="border-left: 5px solid #ffd700; background: linear-gradient(90deg, #fff9e6, #fff3cd);">
+        <h5 class="mb-0">
+            <i class="fas fa-crown text-warning me-2"></i>
+            Premier{% if premier_global.eleve.sexe == 'F' %}e{% endif %}
+            {% if niveau_filtre == 'ETABLISSEMENT' %}de l'Établissement{% elif niveau_filtre == 'PRIMAIRE' %}du Primaire{% elif niveau_filtre == 'SECONDAIRE' %}du Secondaire{% elif niveau_filtre == 'MATERNELLE' %}de la Maternelle{% endif %}
+            :
+            <strong>{{ premier_global.eleve.prenom }} {{ premier_global.eleve.nom }}</strong>
+            — {{ premier_global.classe_nom }}
+            — <span class="text-primary">{{ premier_global.moyenne }}/{{ premier_global.note_max }}</span>
+        </h5>
+    </div>
+    {% endif %}
+
     <h4 class="text-center text-muted mb-4">
         Période : <strong>{{ periode_label }}</strong>
-        {% if niveau_filtre %} — Niveau : <strong>{{ niveau_filtre|capfirst }}</strong>{% endif %}
+        — {% if niveau_filtre == 'ETABLISSEMENT' %}Établissement (Primaire + Secondaire){% elif niveau_filtre %}{{ niveau_filtre|capfirst }}{% else %}Tous les niveaux{% endif %}
         — {{ premiers|length }} classe{{ premiers|length|pluralize:"s" }}
     </h4>
 

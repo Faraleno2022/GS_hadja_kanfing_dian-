@@ -1777,7 +1777,9 @@ def supprimer_enseignant(request, enseignant_id):
             logger = logging.getLogger(__name__)
             logger.info(f"Admin {request.user.username} - Suppression définitive enseignant: {suppression_definitive}")
         
-        if code_verification != '625196629':
+        from django.conf import settings as django_settings
+        expected_code = django_settings.SECURITY_VERIFICATION_CODE
+        if not expected_code or code_verification != expected_code:
             messages.error(request, "Code de vérification incorrect. Suppression annulée.")
             return render(request, 'salaires/confirmer_suppression_enseignant.html', {
                 'enseignant': enseignant,
