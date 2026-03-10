@@ -128,9 +128,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Vérification licence : bloque l'accès web si essai/licence expiré
+    'ecole_moderne.licence_middleware.LicenceMiddleware',
 ]
 
-# Ajouter middlewares d’optimisation images
+# Ajouter middlewares d'optimisation images
 if DEBUG:
     MIDDLEWARE += [
         'ecole_moderne.image_cache_middleware.ImageCacheMiddleware',
@@ -187,10 +189,32 @@ else:
             "OPTIONS": {
                 "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
                 "charset": "utf8mb4",
+                "connect_timeout": 10,      # Timeout connexion initiale
+                "read_timeout": 30,         # Timeout lecture requête
+                "write_timeout": 30,        # Timeout écriture
             },
-            "CONN_MAX_AGE": 60,
+            # PythonAnywhere MySQL wait_timeout = 300s → on reste sous ce seuil
+            "CONN_MAX_AGE": 270,
         }
     }
+
+# =================== Cache (vitesse maximale) ===================
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "myschool-cache-v1",
+        "OPTIONS": {
+            "MAX_ENTRIES": 2000,        # Nombre max d'entrées en mémoire
+            "CULL_FREQUENCY": 4,        # Supprime 1/4 du cache quand MAX_ENTRIES atteint
+        },
+        "TIMEOUT": 600,                 # 10 minutes par défaut
+    }
+}
+
+# Sessions stockées en DB + cache (1 requête DB au lieu de 2 par session)
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+SESSION_CACHE_ALIAS = "default"
+SESSION_COOKIE_AGE = 86400 * 7   # 7 jours (évite reconnexions fréquentes)
 
 # =================== Auth & mots de passe ===================
 AUTH_PASSWORD_VALIDATORS = [

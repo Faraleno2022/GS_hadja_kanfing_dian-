@@ -410,7 +410,15 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     
     if not classe:
         return {}
-    
+
+    # ── Cache: évite de recalculer si déjà fait dans les 10 dernières minutes ──
+    # La version est incrémentée à chaque sauvegarde de note pour invalider le cache
+    _version = cache.get(f"moy_version_classe_{classe.id}", 0)
+    _cache_key = f"moy_classe_{classe.id}_{periode}_{system_type}_v{_version}"
+    _cached = cache.get(_cache_key)
+    if _cached is not None:
+        return _cached
+
     # Détecter le niveau scolaire
     niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
     est_primaire = (niveau == 'PRIMAIRE')
@@ -581,7 +589,9 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
             'niveau': niveau,
             'appreciations_only': False
         }
-    
+
+    # Mettre en cache 10 min (invalidé automatiquement dès qu'une note est saisie)
+    cache.set(_cache_key, resultats, CACHE_TIMEOUT_MOYENNES)
     return resultats
 
 

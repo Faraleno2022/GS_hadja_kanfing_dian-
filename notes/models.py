@@ -120,6 +120,10 @@ class Evaluation(models.Model):
         verbose_name = "Évaluation"
         verbose_name_plural = "Évaluations"
         ordering = ['-date_evaluation']
+        indexes = [
+            models.Index(fields=['matiere', 'periode'], name='eval_matiere_periode_idx'),
+            models.Index(fields=['matiere', 'type_evaluation'], name='eval_matiere_type_idx'),
+        ]
     
     def __str__(self):
         return f"{self.titre} - {self.matiere.nom} ({self.get_periode_display()})"
@@ -143,6 +147,10 @@ class NoteEleve(models.Model):
         verbose_name_plural = "Notes élèves"
         ordering = ['eleve__nom', 'eleve__prenom']
         unique_together = ['evaluation', 'eleve']
+        indexes = [
+            models.Index(fields=['eleve'], name='note_eleve_idx'),
+            models.Index(fields=['evaluation', 'eleve'], name='note_eval_eleve_idx'),
+        ]
     
     def __str__(self):
         if self.absent:
@@ -283,6 +291,10 @@ class AppreciationMaternelle(models.Model):
         verbose_name_plural = "Appréciations maternelle"
         ordering = ['eleve', 'matiere', 'trimestre']
         unique_together = ['eleve', 'matiere', 'trimestre', 'annee_scolaire']
+        indexes = [
+            models.Index(fields=['eleve', 'trimestre', 'annee_scolaire'], name='appmat_eleve_trim_idx'),
+            models.Index(fields=['matiere', 'trimestre', 'annee_scolaire'], name='appmat_mat_trim_idx'),
+        ]
     
     def __str__(self):
         if self.absent:

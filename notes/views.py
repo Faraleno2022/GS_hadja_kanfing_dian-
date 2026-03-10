@@ -207,7 +207,10 @@ def tableau_bord(request):
     """Tableau de bord des notes: liste les classes par groupe de niveaux.
     Filtré par l'école de l'utilisateur (sauf admin).
     """
-    classes_qs = filter_by_user_school(ClasseEleve.objects.all().order_by('niveau', 'nom'), request.user, 'ecole')
+    classes_qs = filter_by_user_school(
+        ClasseEleve.objects.select_related('ecole').order_by('niveau', 'nom'),
+        request.user, 'ecole'
+    )
 
     def group_classes(qs):
         primaire, college, lycee = [], [], []
@@ -4720,10 +4723,12 @@ def statistiques(request):
         ).first()
         
         if classe_eleve:
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+            eleves = Eleve.objects.filter(
+                classe=classe_eleve, statut='ACTIF'
+            ).select_related('classe').order_by('prenom', 'nom')
         else:
             eleves = Eleve.objects.none()
-        
+
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
         
@@ -5513,12 +5518,14 @@ def saisir_notes(request):
     
     # Périodes disponibles par défaut
     periodes_disponibles = []
-    
+
     if classe_id:
         classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
         niveau_enseignement = classe_selectionnee.niveau_enseignement
-        matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
-        
+        matieres = MatiereNote.objects.filter(
+            classe=classe_selectionnee, actif=True
+        ).select_related('classe').order_by('nom')
+
         # Détecter le niveau scolaire pour adapter l'interface
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_detecte = detecter_niveau_scolaire(classe_selectionnee.nom)
@@ -5591,16 +5598,17 @@ def saisir_notes(request):
         if matiere_id:
             matiere_selectionnee = get_object_or_404(MatiereNote, pk=matiere_id)
             if periode:
-                evaluations = Evaluation.objects.filter(matiere=matiere_selectionnee, periode=periode).order_by('date_evaluation')
+                evaluations = Evaluation.objects.filter(
+                    matiere=matiere_selectionnee, periode=periode
+                ).select_related('matiere').order_by('date_evaluation')
             else:
                 evaluations = Evaluation.objects.none()
-            
-            # Vérifier si des notes existent déjà pour cette période
-            notes_existantes_count = 0
-            if evaluations.exists():
-                notes_existantes_count = NoteEleve.objects.filter(
-                    evaluation__in=evaluations
-                ).count()
+
+            # Vérifier si des notes existent déjà (1 seule requête count)
+            notes_existantes_count = NoteEleve.objects.filter(
+                evaluation__matiere=matiere_selectionnee,
+                evaluation__periode=periode
+            ).count() if periode else 0
             
             # Récupérer les élèves
             try:
@@ -5623,17 +5631,21 @@ def saisir_notes(request):
                     ).first()
                 
                 if classe_eleve:
-                    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+                    eleves = Eleve.objects.filter(
+                        classe=classe_eleve, statut='ACTIF'
+                    ).select_related('classe').order_by('prenom', 'nom')
                 else:
                     # Recherche approximative
                     nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
                     classes_similaires = ClasseEleve.objects.filter(
                         nom__icontains=nom_recherche,
-                        ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
+                        ecole=classe_selectionnee.ecole
                     )
                     if classes_similaires.count() >= 1:
                         classe_eleve = classes_similaires.first()
-                        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+                        eleves = Eleve.objects.filter(
+                            classe=classe_eleve, statut='ACTIF'
+                        ).select_related('classe').order_by('prenom', 'nom')
             except Exception:
                 pass
     
@@ -6331,11 +6343,17 @@ def sauvegarder_notes(request):
         
         logger.info(f"Sauvegarde terminée: {total_notes} notes traitées, {len(erreurs)} erreurs")
         
-        # Invalider le cache des rangs/classements pour que les bulletins soient à jour
+        # Invalider le cache des rangs/classements et des moyennes
         if total_notes > 0:
             try:
                 from .utils_rangs import invalider_cache_rangs
                 invalider_cache_rangs(matiere.classe, periode)
+                # Invalider aussi le cache calculer_moyennes_classe_optimise
+                # (pattern: moy_classe_<id>_<periode>_<system_type>_*)
+                # Django locmem cache ne supporte pas delete_pattern,
+                # on vide tout le préfixe via une clé sentinelle incrémentale
+                _version_key = f"moy_version_classe_{matiere.classe.id}"
+                cache.set(_version_key, cache.get(_version_key, 0) + 1, 86400)
                 logger.info(f"Cache invalidé pour classe {matiere.classe.id}, période {periode}")
             except Exception as e:
                 logger.warning(f"Erreur invalidation cache: {e}")
