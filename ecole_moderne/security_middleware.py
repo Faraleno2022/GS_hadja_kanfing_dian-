@@ -460,7 +460,7 @@ class CSPMiddleware(MiddlewareMixin):
 
             # Permissions-Policy: désactiver capteurs non utilisés
             response['Permissions-Policy'] = (
-                "geolocation=(), microphone=(), camera=(), usb=(), payment=(), fullscreen=(self)"
+                "geolocation=(), microphone=(), camera=(self), usb=(), payment=(), fullscreen=(self)"
             )
 
             # Cross-Origin policies pour isolation
