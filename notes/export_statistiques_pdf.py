@@ -18,6 +18,24 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from utilisateurs.permissions import can_manage_notes
 
+
+# ── Libellés lisibles pour les codes de période ────────────────────────────
+_PERIODE_LIBELLES = {
+    'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre',
+    'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars',
+    'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
+    'TRIMESTRE_1': '1er Trimestre', 'TRIMESTRE_2': '2ème Trimestre', 'TRIMESTRE_3': '3ème Trimestre',
+    'SEMESTRE_1': '1er Semestre', 'SEMESTRE_2': '2ème Semestre',
+    'ANNUEL_TRIM': 'Annuel', 'ANNUEL_SEM': 'Annuel',
+}
+
+
+def _libelle_periode(periode):
+    """Convertit un code de période en libellé lisible (ex: TRIMESTRE_1 → 1er Trimestre)."""
+    if not periode:
+        return ''
+    return _PERIODE_LIBELLES.get(str(periode).upper(), str(periode).replace('_', ' ').title())
+
 # Pour les graphiques
 try:
     import matplotlib
@@ -966,7 +984,7 @@ def _generer_lettre_parent(eleve_data, classe_nom, periode, ecole_nom):
         urgence = 'À NOTER'
     
     # Construire le constat avec genre
-    constat = f"À l'issue de la période {periode}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/{note_max}, "
+    constat = f"À l'issue de la période {_libelle_periode(periode)}, {eleve.prenom} a obtenu une moyenne générale de {moyenne:.2f}/{note_max}, "
     constat += f"ce qui {pronom_le} place en situation de {'grande difficulté' if moyenne < seuil_diff else 'difficulté'}."
     
     # Ajouter l'alerte sur les matières sans notes
@@ -1205,7 +1223,7 @@ def exporter_conseils_pdf(request):
         
         c.setFont("Helvetica-Bold", 10)
         c.setFillColor(colors.HexColor('#2C3E50'))
-        c.drawCentredString(width/2, y_pos - 1.0*cm, f"Classe: {classe_note.nom} - Période: {periode}")
+        c.drawCentredString(width/2, y_pos - 1.0*cm, f"Classe: {classe_note.nom} - Période: {_libelle_periode(periode)}")
         
         c.setFont("Helvetica", 8)
         c.setFillColor(colors.gray)

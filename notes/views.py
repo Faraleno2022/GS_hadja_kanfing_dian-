@@ -4585,6 +4585,22 @@ def imprimer_tableau_notes_pdf(request):
         logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
         return HttpResponse(f"Erreur: {str(e)}", status=500)
 
+_PERIODE_LIBELLES_VIEWS = {
+    'OCTOBRE': 'Octobre', 'NOVEMBRE': 'Novembre', 'DECEMBRE': 'Décembre',
+    'JANVIER': 'Janvier', 'FEVRIER': 'Février', 'MARS': 'Mars',
+    'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
+    'TRIMESTRE_1': '1er Trimestre', 'TRIMESTRE_2': '2ème Trimestre', 'TRIMESTRE_3': '3ème Trimestre',
+    'SEMESTRE_1': '1er Semestre', 'SEMESTRE_2': '2ème Semestre',
+    'ANNUEL_TRIM': 'Annuel', 'ANNUEL_SEM': 'Annuel',
+}
+
+def _libelle_periode_views(periode):
+    """Convertit un code de période en libellé lisible (ex: SEMESTRE_1 → 1er Semestre)."""
+    if not periode:
+        return ''
+    return _PERIODE_LIBELLES_VIEWS.get(str(periode).upper(), str(periode).replace('_', ' ').title())
+
+
 def _generer_lettre_parent_inline(eleve, moyenne, classe_nom, periode, note_max, est_primaire):
     """Genere une lettre d'information aux parents pour un eleve en difficulte"""
     est_fille = getattr(eleve, 'sexe', 'M') == 'F'
@@ -4608,7 +4624,7 @@ def _generer_lettre_parent_inline(eleve, moyenne, classe_nom, periode, note_max,
         'objet': f"[{urgence}] Situation scolaire de {eleve.prenom} {eleve.nom}",
         'intro': f"Nous vous informons que {mot_fils} {eleve.prenom} {eleve.nom}, "
                 f"eleve en classe de {classe_nom}, rencontre actuellement des difficultes scolaires importantes.",
-        'constat': f"A l'issue de la periode {periode}, {eleve.prenom} a obtenu une moyenne "
+        'constat': f"A l'issue de la periode {_libelle_periode_views(periode)}, {eleve.prenom} a obtenu une moyenne "
                   f"generale de {moyenne:.2f}/{note_max}, ce qui {pronom_le} place en situation de {gravite}.",
         'demandes': [
             "Verifier quotidiennement les devoirs et lecons",
@@ -4630,7 +4646,7 @@ def _generer_message_eleve_inline(eleve, moyenne, classe_nom, periode, note_max,
     return {
         'titre': f"Message personnel pour {eleve.prenom}",
         'intro': f"{cher} {eleve.prenom},",
-        'constat': f"Tes resultats de ce {periode} montrent que tu rencontres des difficultes. "
+        'constat': f"Tes resultats de ce {_libelle_periode_views(periode)} montrent que tu rencontres des difficultes. "
                   f"Ta moyenne de {moyenne:.2f}/{note_max} n'est pas a la hauteur de ce que tu peux accomplir.",
         'encouragements': [
             "Chaque eleve peut progresser avec de la volonte et du travail",
