@@ -52,7 +52,18 @@
     stopStream();
     const errorEl = document.getElementById('cameraError');
     errorEl.classList.add('d-none');
-    
+
+    // navigator.mediaDevices n'existe pas en contexte non-sécurisé (HTTP sur IP réseau)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+      let msg = isLocalhost
+        ? '⚠️ <strong>Caméra non supportée</strong><br>Ce navigateur ne supporte pas getUserMedia.'
+        : '🔐 <strong>Connexion non sécurisée (HTTP)</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code> ou activez HTTPS.';
+      errorEl.innerHTML = msg;
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
     const constraints = {
       video: { facingMode: { ideal: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
@@ -69,8 +80,9 @@
         console.error('Camera not available', err);
         let msg = '';
         const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-        
-        if (String(err).toLowerCase().includes('permission') || String(err).toLowerCase().includes('denied')) {
+        const errStr = String(err.name || err).toLowerCase();
+
+        if (errStr.includes('notallowed') || errStr.includes('permission') || errStr.includes('denied')) {
           msg = `🚫 <strong>Permission refusée</strong><br>
           <div class="mt-2">
             <strong>Solutions :</strong><br>
@@ -79,14 +91,14 @@
             3. Rechargez la page (F5)<br>
             4. Réessayez "Prendre une photo"
           </div>`;
-        } else if (String(err).toLowerCase().includes('notfound') || String(err).toLowerCase().includes('not found')) {
+        } else if (errStr.includes('notfound') || errStr.includes('devicenotfound')) {
           msg = '📷 <strong>Aucune caméra détectée</strong><br>Vérifiez qu\'une caméra est connectée à votre appareil.';
         } else if (!window.isSecureContext && !isLocalhost) {
-          msg = '🔐 <strong>Connexion non sécurisée</strong><br>La caméra nécessite HTTPS. Contactez l\'administrateur.';
+          msg = '🔐 <strong>Connexion non sécurisée (HTTP)</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code>.';
         } else {
           msg = '⚠️ <strong>Erreur caméra :</strong> ' + (err.message || err);
         }
-        
+
         errorEl.innerHTML = msg;
         errorEl.classList.remove('d-none');
       }
@@ -128,8 +140,14 @@
     if(!btn) return;
     e.preventDefault();
     targetInputId = btn.getAttribute('data-open-camera-for');
-    const modal = new bootstrap.Modal(modalEl);
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
+    // startStream() est appelé dans shown.bs.modal pour attendre la fin de l'animation
+  });
+
+  // Démarrer la caméra APRÈS que le modal soit entièrement visible (fin d'animation CSS)
+  // Certains navigateurs refusent getUserMedia sur un élément vidéo non visible
+  modalEl.addEventListener('shown.bs.modal', function(){
     startStream();
   });
 
