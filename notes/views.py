@@ -4775,7 +4775,17 @@ def statistiques(request):
                     eleves_excellents.append(eleve_data)
 
             # Calculer les taux
-            total_eleves_classe = len(eleves_list)
+            total_eleves_classe = eleves.count()
+            # Construire stats par matière depuis les résultats canoniques
+            stats_matieres_notes = {}
+            for _eid, _eres in resultats.items():
+                for _det in _eres.get('details_matieres', []):
+                    _mat = _det.get('matiere')
+                    if _mat is None:
+                        continue
+                    _moy = _det.get('moyenne')
+                    if _moy is not None and _moy > 0:
+                        stats_matieres_notes.setdefault(_mat.id, []).append(_moy)
             taux_reussite = round((nb_evalues - nb_non_admis) / nb_evalues * 100, 1) if nb_evalues > 0 else 0
             taux_echec = round(nb_non_admis / nb_evalues * 100, 1) if nb_evalues > 0 else 0
             
@@ -4881,7 +4891,7 @@ def statistiques(request):
         
         # Statistiques par matière (réutilise les données déjà calculées)
         stats_matieres = []
-        for matiere in matieres_list:
+        for matiere in matieres:
             notes = stats_matieres_notes.get(matiere.id, [])
             if notes:
                 stats_matieres.append({
