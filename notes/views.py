@@ -4719,158 +4719,60 @@ def statistiques(request):
         seuil_reussite = 5 if est_primaire else 10
         
         if eleves.exists() and matieres.exists():
-            from collections import defaultdict
+            # ── Source unique de calcul : même fonction que le bulletin ──────────
+            from .calculs_moyennes import calculer_moyennes_classe_optimise
 
-            eleves_list = list(eleves)
-            matieres_list = list(matieres)
-            eleve_ids = [e.id for e in eleves_list]
-            matiere_ids = [m.id for m in matieres_list]
-            annee = classe_selectionnee.annee_scolaire
+            if 'TRIMESTRE' in (periode or ''):
+                system_type = 'trimestre'
+            elif 'SEMESTRE' in (periode or ''):
+                system_type = 'semestre'
+            else:
+                system_type = 'mensuel'
 
-            # Périodes
-            mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
-            trimestre_mois = {
-                'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
-                'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
-                'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
-                'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
-                'SEMESTRE_2': ['FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
-            }
+            resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
 
-            # ===== BULK FETCH: charger toutes les notes en 2-3 requêtes au lieu de N*M =====
-            notes_mensuelles_index = defaultdict(list)
-            compo_index = {}
+            seuil_suivre   = seuil_reussite + (1 if est_primaire else 2)
+            seuil_precaution = seuil_reussite + (2 if est_primaire else 4)
 
-            if periode in mois_periodes:
-                all_nm = NoteMensuelle.objects.filter(
-                    eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
-                    mois=periode, annee_scolaire=annee,
-                    absent=False, note__isnull=False
-                ).values_list('eleve_id', 'matiere_id', 'note')
-                for eid, mid, note in all_nm:
-                    notes_mensuelles_index[(eid, mid)].append(note)
-            elif periode in trimestre_mois:
-                mois_list = trimestre_mois[periode]
-                all_nm = NoteMensuelle.objects.filter(
-                    eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
-                    mois__in=mois_list, annee_scolaire=annee,
-                    absent=False, note__isnull=False
-                ).values_list('eleve_id', 'matiere_id', 'note')
-                for eid, mid, note in all_nm:
-                    notes_mensuelles_index[(eid, mid)].append(note)
-
-                all_compo = CompositionNote.objects.filter(
-                    eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
-                    periode=periode, annee_scolaire=annee,
-                    absent=False, note__isnull=False
-                ).values_list('eleve_id', 'matiere_id', 'note')
-                for eid, mid, note in all_compo:
-                    compo_index[(eid, mid)] = note
-
-            # ===== Calculer moyennes élèves ET stats matières en un seul passage =====
-            stats_matieres_notes = defaultdict(list)
-
-            for eleve in eleves_list:
-                total_points = Decimal('0')
-                total_coefficients = Decimal('0')
-                has_notes = False
-
-                for matiere in matieres_list:
-                    key = (eleve.id, matiere.id)
-
-                    if periode in mois_periodes:
-                        notes = notes_mensuelles_index.get(key, [])
-                        if notes:
-                            has_notes = True
-                            total_points += notes[0] * matiere.coefficient
-                            total_coefficients += matiere.coefficient
-                            stats_matieres_notes[matiere.id].append(float(notes[0]))
-                    elif periode in trimestre_mois:
-                        nm_notes = notes_mensuelles_index.get(key, [])
-                        moyenne_continue = None
-                        if nm_notes:
-                            moyenne_continue = sum(nm_notes) / Decimal(str(len(nm_notes)))
-
-                        note_composition = compo_index.get(key)
-
-                        moyenne_matiere = None
-                        if moyenne_continue is not None and note_composition is not None:
-                            moyenne_matiere = (moyenne_continue + note_composition) / 2
-                        elif note_composition is not None:
-                            moyenne_matiere = note_composition
-                        elif moyenne_continue is not None:
-                            moyenne_matiere = moyenne_continue
-
-                        if moyenne_matiere is not None:
-                            has_notes = True
-                            total_points += moyenne_matiere * matiere.coefficient
-                            total_coefficients += matiere.coefficient
-                            stats_matieres_notes[matiere.id].append(float(moyenne_matiere))
-                    else:
-                        # Fallback: ancien système Evaluation+NoteEleve
-                        evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
-                        if evaluations.exists():
-                            total_devoirs = Decimal('0')
-                            count_devoirs = 0
-                            total_compo = Decimal('0')
-                            count_compo = 0
-                            for evaluation in evaluations:
-                                try:
-                                    note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                                    if note_obj.note is not None and not note_obj.absent:
-                                        has_notes = True
-                                        if evaluation.type_evaluation in ['COMPOSITION', 'EXAMEN']:
-                                            total_compo += Decimal(str(note_obj.note))
-                                            count_compo += 1
-                                        else:
-                                            total_devoirs += Decimal(str(note_obj.note))
-                                            count_devoirs += 1
-                                except NoteEleve.DoesNotExist:
-                                    pass
-                            moyenne_continue = total_devoirs / count_devoirs if count_devoirs > 0 else None
-                            note_composition = total_compo / count_compo if count_compo > 0 else None
-                            moyenne_matiere = None
-                            if moyenne_continue is not None and note_composition is not None:
-                                moyenne_matiere = (moyenne_continue + note_composition) / 2
-                            elif note_composition is not None:
-                                moyenne_matiere = note_composition
-                            elif moyenne_continue is not None:
-                                moyenne_matiere = moyenne_continue
-                            if moyenne_matiere is not None:
-                                total_points += moyenne_matiere * matiere.coefficient
-                                total_coefficients += matiere.coefficient
-                                stats_matieres_notes[matiere.id].append(float(moyenne_matiere))
-
-                # Calculer la moyenne générale
-                if has_notes and total_coefficients > 0:
-                    moyenne_generale = float(total_points / total_coefficients)
-                    nb_evalues += 1
-
-                    eleve_data = {
-                        'eleve': eleve,
-                        'moyenne': round(moyenne_generale, 2)
-                    }
-
-                    seuil_suivre = seuil_reussite + (1 if est_primaire else 2)
-                    seuil_precaution = seuil_reussite + (2 if est_primaire else 4)
-
-                    if moyenne_generale < seuil_reussite:
-                        nb_non_admis += 1
-                        eleve_data['ecart'] = round(seuil_reussite - moyenne_generale, 2)
-                        eleve_data['lettre_parent'] = _generer_lettre_parent_inline(eleve, moyenne_generale, classe_selectionnee.nom, periode, note_max, est_primaire)
-                        eleve_data['message_eleve'] = _generer_message_eleve_inline(eleve, moyenne_generale, classe_selectionnee.nom, periode, note_max, est_primaire)
-                        eleves_non_admis.append(eleve_data)
-                    elif moyenne_generale < seuil_suivre:
-                        nb_a_suivre += 1
-                        eleves_a_suivre.append(eleve_data)
-                    elif moyenne_generale < seuil_precaution:
-                        nb_precaution += 1
-                        eleves_precaution.append(eleve_data)
-                    else:
-                        nb_excellents += 1
-                        eleves_excellents.append(eleve_data)
-                else:
+            for eleve in eleves:
+                eleve_result = resultats.get(eleve.id)
+                if not eleve_result:
                     nb_non_evalues += 1
+                    continue
+
+                moyenne_generale = eleve_result.get('moyenne_generale')
+                # Un élève sans aucune note aura moyenne 0.0 (toutes matières = 0)
+                # On considère non-évalué si tous les détails ont moy=0 ET aucune note saisie
+                has_notes = any(
+                    d['moyenne_continue'] is not None or d['note_composition'] is not None
+                    for d in eleve_result.get('details_matieres', [])
+                )
+
+                if not has_notes or moyenne_generale is None:
+                    nb_non_evalues += 1
+                    continue
+
+                nb_evalues += 1
+                eleve_data = {
+                    'eleve': eleve,
+                    'moyenne': moyenne_generale
+                }
+
+                if moyenne_generale < seuil_reussite:
+                    nb_non_admis += 1
+                    eleve_data['ecart'] = round(seuil_reussite - moyenne_generale, 2)
+                    eleve_data['lettre_parent'] = _generer_lettre_parent_inline(eleve, moyenne_generale, classe_selectionnee.nom, periode, note_max, est_primaire)
+                    eleve_data['message_eleve'] = _generer_message_eleve_inline(eleve, moyenne_generale, classe_selectionnee.nom, periode, note_max, est_primaire)
+                    eleves_non_admis.append(eleve_data)
+                elif moyenne_generale < seuil_suivre:
+                    nb_a_suivre += 1
+                    eleves_a_suivre.append(eleve_data)
+                elif moyenne_generale < seuil_precaution:
+                    nb_precaution += 1
+                    eleves_precaution.append(eleve_data)
+                else:
+                    nb_excellents += 1
+                    eleves_excellents.append(eleve_data)
 
             # Calculer les taux
             total_eleves_classe = len(eleves_list)

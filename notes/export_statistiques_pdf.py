@@ -41,199 +41,112 @@ def _get_ecole(request):
 
 
 def _calculer_statistiques_classe(classe_note, periode):
-    """Calcule les statistiques détaillées d'une classe pour une période"""
-    from .calculs_moyennes import detecter_niveau_scolaire
-    
+    """Calcule les statistiques détaillées d'une classe pour une période.
+    Utilise la même source de calcul que le bulletin de notes (calculs_moyennes.py)
+    pour garantir l'identité des moyennes sur tous les documents."""
+    from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyennes_classe_optimise
+
     # Récupérer la classe élève correspondante
     classe_eleve = ClasseEleve.objects.filter(
         nom__iexact=classe_note.nom,
         annee_scolaire=classe_note.annee_scolaire,
         ecole=classe_note.ecole
     ).first()
-    
+
     if not classe_eleve:
-        # Essayer avec correspondance partielle
         classe_eleve = ClasseEleve.objects.filter(
             nom__icontains=classe_note.nom.split()[0] if classe_note.nom else '',
             annee_scolaire=classe_note.annee_scolaire,
             ecole=classe_note.ecole
         ).first()
-    
+
     if not classe_eleve:
         return None
-    
+
     eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
-    
+
     if not eleves.exists() or not matieres.exists():
         return None
-    
+
     # Détecter le niveau scolaire
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
     note_max = 10 if est_primaire else 20
     seuil_reussite = 5 if est_primaire else 10
-    
-    # Calculer les moyennes pour chaque élève
-    eleves_data = []
+
+    # ── system_type identique à bulletin_intelligent.py ───────────────────────
+    if 'TRIMESTRE' in (periode or ''):
+        system_type = 'trimestre'
+    elif 'SEMESTRE' in (periode or ''):
+        system_type = 'semestre'
+    else:
+        system_type = 'mensuel'
+
+    # ── Source unique : même fonction que le bulletin ─────────────────────────
+    resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+
+    # Initialiser les stats par matière
     stats_matieres = {}
-    
     for matiere in matieres:
         stats_matieres[matiere.id] = {
             'nom': matiere.nom,
             'notes': [],
             'coefficient': 1 if est_primaire else (matiere.coefficient or 1)
         }
-    
+
+    # Construire eleves_data depuis les résultats canoniques
+    eleves_data = []
     for eleve in eleves:
-        total_points = Decimal('0')
-        total_coefficients = Decimal('0')
-        has_any_notes = False  # L'élève a-t-il au moins une note dans une matière?
+        eleve_result = resultats.get(eleve.id)
+        if not eleve_result:
+            continue
+
+        moyenne_generale = eleve_result.get('moyenne_generale')
+        if moyenne_generale is None:
+            continue
+
+        # Construire notes_par_matiere et alimenter stats_matieres
         notes_par_matiere = {}
-        matieres_sans_notes = []  # Pour le suivi des matières sans notes
-        
-        for matiere in matieres:
-            coef = Decimal('1') if est_primaire else (matiere.coefficient or Decimal('1'))
-            
-            # Périodes mensuelles et mapping trimestres/semestres
-            mois_periodes = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
-            trimestre_mois = {
-                'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
-                'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
-                'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
-                'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
-                'SEMESTRE_2': ['FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN'],
-            }
-            
-            notes_matiere = []
-            if periode in mois_periodes:
-                # Utiliser NoteMensuelle pour les périodes mensuelles
-                note_mensuelle = NoteMensuelle.objects.filter(
-                    eleve=eleve,
-                    matiere=matiere,
-                    mois=periode,
-                    annee_scolaire=classe_note.annee_scolaire
-                ).first()
-                if note_mensuelle and note_mensuelle.note is not None and not note_mensuelle.absent:
-                    notes_matiere.append(float(note_mensuelle.note))
-            elif periode in trimestre_mois:
-                # Système guinéen: NoteMensuelle (moyenne continue) + CompositionNote
-                mois_list = trimestre_mois[periode]
-                notes_mois = NoteMensuelle.objects.filter(
-                    eleve=eleve,
-                    matiere=matiere,
-                    mois__in=mois_list,
-                    annee_scolaire=classe_note.annee_scolaire,
-                    absent=False,
-                    note__isnull=False
-                )
-                
-                moyenne_continue = None
-                if notes_mois.exists():
-                    total_mois = sum(float(n.note) for n in notes_mois)
-                    moyenne_continue = total_mois / notes_mois.count()
-                
-                note_composition = None
-                compo = CompositionNote.objects.filter(
-                    eleve=eleve,
-                    matiere=matiere,
-                    periode=periode,
-                    annee_scolaire=classe_note.annee_scolaire,
-                    absent=False,
-                    note__isnull=False
-                ).first()
-                if compo:
-                    note_composition = float(compo.note)
-                
-                # Calculer la moyenne de la matière
-                moyenne_calc = None
-                if moyenne_continue is not None and note_composition is not None:
-                    moyenne_calc = (moyenne_continue + note_composition) / 2
-                elif note_composition is not None:
-                    moyenne_calc = note_composition
-                elif moyenne_continue is not None:
-                    moyenne_calc = moyenne_continue
-                
-                if moyenne_calc is not None:
-                    notes_matiere.append(moyenne_calc)
+        matieres_sans_notes = []
+        for detail in eleve_result.get('details_matieres', []):
+            mat = detail['matiere']
+            moy = detail['moyenne']  # 0.0 si non évalué (règle canonique)
+            notes_par_matiere[mat.id] = moy
+            if moy > 0:
+                stats_matieres[mat.id]['notes'].append(moy)
             else:
-                # Fallback: ancien système Evaluation+NoteEleve
-                evaluations = Evaluation.objects.filter(matiere=matiere, periode=periode)
-                for evaluation in evaluations:
-                    try:
-                        note_obj = NoteEleve.objects.get(eleve=eleve, evaluation=evaluation)
-                        if note_obj.note is not None and not note_obj.absent:
-                            notes_matiere.append(float(note_obj.note))
-                    except NoteEleve.DoesNotExist:
-                        pass
-            
-            # RÈGLE PÉDAGOGIQUE: Toutes les matières comptent
-            # Si pas de notes dans une matière = 0 (l'élève ne doit pas être favorisé)
-            if notes_matiere:
-                moyenne_matiere = sum(notes_matiere) / len(notes_matiere)
-                has_any_notes = True
-                notes_par_matiere[matiere.id] = moyenne_matiere
-                stats_matieres[matiere.id]['notes'].append(moyenne_matiere)
-            else:
-                # Matière sans notes = 0 pour ne pas favoriser l'élève
-                moyenne_matiere = 0.0
-                matieres_sans_notes.append(matiere.nom)
-                notes_par_matiere[matiere.id] = 0.0  # Marquer comme 0
-            
-            # Toutes les matières comptent dans le calcul
-            total_points += Decimal(str(moyenne_matiere)) * coef
-            total_coefficients += coef
-        
-        # Inclure l'élève s'il a au moins une note OU si on veut inclure tous les élèves
-        # Pour être équitable, on inclut tous les élèves avec des coefficients > 0
-        if total_coefficients > 0:
-            moyenne_generale = float(total_points / total_coefficients)
-            
-            # Classifier l'élève (seuils adaptés: /10 primaire, /20 secondaire)
-            if est_primaire:
-                if moyenne_generale >= 9:
-                    categorie, mention = 'excellent', 'Excellent'
-                elif moyenne_generale >= 8:
-                    categorie, mention = 'tres_bien', 'Très Bien'
-                elif moyenne_generale >= 7:
-                    categorie, mention = 'bien', 'Bien'
-                elif moyenne_generale >= 6:
-                    categorie, mention = 'assez_bien', 'Assez Bien'
-                elif moyenne_generale >= 5:
-                    categorie, mention = 'passable', 'Passable'
-                elif moyenne_generale >= 4:
-                    categorie, mention = 'insuffisant', 'Insuffisant'
-                elif moyenne_generale >= 3:
-                    categorie, mention = 'faible', 'Faible'
-                else:
-                    categorie, mention = 'tres_faible', 'Très faible'
-            else:
-                if moyenne_generale >= 18:
-                    categorie, mention = 'excellent', 'Excellent'
-                elif moyenne_generale >= 16:
-                    categorie, mention = 'tres_bien', 'Très Bien'
-                elif moyenne_generale >= 14:
-                    categorie, mention = 'bien', 'Bien'
-                elif moyenne_generale >= 12:
-                    categorie, mention = 'assez_bien', 'Assez Bien'
-                elif moyenne_generale >= 10:
-                    categorie, mention = 'passable', 'Passable'
-                elif moyenne_generale >= 8:
-                    categorie, mention = 'insuffisant', 'Insuffisant'
-                elif moyenne_generale >= 6:
-                    categorie, mention = 'faible', 'Faible'
-                else:
-                    categorie, mention = 'tres_faible', 'Très faible'
-            
-            eleves_data.append({
-                'eleve': eleve,
-                'moyenne': round(moyenne_generale, 2),
-                'categorie': categorie,
-                'mention': mention,
-                'notes_matieres': notes_par_matiere,
-                'matieres_sans_notes': matieres_sans_notes,  # Liste des matières sans notes
-                'nb_matieres_sans_notes': len(matieres_sans_notes)
-            })
+                matieres_sans_notes.append(mat.nom)
+
+        # Classifier
+        if est_primaire:
+            if moyenne_generale >= 9:    categorie, mention = 'excellent', 'Excellent'
+            elif moyenne_generale >= 8:  categorie, mention = 'tres_bien', 'Très Bien'
+            elif moyenne_generale >= 7:  categorie, mention = 'bien', 'Bien'
+            elif moyenne_generale >= 6:  categorie, mention = 'assez_bien', 'Assez Bien'
+            elif moyenne_generale >= 5:  categorie, mention = 'passable', 'Passable'
+            elif moyenne_generale >= 4:  categorie, mention = 'insuffisant', 'Insuffisant'
+            elif moyenne_generale >= 3:  categorie, mention = 'faible', 'Faible'
+            else:                        categorie, mention = 'tres_faible', 'Très faible'
+        else:
+            if moyenne_generale >= 18:   categorie, mention = 'excellent', 'Excellent'
+            elif moyenne_generale >= 16: categorie, mention = 'tres_bien', 'Très Bien'
+            elif moyenne_generale >= 14: categorie, mention = 'bien', 'Bien'
+            elif moyenne_generale >= 12: categorie, mention = 'assez_bien', 'Assez Bien'
+            elif moyenne_generale >= 10: categorie, mention = 'passable', 'Passable'
+            elif moyenne_generale >= 8:  categorie, mention = 'insuffisant', 'Insuffisant'
+            elif moyenne_generale >= 6:  categorie, mention = 'faible', 'Faible'
+            else:                        categorie, mention = 'tres_faible', 'Très faible'
+
+        eleves_data.append({
+            'eleve': eleve,
+            'moyenne': moyenne_generale,
+            'categorie': categorie,
+            'mention': mention,
+            'notes_matieres': notes_par_matiere,
+            'matieres_sans_notes': matieres_sans_notes,
+            'nb_matieres_sans_notes': len(matieres_sans_notes)
+        })
     
     # Trier par moyenne décroissante
     eleves_data.sort(key=lambda x: x['moyenne'], reverse=True)
