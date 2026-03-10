@@ -48,20 +48,46 @@
     }
   }
 
+  function showError(msg){
+    const errorEl = document.getElementById('cameraError');
+    errorEl.innerHTML = msg;
+    errorEl.classList.remove('d-none');
+  }
+
+  function msgPermissionDenied(){
+    return `🚫 <strong>Permission caméra refusée par le navigateur</strong>
+    <hr class="my-2">
+    <strong>Pour réactiver la caméra :</strong><br>
+    <span class="fw-semibold">Chrome / Edge :</span>
+    Cliquez sur 🔒 (barre d'adresse) → <em>Paramètres du site</em> → <strong>Caméra → Autoriser</strong> → rechargez (F5)<br>
+    <span class="fw-semibold">Firefox :</span>
+    Cliquez sur 🎥 (barre d'adresse) → <strong>Autoriser la caméra</strong> → rechargez (F5)<br>
+    <span class="text-muted small">Ou : Paramètres navigateur → Confidentialité → Autorisations → Caméra → supprimer le blocage pour cette adresse.</span>`;
+  }
+
   async function startStream(){
     stopStream();
     const errorEl = document.getElementById('cameraError');
     errorEl.classList.add('d-none');
 
-    // navigator.mediaDevices n'existe pas en contexte non-sécurisé (HTTP sur IP réseau)
+    // navigator.mediaDevices absent en HTTP sur IP réseau (non-secure context)
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
-      let msg = isLocalhost
-        ? '⚠️ <strong>Caméra non supportée</strong><br>Ce navigateur ne supporte pas getUserMedia.'
-        : '🔐 <strong>Connexion non sécurisée (HTTP)</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code> ou activez HTTPS.';
-      errorEl.innerHTML = msg;
-      errorEl.classList.remove('d-none');
+      showError(isLocalhost
+        ? '⚠️ <strong>Caméra non supportée</strong><br>Ce navigateur ne supporte pas l\'accès caméra.'
+        : '🔐 <strong>Connexion HTTP non sécurisée</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code>.');
       return;
+    }
+
+    // Vérifier l'état de permission avant d'appeler getUserMedia
+    if (navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: 'camera' });
+        if (perm.state === 'denied') {
+          showError(msgPermissionDenied());
+          return;
+        }
+      } catch(e) { /* permissions API non disponible, on continue */ }
     }
 
     const constraints = {
@@ -72,35 +98,25 @@
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
     } catch (e) {
-      console.warn('getUserMedia failed, retrying with default camera', e);
+      console.warn('getUserMedia échoué, essai caméra par défaut', e);
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
         video.srcObject = stream;
       } catch (err){
-        console.error('Camera not available', err);
-        let msg = '';
-        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+        console.error('Caméra indisponible', err);
         const errStr = String(err.name || err).toLowerCase();
-
+        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+        let msg;
         if (errStr.includes('notallowed') || errStr.includes('permission') || errStr.includes('denied')) {
-          msg = `🚫 <strong>Permission refusée</strong><br>
-          <div class="mt-2">
-            <strong>Solutions :</strong><br>
-            1. Cliquez sur l'icône 🔒 dans la barre d'adresse<br>
-            2. Sélectionnez "Autoriser" pour la Caméra<br>
-            3. Rechargez la page (F5)<br>
-            4. Réessayez "Prendre une photo"
-          </div>`;
+          msg = msgPermissionDenied();
         } else if (errStr.includes('notfound') || errStr.includes('devicenotfound')) {
-          msg = '📷 <strong>Aucune caméra détectée</strong><br>Vérifiez qu\'une caméra est connectée à votre appareil.';
+          msg = '📷 <strong>Aucune caméra détectée</strong><br>Vérifiez qu\'une caméra est connectée et activée sur cet appareil.';
         } else if (!window.isSecureContext && !isLocalhost) {
-          msg = '🔐 <strong>Connexion non sécurisée (HTTP)</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code>.';
+          msg = '🔐 <strong>Connexion HTTP non sécurisée</strong><br>La caméra nécessite HTTPS ou localhost.<br>Accédez via <code>http://localhost:8000</code>.';
         } else {
           msg = '⚠️ <strong>Erreur caméra :</strong> ' + (err.message || err);
         }
-
-        errorEl.innerHTML = msg;
-        errorEl.classList.remove('d-none');
+        showError(msg);
       }
     }
   }
