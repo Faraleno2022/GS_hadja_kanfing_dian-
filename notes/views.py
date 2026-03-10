@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.db.models import Q, Avg, Count, Sum
 from django.core.paginator import Paginator
+from django.core.cache import cache
 from django.utils import timezone
 from django.template.loader import render_to_string
 from django.db import IntegrityError
@@ -266,8 +267,6 @@ def supprimer_classe(request, classe_id):
 @can_manage_notes
 def matieres_classe(request, classe_id):
     """Liste optimisée et gestion des matières d'une classe avec cache."""
-    from django.core.cache import cache
-    
     # Cache de la classe
     classe_cache_key = f'classe_{classe_id}_{request.user.id}'
     classe = cache.get(classe_cache_key)
@@ -8074,7 +8073,6 @@ def sauvegarder_notes_guineen(request):
                     continue
         
         # Invalider le cache des rangs
-        from django.core.cache import cache
         try:
             # Essayer d'invalider le cache avec pattern
             cache_key = f"rangs_classe_{matiere.classe.id}_*"
