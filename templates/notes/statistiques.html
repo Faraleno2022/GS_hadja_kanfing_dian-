@@ -95,7 +95,7 @@
                 <i class="fas fa-lightbulb me-2"></i>Conseils & Décisions PDF
             </a>
             {% if eleves_non_admis %}
-            <a href="{% url 'notes:rapport_eleves_sous_moyenne_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}"
+            <a href="{% url 'notes:exporter_conseils_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}"
                class="btn btn-dark" title="Fiches individuelles des élèves sous la moyenne à remettre aux parents">
                 <i class="fas fa-user-times me-2"></i>Fiches Parents ({{ eleves_non_admis|length }})
             </a>
@@ -131,18 +131,86 @@
     </div>
 
     {% if classe_selectionnee %}
-    <!-- Sélection de période -->
+    <!-- Sélection de période avec filtre par type -->
     <div class="selection-card">
         <h4 class="mb-3"><i class="fas fa-calendar me-2"></i>2. Sélectionner une période</h4>
-        <div class="row">
-            {% for code, libelle in periodes %}
-                <div class="col-md-2 col-sm-4 mb-2">
-                    <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}" 
-                       class="btn {% if periode == code %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
-                        {{ libelle }}
-                    </a>
+
+        <!-- Onglets Mois / Trimestre / Semestre -->
+        <ul class="nav nav-tabs mb-3" id="periodeTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if periode == 'TRIMESTRE_1' or periode == 'TRIMESTRE_2' or periode == 'TRIMESTRE_3' or not periode %}active{% endif %}"
+                        id="tab-trimestre" data-bs-toggle="tab" data-bs-target="#pane-trimestre"
+                        type="button" role="tab">
+                    <i class="fas fa-calendar-alt me-1"></i>Par Trimestre
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if periode == 'SEMESTRE_1' or periode == 'SEMESTRE_2' %}active{% endif %}"
+                        id="tab-semestre" data-bs-toggle="tab" data-bs-target="#pane-semestre"
+                        type="button" role="tab">
+                    <i class="fas fa-calendar-check me-1"></i>Par Semestre
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if periode == 'OCTOBRE' or periode == 'NOVEMBRE' or periode == 'DECEMBRE' or periode == 'JANVIER' or periode == 'FEVRIER' or periode == 'MARS' or periode == 'AVRIL' or periode == 'MAI' or periode == 'JUIN' %}active{% endif %}"
+                        id="tab-mois" data-bs-toggle="tab" data-bs-target="#pane-mois"
+                        type="button" role="tab">
+                    <i class="fas fa-calendar-day me-1"></i>Par Mois
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="periodeTabContent">
+            <!-- Trimestres -->
+            <div class="tab-pane fade {% if periode == 'TRIMESTRE_1' or periode == 'TRIMESTRE_2' or periode == 'TRIMESTRE_3' or not periode %}show active{% endif %}"
+                 id="pane-trimestre" role="tabpanel">
+                <div class="row g-2">
+                    {% for code, libelle in periodes %}
+                        {% if 'TRIMESTRE' in code %}
+                        <div class="col-md-4 col-sm-6">
+                            <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}"
+                               class="btn {% if periode == code %}btn-primary{% else %}btn-outline-primary{% endif %} w-100">
+                                <i class="fas fa-calendar-alt me-1"></i>{{ libelle }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
                 </div>
-            {% endfor %}
+            </div>
+
+            <!-- Semestres -->
+            <div class="tab-pane fade {% if periode == 'SEMESTRE_1' or periode == 'SEMESTRE_2' %}show active{% endif %}"
+                 id="pane-semestre" role="tabpanel">
+                <div class="row g-2">
+                    {% for code, libelle in periodes %}
+                        {% if 'SEMESTRE' in code %}
+                        <div class="col-md-4 col-sm-6">
+                            <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}"
+                               class="btn {% if periode == code %}btn-success{% else %}btn-outline-success{% endif %} w-100">
+                                <i class="fas fa-calendar-check me-1"></i>{{ libelle }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Mois -->
+            <div class="tab-pane fade {% if periode == 'OCTOBRE' or periode == 'NOVEMBRE' or periode == 'DECEMBRE' or periode == 'JANVIER' or periode == 'FEVRIER' or periode == 'MARS' or periode == 'AVRIL' or periode == 'MAI' or periode == 'JUIN' %}show active{% endif %}"
+                 id="pane-mois" role="tabpanel">
+                <div class="row g-2">
+                    {% for code, libelle in periodes %}
+                        {% if 'TRIMESTRE' not in code and 'SEMESTRE' not in code %}
+                        <div class="col-md-2 col-sm-4">
+                            <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}"
+                               class="btn {% if periode == code %}btn-warning{% else %}btn-outline-warning{% endif %} w-100 btn-sm">
+                                {{ libelle }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
         </div>
     </div>
     {% endif %}
