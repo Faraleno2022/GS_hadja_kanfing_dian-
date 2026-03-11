@@ -1,3 +1,4 @@
+import os
 from .models import Profil
 from .permissions import get_user_permissions, check_comptable_restrictions
 
@@ -12,6 +13,8 @@ def user_context(request):
         'is_admin': False,
         'user_permissions': {},
         'user_restrictions': {},
+        # Mode hors-ligne : True quand lancé depuis l'exe PyInstaller
+        'is_offline': os.environ.get('OFFLINE_MODE', '0') == '1',
     }
     
     if request.user.is_authenticated:

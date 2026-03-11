@@ -1717,7 +1717,7 @@ document.getElementById('btnConfirmerEnvoi').addEventListener('click', function(
 });
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-YcsIP0ckR5Q8Zg+UtYRFEs0u9B6L9I7DiIP9N6byN1Nsx3Rp3XIan+FJxuxMxDPZWS9Vyuk3F7S2X3pG4a0dJQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{% static 'vendor/html2pdf/html2pdf.bundle.min.js' %}"></script>
 <script>
 window.addEventListener('load', function() {
     if (typeof html2pdf !== 'undefined') {
