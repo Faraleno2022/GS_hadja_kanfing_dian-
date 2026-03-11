@@ -1401,7 +1401,7 @@ def exporter_conseils_pdf(request):
         
         # Tableau des élèves en difficulté
         data = [['Nom & Prénom', 'Moyenne', 'Décision proposée']]
-        for eleve_data in eleves_diff[:10]:  # Max 10 élèves
+        for eleve_data in eleves_diff:
             eleve = eleve_data['eleve']
             moy = eleve_data['moyenne']
             seuil_urgent = 4 if est_primaire else 8
@@ -1445,7 +1445,7 @@ def exporter_conseils_pdf(request):
         # Liste des élèves à surveiller
         c.setFont("Helvetica", 9)
         c.setFillColor(colors.black)
-        for eleve_data in eleves_suivre[:8]:  # Max 8 élèves
+        for eleve_data in eleves_suivre:
             eleve = eleve_data['eleve']
             moy = eleve_data['moyenne']
             c.drawString(margin + 0.3*cm, y, f"• {eleve.prenom} {eleve.nom} ({moy:.2f}/{note_max}) - Accompagnement personnalisé recommandé")
@@ -1574,7 +1574,7 @@ def exporter_conseils_pdf(request):
     eleves_diff = stats.get('eleves_en_difficulte', [])
     
     if eleves_diff:
-        for eleve_data in eleves_diff[:5]:  # Max 5 lettres
+        for eleve_data in eleves_diff:
             y = nouvelle_page("LETTRE AUX PARENTS")
             
             lettre = _generer_lettre_parent(eleve_data, classe_note.nom, periode, ecole_nom)
@@ -1681,7 +1681,7 @@ def exporter_conseils_pdf(request):
     
     # ===== SECTION 8: LETTRES DE RECOMMANDATION AUX ÉLÈVES =====
     if eleves_diff:
-        for eleve_data in eleves_diff[:5]:  # Max 5 lettres
+        for eleve_data in eleves_diff:
             y = nouvelle_page("MESSAGE À L'ÉLÈVE")
             
             lettre = _generer_lettre_eleve(eleve_data, classe_note.nom, periode)
