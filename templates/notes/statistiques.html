@@ -343,16 +343,16 @@
                         </td>
                         <td><small class="text-muted">Soutien scolaire urgent</small></td>
                         <td class="text-center">
-                            <button class="btn btn-sm btn-outline-danger me-1" type="button" data-bs-toggle="collapse" data-bs-target="#lettre-parent-{{ forloop.counter }}" aria-expanded="false" title="Lettre aux parents">
+                            <button class="btn btn-sm btn-danger me-1" type="button" data-bs-toggle="collapse" data-bs-target="#lettre-parent-{{ forloop.counter }}" aria-expanded="true" title="Masquer/Afficher la lettre aux parents">
                                 <i class="fas fa-envelope me-1"></i>Parents
                             </button>
-                            <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#message-eleve-{{ forloop.counter }}" aria-expanded="false" title="Message à l'élève">
+                            <button class="btn btn-sm btn-info text-white" type="button" data-bs-toggle="collapse" data-bs-target="#message-eleve-{{ forloop.counter }}" aria-expanded="true" title="Masquer/Afficher le message à l'élève">
                                 <i class="fas fa-comment me-1"></i>Élève
                             </button>
                         </td>
                     </tr>
-                    <!-- Lettre aux parents (dépliable) -->
-                    <tr class="collapse" id="lettre-parent-{{ forloop.counter }}">
+                    <!-- Lettre aux parents (visible par défaut) -->
+                    <tr class="collapse show" id="lettre-parent-{{ forloop.counter }}">
                         <td colspan="6" class="p-0">
                             <div class="card border-danger m-2">
                                 <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
@@ -383,8 +383,8 @@
                             </div>
                         </td>
                     </tr>
-                    <!-- Message à l'élève (dépliable) -->
-                    <tr class="collapse" id="message-eleve-{{ forloop.counter }}">
+                    <!-- Message à l'élève (visible par défaut) -->
+                    <tr class="collapse show" id="message-eleve-{{ forloop.counter }}">
                         <td colspan="6" class="p-0">
                             <div class="card border-info m-2">
                                 <div class="card-header bg-info text-white">

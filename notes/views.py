@@ -4695,8 +4695,8 @@ def statistiques(request):
     total_eleves = Eleve.objects.filter(statut='ACTIF').count()
     total_classes = ClasseEleve.objects.all().count()
     
-    # Période sélectionnée
-    periode = request.GET.get('periode', 'TRIMESTRE_1')
+    # Période sélectionnée (vide → défaut TRIMESTRE_1)
+    periode = request.GET.get('periode') or 'TRIMESTRE_1'
     
     # Initialiser les statistiques
     nb_evalues = 0
