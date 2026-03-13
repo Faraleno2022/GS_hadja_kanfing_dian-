@@ -34,21 +34,41 @@ sys.path.insert(0, BASE_DIR)
 # ─── DLLs GTK pour WeasyPrint (Windows) ───────────────────────────────────────
 # Doit être fait AVANT tout import de Django / WeasyPrint
 if os.name == 'nt':
-    # Ajouter BASE_DIR au PATH pour que LoadLibrary trouve les DLLs GTK
-    os.environ['PATH'] = BASE_DIR + os.pathsep + os.environ.get('PATH', '')
-    # Python 3.8+ : répertoire explicite pour les DLLs (plus fiable que PATH)
-    if hasattr(os, 'add_dll_directory'):
-        try:
-            os.add_dll_directory(BASE_DIR)
-        except Exception:
-            pass
-        # Aussi _internal/ au cas où certaines DLLs s'y trouvent
+    # En mode EXE, les DLLs GTK sont dans _internal/ (PyInstaller --onedir)
+    # En mode dev, elles sont dans MSYS2
+    _dll_dirs = [BASE_DIR]
+    if getattr(sys, 'frozen', False):
         _internal = os.path.join(BASE_DIR, '_internal')
         if os.path.isdir(_internal):
-            try:
-                os.add_dll_directory(_internal)
-            except Exception:
-                pass
+            _dll_dirs.append(_internal)
+    else:
+        # Mode développement : utiliser MSYS2 si disponible
+        _msys2_bin = r'C:\msys64\mingw64\bin'
+        if os.path.isdir(_msys2_bin):
+            _dll_dirs.append(_msys2_bin)
+
+    # Ajouter tous les répertoires au PATH
+    for _d in _dll_dirs:
+        if _d not in os.environ.get('PATH', ''):
+            os.environ['PATH'] = _d + os.pathsep + os.environ.get('PATH', '')
+
+    # Python 3.8+ : répertoire explicite pour les DLLs (plus fiable que PATH)
+    if hasattr(os, 'add_dll_directory'):
+        for _d in _dll_dirs:
+            if os.path.isdir(_d):
+                try:
+                    os.add_dll_directory(_d)
+                except Exception:
+                    pass
+
+    # GdkPixbuf loaders : configurer le chemin vers les loaders bundlés
+    if getattr(sys, 'frozen', False):
+        _loaders_dir = os.path.join(BASE_DIR, '_internal', 'lib', 'gdk-pixbuf-2.0', '2.10.0', 'loaders')
+        if os.path.isdir(_loaders_dir):
+            os.environ['GDK_PIXBUF_MODULE_FILE'] = os.path.join(
+                os.path.dirname(_loaders_dir), 'loaders.cache'
+            )
+            os.environ['GDK_PIXBUF_MODULEDIR'] = _loaders_dir
 
 # ─── Générer une SECRET_KEY stable par installation ───────────────────────────
 _secret_file = os.path.join(BASE_DIR, '.secret_key')
