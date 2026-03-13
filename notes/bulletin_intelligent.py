@@ -182,8 +182,18 @@ class CalculateurBulletinIntelligent:
         moyenne_generale = result_centralized['moyenne_generale']
         resultats_matieres = result_centralized['details_matieres']
         
-        # Calculer le rang (optionnel - nécessite tous les élèves)
-        rang = self._calculer_rang_eleve(moyenne_generale)
+        # Calculer le rang en utilisant la source centralisée des rangs
+        # ET utiliser la moyenne de cette même source pour garantir la cohérence
+        # entre bulletin, classement et satisfécit
+        rang = None
+        from .utils_rangs import get_rang_eleve
+        rang_info = get_rang_eleve(self.classe_note, self.periode, self.eleve.id)
+        if rang_info:
+            rang = rang_info['rang']
+            # Utiliser la moyenne de la source centralisée pour cohérence
+            moyenne_source = float(rang_info['moyenne'])
+            if moyenne_source is not None:
+                moyenne_generale = moyenne_source
         
         return {
             'eleve': f"{self.eleve.prenom} {self.eleve.nom}",

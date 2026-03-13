@@ -5,7 +5,6 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from weasyprint import HTML, CSS
 from datetime import datetime
 import base64
 import os
@@ -73,59 +72,27 @@ def certificats_appreciation_pdf(request):
         else:
             system_type = 'mensuel'
         
-        # Pour la maternelle, utiliser le calcul des rangs spécifique
-        if est_maternelle:
-            from .utils_rangs import calculer_rangs_classe_periode
-            rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
-            
-            # Construire la liste des élèves avec rang et taux d'acquisition
-            eleves_avec_rang = []
-            for eleve in eleves:
-                rang_info = rangs_dict.get(eleve.id)
-                if rang_info and rang_info.get('rang_num', 999) <= 5:
-                    eleves_avec_rang.append({
-                        'eleve': eleve,
-                        'rang': rang_info.get('rang_num', 999),  # Utiliser rang_num (entier)
-                        'moyenne': float(rang_info['moyenne']),  # Taux d'acquisition en %
-                        'rang_num': rang_info.get('rang_num', 999)
-                    })
-            
-            # Trier par rang
-            eleves_avec_rang.sort(key=lambda x: x['rang_num'])
-            eleves_top5 = eleves_avec_rang[:5]
-        else:
-            # Calculer le classement standard
-            from .calculs_moyennes import calculer_classement_classe
-            classement_resultat = calculer_classement_classe(eleves, matieres, periode, system_type)
-            
-            if not classement_resultat or 'rang_map' not in classement_resultat:
-                return HttpResponse("Impossible de calculer le classement", status=400)
-            
-            # Récupérer les 5 premiers
-            rang_map = classement_resultat['rang_map']
-            moyennes = classement_resultat.get('moyennes_par_eleve', {})
-            
-            # Filtrer les élèves avec un rang valide et trier par rang
-            eleves_avec_rang = []
-            for eleve_id, rang in rang_map.items():
-                if rang and rang <= 5:
-                    try:
-                        eleve = Eleve.objects.get(pk=eleve_id)
-                        moyenne = moyennes.get(eleve_id, 0)
-                        if moyenne and moyenne > 0:
-                            eleves_avec_rang.append({
-                                'eleve': eleve,
-                                'rang': rang,
-                                'moyenne': moyenne
-                            })
-                    except Eleve.DoesNotExist:
-                        continue
-            
-            # Trier par rang
-            eleves_avec_rang.sort(key=lambda x: x['rang'])
-            
-            # Limiter aux 5 premiers
-            eleves_top5 = eleves_avec_rang[:5]
+        # UTILISER LA SOURCE CENTRALISÉE (calculer_rangs_classe_periode)
+        # pour garantir que la moyenne sur le satisfécit corresponde exactement
+        # à celle affichée sur le bulletin de l'élève.
+        from .utils_rangs import calculer_rangs_classe_periode
+        rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
+        
+        # Construire la liste des élèves avec rang et moyenne
+        eleves_avec_rang = []
+        for eleve in eleves:
+            rang_info = rangs_dict.get(eleve.id)
+            if rang_info and rang_info.get('rang_num', 999) <= 5:
+                eleves_avec_rang.append({
+                    'eleve': eleve,
+                    'rang': rang_info.get('rang_num', 999),
+                    'moyenne': float(rang_info['moyenne']),
+                    'rang_num': rang_info.get('rang_num', 999)
+                })
+        
+        # Trier par rang
+        eleves_avec_rang.sort(key=lambda x: x['rang_num'])
+        eleves_top5 = eleves_avec_rang[:5]
         
         if not eleves_top5:
             return HttpResponse("Aucun élève classé trouvé pour cette période", status=400)
@@ -195,7 +162,8 @@ def certificats_appreciation_pdf(request):
             template_name = 'notes/certificat_appreciation.html'
         html_content = render_to_string(template_name, context, request=request)
         
-        # Créer le PDF avec WeasyPrint
+        # Créer le PDF avec WeasyPrint (import lazy pour eviter l'erreur GTK au demarrage)
+        from weasyprint import HTML, CSS
         html = HTML(string=html_content)
         css = CSS(string='''
             @page {

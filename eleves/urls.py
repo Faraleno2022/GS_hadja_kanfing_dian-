@@ -65,6 +65,7 @@ urlpatterns = [
     path('ajax/classes-par-ecole/<int:ecole_id>/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     path('ajax/statistiques/', views.ajax_statistiques_eleves, name='ajax_statistiques_eleves'),
     path('ajax/rechercher-responsable-telephone/', views.ajax_rechercher_responsable_telephone, name='ajax_rechercher_responsable_telephone'),
+    path('ajax/modifier-telephone-responsable/', views.ajax_modifier_telephone_responsable, name='ajax_modifier_telephone_responsable'),
     
     # Import/Export d'élèves
     path('importer/', importer_eleves, name='importer_eleves'),

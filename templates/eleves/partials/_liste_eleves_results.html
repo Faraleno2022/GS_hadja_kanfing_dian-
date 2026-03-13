@@ -64,9 +64,31 @@
                                     <div>
                                         <strong>{{ eleve.responsable_principal.nom_complet }}</strong>
                                         <br>
-                                        <small class="text-muted">
-                                            <i class="fas fa-phone me-1"></i>{{ eleve.responsable_principal.telephone }}
+                                        <small class="text-muted" id="tel-display-{{ eleve.id }}">
+                                            <i class="fas fa-phone me-1"></i>
+                                            <span class="tel-text">{{ eleve.responsable_principal.telephone }}</span>
+                                            <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary btn-edit-tel"
+                                                    data-eleve-id="{{ eleve.id }}" 
+                                                    data-tel-actuel="{{ eleve.responsable_principal.telephone }}"
+                                                    title="Modifier le téléphone">
+                                                <i class="fas fa-pen" style="font-size: 0.7em;"></i>
+                                            </button>
                                         </small>
+                                        <div id="tel-edit-{{ eleve.id }}" style="display: none;">
+                                            <div class="input-group input-group-sm mt-1">
+                                                <input type="text" class="form-control form-control-sm input-tel-edit" 
+                                                       value="{{ eleve.responsable_principal.telephone }}" 
+                                                       placeholder="+224XXXXXXXXX"
+                                                       data-eleve-id="{{ eleve.id }}"
+                                                       maxlength="14">
+                                                <button class="btn btn-success btn-sm btn-save-tel" data-eleve-id="{{ eleve.id }}" title="Enregistrer">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                                <button class="btn btn-secondary btn-sm btn-cancel-tel" data-eleve-id="{{ eleve.id }}" title="Annuler">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </td>
                                 <td>

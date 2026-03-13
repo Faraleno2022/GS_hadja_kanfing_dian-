@@ -288,6 +288,93 @@
         // Optionnel: afficher un message de confirmation
         showMessage('Génération de la carte scolaire en cours...', 'info');
     }
+
+    // ===== ÉDITION INLINE DU TÉLÉPHONE DU RESPONSABLE =====
+    document.addEventListener('click', function(e) {
+        // Bouton éditer
+        const btnEdit = e.target.closest('.btn-edit-tel');
+        if (btnEdit) {
+            const eleveId = btnEdit.dataset.eleveId;
+            document.getElementById('tel-display-' + eleveId).style.display = 'none';
+            document.getElementById('tel-edit-' + eleveId).style.display = 'block';
+            const input = document.querySelector('#tel-edit-' + eleveId + ' .input-tel-edit');
+            if (input) { input.focus(); input.select(); }
+            return;
+        }
+
+        // Bouton annuler
+        const btnCancel = e.target.closest('.btn-cancel-tel');
+        if (btnCancel) {
+            const eleveId = btnCancel.dataset.eleveId;
+            document.getElementById('tel-display-' + eleveId).style.display = '';
+            document.getElementById('tel-edit-' + eleveId).style.display = 'none';
+            return;
+        }
+
+        // Bouton sauvegarder
+        const btnSave = e.target.closest('.btn-save-tel');
+        if (btnSave) {
+            const eleveId = btnSave.dataset.eleveId;
+            const input = document.querySelector('#tel-edit-' + eleveId + ' .input-tel-edit');
+            const tel = (input.value || '').trim();
+
+            if (!/^\+224\d{8,9}$/.test(tel)) {
+                alert('Format invalide. Utilisez +224XXXXXXXXX');
+                input.focus();
+                return;
+            }
+
+            btnSave.disabled = true;
+            btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            fetch("{% url 'eleves:ajax_modifier_telephone_responsable' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                        || '{{ csrf_token }}'
+                },
+                body: JSON.stringify({ eleve_id: eleveId, telephone: tel })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Mettre à jour l'affichage
+                    const telText = document.querySelector('#tel-display-' + eleveId + ' .tel-text');
+                    if (telText) telText.textContent = data.telephone;
+                    // Mettre à jour le data-tel-actuel
+                    const btnEditOrig = document.querySelector('#tel-display-' + eleveId + ' .btn-edit-tel');
+                    if (btnEditOrig) btnEditOrig.dataset.telActuel = data.telephone;
+                    document.getElementById('tel-display-' + eleveId).style.display = '';
+                    document.getElementById('tel-edit-' + eleveId).style.display = 'none';
+                    if (typeof showMessage === 'function') showMessage(data.message, 'success');
+                } else {
+                    alert(data.error || 'Erreur lors de la mise à jour');
+                }
+            })
+            .catch(() => alert('Erreur réseau'))
+            .finally(() => {
+                btnSave.disabled = false;
+                btnSave.innerHTML = '<i class="fas fa-check"></i>';
+            });
+            return;
+        }
+    });
+
+    // Sauvegarder avec Entrée
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && e.target.classList.contains('input-tel-edit')) {
+            e.preventDefault();
+            const eleveId = e.target.dataset.eleveId;
+            const btnSave = document.querySelector('.btn-save-tel[data-eleve-id="' + eleveId + '"]');
+            if (btnSave) btnSave.click();
+        }
+        if (e.key === 'Escape' && e.target.classList.contains('input-tel-edit')) {
+            const eleveId = e.target.dataset.eleveId;
+            const btnCancel = document.querySelector('.btn-cancel-tel[data-eleve-id="' + eleveId + '"]');
+            if (btnCancel) btnCancel.click();
+        }
+    });
     </script>
 {% endblock %}
 

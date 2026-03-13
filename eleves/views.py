@@ -4057,3 +4057,65 @@ def generer_cartes_classe_pdf(request, classe_id):
     c.showPage()
     c.save()
     return response
+
+
+@login_required
+@require_http_methods(["POST"])
+def ajax_modifier_telephone_responsable(request):
+    """Modifie le numéro de téléphone du responsable principal d'un élève (AJAX)"""
+    import json
+    import re
+
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+        eleve_id = data.get('eleve_id')
+        nouveau_telephone = data.get('telephone', '').strip()
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Données invalides'}, status=400)
+
+    if not eleve_id or not nouveau_telephone:
+        return JsonResponse({'success': False, 'error': 'Élève et téléphone requis'}, status=400)
+
+    # Validation du format téléphone guinéen
+    if not re.match(r'^\+224\d{8,9}$', nouveau_telephone):
+        return JsonResponse({'success': False, 'error': 'Format invalide. Utilisez +224XXXXXXXXX'}, status=400)
+
+    # Récupérer l'élève avec vérification des permissions
+    try:
+        eleve = Eleve.objects.select_related('responsable_principal', 'classe', 'classe__ecole').get(pk=eleve_id)
+    except Eleve.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Élève introuvable'}, status=404)
+
+    # Vérifier que l'utilisateur a accès à cet élève
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or eleve.classe.ecole != user_school_obj:
+            return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
+
+    if not eleve.responsable_principal:
+        return JsonResponse({'success': False, 'error': 'Aucun responsable principal pour cet élève'}, status=400)
+
+    ancien_telephone = eleve.responsable_principal.telephone
+    eleve.responsable_principal.telephone = nouveau_telephone
+    eleve.responsable_principal.save(update_fields=['telephone'])
+
+    # Journaliser la modification
+    try:
+        JournalActivite.objects.create(
+            user=request.user,
+            action='MODIFICATION',
+            type_objet='RESPONSABLE',
+            objet_id=eleve.responsable_principal.id,
+            description=f"Téléphone modifié pour {eleve.responsable_principal.nom_complet} "
+                        f"(parent de {eleve.prenom} {eleve.nom}): {ancien_telephone} → {nouveau_telephone}",
+            adresse_ip=request.META.get('REMOTE_ADDR', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]
+        )
+    except Exception:
+        pass
+
+    return JsonResponse({
+        'success': True,
+        'telephone': nouveau_telephone,
+        'message': f'Téléphone mis à jour: {nouveau_telephone}'
+    })
