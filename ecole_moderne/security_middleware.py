@@ -82,34 +82,28 @@ class SecurityMiddleware(MiddlewareMixin):
         client_ip = self.get_client_ip(request)
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
         
-        # -2. Bloquer l'accès public à /admin/ (sauf IP autorisées) et n'autoriser que les staffs déjà authentifiés
-        try:
-            path = request.path or ''
-            if path.startswith('/admin/'):
-                # Liste blanche optionnelle d'IP (settings.ADMIN_WHITELIST_IPS = ["127.0.0.1", ...])
-                whitelist = getattr(settings, 'ADMIN_WHITELIST_IPS', []) or []
-                is_whitelisted = client_ip in whitelist
-                # Autoriser UNIQUEMENT les utilisateurs déjà authentifiés et staff
-                if not (hasattr(request, 'user') and request.user.is_authenticated and request.user.is_staff):
-                    if not is_whitelisted:
-                        # Rendre une page conviviale au lieu d'une redirection vers /admin/login/
-                        try:
-                            template = loader.get_template('utilisateurs/admin_blocked.html')
-                            html = template.render({
-                                'message': "Accès administrateur interdit. Veuillez contacter l'administrateur du site.",
-                                'contact_phone': '622613559',
-                                'titre_page': 'Accès refusé'
-                            }, request)
-                            return HttpResponse(html, status=403)
-                        except Exception:
-                            return HttpResponseForbidden(
-                                "Accès administrateur interdit. Veuillez consulter l'administrateur du système au 622613559."
-                            )
-                # Si whitelisted mais non staff/auth, on laisse passer seulement la page pour authentification interne (optionnel)
-                # Par défaut, même les IP whitelists non-staff sont bloquées ici pour sécurité maximale.
-        except Exception:
-            # En cas d'erreur inattendue, ne pas bloquer mais continuer les contrôles suivants
-            pass
+        # -2. [DÉSACTIVÉ TEMPORAIREMENT] Bloquer l'accès public à /admin/
+        # try:
+        #     path = request.path or ''
+        #     if path.startswith('/admin/'):
+        #         whitelist = getattr(settings, 'ADMIN_WHITELIST_IPS', []) or []
+        #         is_whitelisted = client_ip in whitelist
+        #         if not (hasattr(request, 'user') and request.user.is_authenticated and request.user.is_staff):
+        #             if not is_whitelisted:
+        #                 try:
+        #                     template = loader.get_template('utilisateurs/admin_blocked.html')
+        #                     html = template.render({
+        #                         'message': "Accès administrateur interdit. Veuillez contacter l'administrateur du site.",
+        #                         'contact_phone': '622613559',
+        #                         'titre_page': 'Accès refusé'
+        #                     }, request)
+        #                     return HttpResponse(html, status=403)
+        #                 except Exception:
+        #                     return HttpResponseForbidden(
+        #                         "Accès administrateur interdit. Veuillez consulter l'administrateur du système au 622613559."
+        #                     )
+        # except Exception:
+        #     pass
 
         # -1. Si le système est verrouillé (suite à bruteforce), bloquer tout
         try:
