@@ -916,6 +916,49 @@ def liste_paiements(request):
     ce_mois_qs = qs_non_annule.filter(date_paiement__gte=month_start, date_paiement__lte=today)
     total_ce_mois = ce_mois_qs.count()
     montant_ce_mois = int(ce_mois_qs.aggregate(total=Sum('montant'))['total'] or 0)
+    montant_ce_mois_valide = int(ce_mois_qs.filter(statut='VALIDE').aggregate(total=Sum('montant'))['total'] or 0)
+
+    # Montants annulés
+    annule_qs = qs_effectif.filter(statut='ANNULE')
+    total_annule = annule_qs.count()
+    montant_annule = int(annule_qs.aggregate(total=Sum('montant'))['total'] or 0)
+
+    # Reste à payer basé sur les élèves actifs (depuis les échéanciers)
+    eleves_actifs_qs = Eleve.objects.filter(statut='ACTIF').select_related('classe', 'classe__ecole')
+    eleves_actifs_qs = filter_by_user_school(eleves_actifs_qs, request.user, 'classe__ecole')
+    if annee_filtre:
+        eleves_actifs_qs = eleves_actifs_qs.filter(classe__annee_scolaire=annee_filtre)
+    elif annee_active:
+        eleves_actifs_qs = eleves_actifs_qs.filter(classe__annee_scolaire=annee_active)
+    eleves_actifs_count = eleves_actifs_qs.count()
+    eche_actifs_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_actifs_qs)
+    reste_a_payer_agg = eche_actifs_qs.aggregate(
+        total_du=Coalesce(
+            Sum(
+                Coalesce(F('frais_inscription_du'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_1_due'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_2_due'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_3_due'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        total_paye=Coalesce(
+            Sum(
+                Coalesce(F('frais_inscription_paye'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_1_payee'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_2_payee'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0))
+                + Coalesce(F('tranche_3_payee'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)), output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+    )
+    total_du_actifs = int(reste_a_payer_agg.get('total_du') or 0)
+    total_paye_actifs = int(reste_a_payer_agg.get('total_paye') or 0)
+    reste_a_payer = max(total_du_actifs - total_paye_actifs, 0)
 
     # Calculs supplémentaires: Dû scolarité net après remises + frais d'inscription (réels depuis l'échéancier)
     eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').all()
@@ -1090,6 +1133,12 @@ def liste_paiements(request):
             'montant_en_attente': int(montant_en_attente or 0),
             'total_ce_mois': int(total_ce_mois or 0),
             'montant_ce_mois': int(montant_ce_mois or 0),
+            'montant_ce_mois_valide': int(montant_ce_mois_valide or 0),
+            'total_annule': int(total_annule or 0),
+            'montant_annule': int(montant_annule or 0),
+            'eleves_actifs_count': int(eleves_actifs_count or 0),
+            'reste_a_payer': int(reste_a_payer or 0),
+            'total_paye_actifs': int(total_paye_actifs or 0),
         },
         'totaux_du': {
             'eleves_count': int(eleves_count or 0),

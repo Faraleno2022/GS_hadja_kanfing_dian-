@@ -19,40 +19,38 @@
     <div class="row">
         <div class="col-md-3">
             <div class="stat-card">
-                <div class="stat-value text-primary">{{ totaux.total_paiements|intcomma }}</div>
-                <div class="stat-label">Total paiements</div>
-                {% if totaux.total_paiements != totaux.total_ce_mois %}
-                    <small class="text-muted">{{ totaux.total_ce_mois|intcomma }} ce mois</small>
-                {% endif %}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="stat-card">
-                <div class="stat-value text-success">{{ totaux.montant_total|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Total paiements listés (hors annulés)</div>
-                {% if totaux.montant_total != totaux.montant_ce_mois %}
-                    <small class="text-muted">{{ totaux.montant_ce_mois|floatformat:0|intcomma }} ce mois</small>
-                {% endif %}
-                {% if totaux.montant_total_valide %}
-                    <div><small class="text-muted">Validés: {{ totaux.montant_total_valide|floatformat:0|intcomma }} GNF</small></div>
-                {% endif %}
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="stat-card">
-                <div class="stat-value text-warning">{{ totaux.total_en_attente|intcomma }}</div>
-                <div class="stat-label">En attente</div>
+                <div class="stat-value text-success">{{ totaux.montant_total_valide|floatformat:0|intcomma }} <small style="font-size:0.5em">GNF</small></div>
+                <div class="stat-label">Total montant payé (validé)</div>
+                <small class="text-muted">{{ totaux.total_paiements|intcomma }} paiement{{ totaux.total_paiements|pluralize }}</small>
                 {% if totaux.montant_en_attente > 0 %}
-                    <small class="text-muted">{{ totaux.montant_en_attente|floatformat:0|intcomma }} GNF</small>
+                    <div><small class="text-warning">En attente: {{ totaux.montant_en_attente|floatformat:0|intcomma }} GNF ({{ totaux.total_en_attente }})</small></div>
                 {% endif %}
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card">
-                <div class="stat-value text-info">{{ totaux.total_ce_mois|intcomma }}</div>
-                <div class="stat-label">Ce mois</div>
-                {% if totaux.montant_ce_mois > 0 %}
-                    <small class="text-muted">{{ totaux.montant_ce_mois|floatformat:0|intcomma }} GNF</small>
+                <div class="stat-value text-danger">{{ totaux.reste_a_payer|floatformat:0|intcomma }} <small style="font-size:0.5em">GNF</small></div>
+                <div class="stat-label">Reste à payer</div>
+                <small class="text-muted">{{ totaux.eleves_actifs_count|intcomma }} élève{{ totaux.eleves_actifs_count|pluralize }} actif{{ totaux.eleves_actifs_count|pluralize }}</small>
+                {% if totaux.total_paye_actifs > 0 %}
+                    <div><small class="text-muted">Déjà payé: {{ totaux.total_paye_actifs|floatformat:0|intcomma }} GNF</small></div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-secondary">{{ totaux.montant_annule|floatformat:0|intcomma }} <small style="font-size:0.5em">GNF</small></div>
+                <div class="stat-label">Montant annulé</div>
+                <small class="text-muted">{{ totaux.total_annule|intcomma }} paiement{{ totaux.total_annule|pluralize }} annulé{{ totaux.total_annule|pluralize }}</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-value text-info">{{ totaux.montant_ce_mois_valide|floatformat:0|intcomma }} <small style="font-size:0.5em">GNF</small></div>
+                <div class="stat-label">Payé ce mois</div>
+                <small class="text-muted">{{ totaux.total_ce_mois|intcomma }} paiement{{ totaux.total_ce_mois|pluralize }}</small>
+                {% if totaux.montant_ce_mois != totaux.montant_ce_mois_valide %}
+                    <div><small class="text-muted">Total (tous statuts): {{ totaux.montant_ce_mois|floatformat:0|intcomma }} GNF</small></div>
                 {% endif %}
             </div>
         </div>
