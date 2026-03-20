@@ -30,7 +30,6 @@ urlpatterns = [
     # Génération de documents
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
     path('note-rappel/<int:eleve_id>/pdf/', views.generer_note_rappel_pdf, name='generer_note_rappel_pdf'),
-    path('notes-rappel/toutes/pdf/', views.generer_toutes_notes_rappel_pdf, name='generer_toutes_notes_rappel_pdf'),
     path('notes-rappel/classe/<int:classe_id>/pdf/', views.generer_notes_rappel_classe_pdf, name='generer_notes_rappel_classe_pdf'),
     path('eleves-impayes/', views.liste_eleves_impayes, name='liste_eleves_impayes'),
     path('notes-rappel/tous/pdf/', views.generer_toutes_notes_rappel_pdf, name='generer_toutes_notes_rappel_pdf'),
