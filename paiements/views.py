@@ -4269,7 +4269,7 @@ def generer_toutes_notes_rappel_pdf(request):
 
     response = HttpResponse(output.read(), content_type="application/pdf")
     filename = f"toutes_notes_rappel_{datetime.now().strftime('%Y%m%d')}.pdf"
-    response["Content-Disposition"] = f"attachment; filename="{filename}""
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 def liste_eleves_impayes(request):
     """Affiche la liste des élèves avec des impayés.
