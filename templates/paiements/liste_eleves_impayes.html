@@ -91,9 +91,9 @@
         </div>
         <div class="col-md-3">
             <div class="stat-card text-center">
-                <button class="btn btn-note-rappel btn-lg" onclick="genererToutesNotes()">
+                <a href="{% url 'paiements:generer_toutes_notes_rappel_pdf' %}" class="btn btn-note-rappel btn-lg">
                     <i class="fas fa-file-pdf"></i> Générer toutes les notes
-                </button>
+                </a>
             </div>
         </div>
     </div>
@@ -258,6 +258,7 @@ function genererToutesNotes() {
         window.location.href = "{% url 'paiements:generer_toutes_notes_rappel_pdf' %}";
     }
 }
+/* genererToutesNotes() remplacée par un lien direct vers la vue PDF */
 
 function envoyerNoteRappelWhatsApp(eleveId, eleveNom) {
     // Afficher la modal

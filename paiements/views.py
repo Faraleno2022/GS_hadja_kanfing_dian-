@@ -4087,32 +4087,121 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
         messages.info(request, "Aucun élève avec des impayés dans cette classe.")
         return redirect('eleves:classe_detail', classe_id=classe_id)
     
-    # Créer la réponse PDF
+    # Fusionner les PDFs individuels
+    try:
+        from PyPDF2 import PdfMerger
+    except ImportError:
+        try:
+            from pypdf import PdfMerger
+        except ImportError:
+            # Fallback: un seul PDF
+            response = HttpResponse(content_type='application/pdf')
+            filename = f"notes_rappel_{classe.nom}_{datetime.now().strftime('%Y%m%d')}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            generer_note_rappel_eleve(eleves_avec_impayes[0], response)
+            messages.warning(request, "Module PDF fusion indisponible. Seule la première note a été générée.")
+            return response
+
+    merger = PdfMerger()
+    for eleve in eleves_avec_impayes:
+        buf = BytesIO()
+        generer_note_rappel_eleve(eleve, buf)
+        buf.seek(0)
+        merger.append(buf)
+
     response = HttpResponse(content_type='application/pdf')
     filename = f"notes_rappel_{classe.nom}_{datetime.now().strftime('%Y%m%d')}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    
-    # Créer un document PDF avec toutes les notes
-    doc = SimpleDocTemplate(response, pagesize=A4)
-    elements = []
-    
-    for i, eleve in enumerate(eleves_avec_impayes):
-        # Générer la note pour cet élève dans un buffer temporaire
-        buffer = BytesIO()
-        generer_note_rappel_eleve(eleve, buffer)
-        
-        # TODO: Fusionner les PDFs individuels
-        # Pour l'instant, on génère séparément
-        if i > 0:
-            elements.append(PageBreak())
-    
-    # Construction simplifiée pour l'instant
-    # On génère une seule note comme exemple
-    if eleves_avec_impayes:
-        generer_note_rappel_eleve(eleves_avec_impayes[0], response)
-    
+    merger.write(response)
+    merger.close()
+
     messages.success(request, f"{len(eleves_avec_impayes)} notes de rappel générées pour la classe {classe.nom}")
-    
+
+    return response
+
+
+@login_required
+def generer_toutes_notes_rappel_pdf(request):
+    """Génère les notes de rappel PDF pour TOUS les élèves avec impayés (toutes classes)."""
+    from .note_rappel_generator import generer_note_rappel_eleve
+    from .models import ConfigurationPaiement
+
+    # Permissions
+    if not user_is_admin(request.user) and not can_view_reports(request.user):
+        return HttpResponse(status=403)
+
+    # Élèves selon école de l'utilisateur
+    if user_is_superadmin(request.user):
+        eleves_qs = Eleve.objects.filter(statut='ACTIF')
+    else:
+        ecole_user = user_school(request.user)
+        if ecole_user is None:
+            messages.warning(request, "Aucune école associée à votre compte.")
+            return redirect('paiements:liste_eleves_impayes')
+        eleves_qs = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
+
+    # Sous-requête pour le montant total de la configuration de la classe
+    config_montant_sub = ConfigurationPaiement.objects.filter(
+        classe=OuterRef('classe')
+    ).values('classe').annotate(
+        total=F('montant_inscription') + F('montant_scolarite')
+    ).values('total')[:1]
+
+    eleves_qs = (
+        eleves_qs
+        .select_related('classe', 'classe__ecole')
+        .annotate(
+            _config_total=Coalesce(
+                Subquery(config_montant_sub, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+            _total_paye=Coalesce(
+                Sum('paiements__montant', filter=Q(paiements__statut='VALIDE')),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+        )
+        .annotate(_reste_a_payer=F('_config_total') - F('_total_paye'))
+        .filter(_config_total__gt=0, _reste_a_payer__gt=0)
+        .order_by('classe__nom', 'nom', 'prenom')
+    )
+
+    eleves_avec_impayes = list(eleves_qs[:500])  # Sécurité: max 500
+
+    if not eleves_avec_impayes:
+        messages.info(request, "Aucun élève avec des impayés.")
+        return redirect('paiements:liste_eleves_impayes')
+
+    # Fusionner les PDFs individuels avec PyPDF2/pypdf
+    try:
+        from PyPDF2 import PdfMerger
+    except ImportError:
+        try:
+            from pypdf import PdfMerger
+        except ImportError:
+            # Fallback: générer un seul PDF (le premier élève)
+            response = HttpResponse(content_type='application/pdf')
+            filename = f"notes_rappel_tous_{datetime.now().strftime('%Y%m%d')}.pdf"
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            generer_note_rappel_eleve(eleves_avec_impayes[0], response)
+            messages.warning(request, "Module PDF fusion indisponible. Seule la première note a été générée.")
+            return response
+
+    merger = PdfMerger()
+    for eleve in eleves_avec_impayes:
+        buf = BytesIO()
+        generer_note_rappel_eleve(eleve, buf)
+        buf.seek(0)
+        merger.append(buf)
+
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"notes_rappel_tous_{datetime.now().strftime('%Y%m%d')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    merger.write(response)
+    merger.close()
+
+    messages.success(request, f"{len(eleves_avec_impayes)} notes de rappel générées.")
     return response
 
 
