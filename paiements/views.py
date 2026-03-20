@@ -3481,8 +3481,9 @@ def eleves_soldes_simple(request):
         total_remises_calc=remises_total,
     ).order_by('eleve__classe__nom', 'eleve__nom', 'eleve__prenom')
 
-    soldes_pks = qs.filter(solde_calcule__lte=0).values("pk")
-    qs_soldes = qs.filter(pk__in=soldes_pks)
+    all_vals = list(qs.values("pk", "solde_calcule"))
+    soldes_pks_list = [r["pk"] for r in all_vals if (r["solde_calcule"] or 0) <= 0]
+    qs_soldes = qs.filter(pk__in=soldes_pks_list)
 
     aggr = qs_soldes.aggregate(
         du=Coalesce(Sum('total_du_calc', output_field=DecimalField(max_digits=12, decimal_places=0)), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))),
