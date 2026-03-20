@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function genererToutesNotes() {
     if (confirm('Voulez-vous générer les notes de rappel pour tous les élèves avec des impayés ?')) {
         // TODO: Implémenter la génération groupée
-        alert('Fonctionnalité en cours de développement');
+        window.location.href = "{% url 'paiements:generer_toutes_notes_rappel_pdf' %}";
     }
 }
 
