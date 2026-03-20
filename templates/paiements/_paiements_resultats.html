@@ -5,12 +5,10 @@
     <i class="fas fa-bell me-2"></i>
     <div>
         <strong>{{ eleves_en_retard|intcomma }} élève{{ eleves_en_retard|pluralize }} à relancer.</strong>
-        <a href="{% url 'administration:system_logs' %}" class="alert-link ms-1">Voir les logs système</a>
     </div>
-    <a href="{% url 'administration:system_logs' %}" class="btn btn-sm btn-outline-warning ms-auto">
-        <i class="fas fa-list-alt me-1"></i>Logs
+    <a href="{% url 'paiements:eleves_en_retard' %}" class="btn btn-sm btn-outline-warning ms-auto">
+        <i class="fas fa-users me-1"></i>Voir les élèves à relancer
     </a>
-    
 </div>
 {% endif %}
 
