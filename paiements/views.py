@@ -4140,34 +4140,37 @@ def generer_toutes_notes_rappel_pdf(request):
             return redirect('paiements:liste_eleves_impayes')
         eleves_qs = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
 
-    # Sous-requête pour le montant total de la configuration de la classe
-    config_montant_sub = ConfigurationPaiement.objects.filter(
-        classe=OuterRef('classe')
-    ).values('classe').annotate(
-        total=F('montant_inscription') + F('montant_scolarite')
-    ).values('total')[:1]
+    # Construire un dictionnaire classe_id -> montant total (évite Subquery incompatible MySQL $)
+    config_map = {}
+    for conf in ConfigurationPaiement.objects.all():
+        config_map[conf.classe_id] = (conf.montant_inscription or 0) + (conf.montant_scolarite or 0)
 
     eleves_qs = (
         eleves_qs
-        .select_related('classe', 'classe__ecole')
+        .select_related('classe', 'classe__ecole', 'responsable_principal')
         .annotate(
-            _config_total=Coalesce(
-                Subquery(config_montant_sub, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                output_field=DecimalField(max_digits=12, decimal_places=0),
-            ),
             _total_paye=Coalesce(
                 Sum('paiements__montant', filter=Q(paiements__statut='VALIDE')),
                 Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
                 output_field=DecimalField(max_digits=12, decimal_places=0),
             ),
         )
-        .annotate(_reste_a_payer=F('_config_total') - F('_total_paye'))
-        .filter(_config_total__gt=0, _reste_a_payer__gt=0)
         .order_by('classe__nom', 'nom', 'prenom')
     )
 
-    eleves_avec_impayes = list(eleves_qs[:500])  # Sécurité: max 500
+    eleves_avec_impayes = []
+    for eleve in eleves_qs[:500]:
+        config_total = config_map.get(eleve.classe_id, 0)
+        if config_total <= 0:
+            continue
+        total_paye = int(eleve._total_paye)
+        reste = config_total - total_paye
+        if reste <= 0:
+            continue
+        eleve._config_total = config_total
+        eleve._total_paye_val = total_paye
+        eleve._reste_a_payer = reste
+        eleves_avec_impayes.append(eleve)
 
     if not eleves_avec_impayes:
         messages.info(request, "Aucun élève avec des impayés.")
@@ -4288,42 +4291,33 @@ def liste_eleves_impayes(request):
         else:
             eleves = Eleve.objects.filter(classe__ecole=ecole_user, statut='ACTIF')
 
-    # Annoter le montant total payé (validé) et le montant total dû via ConfigurationPaiement
-    # Sous-requête pour le montant total de la configuration de la classe
-    config_montant_sub = ConfigurationPaiement.objects.filter(
-        classe=OuterRef('classe')
-    ).values('classe').annotate(
-        total=F('montant_inscription') + F('montant_scolarite')
-    ).values('total')[:1]
+    # Construire un dictionnaire classe_id -> montant total (évite Subquery incompatible MySQL $)
+    config_map = {}
+    for conf in ConfigurationPaiement.objects.all():
+        config_map[conf.classe_id] = (conf.montant_inscription or 0) + (conf.montant_scolarite or 0)
 
     eleves = (
         eleves
         .select_related('classe', 'classe__ecole')
         .annotate(
-            _config_total=Coalesce(
-                Subquery(config_montant_sub, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                output_field=DecimalField(max_digits=12, decimal_places=0),
-            ),
             _total_paye=Coalesce(
                 Sum('paiements__montant', filter=Q(paiements__statut='VALIDE')),
                 Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
                 output_field=DecimalField(max_digits=12, decimal_places=0),
             ),
         )
-        .annotate(
-            _reste_a_payer=F('_config_total') - F('_total_paye'),
-        )
-        # Uniquement les élèves avec un montant dû > 0 et un reste > 0
-        .filter(_config_total__gt=0, _reste_a_payer__gt=0)
-        .order_by('-_reste_a_payer')
+        .order_by('classe__nom', 'nom', 'prenom')
     )
 
     eleves_avec_soldes = []
     for eleve in eleves:
-        montant_total = int(eleve._config_total)
+        montant_total = config_map.get(eleve.classe_id, 0)
+        if montant_total <= 0:
+            continue
         montant_paye = int(eleve._total_paye)
-        reste = int(eleve._reste_a_payer)
+        reste = montant_total - montant_paye
+        if reste <= 0:
+            continue
         eleves_avec_soldes.append({
             'eleve': eleve,
             'montant_total': montant_total,
@@ -4331,6 +4325,9 @@ def liste_eleves_impayes(request):
             'reste_a_payer': reste,
             'pourcentage_paye': int((montant_paye / montant_total * 100)) if montant_total > 0 else 0,
         })
+
+    # Trier par reste à payer décroissant
+    eleves_avec_soldes.sort(key=lambda x: x['reste_a_payer'], reverse=True)
 
     context = {
         'eleves_avec_soldes': eleves_avec_soldes,
