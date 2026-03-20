@@ -60,10 +60,10 @@ def tableau_bord(request):
     periode_courante = None
     try:
         now = timezone.now()
-        periode_courante = PeriodeSalaire.objects.filter(
-            mois=now.month,
-            annee=now.year
-        ).first()
+        qs_periodes = PeriodeSalaire.objects.filter(mois=now.month, annee=now.year)
+        if restreindre:
+            qs_periodes = qs_periodes.filter(ecole=ecole_user)
+        periode_courante = qs_periodes.first()
     except:
         pass
     

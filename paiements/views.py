@@ -2407,7 +2407,6 @@ def generer_recu_pdf(request, paiement_id:int):
                 adr = getattr(ecole_obj, 'adresse', '') or ''
                 tel = getattr(ecole_obj, 'telephone', '') or ''
                 email = getattr(ecole_obj, 'email', '') or ''
-                dirc = getattr(ecole_obj, 'directeur', '') or ''
                 info_x = left + logo_w + 20
                 y_info = top - 62
                 c.setFont('Helvetica', 9)
@@ -2425,8 +2424,6 @@ def generer_recu_pdf(request, paiement_id:int):
                 if email:
                     c.drawString(info_x, y_info, f"Email: {email}")
                     y_info -= 12
-                if dirc:
-                    c.drawString(info_x, y_info, f"Directeur: {dirc}")
                 try:
                     c.setFillGray(0.0)
                 except Exception:
@@ -2445,7 +2442,6 @@ def generer_recu_pdf(request, paiement_id:int):
                 adr = getattr(ecole_obj, 'adresse', '') or ''
                 tel = getattr(ecole_obj, 'telephone', '') or ''
                 email = getattr(ecole_obj, 'email', '') or ''
-                dirc = getattr(ecole_obj, 'directeur', '') or ''
                 c.setFont('Helvetica', 9)
                 try:
                     c.setFillGray(0.3)
@@ -2461,9 +2457,6 @@ def generer_recu_pdf(request, paiement_id:int):
                     top -= 12
                 if email:
                     c.drawString(left, top, f"Email: {email}")
-                    top -= 12
-                if dirc:
-                    c.drawString(left, top, f"Directeur: {dirc}")
                     top -= 12
                 try:
                     c.setFillGray(0.0)
@@ -2481,7 +2474,6 @@ def generer_recu_pdf(request, paiement_id:int):
             adr = getattr(ecole_obj, 'adresse', '') or ''
             tel = getattr(ecole_obj, 'telephone', '') or ''
             email = getattr(ecole_obj, 'email', '') or ''
-            dirc = getattr(ecole_obj, 'directeur', '') or ''
             c.setFont('Helvetica', 9)
             try:
                 c.setFillGray(0.3)
@@ -2497,9 +2489,6 @@ def generer_recu_pdf(request, paiement_id:int):
                 top -= 12
             if email:
                 c.drawString(left, top, f"Email: {email}")
-                top -= 12
-            if dirc:
-                c.drawString(left, top, f"Directeur: {dirc}")
                 top -= 12
             try:
                 c.setFillGray(0.0)
