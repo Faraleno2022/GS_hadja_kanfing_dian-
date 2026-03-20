@@ -28,7 +28,7 @@
       <h4 class="mb-1">Élèves soldés ({{ annee }})</h4>
       <small class="text-muted">
         <i class="fas fa-info-circle me-1"></i>
-        Vérification des paiements complets - {{ page_obj.paginator.count }} élève{{ page_obj.paginator.count|pluralize }} soldé{{ page_obj.paginator.count|pluralize }}
+        Vérification des paiements complets - {% if page_obj %}{{ page_obj.paginator.count }} élève{{ page_obj.paginator.count|pluralize }} soldé{{ page_obj.paginator.count|pluralize }}{% else %}0 élève soldé{% endif %}
       </small>
     </div>
     <div class="d-flex gap-2">
