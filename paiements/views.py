@@ -3225,8 +3225,9 @@ def liste_eleves_soldes(request):
     ).order_by('eleve__classe__nom', 'eleve__nom', 'eleve__prenom')
 
     # Élèves soldés: solde <= 0
-    soldes_pks = qs.filter(solde_calcule__lte=0).values("pk")
-    qs_soldes = qs.filter(pk__in=soldes_pks)
+    all_vals = list(qs.values("pk", "solde_calcule"))
+    soldes_pks_list = [r["pk"] for r in all_vals if (r["solde_calcule"] or 0) <= 0]
+    qs_soldes = qs.filter(pk__in=soldes_pks_list)
 
     # Totaux
     aggr = qs_soldes.aggregate(
@@ -3480,7 +3481,6 @@ def eleves_soldes_simple(request):
         solde_calcule=solde_calc,
         total_remises_calc=remises_total,
     ).order_by('eleve__classe__nom', 'eleve__nom', 'eleve__prenom')
-
     all_vals = list(qs.values("pk", "solde_calcule"))
     soldes_pks_list = [r["pk"] for r in all_vals if (r["solde_calcule"] or 0) <= 0]
     qs_soldes = qs.filter(pk__in=soldes_pks_list)
