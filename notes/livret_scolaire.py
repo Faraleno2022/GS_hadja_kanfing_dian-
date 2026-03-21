@@ -1225,9 +1225,10 @@ def _collecter_parcours_eleve(eleve, ecole):
                 m_data = {'nom': mat.nom, 'coef': float(mat.coefficient)}
 
                 if is_semestre:
+                    # Memes mois que calculs_moyennes.calculer_moyenne_matiere
                     for sem_num, mois_list, prefix in [
-                        (1, ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'], 'sem1'),
-                        (2, ['MARS', 'AVRIL', 'MAI', 'JUIN'], 'sem2'),
+                        (1, ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER'], 'sem1'),
+                        (2, ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET'], 'sem2'),
                     ]:
                         notes = NoteMensuelle.objects.filter(
                             eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
@@ -1240,13 +1241,14 @@ def _collecter_parcours_eleve(eleve, ecole):
 
                         moy = None
                         if notes.exists():
-                            vals = [float(n.note) for n in notes if n.note is not None]
+                            vals = [float(n.note) for n in notes if n.note is not None and not n.absent]
                             moy = round(sum(vals) / len(vals), 2) if vals else None
 
-                        compo_val = float(compo.note) if compo and compo.note is not None else None
+                        compo_val = float(compo.note) if compo and compo.note is not None and not compo.absent else None
+                        # Formule identique a calculer_moyenne_matiere: (moy + compo) / 2
                         sem_moy = None
                         if moy is not None and compo_val is not None:
-                            sem_moy = round(moy * 0.4 + compo_val * 0.6, 2)
+                            sem_moy = round((moy + compo_val) / 2, 2)
                         elif moy is not None:
                             sem_moy = moy
                         elif compo_val is not None:
@@ -1272,13 +1274,14 @@ def _collecter_parcours_eleve(eleve, ecole):
 
                         moy_t = None
                         if notes_t.exists():
-                            vals = [float(n.note) for n in notes_t if n.note is not None]
+                            vals = [float(n.note) for n in notes_t if n.note is not None and not n.absent]
                             moy_t = round(sum(vals) / len(vals), 2) if vals else None
 
-                        compo_t_val = float(compo_t.note) if compo_t and compo_t.note is not None else None
+                        compo_t_val = float(compo_t.note) if compo_t and compo_t.note is not None and not compo_t.absent else None
+                        # Formule identique a calculer_moyenne_matiere: (moy + compo) / 2
                         final_t = None
                         if moy_t is not None and compo_t_val is not None:
-                            final_t = round(moy_t * 0.4 + compo_t_val * 0.6, 2)
+                            final_t = round((moy_t + compo_t_val) / 2, 2)
                         elif moy_t is not None:
                             final_t = moy_t
                         elif compo_t_val is not None:
@@ -1576,14 +1579,14 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     directeur = _s(ecole.directeur) if ecole.directeur else "La Direction"
 
     paragraphes = [
-        f"Au terme de l'annee scolaire {annee}, nous tenons a vous exprimer nos sinceres",
-        f"remerciements pour la confiance que vous avez placee en notre etablissement,",
-        f"{_s(ecole.nom)}, pour l'education et la formation de votre enfant",
+        f"Au terme de l'ann\u00e9e scolaire {annee}, nous tenons \u00e0 vous exprimer nos sinc\u00e8res",
+        f"remerciements pour la confiance que vous avez plac\u00e9e en notre \u00e9tablissement,",
+        f"{_s(ecole.nom)}, pour l'\u00e9ducation et la formation de votre enfant",
         f"{_s(eleve.prenom)} {_s(eleve.nom)}.",
         "",
         f"Votre implication dans le suivi scolaire de votre enfant, en classe de {_s(classe_nom)},",
-        f"a ete un facteur determinant dans son parcours cette annee. Nous sommes convaincus",
-        f"que la reussite scolaire est le fruit d'une collaboration etroite entre l'ecole",
+        f"a \u00e9t\u00e9 un facteur d\u00e9terminant dans son parcours cette ann\u00e9e. Nous sommes convaincus",
+        f"que la r\u00e9ussite scolaire est le fruit d'une collaboration \u00e9troite entre l'\u00e9cole",
         f"et la famille.",
     ]
 
@@ -1591,16 +1594,16 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
         seuil = 5.0 if sur == 10 else 10.0
         if moy >= seuil * 1.5:
             paragraphes.append("")
-            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, votre enfant a realise une excellente")
-            paragraphes.append(f"performance. Nous vous felicitons et encourageons a maintenir cet elan.")
+            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, votre enfant a r\u00e9alis\u00e9 une excellente")
+            paragraphes.append(f"performance. Nous vous f\u00e9licitons et encourageons \u00e0 maintenir cet \u00e9lan.")
         elif moy >= seuil:
             paragraphes.append("")
             paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, votre enfant a fourni des efforts")
-            paragraphes.append(f"appreciables. Nous l'encourageons a perseverer pour de meilleurs resultats.")
+            paragraphes.append(f"appr\u00e9ciables. Nous l'encourageons \u00e0 pers\u00e9v\u00e9rer pour de meilleurs r\u00e9sultats.")
         else:
             paragraphes.append("")
-            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, des efforts supplementaires sont")
-            paragraphes.append(f"necessaires. Nous comptons sur votre soutien pour aider votre enfant a progresser.")
+            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, des efforts suppl\u00e9mentaires sont")
+            paragraphes.append(f"n\u00e9cessaires. Nous comptons sur votre soutien pour aider votre enfant \u00e0 progresser.")
 
     for line in paragraphes:
         c.drawString(lx, cy, line)
@@ -1610,7 +1613,7 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     cy -= 6
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.HexColor('#003d82'))
-    c.drawString(lx, cy, "RECOMMANDATIONS POUR LE PROGRES SCOLAIRE :")
+    c.drawString(lx, cy, "RECOMMANDATIONS POUR LE PROGR\u00c8S SCOLAIRE :")
     cy -= 3
     c.setLineWidth(0.4)
     c.setStrokeColor(colors.HexColor('#003d82'))
@@ -1621,19 +1624,19 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     c.setFillColor(colors.black)
 
     recommandations = [
-        ("1.", "Suivi regulier des devoirs et lecons a la maison. Verifiez chaque jour"),
-        ("",   "   les cahiers et encouragez l'enfant a reviser ses cours."),
-        ("2.", "Communication avec les enseignants. N'hesitez pas a prendre rendez-vous"),
-        ("",   "   pour discuter des progres et difficultes de votre enfant."),
-        ("3.", "Encouragement de la lecture. Offrez des livres et creez un environnement"),
-        ("",   "   propice a la lecture quotidienne, meme pendant les vacances."),
-        ("4.", "Ponctualite et assiduite. Assurez-vous que votre enfant arrive a l'heure"),
-        ("",   "   et ne manque aucune journee de cours sans raison valable."),
-        ("5.", "Soutien emotionnel et motivation. Felicitez les efforts, pas seulement"),
-        ("",   "   les notes. Chaque progres, meme petit, merite d'etre celebre."),
-        ("6.", "Limitation du temps d'ecran. Privilegiez les activites educatives et"),
+        ("1.", "Suivi r\u00e9gulier des devoirs et le\u00e7ons \u00e0 la maison. V\u00e9rifiez chaque jour"),
+        ("",   "   les cahiers et encouragez l'enfant \u00e0 r\u00e9viser ses cours."),
+        ("2.", "Communication avec les enseignants. N'h\u00e9sitez pas \u00e0 prendre rendez-vous"),
+        ("",   "   pour discuter des progr\u00e8s et difficult\u00e9s de votre enfant."),
+        ("3.", "Encouragement de la lecture. Offrez des livres et cr\u00e9ez un environnement"),
+        ("",   "   propice \u00e0 la lecture quotidienne, m\u00eame pendant les vacances."),
+        ("4.", "Ponctualit\u00e9 et assiduit\u00e9. Assurez-vous que votre enfant arrive \u00e0 l'heure"),
+        ("",   "   et ne manque aucune journ\u00e9e de cours sans raison valable."),
+        ("5.", "Soutien \u00e9motionnel et motivation. F\u00e9licitez les efforts, pas seulement"),
+        ("",   "   les notes. Chaque progr\u00e8s, m\u00eame petit, m\u00e9rite d'\u00eatre c\u00e9l\u00e9br\u00e9."),
+        ("6.", "Limitation du temps d'\u00e9cran. Privil\u00e9giez les activit\u00e9s \u00e9ducatives et"),
         ("",   "   sportives en dehors des heures de cours."),
-        ("7.", "Participation aux reunions de parents d'eleves. Votre presence temoigne"),
+        ("7.", "Participation aux r\u00e9unions de parents d'\u00e9l\u00e8ves. Votre pr\u00e9sence t\u00e9moigne"),
         ("",   "   de votre engagement dans la vie scolaire de votre enfant."),
     ]
 
@@ -1650,8 +1653,8 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     c.setFont('Helvetica', 7.5)
     c.setFillColor(colors.black)
     conclusions = [
-        f"Ensemble, continuons a oeuvrer pour l'epanouissement et la reussite de nos enfants.",
-        f"Nous vous renouvelons notre gratitude et restons a votre entiere disposition.",
+        f"Ensemble, continuons \u00e0 oeuvrer pour l'\u00e9panouissement et la r\u00e9ussite de nos enfants.",
+        f"Nous vous renouvelons notre gratitude et restons \u00e0 votre enti\u00e8re disposition.",
         "",
         f"Avec nos salutations les plus respectueuses,",
     ]
