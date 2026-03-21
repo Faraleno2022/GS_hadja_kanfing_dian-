@@ -32,6 +32,7 @@ from .bulletin_public import bulletin_public_pdf
 from .export_statistiques_pdf import exporter_statistiques_pdf, exporter_conseils_pdf
 from .certificats import certificats_appreciation_pdf
 from .tableau_honneur import tableau_honneur, tableau_honneur_pdf
+from .livret_scolaire import livret_scolaire_selection, livret_scolaire_pdf, livret_scolaire_classe_pdf
 
 app_name = 'notes'
 
@@ -150,6 +151,13 @@ urlpatterns = [
     # Bulletin Maternelle Modèle 2 (format tableau avec activités)
     path('maternelle/bulletin-modele2/<int:eleve_id>/<int:classe_id>/<str:trimestre>/pdf/', 
          views.bulletin_maternelle_modele2_pdf, name='bulletin_maternelle_modele2_pdf'),
-    path('maternelle/bulletins-classe-modele2-pdf/', 
+    path('maternelle/bulletins-classe-modele2-pdf/',
          views.bulletins_classe_maternelle_modele2_pdf, name='bulletins_classe_maternelle_modele2_pdf'),
+
+    # ============================================================================
+    # LIVRET SCOLAIRE — Parcours complet de l'élève
+    # ============================================================================
+    path('livret-scolaire/', livret_scolaire_selection, name='livret_scolaire'),
+    path('livret-scolaire/<int:eleve_id>/pdf/', livret_scolaire_pdf, name='livret_scolaire_pdf'),
+    path('livret-scolaire/classe/<int:classe_id>/pdf/', livret_scolaire_classe_pdf, name='livret_scolaire_classe_pdf'),
 ]
