@@ -143,16 +143,23 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     cy -= 10
     c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"College : {_s(ecole.nom)}")
+    c.drawString(lx, cy, f"Coll\u00e8ge : {_s(ecole.nom)}")
+    if ecole.desee:
+        c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
+
+    venant_de = entry.get('venant_de', '')
+    date_entree = entry.get('date_entree', '')
 
     cy -= 9
-    c.drawString(lx, cy, "Venant de : ........................")
+    c.drawString(lx, cy, f"Venant de : {_s(venant_de) if venant_de else '........................'}")
+    c.drawString(lx + w * 0.50, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
 
     cy -= 9
-    c.drawString(lx, cy, "Date d'entree : ........................")
-
-    cy -= 9
-    c.drawString(lx, cy, "References : ........................")
+    matricule = _s(eleve.matricule) if eleve.matricule else ''
+    c.drawString(lx, cy, f"Matricule : {matricule}")
+    censeur = _s(ecole.censeur) if ecole.censeur else ''
+    if censeur:
+        c.drawString(lx + w * 0.50, cy, f"Censeur : {censeur}")
 
     # Ligne separatrice
     cy -= 4
@@ -167,7 +174,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
     c.drawString(lx + 5, cy + 3, f"Classe : {_s(classe_nom)}")
-    c.drawRightString(rx - 5, cy + 3, f"Annee scolaire : {annee}")
+    c.drawRightString(rx - 5, cy + 3, f"Ann\u00e9e scolaire : {annee}")
 
     table_top = cy - 2  # Y ou le tableau commence
 
@@ -206,16 +213,19 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     rstart_x = x + left_w + pad
     py = sep_y - 10
     c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
+    c.drawString(rstart_x, py, f"\u00c9l\u00e8ve : {_s(eleve.prenom)} {_s(eleve.nom)}")
     py -= 11
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
-    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    c.setFont('Helvetica', 7)
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawString(rstart_x, py, f"N\u00e9(e) le {dn}  \u00e0 {lieu}")
     py -= 11
-    c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Date :")
-    py -= 11
-    c.drawString(rstart_x, py, "Signature du Principal")
+    directeur = _s(ecole.directeur) if ecole.directeur else ''
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(rstart_x, py, f"Le Directeur : {directeur}")
+    py -= 10
+    c.setFont('Helvetica', 7)
+    c.drawString(rstart_x, py, "Signature :")
 
     # ------------------------------------------------------------------
     # TABLEAU DES NOTES (hauteur fixe par ligne, colle a l'en-tete)
@@ -330,16 +340,20 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     cy -= 10
     c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"Ecole Primaire de : {_s(ecole.nom)}")
+    c.drawString(lx, cy, f"\u00c9cole Primaire de : {_s(ecole.nom)}")
     if ecole.desee:
         c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
 
-    cy -= 9
-    c.drawString(lx, cy, "Date d'entree : ........................")
-    c.drawString(lx + w * 0.45, cy, "Venant de : ........................")
+    venant_de = entry.get('venant_de', '')
+    date_entree = entry.get('date_entree', '')
 
     cy -= 9
-    c.drawString(lx, cy, "References du Certificat de transfert : ........................")
+    c.drawString(lx, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
+    c.drawString(lx + w * 0.45, cy, f"Venant de : {_s(venant_de) if venant_de else '...............'}")
+
+    cy -= 9
+    matricule = _s(eleve.matricule) if eleve.matricule else ''
+    c.drawString(lx, cy, f"Matricule : {matricule}")
 
     # BANDE CLASSE
     cy -= 4
@@ -353,12 +367,13 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
     c.drawString(lx + 5, cy + 3, f"Classe : {_s(classe_nom)}")
-    c.drawRightString(rx - 5, cy + 3, f"Annee scolaire : {annee}")
+    c.drawRightString(rx - 5, cy + 3, f"Ann\u00e9e scolaire : {annee}")
 
-    # MAITRE
+    # Directeur
     cy -= 12
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(lx, cy, "Maitre : ................................................................")
+    c.setFont('Helvetica', 8)
+    directeur = _s(ecole.directeur) if ecole.directeur else ''
+    c.drawString(lx, cy, f"Directeur : {directeur}")
     cy -= 3
 
     table_top = cy
@@ -396,16 +411,19 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     rstart_x = x + left_w + pad
     py = sep_y - 10
     c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
+    c.drawString(rstart_x, py, f"\u00c9l\u00e8ve : {_s(eleve.prenom)} {_s(eleve.nom)}")
     py -= 11
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
-    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    c.setFont('Helvetica', 7)
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawString(rstart_x, py, f"N\u00e9(e) le {dn}  \u00e0 {lieu}")
     py -= 11
-    c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Date :")
-    py -= 11
-    c.drawString(rstart_x, py, "Signature du Directeur")
+    directeur_pied = _s(ecole.directeur) if ecole.directeur else ''
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(rstart_x, py, f"Le Directeur : {directeur_pied}")
+    py -= 10
+    c.setFont('Helvetica', 7)
+    c.drawString(rstart_x, py, "Signature :")
 
     # ------------------------------------------------------------------
     # TABLEAU (hauteur fixe par ligne, colle a l'en-tete)
@@ -508,7 +526,16 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     cy -= 10
     c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"Ecole Maternelle : {_s(ecole.nom)}")
+    c.drawString(lx, cy, f"\u00c9cole Maternelle : {_s(ecole.nom)}")
+    if ecole.desee:
+        c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
+
+    venant_de = entry.get('venant_de', '')
+    date_entree = entry.get('date_entree', '')
+
+    cy -= 9
+    c.drawString(lx, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
+    c.drawString(lx + w * 0.45, cy, f"Venant de : {_s(venant_de) if venant_de else '...............'}")
 
     cy -= 4
     c.setLineWidth(0.5)
@@ -521,13 +548,14 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
     c.drawString(lx + 5, cy + 3, f"Classe : {_s(classe_nom)}")
-    c.drawRightString(rx - 5, cy + 3, f"Annee scolaire : {annee}")
+    c.drawRightString(rx - 5, cy + 3, f"Ann\u00e9e scolaire : {annee}")
 
     cy -= 14
     c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"Eleve: {_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.drawString(lx, cy, f"\u00c9l\u00e8ve : {_s(eleve.prenom)} {_s(eleve.nom)}")
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
-    c.drawString(lx + w * 0.45, cy, f"Ne(e) le: {dn}")
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawString(lx + w * 0.45, cy, f"N\u00e9(e) le {dn}  \u00e0 {lieu}")
 
     # Zone centrale
     cy -= 14
@@ -626,16 +654,19 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     rstart_x = x + left_w + pad
     py = sep_y - 10
     c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
+    c.drawString(rstart_x, py, f"\u00c9l\u00e8ve : {_s(eleve.prenom)} {_s(eleve.nom)}")
     py -= 11
-    c.setFont('Helvetica-Bold', 8)
-    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
-    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    c.setFont('Helvetica', 7)
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawString(rstart_x, py, f"N\u00e9(e) le {dn}  \u00e0 {lieu}")
     py -= 11
-    c.setFont('Helvetica', 8)
-    c.drawString(rstart_x, py, "Date :")
-    py -= 11
-    c.drawString(rstart_x, py, "Signature du Directeur")
+    directeur = _s(ecole.directeur) if ecole.directeur else ''
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(rstart_x, py, f"Le Directeur : {directeur}")
+    py -= 10
+    c.setFont('Helvetica', 7)
+    c.drawString(rstart_x, py, "Signature :")
 
 
 def _draw_half_page(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -1407,6 +1438,18 @@ def _collecter_parcours_eleve(eleve, ecole):
             'effectif_classe': effectif_classe,
             'moyennes_periodes': moyennes_periodes,
         })
+
+    # Enrichir chaque entree avec les infos de provenance
+    for i, p in enumerate(parcours):
+        if i > 0:
+            p['venant_de'] = parcours[i - 1]['classe_nom']
+        else:
+            p['venant_de'] = ''
+        # Date d'entree : date d'inscription de l'eleve
+        if eleve.date_inscription:
+            p['date_entree'] = eleve.date_inscription.strftime('%d/%m/%Y')
+        else:
+            p['date_entree'] = ''
 
     return parcours
 
