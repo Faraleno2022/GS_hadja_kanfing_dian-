@@ -194,17 +194,12 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # ------------------------------------------------------------------
     # EN-TETE (haut)
     # ------------------------------------------------------------------
-    cy -= 12
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.black)
-    c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
-    c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
 
-    cy -= 10
+    cy -= 12
     c.setFont('Helvetica', 8)
+    c.setFillColor(colors.black)
     if ecole.desee:
         c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
     c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
@@ -361,11 +356,13 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     fy -= 11
     c.setFont('Helvetica', 8)
-    c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
+    passe_txt = _s(passe_en) if passe_en else ''
+    c.drawString(lx, fy, f"Passe en : {passe_txt}" if passe_txt else '')
     rang_txt2 = _s(rang) if rang else ''
     c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
-    c.drawString(lx + w * 0.68, fy, "Redoublant :")
-    c.drawRightString(rx, fy, "eleves :")
+    eff_entry = entry.get('effectif_classe', 0)
+    if eff_entry:
+        c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
 
 
 def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -395,17 +392,12 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy = top
 
     # EN-TETE
-    cy -= 12
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.black)
-    c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
-    c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
 
-    cy -= 10
+    cy -= 12
     c.setFont('Helvetica', 8)
+    c.setFillColor(colors.black)
     if ecole.desee:
         c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
     c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
@@ -554,11 +546,13 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     fy -= 11
     c.setFont('Helvetica', 8)
-    c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
+    passe_txt = _s(passe_en) if passe_en else ''
+    c.drawString(lx, fy, f"Passe en : {passe_txt}" if passe_txt else '')
     rang_txt2 = _s(rang) if rang else ''
     c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
-    c.drawString(lx + w * 0.68, fy, "Redoublant :")
-    c.drawRightString(rx, fy, "eleves :")
+    eff_entry = entry.get('effectif_classe', 0)
+    if eff_entry:
+        c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
 
 
 def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -580,17 +574,12 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy = top
 
     # En-tete
-    cy -= 12
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.black)
-    c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
-    c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
 
-    cy -= 10
+    cy -= 12
     c.setFont('Helvetica', 8)
+    c.setFillColor(colors.black)
     if ecole.desee:
         c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
     c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
@@ -1432,9 +1421,16 @@ def _collecter_parcours_eleve(eleve, ecole):
 
                 matieres_data.append(m_data)
 
+            # Trouver la classe reelle utilisee dans Classement pour cet eleve
+            # (peut differer de classe_note trouvee par nom__icontains)
+            eleve_cls = Classement.objects.filter(
+                eleve=eleve, annee_scolaire=annee_scolaire,
+            ).first()
+            stats_classe = eleve_cls.classe if eleve_cls else classe_note
+
             # Moyenne annuelle via Classement
             cl_ann = Classement.objects.filter(
-                eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
+                eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
                 periode__icontains='ANNUEL'
             ).first()
 
@@ -1444,7 +1440,7 @@ def _collecter_parcours_eleve(eleve, ecole):
             else:
                 # Fallback: moyenne des periodes depuis Classement
                 cls_p = Classement.objects.filter(
-                    eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
+                    eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
                 ).exclude(periode__icontains='ANNUEL')
                 if cls_p.exists():
                     moyennes = [float(cp.moyenne_generale) for cp in cls_p if cp.moyenne_generale]
@@ -1466,15 +1462,16 @@ def _collecter_parcours_eleve(eleve, ecole):
             effectif_classe = 0
             try:
                 from django.db.models import Avg, Min, Max, Count
+                # Utiliser stats_classe (la vraie classe du Classement)
                 # Essayer ANNUEL d'abord
                 all_cls = Classement.objects.filter(
-                    classe=classe_note, annee_scolaire=annee_scolaire,
+                    classe=stats_classe, annee_scolaire=annee_scolaire,
                     periode__icontains='ANNUEL'
                 )
                 if not all_cls.exists():
                     # Fallback: dernier trimestre/semestre disponible
                     all_cls = Classement.objects.filter(
-                        classe=classe_note, annee_scolaire=annee_scolaire,
+                        classe=stats_classe, annee_scolaire=annee_scolaire,
                     ).exclude(periode__icontains='ANNUEL')
                     # Prendre la derniere periode seulement pour stats coherentes
                     if all_cls.exists():
@@ -1501,7 +1498,7 @@ def _collecter_parcours_eleve(eleve, ecole):
             moyennes_periodes = []
             try:
                 cls_periods = Classement.objects.filter(
-                    eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
+                    eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
                 ).exclude(periode__icontains='ANNUEL').order_by('periode')
                 for cp in cls_periods:
                     if cp.moyenne_generale is not None:
