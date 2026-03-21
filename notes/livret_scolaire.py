@@ -28,6 +28,7 @@ from eleves.models import Eleve, Classe, Ecole, HistoriqueEleve
 from .models import (
     ClasseNote, MatiereNote, Classement,
     NoteMensuelle, CompositionNote,
+    AppreciationMaternelle,
 )
 from .calculs_moyennes import detecter_niveau_scolaire
 from utilisateurs.utils import filter_by_user_school, user_school
@@ -529,31 +530,38 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawString(lx + w * 0.45, cy, f"Ne(e) le: {dn}")
 
     # Zone centrale
-    cy -= 20
-    c.setFont('Helvetica-Oblique', 8)
-    c.drawString(lx, cy, "Evaluation qualitative (appreciations) - Voir bulletins trimestriels")
+    cy -= 14
+    c.setFont('Helvetica-Oblique', 7)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawString(lx, cy, "\u00c9valuation qualitative : A+ Excellent | A Tr\u00e8s bien | B+ Bien | B Assez bien | B- Moyen | C Passable | D Difficult\u00e9s")
 
-    # Tableau simplifie avec domaines d'evaluation
-    cy -= 15
-    domains = [
-        "Langage / Communication",
-        "Graphisme / Ecriture",
-        "Mathematiques / Logique",
-        "Decouverte du monde",
-        "Arts plastiques / Dessin",
-        "Education physique",
-        "Socialisation / Autonomie",
-        "Comportement general",
-    ]
-    header = ['Domaines', '1er Trim.', '2eme Trim.', '3eme Trim.', 'Appreciation']
+    # Tableau avec vraies matieres et appreciations de la base de donnees
+    cy -= 12
+    matieres = entry.get('matieres_data', [])
+    header = ['Domaines / Mati\u00e8res', '1er Trim.', '2\u00e8me Trim.', '3\u00e8me Trim.', 'Appr\u00e9ciation']
     col_ratios_m = [0.32, 0.14, 0.14, 0.14, 0.26]
     col_widths_m = [w * r for r in col_ratios_m]
     diff_m = w - sum(col_widths_m)
     col_widths_m[-1] += diff_m
 
     data_m = [header]
-    for d in domains:
-        data_m.append([d, '', '', '', ''])
+    if matieres:
+        for m in matieres:
+            t1 = m.get('t1_app', '')
+            t2 = m.get('t2_app', '')
+            t3 = m.get('t3_app', '')
+            # Appreciation globale : la plus recente non-vide
+            app_globale = t3 or t2 or t1 or ''
+            data_m.append([_s(m['nom']), t1, t2, t3, app_globale])
+    else:
+        # Fallback si aucune matiere configuree : domaines generiques vides
+        for d in [
+            "Langage / Communication", "Graphisme / \u00c9criture",
+            "Math\u00e9matiques / Logique", "D\u00e9couverte du monde",
+            "Arts plastiques / Dessin", "\u00c9ducation physique",
+            "Socialisation / Autonomie", "Comportement g\u00e9n\u00e9ral",
+        ]:
+            data_m.append([d, '', '', '', ''])
 
     # Pied ancre en bas
     footer_h = 75
@@ -1223,6 +1231,24 @@ def _collecter_parcours_eleve(eleve, ecole):
 
             for mat in matieres:
                 m_data = {'nom': mat.nom, 'coef': float(mat.coefficient)}
+
+                # MATERNELLE : appreciations qualitatives (pas de notes numeriques)
+                if niveau == 'MATERNELLE':
+                    for trim_num, trim_key in [(1, 't1_app'), (2, 't2_app'), (3, 't3_app')]:
+                        try:
+                            app = AppreciationMaternelle.objects.get(
+                                eleve=eleve, matiere=mat,
+                                trimestre=f'TRIMESTRE_{trim_num}',
+                                annee_scolaire=annee_scolaire
+                            )
+                            if not app.absent:
+                                m_data[trim_key] = app.get_appreciation_display()
+                            else:
+                                m_data[trim_key] = 'Abs.'
+                        except AppreciationMaternelle.DoesNotExist:
+                            m_data[trim_key] = ''
+                    matieres_data.append(m_data)
+                    continue
 
                 if is_semestre:
                     # Memes mois que calculs_moyennes.calculer_moyenne_matiere
