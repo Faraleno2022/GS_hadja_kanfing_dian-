@@ -47,7 +47,7 @@ def can_access_rapports(user):
         return False
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def tableau_bord(request):
     """Vue principale du module Rapports"""
     context = {
@@ -64,7 +64,7 @@ def tableau_bord(request):
     return render(request, 'rapports/tableau_bord.html', context)
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def generer_rapport_journalier(request):
     """Génère un rapport journalier automatique"""
     date_rapport = date.today()
@@ -98,7 +98,7 @@ def generer_rapport_journalier(request):
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def export_rapport_annuel_excel(request):
     """Export Excel du rapport annuel."""
     aujourd_hui = date.today()
@@ -119,7 +119,7 @@ def export_rapport_annuel_excel(request):
     return response
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def export_rapport_mensuel_excel(request):
     """Export Excel du rapport mensuel."""
     aujourd_hui = date.today()
@@ -141,7 +141,7 @@ def export_rapport_mensuel_excel(request):
     return response
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def export_rapport_hebdomadaire_excel(request):
     """Export Excel du rapport hebdomadaire (lundi-dimanche)."""
     aujourd_hui = date.today()
@@ -161,7 +161,7 @@ def export_rapport_hebdomadaire_excel(request):
     return response
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def export_rapport_journalier_excel(request):
     """Export Excel du rapport journalier (mêmes données que le PDF)."""
     date_rapport = date.today()
@@ -177,7 +177,7 @@ def export_rapport_journalier_excel(request):
     return response
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def generer_rapport_hebdomadaire(request):
     """Génère un rapport hebdomadaire"""
     # Calcul de la semaine (lundi à dimanche)
@@ -219,7 +219,7 @@ def generer_rapport_hebdomadaire(request):
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def generer_rapport_mensuel(request):
     """Génère un rapport mensuel"""
     aujourd_hui = date.today()
@@ -261,7 +261,7 @@ def generer_rapport_mensuel(request):
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def generer_rapport_annuel(request):
     """Génère un rapport annuel"""
     aujourd_hui = date.today()
@@ -302,7 +302,7 @@ def generer_rapport_annuel(request):
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def liste_rapports(request):
     """Liste tous les rapports générés"""
     rapports = Rapport.objects.filter(
@@ -316,7 +316,7 @@ def liste_rapports(request):
 
 
 @login_required
-@admin_required
+@user_passes_test(can_access_rapports)
 def rapport_transport_scolaire(request):
     """Tableau Transport scolaire par classe: Classe | Nombre d'abonnés | Total payé | Reste à payer
 
