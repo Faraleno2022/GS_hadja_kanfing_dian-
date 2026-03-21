@@ -8,7 +8,7 @@ class EcoleAdmin(admin.ModelAdmin):
     list_display = ("nom", "etat", "code_prefixe", "telephone", "email", "directeur", "censeur", "created_by", "logo_mini")
     list_filter = ("etat",)
     search_fields = ("nom", "directeur", "censeur", "telephone", "email")
-    readonly_fields = ("logo_preview",)
+    readonly_fields = ("logo_preview", "image_preview")
     fieldsets = (
         ("Identité", {
             "fields": ("nom", "directeur", "censeur", "etat", "created_by")
@@ -20,9 +20,9 @@ class EcoleAdmin(admin.ModelAdmin):
         ("Coordonnées", {
             "fields": ("adresse", "telephone", "telephone2", "telephone3", "email")
         }),
-        ("Logo", {
-            "fields": ("logo", "logo_preview"),
-            "description": "Téléversez le logo de l'école (utilisé pour les PDF en filigrane et en-têtes)."
+        ("Logo & Image", {
+            "fields": ("logo", "logo_preview", "image", "image_preview"),
+            "description": "Logo pour filigrane et en-tetes. Photo de l'ecole pour le livret scolaire."
         }),
     )
     actions = ("valider_ecoles", "rejeter_ecoles")
@@ -48,6 +48,12 @@ class EcoleAdmin(admin.ModelAdmin):
             return format_html('<img src="{}" style="height:24px; width:auto;" />', obj.logo.url)
         return ""
     logo_mini.short_description = "Logo"
+
+    def image_preview(self, obj):
+        if getattr(obj, 'image', None) and getattr(obj.image, 'url', None):
+            return format_html('<img src="{}" style="max-height:120px; border:1px solid #ddd; padding:2px;" />', obj.image.url)
+        return "—"
+    image_preview.short_description = "Apercu de l'image"
 
 
 @admin.register(Classe)

@@ -72,6 +72,33 @@ def _get_logo_reader(ecole):
     return None
 
 
+def _get_image_reader(ecole):
+    """Retourne un ImageReader pour la photo de l'ecole."""
+    try:
+        if ecole.image and hasattr(ecole.image, 'path'):
+            return ImageReader(ecole.image.path)
+    except Exception:
+        pass
+    return None
+
+
+def _draw_watermark(c, x, y, w, h, logo):
+    """Dessine le logo de l'ecole en filigrane au centre d'une demi-page."""
+    if not logo:
+        return
+    try:
+        c.saveState()
+        wm_size = min(w, h) * 0.45
+        wm_x = x + (w - wm_size) / 2
+        wm_y = y + (h - wm_size) / 2
+        c.setFillAlpha(0.06)
+        c.drawImage(logo, wm_x, wm_y, wm_size, wm_size,
+                    preserveAspectRatio=True, mask='auto')
+        c.restoreState()
+    except Exception:
+        pass
+
+
 # ==============================================================================
 #  DESSIN D'UNE DEMI-PAGE (une colonne gauche ou droite)
 # ==============================================================================
@@ -82,6 +109,9 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     x, y = coin bas-gauche de la zone ; w, h = dimensions.
     Le contenu remplit toute la demi-page : tableau etire + pied ancre en bas.
     """
+    # Filigrane logo
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y, w, h, logo_wm)
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
     matieres = entry['matieres_data']
@@ -267,6 +297,9 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     Dessine UNE demi-page format Primaire (trimestre).
     Le contenu remplit toute la demi-page.
     """
+    # Filigrane logo
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y, w, h, logo_wm)
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
     matieres = entry['matieres_data']
@@ -447,6 +480,9 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
 def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     """Demi-page Maternelle avec contenu remplissant la page."""
+    # Filigrane logo
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y, w, h, logo_wm)
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
 
@@ -849,6 +885,25 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.setFillColor(colors.HexColor('#555555'))
     c.drawCentredString(cx, box_y + box_h - 84,
                         f"Parcours : {len(parcours)} annee(s)")
+
+    # Image de l'ecole (grande, sous le cadre eleve)
+    ecole_img = _get_image_reader(ecole)
+    if ecole_img:
+        img_top = box_y - 8
+        img_bottom = y + 20  # juste au-dessus du numero de page
+        img_avail_h = img_top - img_bottom
+        img_avail_w = w - 2 * pad
+        if img_avail_h > 30:
+            try:
+                c.drawImage(ecole_img, x + pad, img_bottom,
+                            img_avail_w, img_avail_h,
+                            preserveAspectRatio=True, mask='auto')
+                # Bordure
+                c.setStrokeColor(colors.HexColor('#888888'))
+                c.setLineWidth(0.5)
+                c.rect(x + pad, img_bottom, img_avail_w, img_avail_h, fill=0, stroke=1)
+            except Exception:
+                pass
 
     # Numero de page
     c.setFont('Helvetica', 7)

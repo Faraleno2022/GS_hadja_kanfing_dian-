@@ -33,6 +33,9 @@ class Ecole(models.Model):
     directeur = models.CharField(max_length=100, verbose_name="Directeur")
     censeur = models.CharField(max_length=100, blank=True, null=True, verbose_name="Censeur de l'établissement")
     logo = models.ImageField(upload_to='ecoles/logos/', blank=True, null=True)
+    image = models.ImageField(upload_to='ecoles/images/', blank=True, null=True,
+                              verbose_name="Photo de l'ecole",
+                              help_text="Photo du batiment de l'ecole (affichee sur le livret scolaire)")
     # Préfixe explicite pour les matricules (ex: "AL-FUR/")
     code_prefixe = models.CharField(
         max_length=20,
