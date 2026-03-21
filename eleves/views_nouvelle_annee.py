@@ -28,6 +28,75 @@ logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  UTILITAIRE : MOYENNE ANNUELLE POUR PASSAGE
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_moyenne_annuelle(eleve, annee_scolaire):
+    """Retourne la meilleure estimation de la moyenne annuelle d'un élève.
+
+    Ordre de priorité :
+    1. Classement avec période ANNUEL_TRIM ou ANNUEL_SEM
+    2. Moyenne des classements trimestriels/semestriels
+    3. Dernier classement disponible (TRIMESTRE_3, SEMESTRE_2, etc.)
+    4. None si aucune donnée
+
+    Retourne (moyenne: float|None, sur: int) — sur=10 pour primaire, 20 sinon.
+    """
+    from notes.models import Classement, ClasseNote
+    from notes.calculs_moyennes import detecter_niveau_scolaire
+
+    # Détecter le niveau
+    niveau_scolaire = 'COLLEGE'
+    try:
+        classe_nom = eleve.classe.nom if eleve.classe else ''
+        niveau_scolaire = detecter_niveau_scolaire(classe_nom)
+    except Exception:
+        pass
+
+    if niveau_scolaire == 'MATERNELLE':
+        return None, 10  # Pas de notes numériques
+
+    sur = 10 if niveau_scolaire == 'PRIMAIRE' else 20
+
+    # Chercher les classements de cet élève pour l'année
+    classements = Classement.objects.filter(
+        eleve=eleve,
+        annee_scolaire=annee_scolaire,
+    ).order_by('-date_calcul')
+
+    if not classements.exists():
+        return None, sur
+
+    # 1) Classement annuel
+    for c in classements:
+        if 'ANNUEL' in c.periode.upper():
+            return float(c.moyenne_generale), sur
+
+    # 2) Moyenne des trimestres/semestres
+    periodes_finales = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
+                        'SEMESTRE_1', 'SEMESTRE_2']
+    notes_periodes = []
+    for c in classements:
+        if c.periode in periodes_finales:
+            notes_periodes.append(float(c.moyenne_generale))
+    if notes_periodes:
+        return round(sum(notes_periodes) / len(notes_periodes), 2), sur
+
+    # 3) Dernier classement disponible
+    return float(classements[0].moyenne_generale), sur
+
+
+def _est_admis(moyenne, sur):
+    """Vérifie si une moyenne est suffisante pour passer.
+    Seuil: 5/10 pour primaire, 10/20 pour secondaire.
+    """
+    if moyenne is None:
+        return False
+    seuil = 5.0 if sur == 10 else 10.0
+    return moyenne >= seuil
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  GESTION DES ANNÉES SCOLAIRES
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -426,6 +495,28 @@ def nouvelle_annee_apercu(request):
                 'eleves': eleves_de_ce_niveau,
             })
 
+    # Élèves sans la moyenne (non admis) — hors maternelle/garderie/terminale
+    from notes.calculs_moyennes import detecter_niveau_scolaire
+    eleves_non_admis = []
+    classes_skip = CLASSES_TERMINALES | {'GARDERIE', 'TOUTE PETITE SECTION', 'TOUT PETITE SECTION',
+                                          'TPS', 'PETITE SECTION', 'PS', 'MOYENNE SECTION', 'MS',
+                                          'GRANDE SECTION', 'GS'}
+    for cls in classes_actuelles:
+        base, _ = _extraire_base_et_lettre(cls.nom)
+        niveau_scol = detecter_niveau_scolaire(cls.nom)
+        if base in CLASSES_TERMINALES or niveau_scol == 'MATERNELLE':
+            continue
+        for eleve in cls.eleves.filter(statut='ACTIF').order_by('nom', 'prenom'):
+            moyenne, sur = _get_moyenne_annuelle(eleve, annee_courante)
+            if not _est_admis(moyenne, sur):
+                eleves_non_admis.append({
+                    'eleve': eleve,
+                    'classe_nom': cls.nom,
+                    'moyenne': moyenne,
+                    'sur': sur,
+                    'seuil': 5.0 if sur == 10 else 10.0,
+                })
+
     context = {
         'ecole': ecole,
         'annee_courante': annee_courante,
@@ -437,6 +528,7 @@ def nouvelle_annee_apercu(request):
         'nb_total_eleves': sum(p['nb_eleves'] for p in preview_classes),
         'eleves_terminale': eleves_terminale,
         'eleves_examens': eleves_examens,
+        'eleves_non_admis': eleves_non_admis,
         'titre_page': f'Nouvelle Année Scolaire {annee_nouvelle}',
     }
     return render(request, 'eleves/nouvelle_annee.html', context)
@@ -463,6 +555,8 @@ def nouvelle_annee_creer(request):
     # Liste des IDs d'élèves qui ont eu le CEP / BEPC
     eleves_cep_ids = set(request.POST.getlist('eleves_cep', []))
     eleves_bepc_ids = set(request.POST.getlist('eleves_bepc', []))
+    # Liste des IDs d'élèves non admis mais forcés par convention (direction/parents)
+    eleves_convention_ids = set(request.POST.getlist('eleves_convention', []))
 
     if not annee_courante or not annee_nouvelle:
         messages.error(request, "Paramètres manquants.")
@@ -480,6 +574,8 @@ def nouvelle_annee_creer(request):
         'eleves_sortis': 0,
         'eleves_cep': 0,
         'eleves_bepc': 0,
+        'eleves_convention': 0,
+        'eleves_redoublants': 0,
         'echeanciers_crees': 0,
         'erreurs': [],
     }
@@ -644,6 +740,42 @@ def nouvelle_annee_creer(request):
                             resultats['eleves_sortis'] += 1
                         continue
 
+                    # Vérifier la moyenne de l'élève (hors maternelle)
+                    from notes.calculs_moyennes import detecter_niveau_scolaire as _det_niv
+                    _niveau_scol = _det_niv(ancienne_classe.nom)
+                    eleve_id_str = str(eleve.pk)
+
+                    if _niveau_scol != 'MATERNELLE':
+                        moyenne, sur = _get_moyenne_annuelle(eleve, annee_courante)
+                        admis = _est_admis(moyenne, sur)
+                        par_convention = eleve_id_str in eleves_convention_ids
+                    else:
+                        # Maternelle: pas de contrôle de moyenne
+                        admis = True
+                        par_convention = False
+                        moyenne = None
+
+                    # Si non admis et non forcé par convention → redoublant
+                    if not admis and not par_convention:
+                        nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
+                        if nouvelle_meme:
+                            eleve._current_user = request.user
+                            eleve.classe = nouvelle_meme
+                            eleve.save()
+                            moy_txt = f"{moyenne}/{sur}" if moyenne is not None else "non évaluée"
+                            HistoriqueEleve.objects.create(
+                                eleve=eleve,
+                                action='CHANGEMENT_CLASSE',
+                                description=(
+                                    f"Redoublant — année {annee_nouvelle}: "
+                                    f"maintenu(e) en {ancienne_classe.nom} "
+                                    f"(moyenne: {moy_txt})"
+                                ),
+                                utilisateur=request.user,
+                            )
+                            resultats['eleves_redoublants'] += 1
+                        continue
+
                     # Matching intelligent de la classe supérieure
                     sup_cls = _trouver_classe_cible(ancienne_classe.nom, index_nouvelles)
 
@@ -651,9 +783,11 @@ def nouvelle_annee_creer(request):
                         eleve._current_user = request.user
                         eleve.classe = sup_cls
                         eleve.save()
+                        convention_txt = " (par convention direction/parents)" if par_convention else ""
+                        moy_txt = f" — moyenne: {moyenne}/{sur}" if moyenne is not None else ""
                         desc_passage = (
-                            f"Passage automatique nouvelle année {annee_nouvelle}: "
-                            f"{ancienne_classe.nom} → {sup_cls.nom}"
+                            f"Passage nouvelle année {annee_nouvelle}: "
+                            f"{ancienne_classe.nom} → {sup_cls.nom}{moy_txt}{convention_txt}"
                         )
                         HistoriqueEleve.objects.create(
                             eleve=eleve,
@@ -661,10 +795,11 @@ def nouvelle_annee_creer(request):
                             description=desc_passage,
                             utilisateur=request.user,
                         )
+                        if par_convention:
+                            resultats['eleves_convention'] += 1
                         resultats['eleves_passes'] += 1
 
                         # Enregistrer le diplôme CEP/BEPC si l'élève est coché
-                        eleve_id_str = str(eleve.pk)
                         if base_actuelle == '6EME ANNEE' and eleve_id_str in eleves_cep_ids:
                             HistoriqueEleve.objects.create(
                                 eleve=eleve,
@@ -796,6 +931,10 @@ def nouvelle_annee_creer(request):
         msg_parts.append(f"{resultats['eleves_diplomes']} élève(s) diplômé(s) (BAC) archivé(s)")
     if resultats['eleves_sortis']:
         msg_parts.append(f"{resultats['eleves_sortis']} élève(s) sorti(s) du système (fin de cycle)")
+    if resultats['eleves_convention']:
+        msg_parts.append(f"{resultats['eleves_convention']} élève(s) promu(s) par convention (direction/parents)")
+    if resultats['eleves_redoublants']:
+        msg_parts.append(f"{resultats['eleves_redoublants']} élève(s) redoublant(s)")
     if resultats['echeanciers_crees']:
         msg_parts.append(f"{resultats['echeanciers_crees']} échéancier(s) de paiement créé(s)")
 
