@@ -210,9 +210,10 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
         ])
 
     nb_rows = len(data)
-    header_rh = 20
-    data_rh = 20  # hauteur fixe raisonnable par ligne
-    row_heights = [header_rh, header_rh] + [data_rh] * (nb_rows - 2)
+    header1_rh = 16
+    header2_rh = 26  # plus haut pour le texte sur 2 lignes
+    data_rh = 20
+    row_heights = [header1_rh, header2_rh] + [data_rh] * (nb_rows - 2)
 
     table = Table(data, colWidths=col_widths, rowHeights=row_heights)
     table.setStyle(TableStyle([
@@ -228,6 +229,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 1), (-1, 1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ('SPAN', (0, 0), (0, 1)),
         ('SPAN', (1, 0), (1, 1)),
