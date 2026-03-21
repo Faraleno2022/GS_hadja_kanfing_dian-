@@ -1351,15 +1351,37 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
 
 
-def _generer_livret_pdf(eleve, ecole, parcours):
-    """Genere le PDF du livret scolaire complet en format DEPLIANT.
-    Format: Paysage A4, deux demi-pages GAUCHE/DROITE par feuille.
+def _draw_blank_half(c, x, y, w, h, page_number):
+    """Dessine une demi-page vide (remplissage pour multiple de 4)."""
+    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.setDash(3, 3)
+    c.rect(x, y, w, h)
+    c.setDash()
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#999999'))
+    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
 
-    Structure du depliant :
-      Feuille 1 : GAUCHE = Couverture  |  DROITE = Fiche de sante
-      Feuille 2 : GAUCHE = Renseignements parents  |  DROITE = 1er niveau scolaire
-      Feuilles suivantes : niveaux scolaires (2 par page)
-      Derniere demi-page : Analyse et rapport final + Orientation
+
+def _generer_livret_pdf(eleve, ecole, parcours):
+    """Genere le PDF du livret scolaire en IMPOSITION CAHIER (booklet).
+
+    Le PDF est genere pour impression recto-verso et agrafage au milieu.
+    Quand on plie les feuilles et qu'on agrafe, les pages se suivent dans
+    l'ordre de lecture : 1, 2, 3, 4, ..., N.
+
+    Ordre de lecture des demi-pages :
+      Page 1 : Couverture (face avant)
+      Page 2 : Renseignements parents
+      Pages 3..N-2 : Niveaux scolaires du parcours
+      Page N-1 : Analyse et rapport final
+      Page N : Fiche de sante (face arriere / dos du livret)
+
+    Imposition cahier (N pages, multiple de 4) :
+      Feuille 1 recto : page N (gauche) | page 1 (droite)
+      Feuille 1 verso : page 2 (gauche) | page N-1 (droite)
+      Feuille 2 recto : page N-2 (gauche) | page 3 (droite)
+      Feuille 2 verso : page 4 (gauche) | page N-3 (droite)
+      ...
     """
     buffer = io.BytesIO()
     width, height = landscape(A4)  # 842 x 595
@@ -1367,94 +1389,102 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     c.setTitle(f"Livret Scolaire - {_s(eleve.nom)} {_s(eleve.prenom)}")
 
     margin = 10
-    gap = 6  # Espace entre les deux moities
+    gap = 6
     half_w = (width - 2 * margin - gap) / 2
     usable_h = height - 2 * margin
-
-    page_counter = 0  # Numerotation des demi-pages
+    left_x = margin
+    right_x = margin + half_w + gap
     logo = _get_logo_reader(ecole)
 
     # =====================================================================
-    # FEUILLE 1 : Couverture (GAUCHE) + Fiche de sante (DROITE)
+    # 1) Construire la liste des demi-pages dans l'ORDRE DE LECTURE
+    #    Chaque element est un callable : fn(c, x, y, w, h, page_number)
+    #    ou None pour une page vide (remplissage)
     # =====================================================================
-    left_x = margin
-    right_x = margin + half_w + gap
+    logical_pages = []
 
-    page_counter += 1
-    _draw_cover_half(c, left_x, margin, half_w, usable_h,
-                     ecole, eleve, parcours, logo, page_counter)
+    # Page 1 : Couverture
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_cover_half(
+            c, x, y, w, h, ecole, eleve, parcours, logo, pn))
 
-    page_counter += 1
-    _draw_fiche_sante_half(c, right_x, margin, half_w, usable_h,
-                           eleve, page_counter)
+    # Page 2 : Renseignements parents
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_renseignements_parents_half(
+            c, x, y, w, h, eleve, pn))
 
-    c.showPage()
+    # Pages 3+ : Niveaux scolaires du parcours
+    for entry in parcours:
+        logical_pages.append(
+            lambda c, x, y, w, h, pn, e=entry: _draw_half_page(
+                c, x, y, w, h, ecole, e, eleve, pn))
 
-    # =====================================================================
-    # FEUILLE 2 : Renseignements parents (GAUCHE) + 1er parcours (DROITE)
-    # =====================================================================
-    page_counter += 1
-    _draw_renseignements_parents_half(c, left_x, margin, half_w, usable_h,
-                                     eleve, page_counter)
+    # Avant-derniere page : Synthese / rapport final
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_synthese_half(
+            c, x, y, w, h, ecole, eleve, parcours, pn))
 
-    parcours_idx = 0
-    if parcours_idx < len(parcours):
-        page_counter += 1
-        _draw_half_page(c, right_x, margin, half_w, usable_h,
-                        ecole, parcours[parcours_idx], eleve, page_counter)
-        parcours_idx += 1
-    else:
-        # Droite vide
-        c.setStrokeColor(colors.HexColor('#cccccc'))
-        c.setDash(3, 3)
-        c.rect(right_x, margin, half_w, usable_h)
-        c.setDash()
-
-    c.showPage()
+    # Derniere page : Fiche de sante (dos du livret)
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_fiche_sante_half(
+            c, x, y, w, h, eleve, pn))
 
     # =====================================================================
-    # FEUILLES SUIVANTES : Niveaux scolaires (2 par page GAUCHE/DROITE)
+    # 2) Completer a un multiple de 4 (necessaire pour l'imposition cahier)
     # =====================================================================
-    while parcours_idx < len(parcours):
-        # Demi-page GAUCHE
-        page_counter += 1
-        _draw_half_page(c, left_x, margin, half_w, usable_h,
-                        ecole, parcours[parcours_idx], eleve, page_counter)
-        parcours_idx += 1
+    while len(logical_pages) % 4 != 0:
+        logical_pages.append(None)  # page vide
 
-        # Demi-page DROITE
-        if parcours_idx < len(parcours):
-            page_counter += 1
-            _draw_half_page(c, right_x, margin, half_w, usable_h,
-                            ecole, parcours[parcours_idx], eleve, page_counter)
-            parcours_idx += 1
+    N = len(logical_pages)
+
+    # =====================================================================
+    # 3) Generer le PDF en IMPOSITION CAHIER
+    #    Pour chaque feuille k (0-indexed) :
+    #      Recto : page[N-1 - 2k] a gauche | page[2k] a droite
+    #      Verso : page[2k + 1] a gauche   | page[N-2 - 2k] a droite
+    # =====================================================================
+    num_sheets = N // 4
+
+    for k in range(num_sheets):
+        # --- RECTO de la feuille k ---
+        li = N - 1 - 2 * k   # index page gauche
+        ri = 2 * k            # index page droite
+
+        # Gauche
+        pn = li + 1
+        if logical_pages[li] is not None:
+            logical_pages[li](c, left_x, margin, half_w, usable_h, pn)
         else:
-            # Derniere droite = synthese
-            page_counter += 1
-            _draw_synthese_half(c, right_x, margin, half_w, usable_h,
-                                ecole, eleve, parcours, page_counter)
-            c.showPage()
-            c.save()
-            buffer.seek(0)
-            return buffer
+            _draw_blank_half(c, left_x, margin, half_w, usable_h, pn)
+
+        # Droite
+        pn = ri + 1
+        if logical_pages[ri] is not None:
+            logical_pages[ri](c, right_x, margin, half_w, usable_h, pn)
+        else:
+            _draw_blank_half(c, right_x, margin, half_w, usable_h, pn)
 
         c.showPage()
 
-    # =====================================================================
-    # DERNIERE FEUILLE : Synthese / Rapport final
-    # (Si on arrive ici, il faut une nouvelle page avec synthese a gauche)
-    # =====================================================================
-    page_counter += 1
-    _draw_synthese_half(c, left_x, margin, half_w, usable_h,
-                        ecole, eleve, parcours, page_counter)
+        # --- VERSO de la feuille k ---
+        li = 2 * k + 1        # index page gauche
+        ri = N - 2 - 2 * k    # index page droite
 
-    # Droite vide
-    c.setStrokeColor(colors.HexColor('#cccccc'))
-    c.setDash(3, 3)
-    c.rect(right_x, margin, half_w, usable_h)
-    c.setDash()
+        # Gauche
+        pn = li + 1
+        if logical_pages[li] is not None:
+            logical_pages[li](c, left_x, margin, half_w, usable_h, pn)
+        else:
+            _draw_blank_half(c, left_x, margin, half_w, usable_h, pn)
 
-    c.showPage()
+        # Droite
+        pn = ri + 1
+        if logical_pages[ri] is not None:
+            logical_pages[ri](c, right_x, margin, half_w, usable_h, pn)
+        else:
+            _draw_blank_half(c, right_x, margin, half_w, usable_h, pn)
+
+        c.showPage()
 
     c.save()
     buffer.seek(0)
