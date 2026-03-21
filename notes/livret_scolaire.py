@@ -705,7 +705,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     cx = x + w / 2
     top = y + h
 
-    # --- IMAGES ALIGNEES : Drapeau (gauche) | Logo (centre) | Nimba (droite) ---
+    # --- IMAGES ALIGNEES : Drapeau (gauche) | Logo (centre) | Photo eleve (droite) ---
     img_row_y = top - 12          # haut de la rangee d'images
     img_h = 42                    # hauteur des images
     img_spacing = w * 0.28        # espacement depuis le centre
@@ -732,8 +732,33 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
         c.setFillColor(colors.HexColor('#999999'))
         c.drawCentredString(cx, img_row_y - logo_size / 2, 'Logo')
 
-    # Mont Nimba (DROITE)
-    _draw_mont_nimba(c, cx + img_spacing, img_row_y, size=img_h)
+    # Photo de l'eleve (DROITE)
+    photo_w = img_h * 0.8
+    photo_h = img_h
+    photo_x = cx + img_spacing - photo_w / 2
+    photo_y = img_row_y - photo_h
+    photo_drawn = False
+    try:
+        if eleve.photo and hasattr(eleve.photo, 'path'):
+            photo_reader = ImageReader(eleve.photo.path)
+            c.drawImage(photo_reader, photo_x, photo_y, photo_w, photo_h,
+                        preserveAspectRatio=True, mask='auto')
+            photo_drawn = True
+    except Exception:
+        pass
+    if not photo_drawn:
+        # Placeholder si pas de photo
+        c.setFillColor(colors.HexColor('#F0F0F0'))
+        c.setStrokeColor(colors.HexColor('#888888'))
+        c.setLineWidth(0.5)
+        c.rect(photo_x, photo_y, photo_w, photo_h, fill=1, stroke=1)
+        c.setFont('Helvetica', 5)
+        c.setFillColor(colors.HexColor('#999999'))
+        c.drawCentredString(photo_x + photo_w / 2, photo_y + photo_h / 2, 'Photo')
+    # Bordure de la photo
+    c.setStrokeColor(colors.HexColor('#555555'))
+    c.setLineWidth(0.6)
+    c.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
 
     # Titre sous les images
     title_y = img_row_y - img_h - 18
