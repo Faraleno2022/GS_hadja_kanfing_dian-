@@ -1506,6 +1506,182 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
 
 
+def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_number):
+    """Dessine la lettre de remerciement aux parents avec recommandations sur une demi-page."""
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y, w, h)
+
+    pad = 10
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y + h
+    usable_w = w - 2 * pad
+
+    # --- Bordure decorative tricolore en haut ---
+    stripe_h = 3
+    third = usable_w / 3
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+
+    cy = top - stripe_h - 18
+
+    # --- Titre ---
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "LETTRE DE REMERCIEMENT AUX PARENTS")
+    cy -= 4
+    c.setLineWidth(0.8)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx + 30, cy, rx - 30, cy)
+
+    # --- Entete ecole ---
+    cy -= 14
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, cy, f"{_s(ecole.nom)}  -  {_s(ecole.adresse)}")
+    if ecole.telephone:
+        cy -= 10
+        c.drawCentredString(cx, cy, f"Tel: {ecole.telephone}")
+
+    # --- Salutation ---
+    cy -= 18
+    c.setFont('Helvetica', 8)
+    c.setFillColor(colors.black)
+
+    resp = getattr(eleve, 'responsable_principal', None)
+    if resp:
+        nom_parent = f"{_s(resp.prenom)} {_s(resp.nom)}"
+        relation = resp.get_relation_display() if hasattr(resp, 'get_relation_display') else ''
+        c.drawString(lx, cy, f"Cher(e) {relation} {nom_parent},")
+    else:
+        c.drawString(lx, cy, "Chers Parents / Tuteurs,")
+
+    # --- Corps de la lettre ---
+    cy -= 16
+    c.setFont('Helvetica', 7.5)
+    line_h = 10
+
+    # Determiner annee et classe
+    derniere = parcours[-1] if parcours else {}
+    annee = derniere.get('annee_scolaire', '')
+    classe_nom = derniere.get('classe_nom', '')
+    moy = derniere.get('moyenne_annuelle')
+    sur = derniere.get('sur', 20)
+    directeur = _s(ecole.directeur) if ecole.directeur else "La Direction"
+
+    paragraphes = [
+        f"Au terme de l'annee scolaire {annee}, nous tenons a vous exprimer nos sinceres",
+        f"remerciements pour la confiance que vous avez placee en notre etablissement,",
+        f"{_s(ecole.nom)}, pour l'education et la formation de votre enfant",
+        f"{_s(eleve.prenom)} {_s(eleve.nom)}.",
+        "",
+        f"Votre implication dans le suivi scolaire de votre enfant, en classe de {_s(classe_nom)},",
+        f"a ete un facteur determinant dans son parcours cette annee. Nous sommes convaincus",
+        f"que la reussite scolaire est le fruit d'une collaboration etroite entre l'ecole",
+        f"et la famille.",
+    ]
+
+    if moy is not None:
+        seuil = 5.0 if sur == 10 else 10.0
+        if moy >= seuil * 1.5:
+            paragraphes.append("")
+            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, votre enfant a realise une excellente")
+            paragraphes.append(f"performance. Nous vous felicitons et encourageons a maintenir cet elan.")
+        elif moy >= seuil:
+            paragraphes.append("")
+            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, votre enfant a fourni des efforts")
+            paragraphes.append(f"appreciables. Nous l'encourageons a perseverer pour de meilleurs resultats.")
+        else:
+            paragraphes.append("")
+            paragraphes.append(f"Avec une moyenne de {moy:.2f}/{sur}, des efforts supplementaires sont")
+            paragraphes.append(f"necessaires. Nous comptons sur votre soutien pour aider votre enfant a progresser.")
+
+    for line in paragraphes:
+        c.drawString(lx, cy, line)
+        cy -= line_h
+
+    # --- Section Recommandations ---
+    cy -= 6
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "RECOMMANDATIONS POUR LE PROGRES SCOLAIRE :")
+    cy -= 3
+    c.setLineWidth(0.4)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, lx + 200, cy)
+
+    cy -= 12
+    c.setFont('Helvetica', 7.5)
+    c.setFillColor(colors.black)
+
+    recommandations = [
+        ("1.", "Suivi regulier des devoirs et lecons a la maison. Verifiez chaque jour"),
+        ("",   "   les cahiers et encouragez l'enfant a reviser ses cours."),
+        ("2.", "Communication avec les enseignants. N'hesitez pas a prendre rendez-vous"),
+        ("",   "   pour discuter des progres et difficultes de votre enfant."),
+        ("3.", "Encouragement de la lecture. Offrez des livres et creez un environnement"),
+        ("",   "   propice a la lecture quotidienne, meme pendant les vacances."),
+        ("4.", "Ponctualite et assiduite. Assurez-vous que votre enfant arrive a l'heure"),
+        ("",   "   et ne manque aucune journee de cours sans raison valable."),
+        ("5.", "Soutien emotionnel et motivation. Felicitez les efforts, pas seulement"),
+        ("",   "   les notes. Chaque progres, meme petit, merite d'etre celebre."),
+        ("6.", "Limitation du temps d'ecran. Privilegiez les activites educatives et"),
+        ("",   "   sportives en dehors des heures de cours."),
+        ("7.", "Participation aux reunions de parents d'eleves. Votre presence temoigne"),
+        ("",   "   de votre engagement dans la vie scolaire de votre enfant."),
+    ]
+
+    for num, texte in recommandations:
+        if num:
+            c.setFont('Helvetica-Bold', 7.5)
+            c.drawString(lx, cy, num)
+        c.setFont('Helvetica', 7.5)
+        c.drawString(lx + 14, cy, texte)
+        cy -= line_h
+
+    # --- Conclusion ---
+    cy -= 8
+    c.setFont('Helvetica', 7.5)
+    c.setFillColor(colors.black)
+    conclusions = [
+        f"Ensemble, continuons a oeuvrer pour l'epanouissement et la reussite de nos enfants.",
+        f"Nous vous renouvelons notre gratitude et restons a votre entiere disposition.",
+        "",
+        f"Avec nos salutations les plus respectueuses,",
+    ]
+    for line in conclusions:
+        c.drawString(lx, cy, line)
+        cy -= line_h
+
+    # --- Signature ---
+    cy -= 8
+    c.setFont('Helvetica-Bold', 8)
+    c.drawRightString(rx, cy, f"{directeur}")
+    cy -= 10
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawRightString(rx, cy, f"Directeur de {_s(ecole.nom)}")
+
+    # --- Bordure decorative tricolore en bas ---
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, y + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, y + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, y + 15, third, stripe_h, fill=1, stroke=0)
+
+    # Numero de page
+    c.setFont('Helvetica', 8)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+
+
 def _draw_blank_half(c, x, y, w, h, page_number):
     """Dessine une demi-page vide (remplissage pour multiple de 4)."""
     c.setStrokeColor(colors.HexColor('#cccccc'))
@@ -1950,10 +2126,15 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         lambda c, x, y, w, h, pn: _draw_synthese_half(
             c, x, y, w, h, ecole, eleve, parcours, pn))
 
-    # Derniere page : Fiche de sante
+    # Fiche de sante
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_fiche_sante_half(
             c, x, y, w, h, eleve, pn))
+
+    # Derniere page : Lettre de remerciement aux parents
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_lettre_remerciement_half(
+            c, x, y, w, h, ecole, eleve, parcours, pn))
 
     # =====================================================================
     # Generer le PDF — pages sequentielles, 2 demi-pages par feuille
@@ -2007,9 +2188,11 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
                     ecole, entry, eleve, 2)
     c.showPage()
 
-    # Page 2 : Analyse du niveau de l'eleve
+    # Page 2 : Analyse du niveau de l'eleve (gauche) + Lettre de remerciement (droite)
     _draw_analyse_annuelle_half(c, left_x, margin, half_w, usable_h,
                                 ecole, eleve, entry, 3)
+    _draw_lettre_remerciement_half(c, right_x, margin, half_w, usable_h,
+                                   ecole, eleve, [entry], 4)
     c.showPage()
 
     c.save()
@@ -2250,6 +2433,9 @@ def livret_scolaire_classe_pdf(request, classe_id):
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve: _draw_fiche_sante_half(
                     c, x, y, w, h, el, pn))
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_lettre_remerciement_half(
+                    c, x, y, w, h, ecole, el, pa, pn))
 
             # Dessiner sequentiellement
             N = len(pages)
