@@ -511,6 +511,12 @@
                     {% endif %}
                 </ul>
             </div>
+
+            {% if annee_active and user.is_authenticated %}
+            <a href="{% url 'eleves:gestion_annees' %}" class="btn btn-sm btn-outline-light ms-2 d-none d-lg-inline-flex align-items-center" title="Année scolaire active — Cliquer pour changer">
+                <i class="fas fa-calendar-alt me-1"></i>{{ annee_active }}
+            </a>
+            {% endif %}
         </div>
     </nav>
 

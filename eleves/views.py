@@ -71,7 +71,13 @@ def liste_eleves(request):
         with_payments=True,
         with_classes=True
     )
-    
+
+    # Filtrer par année scolaire active
+    if not user_is_admin(request.user) and user_school_obj:
+        annee_active = get_annee_active(request, user_school_obj)
+        if annee_active:
+            eleves = eleves.filter(classe__annee_scolaire=annee_active)
+
     # Application des filtres optimisés
     if form_recherche.is_valid():
         recherche = form_recherche.cleaned_data.get('recherche')
@@ -1638,36 +1644,45 @@ def supprimer_eleves_masse(request):
 
 @login_required
 def gestion_classes(request):
-    """Vue pour gérer les classes"""
+    """Vue pour gérer les classes — filtrée par année scolaire active"""
+    ecole_user = user_school(request.user)
+    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
+
     classes = Classe.objects.select_related('ecole').annotate(
-        eleves_count=Count('eleves')
+        eleves_count=Count('eleves', filter=Q(eleves__statut='ACTIF'))
     ).order_by('ecole__nom', 'niveau', 'nom')
+
     if not user_is_admin(request.user):
-        classes = classes.filter(ecole=user_school(request.user))
-    
+        classes = classes.filter(ecole=ecole_user)
+
+    # Filtrer par année active
+    if annee_active:
+        classes = classes.filter(annee_scolaire=annee_active)
+
     # Statistiques
     stats = {
         'total_classes': classes.count(),
         'total_eleves': sum(c.eleves_count for c in classes),
         'classes_par_ecole': {}
     }
-    
+
     ecoles_iter = Ecole.objects.all()
-    if not user_is_admin(request.user):
-        ecoles_iter = ecoles_iter.filter(id=user_school(request.user).id)
+    if not user_is_admin(request.user) and ecole_user:
+        ecoles_iter = ecoles_iter.filter(id=ecole_user.id)
     for ecole in ecoles_iter:
         classes_ecole = classes.filter(ecole=ecole)
         stats['classes_par_ecole'][ecole.nom] = {
             'nombre_classes': classes_ecole.count(),
             'nombre_eleves': sum(c.eleves_count for c in classes_ecole)
         }
-    
+
     context = {
         'classes': classes,
         'stats': stats,
-        'titre_page': 'Gestion des Classes'
+        'annee_active': annee_active,
+        'titre_page': f'Gestion des Classes — {annee_active}' if annee_active else 'Gestion des Classes',
     }
-    
+
     return render(request, 'eleves/gestion_classes.html', context)
 
 @login_required

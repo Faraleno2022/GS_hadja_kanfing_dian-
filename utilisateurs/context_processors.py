@@ -13,10 +13,11 @@ def user_context(request):
         'is_admin': False,
         'user_permissions': {},
         'user_restrictions': {},
+        'annee_active': None,
         # Mode hors-ligne : True quand lancé depuis l'exe PyInstaller
         'is_offline': os.environ.get('OFFLINE_MODE', '0') == '1',
     }
-    
+
     if request.user.is_authenticated:
         try:
             profil = request.user.profil
@@ -28,10 +29,14 @@ def user_context(request):
                 'user_permissions': get_user_permissions(request.user),
                 'user_restrictions': check_comptable_restrictions(request.user),
             })
+            # Ajouter l'année scolaire active au contexte global
+            if profil.ecole:
+                from eleves.utils_annee import get_annee_active
+                context['annee_active'] = get_annee_active(request, profil.ecole)
         except Profil.DoesNotExist:
             context.update({
                 'user_permissions': get_user_permissions(request.user),
                 'user_restrictions': check_comptable_restrictions(request.user),
             })
-    
+
     return context

@@ -205,12 +205,19 @@ def _draw_school_header(c, ecole, *, y_start, margin, page_width):
 @login_required
 def tableau_bord(request):
     """Tableau de bord des notes: liste les classes par groupe de niveaux.
-    Filtré par l'école de l'utilisateur (sauf admin).
+    Filtré par l'école de l'utilisateur (sauf admin) et par année active.
     """
+    from eleves.utils_annee import get_annee_active
     classes_qs = filter_by_user_school(
         ClasseEleve.objects.select_related('ecole').order_by('niveau', 'nom'),
         request.user, 'ecole'
     )
+    # Filtrer par année scolaire active
+    ecole_user = user_school(request.user)
+    if ecole_user:
+        annee_active = get_annee_active(request, ecole_user)
+        if annee_active:
+            classes_qs = classes_qs.filter(annee_scolaire=annee_active)
 
     def group_classes(qs):
         primaire, college, lycee = [], [], []

@@ -108,10 +108,14 @@ def gestion_annees(request):
         messages.error(request, "Aucune école associée à votre compte.")
         return redirect('eleves:liste_eleves')
 
+    from django.db.models import Q
     annees_qs = (Classe.objects
                  .filter(ecole=ecole)
                  .values('annee_scolaire')
-                 .annotate(nb_classes=Count('id'), nb_eleves=Count('eleves'))
+                 .annotate(
+                     nb_classes=Count('id', distinct=True),
+                     nb_eleves=Count('eleves', filter=Q(eleves__statut='ACTIF')),
+                 )
                  .order_by('-annee_scolaire'))
 
     annee_active = get_annee_active(request, ecole)
