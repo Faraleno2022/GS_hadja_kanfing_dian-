@@ -80,7 +80,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     """
     Dessine UNE demi-page format College/Lycee (semestre).
     x, y = coin bas-gauche de la zone ; w, h = dimensions.
-    Format exact du PDF officiel guineen.
+    Le contenu remplit toute la demi-page : tableau etire + pied ancre en bas.
     """
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
@@ -99,10 +99,10 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     lx = x + pad
     rx = x + w - pad
     top = y + h
-    cy = top  # curseur Y descendant
+    cy = top
 
     # ------------------------------------------------------------------
-    # EN-TETE
+    # EN-TETE (haut)
     # ------------------------------------------------------------------
     cy -= 11
     c.setFont('Helvetica-Bold', 6)
@@ -113,7 +113,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy -= 9
     c.setFont('Helvetica', 5.5)
     c.drawString(lx, cy, f"College : {_s(ecole.nom)}")
-    c.drawString(lx + w * 0.55, cy, f"Venant de : ........................")
+    c.drawString(lx + w * 0.55, cy, "Venant de : ........................")
 
     cy -= 8
     c.drawString(lx, cy, "Date d'entree : ........................")
@@ -121,174 +121,149 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy -= 8
     c.drawString(lx, cy, "References : ........................")
 
-    # ------------------------------------------------------------------
-    # BANDE CLASSE / ANNEE SCOLAIRE
-    # ------------------------------------------------------------------
+    # Ligne separatrice
     cy -= 4
     c.setLineWidth(0.5)
     c.line(x, cy, x + w, cy)
 
+    # Bande classe
     band_h = 14
     cy -= band_h
-    # Fond gris clair pour la bande
     c.setFillColor(colors.HexColor('#f0f0f0'))
     c.rect(x, cy, w, band_h, fill=1, stroke=1)
-
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
     c.drawString(lx + 5, cy + 3, f"Classe : {_s(classe_nom)}")
     c.drawRightString(rx - 5, cy + 3, f"Annee scolaire : {annee}")
 
-    # ------------------------------------------------------------------
-    # TABLEAU DES NOTES
-    # ------------------------------------------------------------------
-    # En-tete sur 2 lignes :
-    # Ligne 1 : Matieres | Coef | 1er Semestre (span 3) | 2eme Semestre (span 3)
-    # Ligne 2 :          |      | Moyenne | Classement | Moyenne | Moyenne | Classement | Moyenne
-    #          |      | Classe  |            | Semestre | Classe  |            | Semestre
-    cy -= 2
-
-    header1 = ['Matieres', 'Coef', '1er Semestre', '', '', '2eme Semestre', '', '']
-    header2 = ['', '', 'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre',
-               'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre']
-
-    # Proportions des colonnes
-    col_ratios = [0.195, 0.05, 0.105, 0.105, 0.105, 0.105, 0.105, 0.105]
-    col_widths = [w * r for r in col_ratios]
-    # Ajuster le dernier
-    diff_w = w - sum(col_widths)
-    col_widths[0] += diff_w
-
-    data = [header1, header2]
-    for m in matieres:
-        row = [
-            _s(m['nom']),
-            str(m.get('coef', '')),
-            _fmt(m.get('sem1_moy')),       # Moyenne Classe (= moy cours)
-            _fmt(m.get('sem1_compo')),      # Classement (= compo)
-            _fmt(m.get('sem1_moyenne')),    # Moyenne Semestre
-            _fmt(m.get('sem2_moy')),        # Moyenne Classe
-            _fmt(m.get('sem2_compo')),      # Classement
-            _fmt(m.get('sem2_moyenne')),    # Moyenne Semestre
-        ]
-        data.append(row)
-
-    row_h = 13
-    header_h = 20
-    nb_rows = len(data)
-    row_heights = [header_h, header_h] + [row_h] * (nb_rows - 2)
-
-    table = Table(data, colWidths=col_widths, rowHeights=row_heights)
-
-    style_cmds = [
-        # Polices
-        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
-        ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 1), 5),
-        ('FONTSIZE', (0, 2), (-1, -1), 6),
-        # Alignement
-        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        # Grille
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        # Fond en-tetes
-        ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#f0f0f0')),
-        # Padding
-        ('LEFTPADDING', (0, 0), (-1, -1), 2),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-        # SPAN en-tetes
-        ('SPAN', (0, 0), (0, 1)),   # Matieres
-        ('SPAN', (1, 0), (1, 1)),   # Coef
-        ('SPAN', (2, 0), (4, 0)),   # 1er Semestre
-        ('SPAN', (5, 0), (7, 0)),   # 2eme Semestre
-    ]
-    table.setStyle(TableStyle(style_cmds))
-
-    table_total_h = sum(row_heights)
-    table_y = cy - table_total_h
-    table.wrapOn(c, w, table_total_h + 20)
-    table.drawOn(c, x, table_y)
+    table_top = cy - 2  # Y ou le tableau commence
 
     # ------------------------------------------------------------------
-    # PIED : Moyenne Annuelle / Passe en classe / Classement
+    # PIED (ancre en BAS du cadre)
     # ------------------------------------------------------------------
-    fy = table_y - 11
-    c.setFont('Helvetica-Bold', 6.5)
+    footer_h = 75  # hauteur totale reservee au pied
+    page_num_h = 12
+    footer_top = y + page_num_h + footer_h
+
+    # Numero de page (tout en bas)
+    c.setFont('Helvetica', 7)
     c.setFillColor(colors.black)
-    moy_txt = _fmt(moy_ann) if moy_ann else ''
-    c.drawString(lx, fy, f"Moyenne Annuelle")
-    c.drawString(lx + w * 0.27, fy, f"{moy_txt}")
-    c.drawRightString(rx, fy, f"/20")
+    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
 
-    fy -= 11
-    c.setFont('Helvetica', 5.5)
-    c.drawString(lx, fy,
-                 f"Passe en classe superieure /20")
-    rang_txt = _s(rang) if rang else ''
-    c.drawString(lx + w * 0.45, fy, f"Classement : {rang_txt}")
-    c.drawString(lx + w * 0.72, fy, "Redoublant :")
-    c.drawRightString(rx, fy, "eleves :")
-
-    # Ligne separatrice avant appreciations
-    fy -= 5
+    # Ligne separatrice appreciations
+    sep_y = footer_top
     c.setLineWidth(0.5)
-    c.line(x, fy, x + w, fy)
+    c.setStrokeColor(colors.black)
+    c.line(x, sep_y, x + w, sep_y)
 
-    # ------------------------------------------------------------------
-    # BAS : Appreciations (gauche) | Aux parents (droite)
-    # ------------------------------------------------------------------
+    # Appreciations (gauche) | Aux parents (droite)
     left_w = w * 0.50
-    right_w = w * 0.50
-
-    # Ligne verticale separatrice
     c.setLineWidth(0.3)
-    c.line(x + left_w, fy, x + left_w, y)
+    c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
 
-    # --- Cote GAUCHE : Appreciations Generales ---
-    ay = fy - 10
+    ay = sep_y - 10
     c.setFont('Helvetica-Bold', 6)
     c.drawString(lx, ay, "Appreciations Generales")
     ay -= 9
     c.setFont('Helvetica', 5.5)
     c.drawString(lx, ay, "..........................................................")
-    ay -= 7
+    ay -= 8
     c.drawString(lx, ay, "..........................................................")
 
-    # --- Cote DROIT : Aux parents + signature ---
     rstart_x = x + left_w + pad
-    py = fy - 10
+    py = sep_y - 10
     c.setFont('Helvetica', 5.5)
     c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
-
-    py -= 10
+    py -= 11
     c.setFont('Helvetica-Bold', 6)
-    c.drawString(rstart_x, py,
-                 f"Eleve : {_s(eleve.nom)}")
-    c.drawString(rstart_x + right_w * 0.45, py,
-                 f"Prenom : {_s(eleve.prenom)}")
-
-    py -= 10
+    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
+    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    py -= 11
     c.setFont('Helvetica', 5.5)
     c.drawString(rstart_x, py, "Date :")
-
-    py -= 10
+    py -= 11
     c.drawString(rstart_x, py, "Signature du Principal")
 
     # ------------------------------------------------------------------
-    # NUMERO DE PAGE (bas centre)
+    # TABLEAU DES NOTES (hauteur fixe par ligne, colle a l'en-tete)
     # ------------------------------------------------------------------
-    c.setFont('Helvetica', 7)
+    header1 = ['Matieres', 'Coef', '1er Semestre', '', '', '2eme Semestre', '', '']
+    header2 = ['', '', 'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre',
+               'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre']
+
+    col_ratios = [0.22, 0.05, 0.105, 0.105, 0.105, 0.105, 0.105, 0.105]
+    col_widths = [w * r for r in col_ratios]
+    diff_w = w - sum(col_widths)
+    col_widths[0] += diff_w
+
+    data = [header1, header2]
+    for m in matieres:
+        data.append([
+            _s(m['nom']),
+            str(m.get('coef', '')),
+            _fmt(m.get('sem1_moy')),
+            _fmt(m.get('sem1_compo')),
+            _fmt(m.get('sem1_moyenne')),
+            _fmt(m.get('sem2_moy')),
+            _fmt(m.get('sem2_compo')),
+            _fmt(m.get('sem2_moyenne')),
+        ])
+
+    nb_rows = len(data)
+    header_rh = 20
+    data_rh = 20  # hauteur fixe raisonnable par ligne
+    row_heights = [header_rh, header_rh] + [data_rh] * (nb_rows - 2)
+
+    table = Table(data, colWidths=col_widths, rowHeights=row_heights)
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, 1), 5.5),
+        ('FONTSIZE', (0, 2), (-1, -1), 6.5),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#f0f0f0')),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('SPAN', (0, 0), (0, 1)),
+        ('SPAN', (1, 0), (1, 1)),
+        ('SPAN', (2, 0), (4, 0)),
+        ('SPAN', (5, 0), (7, 0)),
+    ]))
+
+    table_total_h = sum(row_heights)
+    table_y = table_top - table_total_h
+    table.wrapOn(c, w, table_total_h + 20)
+    table.drawOn(c, x, table_y)
+
+    # ------------------------------------------------------------------
+    # MOYENNE ANNUELLE (collee juste sous le tableau)
+    # ------------------------------------------------------------------
+    fy = table_y - 11
+    c.setFont('Helvetica-Bold', 6.5)
     c.setFillColor(colors.black)
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+    moy_txt2 = _fmt(moy_ann) if moy_ann else ''
+    c.drawString(lx, fy, "Moyenne Annuelle")
+    c.drawString(lx + w * 0.27, fy, f"{moy_txt2}")
+    c.drawRightString(rx, fy, f"/{sur}")
+
+    fy -= 11
+    c.setFont('Helvetica', 5.5)
+    c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
+    rang_txt2 = _s(rang) if rang else ''
+    c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+    c.drawString(lx + w * 0.68, fy, "Redoublant :")
+    c.drawRightString(rx, fy, "eleves :")
 
 
 def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     """
     Dessine UNE demi-page format Primaire (trimestre).
-    Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Annuelle | Observations
+    Le contenu remplit toute la demi-page.
     """
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
@@ -337,7 +312,6 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy -= band_h
     c.setFillColor(colors.HexColor('#f0f0f0'))
     c.rect(x, cy, w, band_h, fill=1, stroke=1)
-
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
     c.drawString(lx + 5, cy + 3, f"Classe : {_s(classe_nom)}")
@@ -349,7 +323,55 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawString(lx, cy, "Maitre : ................................................................")
     cy -= 3
 
-    # TABLEAU : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Annuelle | Observations
+    table_top = cy
+
+    # ------------------------------------------------------------------
+    # PIED (ancre en BAS)
+    # ------------------------------------------------------------------
+    footer_h = 75
+    page_num_h = 12
+    footer_top = y + page_num_h + footer_h
+
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
+    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+
+    sep_y = footer_top
+    c.setLineWidth(0.5)
+    c.setStrokeColor(colors.black)
+    c.line(x, sep_y, x + w, sep_y)
+
+    # Appreciations (gauche) | Aux parents (droite)
+    left_w = w * 0.50
+    c.setLineWidth(0.3)
+    c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
+
+    ay = sep_y - 10
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(lx, ay, "Appreciations Generales")
+    ay -= 9
+    c.setFont('Helvetica', 5.5)
+    c.drawString(lx, ay, "..........................................................")
+    ay -= 8
+    c.drawString(lx, ay, "..........................................................")
+
+    rstart_x = x + left_w + pad
+    py = sep_y - 10
+    c.setFont('Helvetica', 5.5)
+    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
+    py -= 11
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
+    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    py -= 11
+    c.setFont('Helvetica', 5.5)
+    c.drawString(rstart_x, py, "Date :")
+    py -= 11
+    c.drawString(rstart_x, py, "Signature du Directeur")
+
+    # ------------------------------------------------------------------
+    # TABLEAU (hauteur fixe par ligne, colle a l'en-tete)
+    # ------------------------------------------------------------------
     header = ['Matieres', '1er\nTrimestre', '2eme\nTrimestre', '3eme\nTrimestre',
               'Moyenne\nAnnuelle', 'Observations']
     col_ratios = [0.26, 0.13, 0.13, 0.13, 0.14, 0.21]
@@ -374,89 +396,55 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
                 obs = 'TB' if m_ann >= 16 else 'B' if m_ann >= 14 else 'AB' if m_ann >= 12 else 'P' if m_ann >= seuil else 'I'
         data.append([_s(m['nom']), _fmt(t1), _fmt(t2), _fmt(t3), _fmt(m_ann), obs])
 
-    row_h = 13
-    header_rh = 18
     nb_rows = len(data)
-    row_heights = [header_rh] + [row_h] * (nb_rows - 1)
+    header_rh = 20
+    data_rh = 20  # hauteur fixe raisonnable
+    row_heights = [header_rh] + [data_rh] * (nb_rows - 1)
 
     table = Table(data, colWidths=col_widths, rowHeights=row_heights)
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 0), 5),
-        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('FONTSIZE', (0, 0), (-1, 0), 5.5),
+        ('FONTSIZE', (0, 1), (-1, -1), 6.5),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
-        ('LEFTPADDING', (0, 0), (-1, -1), 2),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
 
     table_total_h = sum(row_heights)
-    table_y = cy - table_total_h
+    table_y = table_top - table_total_h
     table.wrapOn(c, w, table_total_h + 20)
     table.drawOn(c, x, table_y)
 
-    # PIED
+    # ------------------------------------------------------------------
+    # MOYENNE ANNUELLE (collee sous le tableau)
+    # ------------------------------------------------------------------
     fy = table_y - 11
     c.setFont('Helvetica-Bold', 6.5)
     c.setFillColor(colors.black)
-    moy_txt = _fmt(moy_ann) if moy_ann else ''
-    c.drawString(lx, fy, f"Moyenne Annuelle")
-    c.drawString(lx + w * 0.27, fy, f"{moy_txt}")
+    moy_txt2 = _fmt(moy_ann) if moy_ann else ''
+    c.drawString(lx, fy, "Moyenne Annuelle")
+    c.drawString(lx + w * 0.27, fy, f"{moy_txt2}")
     c.drawRightString(rx, fy, f"/{sur}")
 
     fy -= 11
     c.setFont('Helvetica', 5.5)
     c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
-    rang_txt = _s(rang) if rang else ''
-    c.drawString(lx + w * 0.45, fy, f"Classement : {rang_txt}")
-    c.drawString(lx + w * 0.72, fy, "Redoublant :")
+    rang_txt2 = _s(rang) if rang else ''
+    c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+    c.drawString(lx + w * 0.68, fy, "Redoublant :")
     c.drawRightString(rx, fy, "eleves :")
-
-    fy -= 5
-    c.setLineWidth(0.5)
-    c.line(x, fy, x + w, fy)
-
-    # Appreciations / Aux parents
-    left_w = w * 0.50
-    c.setLineWidth(0.3)
-    c.line(x + left_w, fy, x + left_w, y)
-
-    ay = fy - 10
-    c.setFont('Helvetica-Bold', 6)
-    c.drawString(lx, ay, "Appreciations Generales")
-    ay -= 9
-    c.setFont('Helvetica', 5.5)
-    c.drawString(lx, ay, "..........................................................")
-    ay -= 7
-    c.drawString(lx, ay, "..........................................................")
-
-    rstart_x = x + left_w + pad
-    py = fy - 10
-    c.setFont('Helvetica', 5.5)
-    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
-    py -= 10
-    c.setFont('Helvetica-Bold', 6)
-    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
-    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
-    py -= 10
-    c.setFont('Helvetica', 5.5)
-    c.drawString(rstart_x, py, "Date :")
-    py -= 10
-    c.drawString(rstart_x, py, "Signature du Directeur")
-
-    # Numero de page
-    c.setFont('Helvetica', 7)
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
 
 
 def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
-    """Demi-page Maternelle."""
+    """Demi-page Maternelle avec contenu remplissant la page."""
     classe_nom = entry['classe_nom']
     annee = entry['annee_scolaire']
 
@@ -470,6 +458,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     top = y + h
     cy = top
 
+    # En-tete
     cy -= 11
     c.setFont('Helvetica-Bold', 6)
     c.setFillColor(colors.black)
@@ -499,17 +488,106 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
     c.drawString(lx + w * 0.45, cy, f"Ne(e) le: {dn}")
 
-    cy -= 14
-    c.setFont('Helvetica-Oblique', 6.5)
+    # Zone centrale
+    cy -= 20
+    c.setFont('Helvetica-Oblique', 7)
     c.drawString(lx, cy, "Evaluation qualitative (appreciations) - Voir bulletins trimestriels")
 
-    cy -= 25
-    c.setFont('Helvetica-Bold', 5.5)
-    c.drawString(lx, cy, "Appreciations Generales :")
-    c.drawString(lx + w * 0.5, cy, "Signature du Directeur :")
+    # Tableau simplifie avec domaines d'evaluation
+    cy -= 15
+    domains = [
+        "Langage / Communication",
+        "Graphisme / Ecriture",
+        "Mathematiques / Logique",
+        "Decouverte du monde",
+        "Arts plastiques / Dessin",
+        "Education physique",
+        "Socialisation / Autonomie",
+        "Comportement general",
+    ]
+    header = ['Domaines', '1er Trim.', '2eme Trim.', '3eme Trim.', 'Appreciation']
+    col_ratios_m = [0.32, 0.14, 0.14, 0.14, 0.26]
+    col_widths_m = [w * r for r in col_ratios_m]
+    diff_m = w - sum(col_widths_m)
+    col_widths_m[-1] += diff_m
 
+    data_m = [header]
+    for d in domains:
+        data_m.append([d, '', '', '', ''])
+
+    # Pied ancre en bas
+    footer_h = 75
+    page_num_h = 12
+    footer_top = y + page_num_h + footer_h
+
+    nb_rows_m = len(data_m)
+    header_rh_m = 20
+    data_rh_m = 20  # hauteur fixe
+    row_heights_m = [header_rh_m] + [data_rh_m] * (nb_rows_m - 1)
+
+    table_m = Table(data_m, colWidths=col_widths_m, rowHeights=row_heights_m)
+    table_m.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, 0), 5.5),
+        ('FONTSIZE', (0, 1), (-1, -1), 6.5),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+
+    table_total_h_m = sum(row_heights_m)
+    table_y_m = cy - table_total_h_m
+    table_m.wrapOn(c, w, table_total_h_m + 20)
+    table_m.drawOn(c, x, table_y_m)
+
+    # Pied
     c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
     c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+
+    sep_y = footer_top
+    c.setLineWidth(0.5)
+    c.setStrokeColor(colors.black)
+    c.line(x, sep_y, x + w, sep_y)
+
+    fy = footer_top + 12
+    c.setFont('Helvetica-Bold', 6.5)
+    c.setFillColor(colors.black)
+    c.drawString(lx, fy, "Appreciation globale du trimestre")
+
+    left_w = w * 0.50
+    c.setLineWidth(0.3)
+    c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
+
+    ay = sep_y - 10
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(lx, ay, "Appreciations Generales")
+    ay -= 9
+    c.setFont('Helvetica', 5.5)
+    c.drawString(lx, ay, "..........................................................")
+    ay -= 8
+    c.drawString(lx, ay, "..........................................................")
+
+    rstart_x = x + left_w + pad
+    py = sep_y - 10
+    c.setFont('Helvetica', 5.5)
+    c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
+    py -= 11
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
+    c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
+    py -= 11
+    c.setFont('Helvetica', 5.5)
+    c.drawString(rstart_x, py, "Date :")
+    py -= 11
+    c.drawString(rstart_x, py, "Signature du Directeur")
 
 
 def _draw_half_page(c, x, y, w, h, ecole, entry, eleve, page_number):
