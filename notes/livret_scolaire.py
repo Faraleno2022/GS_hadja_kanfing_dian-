@@ -12,6 +12,7 @@ Structure du livret :
 """
 
 import io
+import re
 import logging
 from decimal import Decimal
 from datetime import datetime
@@ -28,19 +29,14 @@ from reportlab.lib.units import cm, mm
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
-from PIL import Image
 
 from eleves.models import Eleve, Classe, Ecole, HistoriqueEleve
 from .models import (
     ClasseNote, MatiereNote, Classement,
-    NoteMensuelle, CompositionNote, AppreciationMaternelle,
+    NoteMensuelle, CompositionNote,
 )
-from .calculs_moyennes import (
-    calculer_moyenne_generale_eleve,
-    detecter_niveau_scolaire,
-)
+from .calculs_moyennes import detecter_niveau_scolaire
 from utilisateurs.utils import filter_by_user_school, user_school
-from ecole_moderne.pdf_utils import draw_logo_watermark
 
 logger = logging.getLogger(__name__)
 
@@ -226,10 +222,12 @@ def _draw_notes_table(c, x, y_start, w, matieres_data, periodes, sur=20, is_seme
         ('ROWBACKGROUNDS', (0, 2), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
         # Fusionner les en-têtes de période
         ('SPAN', (2, 0), (4, 0) if is_semestre else (3, 0)),
-        ('SPAN', (5, 0) if is_semestre else (4, 0), (7, 0) if is_semestre else (5, 0)),
     ])
 
-    if not is_semestre:
+    if is_semestre:
+        style.add('SPAN', (5, 0), (7, 0))
+    else:
+        style.add('SPAN', (4, 0), (5, 0))
         style.add('SPAN', (6, 0), (7, 0))
 
     table.setStyle(style)
@@ -314,13 +312,12 @@ def _collecter_parcours_eleve(eleve, ecole):
     historiques = HistoriqueEleve.objects.filter(
         eleve=eleve,
         action='CHANGEMENT_CLASSE'
-    ).order_by('date')
+    ).order_by('date_action')
 
     for h in historiques:
         # Extraire année et classe de la description
         desc = h.description or ''
         # Pattern: "Passage nouvelle année XXXX-XXXX: CLASSE → CLASSE"
-        import re
         match_annee = re.search(r'(\d{4}-\d{4})', desc)
         if match_annee:
             annee = match_annee.group(1)
@@ -680,7 +677,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
         c.setFont('Helvetica-Bold', 11)
         c.setFillColor(colors.HexColor('#003d82'))
-        c.drawString(margin + 10, y, f"▶ {cycle_label}")
+        c.drawString(margin + 10, y, f"> {cycle_label}")
         y -= 18
 
         # Tableau
