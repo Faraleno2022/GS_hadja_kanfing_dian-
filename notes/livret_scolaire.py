@@ -133,7 +133,7 @@ def _calculer_moyenne_from_matieres(matieres_data, is_semestre, sur):
                 if v is not None:
                     vals.append(float(v))
         if vals:
-            coef = float(m.get('coef', 1)) or 1
+            coef = float(m.get('coef') or 1)
             avg = sum(vals) / len(vals)
             total += avg * coef
             count += coef
@@ -1333,7 +1333,7 @@ def _collecter_parcours_eleve(eleve, ecole):
             ).order_by('nom')
 
             for mat in matieres:
-                m_data = {'nom': mat.nom, 'coef': float(mat.coefficient)}
+                m_data = {'nom': mat.nom, 'coef': float(mat.coefficient) if mat.coefficient is not None else 1.0}
 
                 # MATERNELLE : appreciations qualitatives (pas de notes numeriques)
                 if niveau == 'MATERNELLE':
