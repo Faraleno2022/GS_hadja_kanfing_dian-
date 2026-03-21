@@ -902,6 +902,8 @@ class HistoriqueEleve(models.Model):
         ('SUSPENSION', 'Suspension'),
         ('EXCLUSION', 'Exclusion'),
         ('TRANSFERT', 'Transfert'),
+        ('DIPLOME', 'Diplômé / Archivé'),
+        ('FIN_CYCLE', 'Fin de cycle'),
     ]
     
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='historique')

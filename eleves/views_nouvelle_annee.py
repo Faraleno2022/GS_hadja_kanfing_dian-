@@ -175,12 +175,20 @@ PROGRESSION_CLASSES = {
     '12 SCIENCES SOCIALES':           'TERMINALE SCIENCES SOCIALES',
     '12 SERIE LITTERAIRE':            'TERMINALE SCIENCES SOCIALES',
 
-    # ── Garderie / Terminale : fin de cycle ─────────────────────
-    'GARDERIE':                           None,
+    # ── Garderie → Petite Section ─────────────────────────────────
+    'GARDERIE':                           'PETITE SECTION',
+
+    # ── Terminale : fin de cycle (archivage BAC) ──────────────────
     'TERMINALE':                          None,
     'TERMINALE SCIENCES EXPERIMENTALES':  None,
     'TERMINALE SCIENCES MATHS':           None,
     'TERMINALE SCIENCES SOCIALES':        None,
+}
+
+# Classes terminales dont les élèves sortent du système
+CLASSES_TERMINALES = {
+    'TERMINALE', 'TERMINALE SCIENCES EXPERIMENTALES',
+    'TERMINALE SCIENCES MATHS', 'TERMINALE SCIENCES SOCIALES',
 }
 
 # Labels lisibles pour l'affichage dans le tableau de prévisualisation
@@ -381,6 +389,17 @@ def nouvelle_annee_apercu(request):
             'nb_matieres': cn.matieres.filter(actif=True).count(),
         })
 
+    # Élèves de Terminale (pour que l'utilisateur coche ceux qui ont le BAC)
+    eleves_terminale = []
+    for cls in classes_actuelles:
+        base, _ = _extraire_base_et_lettre(cls.nom)
+        if base in CLASSES_TERMINALES:
+            for eleve in cls.eleves.filter(statut='ACTIF').order_by('nom', 'prenom'):
+                eleves_terminale.append({
+                    'eleve': eleve,
+                    'classe_nom': cls.nom,
+                })
+
     context = {
         'ecole': ecole,
         'annee_courante': annee_courante,
@@ -390,6 +409,7 @@ def nouvelle_annee_apercu(request):
         'grilles': grilles,
         'preview_notes': preview_notes,
         'nb_total_eleves': sum(p['nb_eleves'] for p in preview_classes),
+        'eleves_terminale': eleves_terminale,
         'titre_page': f'Nouvelle Année Scolaire {annee_nouvelle}',
     }
     return render(request, 'eleves/nouvelle_annee.html', context)
@@ -411,6 +431,8 @@ def nouvelle_annee_creer(request):
     dupliquer_grilles = request.POST.get('dupliquer_grilles') == '1'
     dupliquer_notes_classes = request.POST.get('dupliquer_notes_classes') == '1'
     faire_passer_eleves = request.POST.get('faire_passer_eleves') == '1'
+    # Liste des IDs d'élèves qui ont eu le BAC (cochés par l'utilisateur)
+    eleves_bac_ids = set(request.POST.getlist('eleves_bac', []))
 
     if not annee_courante or not annee_nouvelle:
         messages.error(request, "Paramètres manquants.")
@@ -424,6 +446,8 @@ def nouvelle_annee_creer(request):
         'matieres_creees': 0,
         'eleves_passes': 0,
         'eleves_conserves': 0,
+        'eleves_diplomes': 0,
+        'eleves_sortis': 0,
         'echeanciers_crees': 0,
         'erreurs': [],
     }
@@ -553,20 +577,39 @@ def nouvelle_annee_creer(request):
                     ancienne_classe = eleve.classe
                     base_actuelle, _ = _extraire_base_et_lettre(ancienne_classe.nom)
 
-                    # Vérifier si c'est une classe terminale
-                    est_terminale = (
-                        base_actuelle in PROGRESSION_CLASSES
-                        and PROGRESSION_CLASSES[base_actuelle] is None
-                    )
+                    # Vérifier si c'est une classe terminale (Terminale)
+                    est_terminale = base_actuelle in CLASSES_TERMINALES
 
                     if est_terminale:
-                        # Classe terminale → garder dans la même classe (nouvelle année)
-                        nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
-                        if nouvelle_meme:
-                            eleve._current_user = request.user
-                            eleve.classe = nouvelle_meme
+                        eleve_id_str = str(eleve.pk)
+                        if eleve_id_str in eleves_bac_ids:
+                            # L'élève a eu le BAC → archiver (DIPLOME)
+                            eleve.statut = 'DIPLOME'
                             eleve.save()
-                            resultats['eleves_conserves'] += 1
+                            HistoriqueEleve.objects.create(
+                                eleve=eleve,
+                                action='DIPLOME',
+                                description=(
+                                    f"Diplômé(e) — BAC obtenu, archivé(e) lors du passage "
+                                    f"à l'année {annee_nouvelle}. Classe: {ancienne_classe.nom}"
+                                ),
+                                utilisateur=request.user,
+                            )
+                            resultats['eleves_diplomes'] += 1
+                        else:
+                            # Pas de BAC → sortie du système (fin de cycle)
+                            eleve.statut = 'TRANSFERE'
+                            eleve.save()
+                            HistoriqueEleve.objects.create(
+                                eleve=eleve,
+                                action='FIN_CYCLE',
+                                description=(
+                                    f"Fin de cycle — sorti(e) du système lors du passage "
+                                    f"à l'année {annee_nouvelle}. Classe: {ancienne_classe.nom}"
+                                ),
+                                utilisateur=request.user,
+                            )
+                            resultats['eleves_sortis'] += 1
                         continue
 
                     # Matching intelligent de la classe supérieure
@@ -687,6 +730,10 @@ def nouvelle_annee_creer(request):
         msg_parts.append(f"{resultats['eleves_passes']} élève(s) passé(s) en classe supérieure")
     if resultats['eleves_conserves']:
         msg_parts.append(f"{resultats['eleves_conserves']} élève(s) conservé(s) dans leur classe")
+    if resultats['eleves_diplomes']:
+        msg_parts.append(f"{resultats['eleves_diplomes']} élève(s) diplômé(s) (BAC) archivé(s)")
+    if resultats['eleves_sortis']:
+        msg_parts.append(f"{resultats['eleves_sortis']} élève(s) sorti(s) du système (fin de cycle)")
     if resultats['echeanciers_crees']:
         msg_parts.append(f"{resultats['echeanciers_crees']} échéancier(s) de paiement créé(s)")
 
