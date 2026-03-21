@@ -181,6 +181,59 @@
         </div>
     </div>
 
+    <!-- Rapports spécialisés -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>Rapports Spécialisés
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-danger">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-percentage fa-3x text-danger mb-3"></i>
+                                    <h6 class="card-title">Rapport des Remises</h6>
+                                    <p class="card-text text-muted">Détail des remises accordées aux élèves</p>
+                                    <a href="{% url 'rapports:rapport_remises' %}" class="btn btn-danger btn-sm">
+                                        <i class="fas fa-eye me-1"></i>Consulter
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-success">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-bus fa-3x text-success mb-3"></i>
+                                    <h6 class="card-title">Rapport Transport</h6>
+                                    <p class="card-text text-muted">Suivi des abonnements transport scolaire</p>
+                                    <a href="{% url 'rapports:rapport_transport' %}" class="btn btn-success btn-sm">
+                                        <i class="fas fa-eye me-1"></i>Consulter
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100 border-secondary">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-archive fa-3x text-secondary mb-3"></i>
+                                    <h6 class="card-title">Historique des Rapports</h6>
+                                    <p class="card-text text-muted">Tous les rapports générés précédemment</p>
+                                    <a href="{% url 'rapports:liste_rapports' %}" class="btn btn-secondary btn-sm">
+                                        <i class="fas fa-list me-1"></i>Voir tout
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Rapports récents -->
     <div class="row">
         <div class="col-md-8">

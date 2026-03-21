@@ -1000,9 +1000,19 @@ def rapport_remises_detaille(request):
         paiement__date_paiement__range=[date_debut, date_fin],
         paiement__statut='VALIDE'
     ).select_related(
-        'paiement', 'paiement__eleve', 'paiement__eleve__classe', 
+        'paiement', 'paiement__eleve', 'paiement__eleve__classe',
         'paiement__eleve__classe__ecole', 'remise'
     ).order_by('-paiement__date_paiement')
+
+    # Filtrer par école de l'utilisateur (sauf superadmin)
+    if not user_is_superadmin(request.user):
+        ecole_user = user_school(request.user)
+        if ecole_user:
+            remises_appliquees = remises_appliquees.filter(
+                paiement__eleve__classe__ecole=ecole_user
+            )
+        else:
+            remises_appliquees = remises_appliquees.none()
     
     # Calcul des totaux
     total_remises = remises_appliquees.aggregate(
