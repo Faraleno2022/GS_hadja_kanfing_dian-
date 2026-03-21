@@ -83,6 +83,65 @@ def _get_image_reader(ecole):
     return None
 
 
+def _appreciation_generale(moy_ann, sur):
+    """Retourne l'appreciation generale en fonction de la moyenne annuelle."""
+    if moy_ann is None:
+        return ''
+    seuil = 5.0 if sur == 10 else 10.0
+    if sur == 10:
+        if moy_ann >= 9:
+            return 'Excellent travail. Continuez ainsi !'
+        elif moy_ann >= 8:
+            return 'Tr\u00e8s bon travail. F\u00e9licitations !'
+        elif moy_ann >= 7:
+            return 'Bon travail. Encouragements.'
+        elif moy_ann >= 6:
+            return 'Assez bien. Peut mieux faire.'
+        elif moy_ann >= seuil:
+            return 'Travail passable. Des efforts sont n\u00e9cessaires.'
+        else:
+            return 'Travail insuffisant. Redoubler d\'efforts.'
+    else:
+        if moy_ann >= 18:
+            return 'Excellent travail. Continuez ainsi !'
+        elif moy_ann >= 16:
+            return 'Tr\u00e8s bon travail. F\u00e9licitations !'
+        elif moy_ann >= 14:
+            return 'Bon travail. Encouragements.'
+        elif moy_ann >= 12:
+            return 'Assez bien. Peut mieux faire.'
+        elif moy_ann >= seuil:
+            return 'Travail passable. Des efforts sont n\u00e9cessaires.'
+        else:
+            return 'Travail insuffisant. Redoubler d\'efforts.'
+
+
+def _calculer_moyenne_from_matieres(matieres_data, is_semestre, sur):
+    """Calcule la moyenne annuelle a partir des donnees matieres si Classement absent."""
+    total = 0.0
+    count = 0
+    for m in matieres_data:
+        vals = []
+        if is_semestre:
+            for k in ['sem1_moyenne', 'sem2_moyenne']:
+                v = m.get(k)
+                if v is not None:
+                    vals.append(float(v))
+        else:
+            for k in ['t1_moy', 't2_moy', 't3_moy']:
+                v = m.get(k)
+                if v is not None:
+                    vals.append(float(v))
+        if vals:
+            coef = float(m.get('coef', 1)) or 1
+            avg = sum(vals) / len(vals)
+            total += avg * coef
+            count += coef
+    if count > 0:
+        return round(total / count, 2)
+    return None
+
+
 def _draw_watermark(c, x, y, w, h, logo):
     """Dessine le logo de l'ecole en filigrane au centre d'une demi-page."""
     if not logo:
@@ -141,25 +200,26 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
-    cy -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"Coll\u00e8ge : {_s(ecole.nom)}")
-    if ecole.desee:
-        c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
+
+    cy -= 10
+    c.setFont('Helvetica', 8)
+    if ecole.desee:
+        c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
+    c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
 
     cy -= 9
     c.drawString(lx, cy, f"Venant de : {_s(venant_de) if venant_de else '........................'}")
     c.drawString(lx + w * 0.50, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
 
     cy -= 9
-    matricule = _s(eleve.matricule) if eleve.matricule else ''
-    c.drawString(lx, cy, f"Matricule : {matricule}")
     censeur = _s(ecole.censeur) if ecole.censeur else ''
     if censeur:
-        c.drawString(lx + w * 0.50, cy, f"Censeur : {censeur}")
+        c.drawString(lx, cy, f"Censeur : {censeur}")
+    directeur_hdr = _s(ecole.directeur) if ecole.directeur else ''
+    if directeur_hdr:
+        c.drawString(lx + w * 0.50, cy, f"Directeur : {directeur_hdr}")
 
     # Ligne separatrice
     cy -= 4
@@ -203,12 +263,15 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     ay = sep_y - 10
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(lx, ay, "Appreciations Generales")
+    c.drawString(lx, ay, "Appr\u00e9ciations G\u00e9n\u00e9rales")
     ay -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, ay, "..........................................................")
+    c.setFont('Helvetica', 7)
+    app_txt = _appreciation_generale(moy_ann, sur)
+    c.drawString(lx, ay, app_txt if app_txt else '')
     ay -= 9
-    c.drawString(lx, ay, "..........................................................")
+    moy_footer = f"Moy: {moy_ann:.2f}/{sur}" if moy_ann else ''
+    rang_footer = f" - Rang: {_s(rang)}" if rang else ''
+    c.drawString(lx, ay, f"{moy_footer}{rang_footer}")
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
@@ -338,22 +401,18 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
-    cy -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"\u00c9cole Primaire de : {_s(ecole.nom)}")
-    if ecole.desee:
-        c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
+
+    cy -= 10
+    c.setFont('Helvetica', 8)
+    if ecole.desee:
+        c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
+    c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
 
     cy -= 9
     c.drawString(lx, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
     c.drawString(lx + w * 0.45, cy, f"Venant de : {_s(venant_de) if venant_de else '...............'}")
-
-    cy -= 9
-    matricule = _s(eleve.matricule) if eleve.matricule else ''
-    c.drawString(lx, cy, f"Matricule : {matricule}")
 
     # BANDE CLASSE
     cy -= 4
@@ -401,12 +460,15 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     ay = sep_y - 10
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(lx, ay, "Appreciations Generales")
+    c.drawString(lx, ay, "Appr\u00e9ciations G\u00e9n\u00e9rales")
     ay -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, ay, "..........................................................")
+    c.setFont('Helvetica', 7)
+    app_txt_p = _appreciation_generale(moy_ann, sur)
+    c.drawString(lx, ay, app_txt_p if app_txt_p else '')
     ay -= 9
-    c.drawString(lx, ay, "..........................................................")
+    moy_footer_p = f"Moy: {moy_ann:.2f}/{sur}" if moy_ann else ''
+    rang_footer_p = f" - Rang: {_s(rang)}" if rang else ''
+    c.drawString(lx, ay, f"{moy_footer_p}{rang_footer_p}")
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
@@ -524,14 +586,14 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
-    cy -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, cy, f"\u00c9cole Maternelle : {_s(ecole.nom)}")
-    if ecole.desee:
-        c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
-
     venant_de = entry.get('venant_de', '')
     date_entree = entry.get('date_entree', '')
+
+    cy -= 10
+    c.setFont('Helvetica', 8)
+    if ecole.desee:
+        c.drawString(lx, cy, f"DSEE : {_s(ecole.desee)}")
+    c.drawRightString(rx, cy, f"Matricule : {_s(eleve.matricule) if eleve.matricule else ''}")
 
     cy -= 9
     c.drawString(lx, cy, f"Date d'entr\u00e9e : {date_entree if date_entree else '...............'}")
@@ -644,12 +706,33 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     ay = sep_y - 10
     c.setFont('Helvetica-Bold', 8)
-    c.drawString(lx, ay, "Appreciations Generales")
+    c.drawString(lx, ay, "Appr\u00e9ciations G\u00e9n\u00e9rales")
     ay -= 10
-    c.setFont('Helvetica', 8)
-    c.drawString(lx, ay, "..........................................................")
+    c.setFont('Helvetica', 7)
+    # Maternelle: pas de moyenne numerique, appreciation basee sur les appreciations collectees
+    matieres_mat = entry.get('matieres_data', [])
+    nb_apps = 0
+    nb_bons = 0
+    for m_mat in matieres_mat:
+        for tk in ['t1_app', 't2_app', 't3_app']:
+            val = m_mat.get(tk, '')
+            if val and val != 'Abs.':
+                nb_apps += 1
+                if val in ('A+', 'A', 'B+', 'B'):
+                    nb_bons += 1
+    if nb_apps > 0:
+        ratio = nb_bons / nb_apps
+        if ratio >= 0.8:
+            app_mat = 'Excellent travail. Continuez ainsi !'
+        elif ratio >= 0.6:
+            app_mat = 'Bon travail. Encouragements.'
+        elif ratio >= 0.4:
+            app_mat = 'Assez bien. Peut mieux faire.'
+        else:
+            app_mat = 'Des efforts sont n\u00e9cessaires.'
+        c.drawString(lx, ay, app_mat)
     ay -= 9
-    c.drawString(lx, ay, "..........................................................")
+    c.drawString(lx, ay, '')
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
@@ -1355,10 +1438,11 @@ def _collecter_parcours_eleve(eleve, ecole):
                 periode__icontains='ANNUEL'
             ).first()
 
-            if cl_ann:
+            if cl_ann and cl_ann.moyenne_generale is not None:
                 moyenne_annuelle = float(cl_ann.moyenne_generale)
                 rang_info = cl_ann.rang_formate or f"{cl_ann.rang}eme/{cl_ann.effectif}"
             else:
+                # Fallback: moyenne des periodes depuis Classement
                 cls_p = Classement.objects.filter(
                     eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
                 ).exclude(periode__icontains='ANNUEL')
@@ -1366,6 +1450,14 @@ def _collecter_parcours_eleve(eleve, ecole):
                     moyennes = [float(cp.moyenne_generale) for cp in cls_p if cp.moyenne_generale]
                     if moyennes:
                         moyenne_annuelle = round(sum(moyennes) / len(moyennes), 2)
+                    # Prendre le rang du dernier classement disponible
+                    last_cl = cls_p.order_by('-periode').first()
+                    if last_cl and not rang_info:
+                        rang_info = last_cl.rang_formate or (f"{last_cl.rang}eme/{last_cl.effectif}" if last_cl.rang else '')
+
+            # Fallback ultime: calculer depuis les matieres collectees
+            if moyenne_annuelle is None and matieres_data and niveau != 'MATERNELLE':
+                moyenne_annuelle = _calculer_moyenne_from_matieres(matieres_data, is_semestre, sur)
 
             # Statistiques de la classe (moyenne, min, max)
             moy_classe = None
@@ -1373,17 +1465,22 @@ def _collecter_parcours_eleve(eleve, ecole):
             note_max_classe = None
             effectif_classe = 0
             try:
-                periode_ann = 'ANNUEL'
+                from django.db.models import Avg, Min, Max, Count
+                # Essayer ANNUEL d'abord
                 all_cls = Classement.objects.filter(
                     classe=classe_note, annee_scolaire=annee_scolaire,
-                    periode__icontains=periode_ann
+                    periode__icontains='ANNUEL'
                 )
                 if not all_cls.exists():
+                    # Fallback: dernier trimestre/semestre disponible
                     all_cls = Classement.objects.filter(
                         classe=classe_note, annee_scolaire=annee_scolaire,
                     ).exclude(periode__icontains='ANNUEL')
+                    # Prendre la derniere periode seulement pour stats coherentes
+                    if all_cls.exists():
+                        last_per = all_cls.order_by('-periode').first().periode
+                        all_cls = all_cls.filter(periode=last_per)
                 if all_cls.exists():
-                    from django.db.models import Avg, Min, Max, Count
                     stats = all_cls.aggregate(
                         avg=Avg('moyenne_generale'),
                         mn=Min('moyenne_generale'),
@@ -1394,6 +1491,9 @@ def _collecter_parcours_eleve(eleve, ecole):
                     note_min_classe = round(float(stats['mn']), 2) if stats['mn'] else None
                     note_max_classe = round(float(stats['mx']), 2) if stats['mx'] else None
                     effectif_classe = stats['cnt'] or 0
+                # Fallback effectif depuis ClasseNote
+                if effectif_classe == 0 and classe_note.effectif:
+                    effectif_classe = classe_note.effectif
             except Exception as e:
                 logger.warning(f"Erreur stats classe: {e}")
 
@@ -1911,14 +2011,8 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         fortes = [(n, v) for n, v in mat_avgs if v >= seuil]
         faibles = [(n, v) for n, v in mat_avgs if v < seuil]
 
-        # Limiter le tableau aux 3 meilleures + 3 plus faibles pour eviter le debordement
-        if len(mat_avgs) > 8:
-            top_items = mat_avgs[:3]
-            bottom_items = mat_avgs[-3:]
-            middle_items = mat_avgs[3:-3]
-            display_items = top_items + [('...', None)] + bottom_items
-        else:
-            display_items = mat_avgs
+        # Afficher TOUTES les matieres (triees par moyenne decroissante)
+        display_items = mat_avgs
 
         tbl_data = [['Matiere', 'Moyenne', 'Niveau']]
         for nom, avg in display_items:
@@ -1936,12 +2030,14 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
             tbl_data.append([nom, f"{avg:.2f}/{sur}", niv])
 
         col_w_m = [usable_w * 0.45, usable_w * 0.25, usable_w * 0.30]
-        rh_m = 11
+        # Adapter la hauteur de ligne si beaucoup de matieres
+        rh_m = 10 if len(tbl_data) > 12 else 11
+        fs_m = 6 if len(tbl_data) > 12 else 7
         tbl = Table(tbl_data, colWidths=col_w_m, rowHeights=[rh_m] * len(tbl_data))
         style_cmds = [
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('FONTSIZE', (0, 0), (-1, -1), fs_m),
             ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
