@@ -143,7 +143,9 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     cy -= 10
     c.setFont('Helvetica', 8)
     c.drawString(lx, cy, f"College : {_s(ecole.nom)}")
-    c.drawString(lx + w * 0.55, cy, "Venant de : ........................")
+
+    cy -= 9
+    c.drawString(lx, cy, "Venant de : ........................")
 
     cy -= 9
     c.drawString(lx, cy, "Date d'entree : ........................")
