@@ -557,9 +557,11 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     if ecole.desee:
         c.drawCentredString(width / 2, y, f"DSEE: {ecole.desee}")
         y -= 15
-    c.drawCentredString(width / 2, y, f"Adresse: {ecole.adresse}")
-    y -= 15
-    c.drawCentredString(width / 2, y, f"Tél: {ecole.telephone}")
+    if ecole.adresse:
+        c.drawCentredString(width / 2, y, f"Adresse: {ecole.adresse}")
+        y -= 15
+    if ecole.telephone:
+        c.drawCentredString(width / 2, y, f"Tel: {ecole.telephone}")
     y -= 30
 
     # Cadre élève
@@ -611,7 +613,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
             )
         elif p1['niveau'] == 'MATERNELLE':
             c.setFont('Helvetica-Oblique', 7)
-            c.drawString(margin + 10, content_y - 15, "Évaluation qualitative (appréciations) — Voir bulletins trimestriels")
+            c.drawString(margin + 10, content_y - 15, "Evaluation qualitative (appreciations) - Voir bulletins trimestriels")
 
         # Moitié BASSE
         i += 1
@@ -677,7 +679,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
         c.setFont('Helvetica-Bold', 11)
         c.setFillColor(colors.HexColor('#003d82'))
-        c.drawString(margin + 10, y, f"> {cycle_label}")
+        c.drawString(margin + 10, y, cycle_label)
         y -= 18
 
         # Tableau
@@ -745,7 +747,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     c.drawString(width / 2, y, "Le Censeur :")
     y -= 15
     c.setFont('Helvetica', 8)
-    c.drawString(margin + 10, y, f"Nom: {ecole.directeur}")
+    c.drawString(margin + 10, y, f"Nom: {ecole.directeur or ''}")
     if ecole.censeur:
         c.drawString(width / 2, y, f"Nom: {ecole.censeur}")
     y -= 25
@@ -778,9 +780,9 @@ def _calculer_orientation(parcours):
     seuil = 5.0 if sur == 10 else 10.0
 
     lines = [
-        f"• Moyenne générale du parcours : {moy_globale:.2f}/{sur}",
-        f"• Nombre d'années évaluées : {len(moyennes_all)}",
-        f"• Dernière classe : {derniere['classe_nom']} ({derniere['annee_scolaire']})",
+        f"- Moyenne generale du parcours : {moy_globale:.2f}/{sur}",
+        f"- Nombre d'annees evaluees : {len(moyennes_all)}",
+        f"- Derniere classe : {derniere['classe_nom']} ({derniere['annee_scolaire']})",
     ]
 
     # Analyse des forces
@@ -799,22 +801,22 @@ def _calculer_orientation(parcours):
         if mats_avg:
             mats_avg.sort(key=lambda x: x[1], reverse=True)
             top_3 = mats_avg[:3]
-            lines.append(f"• Points forts : {', '.join(f'{n} ({v:.1f})' for n, v in top_3)}")
+            lines.append(f"- Points forts : {', '.join(f'{n} ({v:.1f})' for n, v in top_3)}")
 
     # Propositions
     lines.append("")
     if moy_globale >= seuil * 1.6:  # Excellent
-        lines.append("➤ ORIENTATION PROPOSÉE : Filière d'excellence — Sciences ou Lettres selon les résultats")
-        lines.append("  L'élève présente un profil académique excellent propice aux filières sélectives.")
+        lines.append(">> ORIENTATION PROPOSEE : Filiere d'excellence - Sciences ou Lettres selon les resultats")
+        lines.append("   L'eleve presente un profil academique excellent propice aux filieres selectives.")
     elif moy_globale >= seuil * 1.3:  # Très bien
-        lines.append("➤ ORIENTATION PROPOSÉE : Filière scientifique ou littéraire selon les aptitudes")
-        lines.append("  L'élève présente de solides capacités dans l'ensemble des disciplines.")
+        lines.append(">> ORIENTATION PROPOSEE : Filiere scientifique ou litteraire selon les aptitudes")
+        lines.append("   L'eleve presente de solides capacites dans l'ensemble des disciplines.")
     elif moy_globale >= seuil:  # Suffisant
-        lines.append("➤ ORIENTATION PROPOSÉE : Filière générale avec soutien dans les matières faibles")
-        lines.append("  L'élève a le niveau requis mais pourrait bénéficier d'un accompagnement ciblé.")
+        lines.append(">> ORIENTATION PROPOSEE : Filiere generale avec soutien dans les matieres faibles")
+        lines.append("   L'eleve a le niveau requis mais pourrait beneficier d'un accompagnement cible.")
     else:
-        lines.append("➤ ORIENTATION PROPOSÉE : Redoublement ou filière professionnelle recommandé")
-        lines.append("  Un renforcement des acquis est nécessaire avant progression.")
+        lines.append(">> ORIENTATION PROPOSEE : Redoublement ou filiere professionnelle recommande")
+        lines.append("   Un renforcement des acquis est necessaire avant progression.")
 
     return lines
 
@@ -876,18 +878,23 @@ def livret_scolaire_pdf(request, eleve_id):
         messages.error(request, "Accès non autorisé à cet élève.")
         return redirect('notes:livret_scolaire')
 
-    parcours = _collecter_parcours_eleve(eleve, ecole)
+    try:
+        parcours = _collecter_parcours_eleve(eleve, ecole)
 
-    if not parcours:
-        messages.warning(request, f"Aucune donnée de parcours trouvée pour {eleve.nom} {eleve.prenom}.")
+        if not parcours:
+            messages.warning(request, f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}.")
+            return redirect('notes:livret_scolaire')
+
+        buffer = _generer_livret_pdf(eleve, ecole, parcours)
+
+        filename = f"Livret_Scolaire_{eleve.nom}_{eleve.prenom}.pdf"
+        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Erreur generation livret pour eleve {eleve_id}: {e}", exc_info=True)
+        messages.error(request, f"Erreur lors de la generation du livret : {e}")
         return redirect('notes:livret_scolaire')
-
-    buffer = _generer_livret_pdf(eleve, ecole, parcours)
-
-    filename = f"Livret_Scolaire_{eleve.nom}_{eleve.prenom}.pdf"
-    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
 
 
 @login_required
