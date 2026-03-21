@@ -605,51 +605,160 @@ def _draw_half_page(c, x, y, w, h, ecole, entry, eleve, page_number):
 #  PAGES SPECIALES DU DEPLIANT
 # ==============================================================================
 
+def _draw_guinea_flag(c, cx, y_top, flag_w=60, flag_h=40):
+    """Dessine le drapeau de la Guinee (3 bandes verticales : rouge, jaune, vert)."""
+    stripe_w = flag_w / 3
+    fx = cx - flag_w / 2
+
+    # Rouge
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(fx, y_top - flag_h, stripe_w, flag_h, fill=1, stroke=0)
+    # Jaune
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(fx + stripe_w, y_top - flag_h, stripe_w, flag_h, fill=1, stroke=0)
+    # Vert
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(fx + 2 * stripe_w, y_top - flag_h, stripe_w, flag_h, fill=1, stroke=0)
+
+    # Bordure fine
+    c.setStrokeColor(colors.HexColor('#333333'))
+    c.setLineWidth(0.5)
+    c.rect(fx, y_top - flag_h, flag_w, flag_h, fill=0, stroke=1)
+
+
+def _draw_guinea_coat_of_arms(c, cx, y_top, size=50):
+    """Dessine les armoiries simplifiees de la Guinee."""
+    # Bouclier (ecu)
+    shield_w = size * 0.7
+    shield_h = size * 0.85
+    sx = cx - shield_w / 2
+    sy = y_top - shield_h
+
+    # Fond dore du bouclier
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.setStrokeColor(colors.HexColor('#8B6914'))
+    c.setLineWidth(1.2)
+
+    # Forme du bouclier (rectangle arrondi en bas)
+    p = c.beginPath()
+    p.moveTo(sx, y_top)
+    p.lineTo(sx + shield_w, y_top)
+    p.lineTo(sx + shield_w, sy + shield_h * 0.25)
+    p.curveTo(sx + shield_w, sy, cx, sy - shield_h * 0.12, cx, sy - shield_h * 0.12)
+    p.curveTo(cx, sy - shield_h * 0.12, sx, sy, sx, sy + shield_h * 0.25)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1)
+
+    # Bande rouge au centre du bouclier
+    band_y = y_top - shield_h * 0.35
+    band_h = shield_h * 0.30
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(sx + 3, band_y, shield_w - 6, band_h, fill=1, stroke=0)
+
+    # Bande verte en bas
+    green_y = band_y - band_h + 2
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(sx + 5, green_y, shield_w - 10, band_h * 0.7, fill=1, stroke=0)
+
+    # Colombe au centre (simplifiee)
+    dove_cx = cx
+    dove_cy = y_top - shield_h * 0.42
+    c.setFillColor(colors.white)
+    c.setFont('ZapfDingbats', 14)
+    c.drawCentredString(dove_cx, dove_cy, '\x2B')  # etoile/symbole
+
+    # Texte devise sous le bouclier
+    c.setFont('Helvetica-Bold', 4.5)
+    c.setFillColor(colors.HexColor('#333333'))
+    banner_y = sy - shield_h * 0.12 - 10
+    c.drawCentredString(cx, banner_y, "TRAVAIL - JUSTICE - SOLIDARITE")
+
+    # Branches d'olivier de chaque cote (lignes courbes vertes)
+    c.setStrokeColor(colors.HexColor('#009460'))
+    c.setLineWidth(1)
+    # Branche gauche
+    p2 = c.beginPath()
+    p2.moveTo(sx - 4, y_top - shield_h * 0.7)
+    p2.curveTo(sx - 12, y_top - shield_h * 0.3, sx - 8, y_top + 4, sx + shield_w * 0.2, y_top + 6)
+    c.drawPath(p2, fill=0, stroke=1)
+    # Branche droite
+    p3 = c.beginPath()
+    p3.moveTo(sx + shield_w + 4, y_top - shield_h * 0.7)
+    p3.curveTo(sx + shield_w + 12, y_top - shield_h * 0.3, sx + shield_w + 8, y_top + 4, sx + shield_w * 0.8, y_top + 6)
+    c.drawPath(p3, fill=0, stroke=1)
+
+
 def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     """Dessine la couverture (page 1) sur une demi-page GAUCHE."""
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(colors.HexColor('#555555'))
     c.setLineWidth(1.5)
     c.rect(x, y, w, h)
 
-    # Fond bleu
-    c.setFillColor(colors.HexColor('#003d82'))
+    # Fond gris
+    c.setFillColor(colors.HexColor('#E8E8E8'))
     c.rect(x + 1, y + 1, w - 2, h - 2, fill=1, stroke=0)
 
     pad = 10
     cx = x + w / 2
     top = y + h
 
-    # Logo
+    # --- DRAPEAU DE LA GUINEE ---
+    _draw_guinea_flag(c, cx - w * 0.22, top - 38, flag_w=50, flag_h=32)
+
+    # --- ARMOIRIES DE LA GUINEE ---
+    _draw_guinea_coat_of_arms(c, cx + w * 0.22, top - 10, size=48)
+
+    # Logo de l'ecole (au centre entre drapeau et armoiries)
     if logo:
         try:
-            c.drawImage(logo, cx - 25, top - 70, 50, 50,
+            c.drawImage(logo, cx - 20, top - 58, 40, 40,
                         preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
 
     # Titre
-    c.setFillColor(colors.white)
+    c.setFillColor(colors.HexColor('#222222'))
     c.setFont('Helvetica-Bold', 16)
-    c.drawCentredString(cx, top - 90, "LIVRET SCOLAIRE")
+    c.drawCentredString(cx, top - 80, "LIVRET SCOLAIRE")
 
-    c.setFont('Helvetica', 8)
-    ty = top - 110
+    # Ligne decorative sous le titre
+    c.setStrokeColor(colors.HexColor('#CE1126'))
+    c.setLineWidth(1.5)
+    c.line(cx - 80, top - 85, cx + 80, top - 85)
+    c.setStrokeColor(colors.HexColor('#FCD116'))
+    c.line(cx - 60, top - 88, cx + 60, top - 88)
+    c.setStrokeColor(colors.HexColor('#009460'))
+    c.setLineWidth(1.5)
+    c.line(cx - 80, top - 91, cx + 80, top - 91)
+
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#222222'))
+    ty = top - 106
     c.drawCentredString(cx, ty, "REPUBLIQUE DE GUINEE")
-    ty -= 10
+    ty -= 11
+    c.setFont('Helvetica', 7)
     c.drawCentredString(cx, ty, "Ministere de l'Enseignement Pre-Universitaire")
-    ty -= 10
+    ty -= 9
     c.drawCentredString(cx, ty, "et de l'Alphabetisation")
     ty -= 10
-    c.setFont('Helvetica-Oblique', 7)
+    c.setFont('Helvetica-Oblique', 6.5)
+    c.setFillColor(colors.HexColor('#555555'))
     c.drawCentredString(cx, ty, "Travail - Justice - Solidarite")
-    ty -= 18
+    ty -= 16
+
+    # Ligne separatrice
+    c.setStrokeColor(colors.HexColor('#999999'))
+    c.setLineWidth(0.5)
+    c.line(x + pad, ty + 5, x + w - pad, ty + 5)
 
     # Ecole
     c.setFont('Helvetica-Bold', 10)
-    c.drawCentredString(cx, ty, _s(ecole.nom))
-    ty -= 14
+    c.setFillColor(colors.HexColor('#222222'))
+    c.drawCentredString(cx, ty - 6, _s(ecole.nom))
+    ty -= 20
 
     c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#333333'))
     for label, val in [
         ("IRE/DEV", ecole.ire), ("DPE/DCE", ecole.dpe),
         ("DSEE", ecole.desee), ("Adresse", ecole.adresse),
@@ -658,33 +767,44 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
         if val:
             c.drawCentredString(cx, ty, f"{label}: {_s(val)}")
             ty -= 10
-    ty -= 10
+    ty -= 8
 
-    # Cadre eleve
+    # Cadre eleve (fond blanc avec bordure)
     box_w = w - 2 * pad
-    box_h = 90
+    box_h = 95
     box_x = x + pad
     box_y = ty - box_h
-    c.setStrokeColor(colors.white)
-    c.setLineWidth(1.5)
-    c.rect(box_x, box_y, box_w, box_h)
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor('#888888'))
+    c.setLineWidth(1)
+    c.rect(box_x, box_y, box_w, box_h, fill=1, stroke=1)
 
+    # Bande de titre du cadre eleve
+    c.setFillColor(colors.HexColor('#555555'))
+    c.rect(box_x, box_y + box_h - 16, box_w, 16, fill=1, stroke=0)
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.white)
+    c.drawCentredString(cx, box_y + box_h - 13, "IDENTIFICATION DE L'ELEVE")
+
+    c.setFillColor(colors.HexColor('#222222'))
     c.setFont('Helvetica-Bold', 11)
-    c.drawCentredString(cx, box_y + box_h - 18,
+    c.drawCentredString(cx, box_y + box_h - 32,
                         f"{_s(eleve.nom)} {_s(eleve.prenom)}")
     c.setFont('Helvetica', 8)
-    c.drawCentredString(cx, box_y + box_h - 32, f"Matricule: {eleve.matricule}")
+    c.drawCentredString(cx, box_y + box_h - 46, f"Matricule: {eleve.matricule}")
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
     lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
-    c.drawCentredString(cx, box_y + box_h - 44, f"Ne(e) le {dn}  a {lieu}")
+    c.drawCentredString(cx, box_y + box_h - 58, f"Ne(e) le {dn}  a {lieu}")
     sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
-    c.drawCentredString(cx, box_y + box_h - 56, f"Sexe: {sexe_txt}")
+    c.drawCentredString(cx, box_y + box_h - 70, f"Sexe: {sexe_txt}")
     c.setFont('Helvetica', 7)
-    c.drawCentredString(cx, box_y + box_h - 70,
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, box_y + box_h - 84,
                         f"Parcours : {len(parcours)} annee(s)")
 
     # Numero de page
     c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#555555'))
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
