@@ -1702,7 +1702,9 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ]
         # Colorier les lignes selon le niveau
-        for i, (nom, avg) in enumerate(mat_avgs, 1):
+        for i, (nom, avg) in enumerate(display_items, 1):
+            if avg is None:
+                continue
             if avg < seuil:
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#ffebee')))
             elif avg >= seuil * 1.3:
