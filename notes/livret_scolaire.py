@@ -1305,6 +1305,51 @@ def _collecter_parcours_eleve(eleve, ecole):
                     if moyennes:
                         moyenne_annuelle = round(sum(moyennes) / len(moyennes), 2)
 
+            # Statistiques de la classe (moyenne, min, max)
+            moy_classe = None
+            note_min_classe = None
+            note_max_classe = None
+            effectif_classe = 0
+            try:
+                periode_ann = 'ANNUEL'
+                all_cls = Classement.objects.filter(
+                    classe=classe_note, annee_scolaire=annee_scolaire,
+                    periode__icontains=periode_ann
+                )
+                if not all_cls.exists():
+                    all_cls = Classement.objects.filter(
+                        classe=classe_note, annee_scolaire=annee_scolaire,
+                    ).exclude(periode__icontains='ANNUEL')
+                if all_cls.exists():
+                    from django.db.models import Avg, Min, Max, Count
+                    stats = all_cls.aggregate(
+                        avg=Avg('moyenne_generale'),
+                        mn=Min('moyenne_generale'),
+                        mx=Max('moyenne_generale'),
+                        cnt=Count('eleve', distinct=True),
+                    )
+                    moy_classe = round(float(stats['avg']), 2) if stats['avg'] else None
+                    note_min_classe = round(float(stats['mn']), 2) if stats['mn'] else None
+                    note_max_classe = round(float(stats['mx']), 2) if stats['mx'] else None
+                    effectif_classe = stats['cnt'] or 0
+            except Exception as e:
+                logger.warning(f"Erreur stats classe: {e}")
+
+            # Moyennes par periode pour graphique d'evolution
+            moyennes_periodes = []
+            try:
+                cls_periods = Classement.objects.filter(
+                    eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
+                ).exclude(periode__icontains='ANNUEL').order_by('periode')
+                for cp in cls_periods:
+                    if cp.moyenne_generale is not None:
+                        moyennes_periodes.append({
+                            'periode': cp.periode,
+                            'moyenne': float(cp.moyenne_generale),
+                        })
+            except Exception:
+                pass
+
         try:
             from eleves.views_nouvelle_annee import PROGRESSION_CLASSES, PROGRESSION_LABELS, _normaliser
             base_norm = _normaliser(classe_nom.split('(')[0].strip())
@@ -1325,6 +1370,11 @@ def _collecter_parcours_eleve(eleve, ecole):
             'moyenne_annuelle': moyenne_annuelle,
             'rang': rang_info,
             'passe_en': passe_en,
+            'moy_classe': moy_classe,
+            'note_min_classe': note_min_classe,
+            'note_max_classe': note_max_classe,
+            'effectif_classe': effectif_classe,
+            'moyennes_periodes': moyennes_periodes,
         })
 
     return parcours
@@ -1465,6 +1515,369 @@ def _draw_blank_half(c, x, y, w, h, page_number):
     c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
 
 
+def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number):
+    """Dessine la page d'analyse du niveau de l'eleve pour une annee."""
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y, w, h, logo_wm)
+
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y, w, h)
+
+    pad = 6
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y + h
+    usable_w = w - 2 * pad
+
+    sur = entry.get('sur', 20)
+    seuil = 5.0 if sur == 10 else 10.0
+    moy_ann = entry.get('moyenne_annuelle')
+    moy_classe = entry.get('moy_classe')
+    note_min = entry.get('note_min_classe')
+    note_max = entry.get('note_max_classe')
+    effectif = entry.get('effectif_classe', 0)
+    rang = entry.get('rang', '')
+    matieres = entry.get('matieres_data', [])
+    is_sem = entry.get('is_semestre', False)
+    moyennes_periodes = entry.get('moyennes_periodes', [])
+
+    # === TITRE ===
+    cy = top - 14
+    c.setFont('Helvetica-Bold', 9)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "ANALYSE DU NIVEAU DE L'ELEVE")
+    cy -= 10
+    c.setFont('Helvetica', 6)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, cy,
+                        f"{_s(eleve.nom)} {_s(eleve.prenom)}  -  "
+                        f"Classe: {_s(entry['classe_nom'])}  -  {entry['annee_scolaire']}")
+
+    # === SECTION 1 : STATISTIQUES GENERALES ===
+    cy -= 14
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "STATISTIQUES GENERALES")
+    cy -= 3
+    c.setLineWidth(0.5)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    cy -= 12
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    col1 = lx
+    col2 = lx + usable_w * 0.5
+
+    moy_txt = f"{moy_ann:.2f}/{sur}" if moy_ann else '-'
+    c.drawString(col1, cy, f"Moyenne de l'eleve : {moy_txt}")
+    c.drawString(col2, cy, f"Classement : {_s(rang)}")
+    cy -= 11
+    moy_c_txt = f"{moy_classe:.2f}/{sur}" if moy_classe else '-'
+    c.drawString(col1, cy, f"Moyenne de la classe : {moy_c_txt}")
+    c.drawString(col2, cy, f"Effectif : {effectif}")
+    cy -= 11
+    min_txt = f"{note_min:.2f}/{sur}" if note_min else '-'
+    max_txt = f"{note_max:.2f}/{sur}" if note_max else '-'
+    c.drawString(col1, cy, f"Note la plus faible : {min_txt}")
+    c.drawString(col2, cy, f"Note la plus forte : {max_txt}")
+
+    # Barre visuelle position eleve vs classe
+    cy -= 16
+    if moy_ann and note_min is not None and note_max is not None and note_max > note_min:
+        bar_x = lx
+        bar_w = usable_w
+        bar_h = 10
+        # Fond barre
+        c.setFillColor(colors.HexColor('#e0e0e0'))
+        c.rect(bar_x, cy, bar_w, bar_h, fill=1, stroke=0)
+        # Zone verte (au-dessus du seuil)
+        seuil_pos = ((seuil - note_min) / (note_max - note_min)) * bar_w
+        c.setFillColor(colors.HexColor('#c8e6c9'))
+        c.rect(bar_x + seuil_pos, cy, bar_w - seuil_pos, bar_h, fill=1, stroke=0)
+        # Position moyenne classe
+        if moy_classe:
+            mc_pos = ((moy_classe - note_min) / (note_max - note_min)) * bar_w
+            c.setStrokeColor(colors.HexColor('#1565c0'))
+            c.setLineWidth(1.5)
+            c.line(bar_x + mc_pos, cy, bar_x + mc_pos, cy + bar_h)
+        # Position eleve
+        el_pos = ((moy_ann - note_min) / (note_max - note_min)) * bar_w
+        el_pos = max(0, min(el_pos, bar_w))
+        c.setFillColor(colors.HexColor('#d32f2f') if moy_ann < seuil else colors.HexColor('#2e7d32'))
+        c.circle(bar_x + el_pos, cy + bar_h / 2, 4, fill=1, stroke=0)
+        # Bordure barre
+        c.setStrokeColor(colors.HexColor('#999999'))
+        c.setLineWidth(0.5)
+        c.rect(bar_x, cy, bar_w, bar_h, fill=0, stroke=1)
+        # Legende
+        cy -= 10
+        c.setFont('Helvetica', 5)
+        c.setFillColor(colors.HexColor('#2e7d32'))
+        c.drawString(lx, cy, "o Eleve")
+        c.setFillColor(colors.HexColor('#1565c0'))
+        c.drawString(lx + 40, cy, "| Moy. classe")
+        c.setFillColor(colors.HexColor('#666666'))
+        c.drawString(lx + 100, cy, f"Min: {min_txt}")
+        c.drawString(lx + 155, cy, f"Max: {max_txt}")
+    else:
+        cy -= 10
+
+    # === SECTION 2 : MATIERES FORTES ET FAIBLES ===
+    cy -= 12
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "ANALYSE PAR MATIERE")
+    cy -= 3
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    # Calculer la moyenne par matiere
+    mat_avgs = []
+    for m in matieres:
+        nom = m.get('nom', '')
+        vals = []
+        if is_sem:
+            for k in ['sem1_moyenne', 'sem2_moyenne']:
+                v = m.get(k)
+                if v is not None:
+                    vals.append(float(v))
+        else:
+            for k in ['t1_moy', 't2_moy', 't3_moy']:
+                v = m.get(k)
+                if v is not None:
+                    vals.append(float(v))
+        if vals:
+            avg = round(sum(vals) / len(vals), 2)
+            mat_avgs.append((nom, avg))
+
+    mat_avgs.sort(key=lambda t: t[1], reverse=True)
+
+    # Tableau matieres fortes / faibles
+    cy -= 5
+    if mat_avgs:
+        fortes = [(n, v) for n, v in mat_avgs if v >= seuil]
+        faibles = [(n, v) for n, v in mat_avgs if v < seuil]
+
+        tbl_data = [['Matiere', 'Moyenne', 'Niveau']]
+        for nom, avg in mat_avgs:
+            if avg >= seuil * 1.6:
+                niv = 'Excellent'
+            elif avg >= seuil * 1.3:
+                niv = 'Bon'
+            elif avg >= seuil:
+                niv = 'Passable'
+            else:
+                niv = 'Insuffisant'
+            tbl_data.append([nom, f"{avg:.2f}/{sur}", niv])
+
+        col_w_m = [usable_w * 0.45, usable_w * 0.25, usable_w * 0.30]
+        rh_m = 11
+        tbl = Table(tbl_data, colWidths=col_w_m, rowHeights=[rh_m] * len(tbl_data))
+        style_cmds = [
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 5.5),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#999999')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ]
+        # Colorier les lignes selon le niveau
+        for i, (nom, avg) in enumerate(mat_avgs, 1):
+            if avg < seuil:
+                style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#ffebee')))
+            elif avg >= seuil * 1.3:
+                style_cmds.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#e8f5e9')))
+        tbl.setStyle(TableStyle(style_cmds))
+
+        th_m = rh_m * len(tbl_data)
+        tbl.wrapOn(c, usable_w, th_m + 5)
+        tbl.drawOn(c, lx, cy - th_m)
+        cy -= th_m + 4
+
+        # Resume texte
+        c.setFont('Helvetica-Bold', 5.5)
+        c.setFillColor(colors.HexColor('#2e7d32'))
+        c.drawString(lx, cy, f"Points forts ({len(fortes)}) : ")
+        c.setFont('Helvetica', 5.5)
+        noms_fortes = ', '.join(n for n, _ in fortes[:5])
+        c.drawString(lx + 65, cy, noms_fortes if noms_fortes else 'Aucune')
+        cy -= 9
+        c.setFont('Helvetica-Bold', 5.5)
+        c.setFillColor(colors.HexColor('#c62828'))
+        c.drawString(lx, cy, f"A travailler ({len(faibles)}) : ")
+        c.setFont('Helvetica', 5.5)
+        noms_faibles = ', '.join(n for n, _ in faibles[:5])
+        c.drawString(lx + 65, cy, noms_faibles if noms_faibles else 'Aucune')
+
+    # === SECTION 3 : EVOLUTION PAR PERIODE (graphique barres) ===
+    cy -= 16
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "EVOLUTION PAR PERIODE")
+    cy -= 3
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    cy -= 5
+    if moyennes_periodes and len(moyennes_periodes) >= 1:
+        graph_h = 55
+        graph_w = usable_w
+        graph_y = cy - graph_h
+        nb = len(moyennes_periodes)
+        bar_gap = 8
+        bar_w_each = (graph_w - (nb + 1) * bar_gap) / nb if nb > 0 else 0
+
+        # Axe et fond
+        c.setStrokeColor(colors.HexColor('#cccccc'))
+        c.setLineWidth(0.3)
+        for frac in [0.25, 0.5, 0.75, 1.0]:
+            ly = graph_y + graph_h * frac
+            c.line(lx, ly, rx, ly)
+            c.setFont('Helvetica', 4)
+            c.setFillColor(colors.HexColor('#999999'))
+            c.drawRightString(lx - 2, ly - 2, f"{sur * frac:.0f}")
+
+        # Ligne de seuil
+        seuil_frac = seuil / sur
+        seuil_y = graph_y + graph_h * seuil_frac
+        c.setStrokeColor(colors.HexColor('#ff5722'))
+        c.setLineWidth(0.6)
+        c.setDash(3, 2)
+        c.line(lx, seuil_y, rx, seuil_y)
+        c.setDash()
+        c.setFont('Helvetica', 4)
+        c.setFillColor(colors.HexColor('#ff5722'))
+        c.drawRightString(lx - 2, seuil_y - 2, f"{seuil:.0f}")
+
+        # Barres
+        prev_val = None
+        for i, mp in enumerate(moyennes_periodes):
+            bx = lx + bar_gap + i * (bar_w_each + bar_gap)
+            val = mp['moyenne']
+            frac = min(val / sur, 1.0)
+            bh = graph_h * frac
+
+            # Couleur selon le seuil
+            if val >= seuil * 1.3:
+                bar_color = '#2e7d32'
+            elif val >= seuil:
+                bar_color = '#43a047'
+            else:
+                bar_color = '#e53935'
+            c.setFillColor(colors.HexColor(bar_color))
+            c.rect(bx, graph_y, bar_w_each, bh, fill=1, stroke=0)
+
+            # Valeur au-dessus de la barre
+            c.setFont('Helvetica-Bold', 5)
+            c.setFillColor(colors.HexColor('#222222'))
+            c.drawCentredString(bx + bar_w_each / 2, graph_y + bh + 2, f"{val:.1f}")
+
+            # Fleche tendance
+            if prev_val is not None:
+                arrow_x = bx + bar_w_each / 2
+                arrow_y = graph_y - 6
+                if val > prev_val:
+                    c.setFillColor(colors.HexColor('#2e7d32'))
+                    c.drawCentredString(arrow_x, arrow_y, "^")
+                elif val < prev_val:
+                    c.setFillColor(colors.HexColor('#c62828'))
+                    c.drawCentredString(arrow_x, arrow_y, "v")
+                else:
+                    c.setFillColor(colors.HexColor('#666666'))
+                    c.drawCentredString(arrow_x, arrow_y, "=")
+            prev_val = val
+
+            # Label periode
+            label = mp['periode'].replace('SEMESTRE_', 'S').replace('TRIMESTRE_', 'T')
+            c.setFont('Helvetica', 4.5)
+            c.setFillColor(colors.HexColor('#333333'))
+            c.drawCentredString(bx + bar_w_each / 2, graph_y - 12, label)
+
+        cy = graph_y - 18
+    else:
+        c.setFont('Helvetica-Oblique', 6)
+        c.setFillColor(colors.HexColor('#999999'))
+        c.drawString(lx, cy - 10, "Donnees insuffisantes pour le graphique d'evolution.")
+        cy -= 20
+
+    # === SECTION 4 : DECISION ET ACCOMPAGNEMENT ===
+    cy -= 6
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "DECISION ET ACCOMPAGNEMENT")
+    cy -= 3
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    cy -= 11
+    c.setFont('Helvetica', 6)
+    c.setFillColor(colors.black)
+
+    if moy_ann:
+        if moy_ann >= seuil * 1.6:
+            decision = "Excellent resultat. Admis(e) avec les felicitations."
+            conseil = "Continuer sur cette lancee. L'eleve peut envisager les filieres d'excellence."
+        elif moy_ann >= seuil * 1.3:
+            decision = "Bon resultat. Admis(e) avec encouragement."
+            conseil = "Poursuivre les efforts. Renforcer les matieres les plus faibles."
+        elif moy_ann >= seuil:
+            decision = "Resultat passable. Admis(e) en classe superieure."
+            conseil = "Accompagnement necessaire dans les matieres insuffisantes."
+        else:
+            decision = "Resultat insuffisant. Risque de redoublement."
+            conseil = "Soutien scolaire indispensable. Reprendre les bases."
+    else:
+        decision = "Donnees insuffisantes pour evaluer."
+        conseil = ""
+
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(lx, cy, "Decision :")
+    c.setFont('Helvetica', 6)
+    c.drawString(lx + 50, cy, decision)
+
+    if conseil:
+        cy -= 10
+        c.setFont('Helvetica-Bold', 6)
+        c.drawString(lx, cy, "Conseil :")
+        c.setFont('Helvetica', 6)
+        c.drawString(lx + 50, cy, conseil)
+
+    # Matieres a travailler en priorite
+    faibles_prio = [(n, v) for n, v in mat_avgs if v < seuil] if mat_avgs else []
+    if faibles_prio:
+        cy -= 12
+        c.setFont('Helvetica-Bold', 6)
+        c.setFillColor(colors.HexColor('#c62828'))
+        c.drawString(lx, cy, "Matieres a travailler en priorite :")
+        cy -= 9
+        c.setFont('Helvetica', 5.5)
+        c.setFillColor(colors.black)
+        for nom, avg in faibles_prio[:6]:
+            ecart = seuil - avg
+            c.drawString(lx + 8, cy, f"- {nom} ({avg:.2f}/{sur}, ecart: -{ecart:.2f})")
+            cy -= 8
+
+    # Signatures
+    sig_y = y + 25
+    c.setFont('Helvetica-Bold', 6)
+    c.setFillColor(colors.black)
+    c.drawString(lx, sig_y, "Le Directeur / Proviseur :")
+    c.drawString(cx, sig_y, "Signature parent :")
+
+    # Numero de page
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+
+
 def _generer_livret_pdf(eleve, ecole, parcours):
     """Genere le PDF du livret scolaire en pages sequentielles.
 
@@ -1572,6 +1985,11 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
                      ecole, eleve, [entry], logo, 1)
     _draw_half_page(c, right_x, margin, half_w, usable_h,
                     ecole, entry, eleve, 2)
+    c.showPage()
+
+    # Page 2 : Analyse du niveau de l'eleve
+    _draw_analyse_annuelle_half(c, left_x, margin, half_w, usable_h,
+                                ecole, eleve, entry, 3)
     c.showPage()
 
     c.save()
