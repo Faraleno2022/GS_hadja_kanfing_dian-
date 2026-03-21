@@ -2,7 +2,7 @@
 Livret Scolaire - Generation PDF du parcours complet d'un eleve.
 Format officiel guineen : paysage A4, deux niveaux par page GAUCHE/DROITE.
 
-College/Lycee : Matieres | Coef | 1er Sem (Moyenne Classe | Classement | Moy Semestre) | 2eme Sem (idem)
+College/Lycee : Matieres | Coef | 1er Sem (Moy Cours | Moy Composition | Moy Semestrielle) | 2eme Sem (idem)
 Primaire : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Annuelle | Observations
 """
 
@@ -188,8 +188,8 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # TABLEAU DES NOTES (hauteur fixe par ligne, colle a l'en-tete)
     # ------------------------------------------------------------------
     header1 = ['Matieres', 'Coef', '1er Semestre', '', '', '2eme Semestre', '', '']
-    header2 = ['', '', 'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre',
-               'Moyenne\nClasse', 'Classement', 'Moyenne\nSemestre']
+    header2 = ['', '', 'Moyenne\nde Cours', 'Moyenne de\nComposition', 'Moyenne\nSemestrielle',
+               'Moyenne\nde Cours', 'Moyenne de\nComposition', 'Moyenne\nSemestrielle']
 
     col_ratios = [0.22, 0.05, 0.105, 0.105, 0.105, 0.105, 0.105, 0.105]
     col_widths = [w * r for r in col_ratios]
@@ -1409,25 +1409,17 @@ def _draw_blank_half(c, x, y, w, h, page_number):
 
 
 def _generer_livret_pdf(eleve, ecole, parcours):
-    """Genere le PDF du livret scolaire en IMPOSITION CAHIER (booklet).
+    """Genere le PDF du livret scolaire en pages sequentielles.
 
-    Le PDF est genere pour impression recto-verso et agrafage au milieu.
-    Quand on plie les feuilles et qu'on agrafe, les pages se suivent dans
-    l'ordre de lecture : 1, 2, 3, 4, ..., N.
+    Format paysage A4, deux demi-pages par feuille (gauche/droite).
+    Les pages se suivent dans l'ordre de lecture, sans saut ni page vide.
 
-    Ordre de lecture des demi-pages :
-      Page 1 : Couverture (face avant)
+    Ordre de lecture :
+      Page 1 : Couverture
       Page 2 : Renseignements parents
-      Pages 3..N-2 : Niveaux scolaires du parcours
+      Pages 3..N-2 : Niveaux scolaires du parcours (maternelle -> terminale)
       Page N-1 : Analyse et rapport final
-      Page N : Fiche de sante (face arriere / dos du livret)
-
-    Imposition cahier (N pages, multiple de 4) :
-      Feuille 1 recto : page N (gauche) | page 1 (droite)
-      Feuille 1 verso : page 2 (gauche) | page N-1 (droite)
-      Feuille 2 recto : page N-2 (gauche) | page 3 (droite)
-      Feuille 2 verso : page 4 (gauche) | page N-3 (droite)
-      ...
+      Page N : Fiche de sante
     """
     buffer = io.BytesIO()
     width, height = landscape(A4)  # 842 x 595
@@ -1443,9 +1435,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     logo = _get_logo_reader(ecole)
 
     # =====================================================================
-    # 1) Construire la liste des demi-pages dans l'ORDRE DE LECTURE
-    #    Chaque element est un callable : fn(c, x, y, w, h, page_number)
-    #    ou None pour une page vide (remplissage)
+    # Construire la liste des demi-pages dans l'ORDRE DE LECTURE
     # =====================================================================
     logical_pages = []
 
@@ -1459,7 +1449,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         lambda c, x, y, w, h, pn: _draw_renseignements_parents_half(
             c, x, y, w, h, eleve, pn))
 
-    # Pages 3+ : Niveaux scolaires du parcours
+    # Pages 3+ : Niveaux scolaires du parcours (maternelle -> terminale)
     for entry in parcours:
         logical_pages.append(
             lambda c, x, y, w, h, pn, e=entry: _draw_half_page(
@@ -1470,67 +1460,62 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         lambda c, x, y, w, h, pn: _draw_synthese_half(
             c, x, y, w, h, ecole, eleve, parcours, pn))
 
-    # Derniere page : Fiche de sante (dos du livret)
+    # Derniere page : Fiche de sante
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_fiche_sante_half(
             c, x, y, w, h, eleve, pn))
 
     # =====================================================================
-    # 2) Completer a un multiple de 4 (necessaire pour l'imposition cahier)
+    # Generer le PDF — pages sequentielles, 2 demi-pages par feuille
     # =====================================================================
-    while len(logical_pages) % 4 != 0:
-        logical_pages.append(None)  # page vide
-
     N = len(logical_pages)
+    for i in range(0, N, 2):
+        # Demi-page gauche
+        logical_pages[i](c, left_x, margin, half_w, usable_h, i + 1)
 
-    # =====================================================================
-    # 3) Generer le PDF en IMPOSITION CAHIER
-    #    Pour chaque feuille k (0-indexed) :
-    #      Recto : page[N-1 - 2k] a gauche | page[2k] a droite
-    #      Verso : page[2k + 1] a gauche   | page[N-2 - 2k] a droite
-    # =====================================================================
-    num_sheets = N // 4
-
-    for k in range(num_sheets):
-        # --- RECTO de la feuille k ---
-        li = N - 1 - 2 * k   # index page gauche
-        ri = 2 * k            # index page droite
-
-        # Gauche
-        pn = li + 1
-        if logical_pages[li] is not None:
-            logical_pages[li](c, left_x, margin, half_w, usable_h, pn)
-        else:
-            _draw_blank_half(c, left_x, margin, half_w, usable_h, pn)
-
-        # Droite
-        pn = ri + 1
-        if logical_pages[ri] is not None:
-            logical_pages[ri](c, right_x, margin, half_w, usable_h, pn)
-        else:
-            _draw_blank_half(c, right_x, margin, half_w, usable_h, pn)
+        # Demi-page droite (si elle existe)
+        if i + 1 < N:
+            logical_pages[i + 1](c, right_x, margin, half_w, usable_h, i + 2)
 
         c.showPage()
 
-        # --- VERSO de la feuille k ---
-        li = 2 * k + 1        # index page gauche
-        ri = N - 2 - 2 * k    # index page droite
+    c.save()
+    buffer.seek(0)
+    return buffer
 
-        # Gauche
-        pn = li + 1
-        if logical_pages[li] is not None:
-            logical_pages[li](c, left_x, margin, half_w, usable_h, pn)
-        else:
-            _draw_blank_half(c, left_x, margin, half_w, usable_h, pn)
 
-        # Droite
-        pn = ri + 1
-        if logical_pages[ri] is not None:
-            logical_pages[ri](c, right_x, margin, half_w, usable_h, pn)
-        else:
-            _draw_blank_half(c, right_x, margin, half_w, usable_h, pn)
+def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
+    """Genere le livret scolaire pour une seule annee.
 
-        c.showPage()
+    Format paysage A4 : couverture (gauche) + tableau des notes (droite).
+    """
+    entry = None
+    for p in parcours:
+        if p['annee_scolaire'] == annee_scolaire:
+            entry = p
+            break
+    if not entry:
+        return None
+
+    buffer = io.BytesIO()
+    width, height = landscape(A4)
+    c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    c.setTitle(f"Livret Annuel - {_s(eleve.nom)} {_s(eleve.prenom)} - {annee_scolaire}")
+
+    margin = 10
+    gap = 6
+    half_w = (width - 2 * margin - gap) / 2
+    usable_h = height - 2 * margin
+    left_x = margin
+    right_x = margin + half_w + gap
+    logo = _get_logo_reader(ecole)
+
+    # Page 1 : Couverture (gauche) + Notes de l'annee (droite)
+    _draw_cover_half(c, left_x, margin, half_w, usable_h,
+                     ecole, eleve, [entry], logo, 1)
+    _draw_half_page(c, right_x, margin, half_w, usable_h,
+                    ecole, entry, eleve, 2)
+    c.showPage()
 
     c.save()
     buffer.seek(0)
@@ -1667,8 +1652,52 @@ def livret_scolaire_pdf(request, eleve_id):
 
 
 @login_required
+def livret_scolaire_annuel_pdf(request, eleve_id):
+    """Genere le livret scolaire annuel PDF d'un eleve (annee en cours)."""
+    ecole = user_school(request.user)
+    if not ecole:
+        messages.error(request, "Aucune ecole associee a votre compte.")
+        return redirect('notes:tableau_bord')
+
+    eleve = get_object_or_404(Eleve, pk=eleve_id)
+
+    if not filter_by_user_school(
+        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+    ).exists():
+        messages.error(request, "Acces non autorise a cet eleve.")
+        return redirect('notes:livret_scolaire')
+
+    from eleves.utils_annee import get_annee_active
+    annee = request.GET.get('annee') or get_annee_active(request, ecole) or ''
+    if not annee and eleve.classe:
+        annee = eleve.classe.annee_scolaire
+
+    try:
+        parcours = _collecter_parcours_eleve(eleve, ecole)
+        if not parcours:
+            messages.warning(request,
+                             f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}.")
+            return redirect('notes:livret_scolaire')
+
+        pdf_buffer = _generer_livret_annuel_pdf(eleve, ecole, parcours, annee)
+        if not pdf_buffer:
+            messages.warning(request,
+                             f"Aucune donnee trouvee pour l'annee {annee}.")
+            return redirect('notes:livret_scolaire')
+
+        filename = f"Livret_Annuel_{_s(eleve.nom)}_{_s(eleve.prenom)}_{annee}.pdf"
+        response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"Erreur generation livret annuel eleve {eleve_id}: {e}", exc_info=True)
+        messages.error(request, f"Erreur lors de la generation du livret annuel : {e}")
+        return redirect('notes:livret_scolaire')
+
+
+@login_required
 def livret_scolaire_classe_pdf(request, classe_id):
-    """Genere les livrets scolaires de tous les eleves d'une classe."""
+    """Genere les livrets scolaires de tous les eleves d'une classe en un seul PDF."""
     ecole = user_school(request.user)
     if not ecole:
         messages.error(request, "Aucune ecole associee.")
@@ -1683,18 +1712,65 @@ def livret_scolaire_classe_pdf(request, classe_id):
         messages.warning(request, f"Aucun eleve actif dans la classe {classe.nom}.")
         return redirect('notes:livret_scolaire')
 
+    buffer = io.BytesIO()
+    width, height = landscape(A4)
+    c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    c.setTitle(f"Livrets Scolaires - {_s(classe.nom)}")
+
+    margin = 10
+    gap = 6
+    half_w = (width - 2 * margin - gap) / 2
+    usable_h = height - 2 * margin
+    left_x = margin
+    right_x = margin + half_w + gap
+    logo = _get_logo_reader(ecole)
+
+    nb_generes = 0
     for eleve in eleves_qs:
         try:
             parcours = _collecter_parcours_eleve(eleve, ecole)
-            if parcours:
-                pdf_buffer = _generer_livret_pdf(eleve, ecole, parcours)
-                filename = f"Livret_{_s(classe.nom)}_{_s(eleve.nom)}.pdf"
-                response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-                response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                return response
+            if not parcours:
+                continue
+
+            # Construire les pages logiques pour cet eleve
+            pages = []
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_cover_half(
+                    c, x, y, w, h, ecole, el, pa, logo, pn))
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve: _draw_renseignements_parents_half(
+                    c, x, y, w, h, el, pn))
+            for entry in parcours:
+                pages.append(
+                    lambda c, x, y, w, h, pn, e=entry, el=eleve: _draw_half_page(
+                        c, x, y, w, h, ecole, e, el, pn))
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_synthese_half(
+                    c, x, y, w, h, ecole, el, pa, pn))
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve: _draw_fiche_sante_half(
+                    c, x, y, w, h, el, pn))
+
+            # Dessiner sequentiellement
+            N = len(pages)
+            for i in range(0, N, 2):
+                pages[i](c, left_x, margin, half_w, usable_h, i + 1)
+                if i + 1 < N:
+                    pages[i + 1](c, right_x, margin, half_w, usable_h, i + 2)
+                c.showPage()
+
+            nb_generes += 1
         except Exception as e:
             logger.error(f"Erreur livret classe eleve {eleve.pk}: {e}", exc_info=True)
             continue
 
-    messages.warning(request, "Aucune donnee disponible.")
-    return redirect('notes:livret_scolaire')
+    if nb_generes == 0:
+        messages.warning(request, "Aucune donnee disponible.")
+        return redirect('notes:livret_scolaire')
+
+    c.save()
+    buffer.seek(0)
+    filename = f"Livrets_{_s(classe.nom)}.pdf"
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response

@@ -85,8 +85,8 @@
                         {% if eleves %}
                         <div class="alert alert-info py-2 small mb-3">
                             <i class="fas fa-info-circle me-1"></i>
-                            Cliquez sur <strong>Générer le livret</strong> pour télécharger le PDF du parcours scolaire complet.
-                            Le livret inclut toutes les années, notes, moyennes et une proposition d'orientation.
+                            <strong>Complet</strong> : tout le parcours (maternelle -> terminale) |
+                            <strong>Annuel</strong> : uniquement l'année en cours.
                         </div>
 
                         <div class="table-responsive" style="max-height:450px; overflow-y:auto;">
@@ -118,11 +118,18 @@
                                             {{ eleve.date_naissance|date:"d/m/Y"|default:"—" }}
                                         </td>
                                         <td class="text-center">
-                                            <a href="{% url 'notes:livret_scolaire_pdf' eleve.id %}"
-                                               class="btn btn-sm btn-outline-primary"
-                                               title="Télécharger le livret scolaire PDF">
-                                                <i class="fas fa-file-pdf me-1"></i>Générer le livret
-                                            </a>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a href="{% url 'notes:livret_scolaire_pdf' eleve.id %}"
+                                                   class="btn btn-outline-primary"
+                                                   title="Livret complet (tout le parcours)">
+                                                    <i class="fas fa-book me-1"></i>Complet
+                                                </a>
+                                                <a href="{% url 'notes:livret_scolaire_annuel_pdf' eleve.id %}"
+                                                   class="btn btn-outline-success"
+                                                   title="Livret annuel (année en cours)">
+                                                    <i class="fas fa-file-pdf me-1"></i>Annuel
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -167,8 +174,8 @@
                             <h6 class="fw-bold"><i class="fas fa-print text-success me-2"></i>Impression</h6>
                             <ul class="small mb-0">
                                 <li><strong>Format :</strong> Paysage (Landscape A4)</li>
-                                <li><strong>Mise en page :</strong> 2 niveaux par page (haut/bas)</li>
-                                <li><strong>Recto-verso :</strong> Activez l'impression recto-verso</li>
+                                <li><strong>Mise en page :</strong> 2 niveaux par page (gauche/droite)</li>
+                                <li><strong>Pages séquentielles</strong> sans saut de page</li>
                                 <li><strong>Pages numérotées</strong> automatiquement</li>
                                 <li>En-têtes officiels (IRE, DPE, DSEE)</li>
                             </ul>
