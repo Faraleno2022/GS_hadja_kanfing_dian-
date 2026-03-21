@@ -217,9 +217,9 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # ------------------------------------------------------------------
     # TABLEAU DES NOTES (hauteur fixe par ligne, colle a l'en-tete)
     # ------------------------------------------------------------------
-    header1 = ['Matieres', 'Coef', '1er Semestre', '', '', '2eme Semestre', '', '']
-    header2 = ['', '', 'Moyenne\nde Cours', 'Moyenne de\nComposition', 'Moyenne\nSemestrielle',
-               'Moyenne\nde Cours', 'Moyenne de\nComposition', 'Moyenne\nSemestrielle']
+    header1 = ['Matieres', 'Coef', '1er Sem.', '', '', '2eme Sem.', '', '']
+    header2 = ['', '', 'Moy.\nCours', 'Moy.\nCompo', 'Moy.\nSem.',
+               'Moy.\nCours', 'Moy.\nCompo', 'Moy.\nSem.']
 
     col_ratios = [0.22, 0.05, 0.105, 0.105, 0.105, 0.105, 0.105, 0.105]
     col_widths = [w * r for r in col_ratios]
@@ -1703,19 +1703,23 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         cy -= th_m + 4
 
         # Resume texte
-        c.setFont('Helvetica-Bold', 7)
+        c.setFont('Helvetica-Bold', 6)
         c.setFillColor(colors.HexColor('#2e7d32'))
         c.drawString(lx, cy, f"Points forts ({len(fortes)}) : ")
-        c.setFont('Helvetica', 7)
-        noms_fortes = ', '.join(n for n, _ in fortes[:5])
-        c.drawString(lx + 65, cy, noms_fortes if noms_fortes else 'Aucune')
+        c.setFont('Helvetica', 6)
+        noms_fortes = ', '.join(n for n, _ in fortes[:3])
+        if len(fortes) > 3:
+            noms_fortes += ' ...'
+        c.drawString(lx + 60, cy, noms_fortes if noms_fortes else 'Aucune')
         cy -= 9
-        c.setFont('Helvetica-Bold', 7)
+        c.setFont('Helvetica-Bold', 6)
         c.setFillColor(colors.HexColor('#c62828'))
         c.drawString(lx, cy, f"A travailler ({len(faibles)}) : ")
-        c.setFont('Helvetica', 7)
-        noms_faibles = ', '.join(n for n, _ in faibles[:5])
-        c.drawString(lx + 65, cy, noms_faibles if noms_faibles else 'Aucune')
+        c.setFont('Helvetica', 6)
+        noms_faibles = ', '.join(n for n, _ in faibles[:3])
+        if len(faibles) > 3:
+            noms_faibles += ' ...'
+        c.drawString(lx + 60, cy, noms_faibles if noms_faibles else 'Aucune')
 
     # === SECTION 3 : EVOLUTION PAR PERIODE (graphique barres) ===
     cy -= 16
