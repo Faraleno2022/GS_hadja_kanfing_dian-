@@ -626,66 +626,69 @@ def _draw_guinea_flag(c, cx, y_top, flag_w=60, flag_h=40):
     c.rect(fx, y_top - flag_h, flag_w, flag_h, fill=0, stroke=1)
 
 
-def _draw_guinea_coat_of_arms(c, cx, y_top, size=50):
-    """Dessine les armoiries simplifiees de la Guinee."""
-    # Bouclier (ecu)
-    shield_w = size * 0.7
-    shield_h = size * 0.85
-    sx = cx - shield_w / 2
-    sy = y_top - shield_h
+def _draw_mont_nimba(c, cx, y_top, size=50):
+    """Dessine le Mont Nimba (sommet de Guinee) en vectoriel."""
+    mw = size * 1.2
+    mh = size * 0.85
+    base_y = y_top - mh
 
-    # Fond dore du bouclier
-    c.setFillColor(colors.HexColor('#FCD116'))
-    c.setStrokeColor(colors.HexColor('#8B6914'))
-    c.setLineWidth(1.2)
+    # Ciel degrade bleu clair (fond)
+    c.setFillColor(colors.HexColor('#D6EAF8'))
+    c.rect(cx - mw / 2, base_y, mw, mh, fill=1, stroke=0)
 
-    # Forme du bouclier (rectangle arrondi en bas)
+    # Montagne principale (pic central)
     p = c.beginPath()
-    p.moveTo(sx, y_top)
-    p.lineTo(sx + shield_w, y_top)
-    p.lineTo(sx + shield_w, sy + shield_h * 0.25)
-    p.curveTo(sx + shield_w, sy, cx, sy - shield_h * 0.12, cx, sy - shield_h * 0.12)
-    p.curveTo(cx, sy - shield_h * 0.12, sx, sy, sx, sy + shield_h * 0.25)
+    p.moveTo(cx - mw / 2, base_y)           # base gauche
+    p.lineTo(cx - mw * 0.12, y_top)         # sommet principal
+    p.lineTo(cx + mw / 2, base_y)           # base droite
     p.close()
-    c.drawPath(p, fill=1, stroke=1)
+    c.setFillColor(colors.HexColor('#2E7D32'))
+    c.drawPath(p, fill=1, stroke=0)
 
-    # Bande rouge au centre du bouclier
-    band_y = y_top - shield_h * 0.35
-    band_h = shield_h * 0.30
-    c.setFillColor(colors.HexColor('#CE1126'))
-    c.rect(sx + 3, band_y, shield_w - 6, band_h, fill=1, stroke=0)
-
-    # Bande verte en bas
-    green_y = band_y - band_h + 2
-    c.setFillColor(colors.HexColor('#009460'))
-    c.rect(sx + 5, green_y, shield_w - 10, band_h * 0.7, fill=1, stroke=0)
-
-    # Colombe au centre (simplifiee)
-    dove_cx = cx
-    dove_cy = y_top - shield_h * 0.42
-    c.setFillColor(colors.white)
-    c.setFont('ZapfDingbats', 14)
-    c.drawCentredString(dove_cx, dove_cy, '\x2B')  # etoile/symbole
-
-    # Texte devise sous le bouclier
-    c.setFont('Helvetica-Bold', 4.5)
-    c.setFillColor(colors.HexColor('#333333'))
-    banner_y = sy - shield_h * 0.12 - 10
-    c.drawCentredString(cx, banner_y, "TRAVAIL - JUSTICE - SOLIDARITE")
-
-    # Branches d'olivier de chaque cote (lignes courbes vertes)
-    c.setStrokeColor(colors.HexColor('#009460'))
-    c.setLineWidth(1)
-    # Branche gauche
+    # Montagne secondaire (gauche, plus petite)
     p2 = c.beginPath()
-    p2.moveTo(sx - 4, y_top - shield_h * 0.7)
-    p2.curveTo(sx - 12, y_top - shield_h * 0.3, sx - 8, y_top + 4, sx + shield_w * 0.2, y_top + 6)
-    c.drawPath(p2, fill=0, stroke=1)
-    # Branche droite
+    p2.moveTo(cx - mw / 2, base_y)
+    p2.lineTo(cx - mw * 0.28, y_top - mh * 0.30)
+    p2.lineTo(cx - mw * 0.05, base_y)
+    p2.close()
+    c.setFillColor(colors.HexColor('#388E3C'))
+    c.drawPath(p2, fill=1, stroke=0)
+
+    # Montagne secondaire (droite)
     p3 = c.beginPath()
-    p3.moveTo(sx + shield_w + 4, y_top - shield_h * 0.7)
-    p3.curveTo(sx + shield_w + 12, y_top - shield_h * 0.3, sx + shield_w + 8, y_top + 4, sx + shield_w * 0.8, y_top + 6)
-    c.drawPath(p3, fill=0, stroke=1)
+    p3.moveTo(cx + mw * 0.05, base_y)
+    p3.lineTo(cx + mw * 0.30, y_top - mh * 0.35)
+    p3.lineTo(cx + mw / 2, base_y)
+    p3.close()
+    c.setFillColor(colors.HexColor('#43A047'))
+    c.drawPath(p3, fill=1, stroke=0)
+
+    # Neige / nuage au sommet
+    c.setFillColor(colors.HexColor('#E8F5E9'))
+    peak_x = cx - mw * 0.12
+    peak_y = y_top
+    p4 = c.beginPath()
+    p4.moveTo(peak_x - mw * 0.08, peak_y - mh * 0.12)
+    p4.lineTo(peak_x, peak_y)
+    p4.lineTo(peak_x + mw * 0.08, peak_y - mh * 0.12)
+    p4.close()
+    c.drawPath(p4, fill=1, stroke=0)
+
+    # Soleil
+    sun_x = cx + mw * 0.30
+    sun_y = y_top - mh * 0.12
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.circle(sun_x, sun_y, size * 0.09, fill=1, stroke=0)
+
+    # Bordure
+    c.setStrokeColor(colors.HexColor('#333333'))
+    c.setLineWidth(0.5)
+    c.rect(cx - mw / 2, base_y, mw, mh, fill=0, stroke=1)
+
+    # Texte
+    c.setFont('Helvetica-Bold', 4)
+    c.setFillColor(colors.HexColor('#333333'))
+    c.drawCentredString(cx, base_y - 8, "MONT NIMBA")
 
 
 def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
@@ -702,38 +705,56 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     cx = x + w / 2
     top = y + h
 
-    # --- DRAPEAU DE LA GUINEE ---
-    _draw_guinea_flag(c, cx - w * 0.22, top - 38, flag_w=50, flag_h=32)
+    # --- IMAGES ALIGNEES : Drapeau (gauche) | Logo (centre) | Nimba (droite) ---
+    img_row_y = top - 12          # haut de la rangee d'images
+    img_h = 42                    # hauteur des images
+    img_spacing = w * 0.28        # espacement depuis le centre
 
-    # --- ARMOIRIES DE LA GUINEE ---
-    _draw_guinea_coat_of_arms(c, cx + w * 0.22, top - 10, size=48)
+    # Drapeau de la Guinee (GAUCHE)
+    _draw_guinea_flag(c, cx - img_spacing, img_row_y, flag_w=55, flag_h=img_h)
 
-    # Logo de l'ecole (au centre entre drapeau et armoiries)
+    # Logo de l'ecole (CENTRE)
+    logo_size = img_h + 4
     if logo:
         try:
-            c.drawImage(logo, cx - 20, top - 58, 40, 40,
+            c.drawImage(logo, cx - logo_size / 2, img_row_y - logo_size,
+                        logo_size, logo_size,
                         preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
+    else:
+        # Placeholder si pas de logo
+        c.setStrokeColor(colors.HexColor('#999999'))
+        c.setDash(2, 2)
+        c.rect(cx - logo_size / 2, img_row_y - logo_size, logo_size, logo_size, stroke=1, fill=0)
+        c.setDash()
+        c.setFont('Helvetica', 5)
+        c.setFillColor(colors.HexColor('#999999'))
+        c.drawCentredString(cx, img_row_y - logo_size / 2, 'Logo')
 
-    # Titre
+    # Mont Nimba (DROITE)
+    _draw_mont_nimba(c, cx + img_spacing, img_row_y, size=img_h)
+
+    # Titre sous les images
+    title_y = img_row_y - img_h - 18
     c.setFillColor(colors.HexColor('#222222'))
     c.setFont('Helvetica-Bold', 16)
-    c.drawCentredString(cx, top - 80, "LIVRET SCOLAIRE")
+    c.drawCentredString(cx, title_y, "LIVRET SCOLAIRE")
 
-    # Ligne decorative sous le titre
+    # Ligne decorative tricolore sous le titre
+    line_y = title_y - 6
     c.setStrokeColor(colors.HexColor('#CE1126'))
     c.setLineWidth(1.5)
-    c.line(cx - 80, top - 85, cx + 80, top - 85)
+    c.line(cx - 80, line_y, cx + 80, line_y)
     c.setStrokeColor(colors.HexColor('#FCD116'))
-    c.line(cx - 60, top - 88, cx + 60, top - 88)
+    c.line(cx - 60, line_y - 3, cx + 60, line_y - 3)
     c.setStrokeColor(colors.HexColor('#009460'))
     c.setLineWidth(1.5)
-    c.line(cx - 80, top - 91, cx + 80, top - 91)
+    c.line(cx - 80, line_y - 6, cx + 80, line_y - 6)
 
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.HexColor('#222222'))
-    ty = top - 106
+    ty = line_y - 18
     c.drawCentredString(cx, ty, "REPUBLIQUE DE GUINEE")
     ty -= 11
     c.setFont('Helvetica', 7)
