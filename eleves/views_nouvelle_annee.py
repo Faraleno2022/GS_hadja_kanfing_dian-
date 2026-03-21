@@ -191,6 +191,13 @@ CLASSES_TERMINALES = {
     'TERMINALE SCIENCES MATHS', 'TERMINALE SCIENCES SOCIALES',
 }
 
+# Classes de fin de cycle avec examen national
+# Les élèves passent en classe supérieure, mais on enregistre le diplôme
+CLASSES_EXAMEN = {
+    '6EME ANNEE': {'diplome': 'CEP', 'label': "Certificat d'Études Primaires (CEP)"},
+    '10EME ANNEE': {'diplome': 'BEPC', 'label': 'Brevet d\'Études du Premier Cycle (BEPC)'},
+}
+
 # Labels lisibles pour l'affichage dans le tableau de prévisualisation
 PROGRESSION_LABELS = {
     'PETITE SECTION':         'Petite Section',
@@ -400,6 +407,25 @@ def nouvelle_annee_apercu(request):
                     'classe_nom': cls.nom,
                 })
 
+    # Élèves de 6ème (CEP) et 10ème (BEPC)
+    eleves_examens = []  # liste de {'diplome': 'CEP'/'BEPC', 'label': ..., 'eleves': [...]}
+    for base_classe, info_examen in CLASSES_EXAMEN.items():
+        eleves_de_ce_niveau = []
+        for cls in classes_actuelles:
+            base, _ = _extraire_base_et_lettre(cls.nom)
+            if base == base_classe:
+                for eleve in cls.eleves.filter(statut='ACTIF').order_by('nom', 'prenom'):
+                    eleves_de_ce_niveau.append({
+                        'eleve': eleve,
+                        'classe_nom': cls.nom,
+                    })
+        if eleves_de_ce_niveau:
+            eleves_examens.append({
+                'diplome': info_examen['diplome'],
+                'label': info_examen['label'],
+                'eleves': eleves_de_ce_niveau,
+            })
+
     context = {
         'ecole': ecole,
         'annee_courante': annee_courante,
@@ -410,6 +436,7 @@ def nouvelle_annee_apercu(request):
         'preview_notes': preview_notes,
         'nb_total_eleves': sum(p['nb_eleves'] for p in preview_classes),
         'eleves_terminale': eleves_terminale,
+        'eleves_examens': eleves_examens,
         'titre_page': f'Nouvelle Année Scolaire {annee_nouvelle}',
     }
     return render(request, 'eleves/nouvelle_annee.html', context)
@@ -433,6 +460,9 @@ def nouvelle_annee_creer(request):
     faire_passer_eleves = request.POST.get('faire_passer_eleves') == '1'
     # Liste des IDs d'élèves qui ont eu le BAC (cochés par l'utilisateur)
     eleves_bac_ids = set(request.POST.getlist('eleves_bac', []))
+    # Liste des IDs d'élèves qui ont eu le CEP / BEPC
+    eleves_cep_ids = set(request.POST.getlist('eleves_cep', []))
+    eleves_bepc_ids = set(request.POST.getlist('eleves_bepc', []))
 
     if not annee_courante or not annee_nouvelle:
         messages.error(request, "Paramètres manquants.")
@@ -448,6 +478,8 @@ def nouvelle_annee_creer(request):
         'eleves_conserves': 0,
         'eleves_diplomes': 0,
         'eleves_sortis': 0,
+        'eleves_cep': 0,
+        'eleves_bepc': 0,
         'echeanciers_crees': 0,
         'erreurs': [],
     }
@@ -619,16 +651,42 @@ def nouvelle_annee_creer(request):
                         eleve._current_user = request.user
                         eleve.classe = sup_cls
                         eleve.save()
+                        desc_passage = (
+                            f"Passage automatique nouvelle année {annee_nouvelle}: "
+                            f"{ancienne_classe.nom} → {sup_cls.nom}"
+                        )
                         HistoriqueEleve.objects.create(
                             eleve=eleve,
                             action='CHANGEMENT_CLASSE',
-                            description=(
-                                f"Passage automatique nouvelle année {annee_nouvelle}: "
-                                f"{ancienne_classe.nom} → {sup_cls.nom}"
-                            ),
+                            description=desc_passage,
                             utilisateur=request.user,
                         )
                         resultats['eleves_passes'] += 1
+
+                        # Enregistrer le diplôme CEP/BEPC si l'élève est coché
+                        eleve_id_str = str(eleve.pk)
+                        if base_actuelle == '6EME ANNEE' and eleve_id_str in eleves_cep_ids:
+                            HistoriqueEleve.objects.create(
+                                eleve=eleve,
+                                action='DIPLOME',
+                                description=(
+                                    f"Certificat d'Études Primaires (CEP) obtenu — "
+                                    f"année {annee_courante}, classe: {ancienne_classe.nom}"
+                                ),
+                                utilisateur=request.user,
+                            )
+                            resultats['eleves_cep'] += 1
+                        elif base_actuelle == '10EME ANNEE' and eleve_id_str in eleves_bepc_ids:
+                            HistoriqueEleve.objects.create(
+                                eleve=eleve,
+                                action='DIPLOME',
+                                description=(
+                                    f"Brevet d'Études du Premier Cycle (BEPC) obtenu — "
+                                    f"année {annee_courante}, classe: {ancienne_classe.nom}"
+                                ),
+                                utilisateur=request.user,
+                            )
+                            resultats['eleves_bepc'] += 1
                     else:
                         # Aucune correspondance → garder dans même classe (nouvelle année)
                         nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
@@ -730,6 +788,10 @@ def nouvelle_annee_creer(request):
         msg_parts.append(f"{resultats['eleves_passes']} élève(s) passé(s) en classe supérieure")
     if resultats['eleves_conserves']:
         msg_parts.append(f"{resultats['eleves_conserves']} élève(s) conservé(s) dans leur classe")
+    if resultats['eleves_cep']:
+        msg_parts.append(f"{resultats['eleves_cep']} élève(s) titulaire(s) du CEP")
+    if resultats['eleves_bepc']:
+        msg_parts.append(f"{resultats['eleves_bepc']} élève(s) titulaire(s) du BEPC")
     if resultats['eleves_diplomes']:
         msg_parts.append(f"{resultats['eleves_diplomes']} élève(s) diplômé(s) (BAC) archivé(s)")
     if resultats['eleves_sortis']:

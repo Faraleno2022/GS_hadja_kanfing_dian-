@@ -238,6 +238,68 @@
             </div>
         </div>
 
+        {% for examen in eleves_examens %}
+        <!-- Section {{ examen.diplome }} -->
+        <div class="col-12 mt-4">
+            <div class="card shadow-sm border-info">
+                <div class="card-header text-white d-flex justify-content-between align-items-center"
+                     style="background: linear-gradient(135deg, {% if examen.diplome == 'CEP' %}#2e7d32, #43a047{% else %}#1565c0, #1e88e5{% endif %});">
+                    <span>
+                        <i class="fas fa-award me-2"></i>{{ examen.label }} &mdash; {{ annee_courante }}
+                    </span>
+                    <span class="badge bg-white text-dark">{{ examen.eleves|length }} élève(s)</span>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info py-2 small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <strong>Cochez les élèves qui ont obtenu le {{ examen.diplome }}</strong>.
+                        Le diplôme sera enregistré dans leur historique.
+                        <strong>Tous les élèves passent en classe supérieure</strong> quel que soit le résultat.
+                    </div>
+
+                    <div class="mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-success me-1"
+                                onclick="cocherTous('.cb-{{ examen.diplome|lower }}', true)">
+                            <i class="fas fa-check-double me-1"></i>Tout cocher
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                onclick="cocherTous('.cb-{{ examen.diplome|lower }}', false)">
+                            <i class="fas fa-times me-1"></i>Tout décocher
+                        </button>
+                    </div>
+
+                    <div class="table-responsive" style="max-height:300px;overflow-y:auto;">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th style="width:50px;" class="text-center">{{ examen.diplome }}</th>
+                                    <th>Matricule</th>
+                                    <th>Nom complet</th>
+                                    <th>Classe</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in examen.eleves %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox" name="eleves_{{ examen.diplome|lower }}"
+                                               value="{{ item.eleve.id }}"
+                                               class="form-check-input cb-{{ examen.diplome|lower }}"
+                                               style="width:1.3em;height:1.3em;">
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ item.eleve.matricule }}</span></td>
+                                    <td class="fw-semibold">{{ item.eleve.nom }} {{ item.eleve.prenom }}</td>
+                                    <td>{{ item.classe_nom }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
         {% if eleves_terminale %}
         <!-- Section BAC / Archivage des élèves de Terminale -->
         <div class="col-12 mt-4">
@@ -321,14 +383,34 @@
 
 <script>
 function lancerAnnee(btn) {
+    var msg = "Confirmer la création de l'année scolaire {{ annee_nouvelle }} ?\n";
+    msg += "\n\u2022 {{ preview_classes|length }} classes seront dupliquées";
+    msg += "\n\u2022 {{ nb_total_eleves }} élèves seront transférés intelligemment";
+    msg += "\n\u2022 Les notes de {{ annee_courante }} restent intactes";
+
+    // CEP
+    var nbCep = document.querySelectorAll('.cb-cep:checked').length;
+    var totalCep = document.querySelectorAll('.cb-cep').length;
+    if (totalCep > 0) {
+        msg += '\n\u2022 ' + nbCep + '/' + totalCep + ' élève(s) de 6ème avec CEP';
+    }
+
+    // BEPC
+    var nbBepc = document.querySelectorAll('.cb-bepc:checked').length;
+    var totalBepc = document.querySelectorAll('.cb-bepc').length;
+    if (totalBepc > 0) {
+        msg += '\n\u2022 ' + nbBepc + '/' + totalBepc + ' élève(s) de 10ème avec BEPC';
+    }
+
+    // BAC
     var nbBac = document.querySelectorAll('.cb-bac:checked').length;
     var totalTerm = document.querySelectorAll('.cb-bac').length;
-    var msgBac = '';
     if (totalTerm > 0) {
-        msgBac = '\n\u2022 ' + nbBac + '/' + totalTerm + ' élève(s) de Terminale archivé(s) (BAC)';
-        msgBac += '\n\u2022 ' + (totalTerm - nbBac) + ' élève(s) sorti(s) du système';
+        msg += '\n\u2022 ' + nbBac + '/' + totalTerm + ' élève(s) de Terminale archivé(s) (BAC)';
+        msg += '\n\u2022 ' + (totalTerm - nbBac) + ' élève(s) sorti(s) du système';
     }
-    if (!confirm("Confirmer la création de l'année scolaire {{ annee_nouvelle }} ?\n\n\u2022 {{ preview_classes|length }} classes seront dupliquées\n\u2022 {{ nb_total_eleves }} élèves seront transférés intelligemment\n\u2022 Les notes de {{ annee_courante }} restent intactes" + msgBac)) {
+
+    if (!confirm(msg)) {
         return false;
     }
     btn.disabled = true;
@@ -336,8 +418,12 @@ function lancerAnnee(btn) {
     return true;
 }
 
+function cocherTous(selector, etat) {
+    document.querySelectorAll(selector).forEach(function(cb) { cb.checked = etat; });
+}
+
 function cocherTousBAC(etat) {
-    document.querySelectorAll('.cb-bac').forEach(function(cb) { cb.checked = etat; });
+    cocherTous('.cb-bac', etat);
 }
 </script>
 {% endblock %}
