@@ -135,13 +135,13 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # EN-TETE (haut)
     # ------------------------------------------------------------------
     cy -= 12
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
     cy -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, cy, f"College : {_s(ecole.nom)}")
     c.drawString(lx + w * 0.55, cy, "Venant de : ........................")
 
@@ -192,24 +192,24 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
 
     ay = sep_y - 10
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(lx, ay, "Appreciations Generales")
     ay -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, ay, "..........................................................")
     ay -= 9
     c.drawString(lx, ay, "..........................................................")
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
     py -= 11
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
     c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
     py -= 11
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Date :")
     py -= 11
     c.drawString(rstart_x, py, "Signature du Principal")
@@ -249,8 +249,8 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
         ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 1), 7),
-        ('FONTSIZE', (0, 2), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, 1), 8),
+        ('FONTSIZE', (0, 2), (-1, -1), 9),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -276,7 +276,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # MOYENNE ANNUELLE (collee juste sous le tableau)
     # ------------------------------------------------------------------
     fy = table_y - 11
-    c.setFont('Helvetica-Bold', 8)
+    c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
     moy_txt2 = _fmt(moy_ann) if moy_ann else ''
     c.drawString(lx, fy, "Moyenne Annuelle")
@@ -284,7 +284,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawRightString(rx, fy, f"/{sur}")
 
     fy -= 11
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
     rang_txt2 = _s(rang) if rang else ''
     c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
@@ -320,13 +320,13 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     # EN-TETE
     cy -= 12
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
     cy -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, cy, f"Ecole Primaire de : {_s(ecole.nom)}")
     if ecole.desee:
         c.drawRightString(rx, cy, f"DSEE : {_s(ecole.desee)}")
@@ -354,7 +354,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     # MAITRE
     cy -= 12
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(lx, cy, "Maitre : ................................................................")
     cy -= 3
 
@@ -382,24 +382,24 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
 
     ay = sep_y - 10
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(lx, ay, "Appreciations Generales")
     ay -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, ay, "..........................................................")
     ay -= 9
     c.drawString(lx, ay, "..........................................................")
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
     py -= 11
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
     c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
     py -= 11
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Date :")
     py -= 11
     c.drawString(rstart_x, py, "Signature du Directeur")
@@ -440,8 +440,8 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -462,7 +462,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     # MOYENNE ANNUELLE (collee sous le tableau)
     # ------------------------------------------------------------------
     fy = table_y - 11
-    c.setFont('Helvetica-Bold', 8)
+    c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
     moy_txt2 = _fmt(moy_ann) if moy_ann else ''
     c.drawString(lx, fy, "Moyenne Annuelle")
@@ -470,7 +470,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawRightString(rx, fy, f"/{sur}")
 
     fy -= 11
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, fy, f"Passe en classe superieure /{sur}")
     rang_txt2 = _s(rang) if rang else ''
     c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
@@ -498,13 +498,13 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     # En-tete
     cy -= 12
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
     c.drawString(lx, cy, f"IRE/DEV : {_s(ecole.ire)}")
     c.drawRightString(rx, cy, f"DPE/DCE : {_s(ecole.dpe)}")
 
     cy -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, cy, f"Ecole Maternelle : {_s(ecole.nom)}")
 
     cy -= 4
@@ -521,7 +521,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.drawRightString(rx - 5, cy + 3, f"Annee scolaire : {annee}")
 
     cy -= 14
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, cy, f"Eleve: {_s(eleve.nom)} {_s(eleve.prenom)}")
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
     c.drawString(lx + w * 0.45, cy, f"Ne(e) le: {dn}")
@@ -567,8 +567,8 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     table_m.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -605,24 +605,24 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     c.line(x + left_w, sep_y, x + left_w, y + page_num_h)
 
     ay = sep_y - 10
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(lx, ay, "Appreciations Generales")
     ay -= 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(lx, ay, "..........................................................")
     ay -= 9
     c.drawString(lx, ay, "..........................................................")
 
     rstart_x = x + left_w + pad
     py = sep_y - 10
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Aux parents, Nom et Prenom de l'eleve")
     py -= 11
-    c.setFont('Helvetica-Bold', 7)
+    c.setFont('Helvetica-Bold', 8)
     c.drawString(rstart_x, py, f"Eleve : {_s(eleve.nom)}")
     c.drawString(rstart_x + w * 0.22, py, f"Prenom : {_s(eleve.prenom)}")
     py -= 11
-    c.setFont('Helvetica', 7)
+    c.setFont('Helvetica', 8)
     c.drawString(rstart_x, py, "Date :")
     py -= 11
     c.drawString(rstart_x, py, "Signature du Directeur")
@@ -1661,8 +1661,20 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         fortes = [(n, v) for n, v in mat_avgs if v >= seuil]
         faibles = [(n, v) for n, v in mat_avgs if v < seuil]
 
+        # Limiter le tableau aux 3 meilleures + 3 plus faibles pour eviter le debordement
+        if len(mat_avgs) > 8:
+            top_items = mat_avgs[:3]
+            bottom_items = mat_avgs[-3:]
+            middle_items = mat_avgs[3:-3]
+            display_items = top_items + [('...', None)] + bottom_items
+        else:
+            display_items = mat_avgs
+
         tbl_data = [['Matiere', 'Moyenne', 'Niveau']]
-        for nom, avg in mat_avgs:
+        for nom, avg in display_items:
+            if avg is None:
+                tbl_data.append([nom, '', ''])
+                continue
             if avg >= seuil * 1.6:
                 niv = 'Excellent'
             elif avg >= seuil * 1.3:
@@ -1700,26 +1712,26 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         th_m = rh_m * len(tbl_data)
         tbl.wrapOn(c, usable_w, th_m + 5)
         tbl.drawOn(c, lx, cy - th_m)
-        cy -= th_m + 4
+        cy -= th_m + 8
 
         # Resume texte
         c.setFont('Helvetica-Bold', 6)
         c.setFillColor(colors.HexColor('#2e7d32'))
-        c.drawString(lx, cy, f"Points forts ({len(fortes)}) : ")
+        c.drawString(lx, cy, f"Forts ({len(fortes)}) : ")
         c.setFont('Helvetica', 6)
         noms_fortes = ', '.join(n for n, _ in fortes[:3])
         if len(fortes) > 3:
             noms_fortes += ' ...'
-        c.drawString(lx + 60, cy, noms_fortes if noms_fortes else 'Aucune')
+        c.drawString(lx + 45, cy, noms_fortes if noms_fortes else 'Aucune')
         cy -= 9
         c.setFont('Helvetica-Bold', 6)
         c.setFillColor(colors.HexColor('#c62828'))
-        c.drawString(lx, cy, f"A travailler ({len(faibles)}) : ")
+        c.drawString(lx, cy, f"Faibles ({len(faibles)}) : ")
         c.setFont('Helvetica', 6)
         noms_faibles = ', '.join(n for n, _ in faibles[:3])
         if len(faibles) > 3:
             noms_faibles += ' ...'
-        c.drawString(lx + 60, cy, noms_faibles if noms_faibles else 'Aucune')
+        c.drawString(lx + 45, cy, noms_faibles if noms_faibles else 'Aucune')
 
     # === SECTION 3 : EVOLUTION PAR PERIODE (graphique barres) ===
     cy -= 16
