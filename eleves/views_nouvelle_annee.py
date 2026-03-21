@@ -17,6 +17,9 @@ from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count
 
+from decimal import Decimal
+from datetime import date as _date_type
+
 from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
 from .utils_annee import get_annee_active, SESSION_ANNEE_ACTIVE
@@ -416,10 +419,12 @@ def nouvelle_annee_creer(request):
     resultats = {
         'classes_creees': 0,
         'grilles_creees': 0,
+        'configs_paiement_creees': 0,
         'classes_notes_creees': 0,
         'matieres_creees': 0,
         'eleves_passes': 0,
         'eleves_conserves': 0,
+        'echeanciers_crees': 0,
         'erreurs': [],
     }
 
@@ -446,6 +451,26 @@ def nouvelle_annee_creer(request):
                 if created:
                     resultats['classes_creees'] += 1
                 map_anciennes_nouvelles[cls.pk] = nouvelle_cls
+
+            # ─── Étape 1bis : Dupliquer ConfigurationPaiement ─────────
+            from paiements.models import ConfigurationPaiement
+            for ancien_pk, nouvelle_cls in map_anciennes_nouvelles.items():
+                try:
+                    ancien_cls = Classe.objects.get(pk=ancien_pk)
+                    config_ancienne = getattr(ancien_cls, 'configuration_paiement', None)
+                    if config_ancienne and not hasattr(nouvelle_cls, 'configuration_paiement'):
+                        # Vérifier que la nouvelle classe n'a pas déjà une config
+                        if not ConfigurationPaiement.objects.filter(classe=nouvelle_cls).exists():
+                            ConfigurationPaiement.objects.create(
+                                classe=nouvelle_cls,
+                                montant_inscription=config_ancienne.montant_inscription,
+                                montant_scolarite=config_ancienne.montant_scolarite,
+                                nombre_tranches=config_ancienne.nombre_tranches,
+                                cree_par=request.user,
+                            )
+                            resultats['configs_paiement_creees'] += 1
+                except Exception as exc:
+                    logger.warning(f"Config paiement non copiée pour {nouvelle_cls.nom}: {exc}")
 
             # ─── Étape 2 : Dupliquer les grilles tarifaires ─────────────
             if dupliquer_grilles:
@@ -580,6 +605,69 @@ def nouvelle_annee_creer(request):
                             )
                             resultats['eleves_conserves'] += 1
 
+            # ─── Étape 5 : Recréer les échéanciers pour la nouvelle année ─
+            # Pour chaque élève qui a changé de classe (nouvelle année),
+            # supprimer l'ancien échéancier et en créer un neuf via la grille tarifaire.
+            if faire_passer_eleves:
+                from paiements.models import EcheancierPaiement
+                from .models import GrilleTarifaire
+
+                eleves_nouvelle_annee = Eleve.objects.filter(
+                    classe__ecole=ecole,
+                    classe__annee_scolaire=annee_nouvelle,
+                    statut='ACTIF',
+                ).select_related('classe', 'classe__ecole')
+
+                try:
+                    annee_debut = int(annee_nouvelle.split('-')[0])
+                except Exception:
+                    annee_debut = _date_type.today().year
+                annee_fin = annee_debut + 1
+
+                for eleve in eleves_nouvelle_annee:
+                    try:
+                        # Supprimer l'ancien échéancier (lié à l'ancienne année)
+                        EcheancierPaiement.objects.filter(eleve=eleve).delete()
+
+                        # Chercher la grille tarifaire de la nouvelle année
+                        niveau = getattr(eleve.classe, 'niveau', None)
+                        grille = None
+                        if niveau:
+                            grille = GrilleTarifaire.objects.filter(
+                                ecole=ecole, niveau=niveau, annee_scolaire=annee_nouvelle
+                            ).first()
+
+                        # Montants depuis la grille (ou 0 si pas de grille)
+                        fi = Decimal(str(grille.frais_reinscription or 0)) if grille else Decimal('0')
+                        t1 = Decimal(str(grille.tranche_1 or 0)) if grille else Decimal('0')
+                        t2 = Decimal(str(grille.tranche_2 or 0)) if grille else Decimal('0')
+                        t3 = Decimal(str(grille.tranche_3 or 0)) if grille else Decimal('0')
+
+                        EcheancierPaiement.objects.create(
+                            eleve=eleve,
+                            annee_scolaire=annee_nouvelle,
+                            frais_inscription_du=fi,
+                            tranche_1_due=t1,
+                            tranche_2_due=t2,
+                            tranche_3_due=t3,
+                            # Paiements remis à zéro
+                            frais_inscription_paye=Decimal('0'),
+                            tranche_1_payee=Decimal('0'),
+                            tranche_2_payee=Decimal('0'),
+                            tranche_3_payee=Decimal('0'),
+                            # Dates d'échéance par défaut
+                            date_echeance_inscription=_date_type(annee_debut, 10, 1),
+                            date_echeance_tranche_1=_date_type(annee_fin, 1, 15),
+                            date_echeance_tranche_2=_date_type(annee_fin, 3, 15),
+                            date_echeance_tranche_3=_date_type(annee_fin, 5, 15),
+                            statut='A_PAYER',
+                            cree_par=request.user,
+                        )
+                        resultats['echeanciers_crees'] += 1
+                    except Exception as exc:
+                        logger.warning(f"Échéancier non créé pour {eleve}: {exc}")
+                        resultats['erreurs'].append(f"Échéancier {eleve}: {exc}")
+
     except Exception as e:
         logger.error(f"Erreur création nouvelle année: {e}", exc_info=True)
         messages.error(request, f"Erreur lors de la création : {e}")
@@ -589,6 +677,8 @@ def nouvelle_annee_creer(request):
     msg_parts = []
     if resultats['classes_creees']:
         msg_parts.append(f"{resultats['classes_creees']} classe(s) créée(s)")
+    if resultats['configs_paiement_creees']:
+        msg_parts.append(f"{resultats['configs_paiement_creees']} config(s) paiement copiée(s)")
     if resultats['grilles_creees']:
         msg_parts.append(f"{resultats['grilles_creees']} grille(s) tarifaire(s) copiée(s)")
     if resultats['classes_notes_creees']:
@@ -597,6 +687,8 @@ def nouvelle_annee_creer(request):
         msg_parts.append(f"{resultats['eleves_passes']} élève(s) passé(s) en classe supérieure")
     if resultats['eleves_conserves']:
         msg_parts.append(f"{resultats['eleves_conserves']} élève(s) conservé(s) dans leur classe")
+    if resultats['echeanciers_crees']:
+        msg_parts.append(f"{resultats['echeanciers_crees']} échéancier(s) de paiement créé(s)")
 
     messages.success(
         request,
