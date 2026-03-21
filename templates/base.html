@@ -315,6 +315,12 @@
                                 <i class="fas fa-users me-1"></i>Élèves
                             </button>
                             <ul class="dropdown-menu">
+                                {% if annee_active %}
+                                <li><a class="dropdown-item disabled py-1" style="font-size:.8rem;opacity:.7;">
+                                    <i class="fas fa-calendar-alt me-1"></i>Année : <strong>{{ annee_active }}</strong>
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                {% endif %}
                                 <li><a class="dropdown-item" href="{% url 'eleves:liste_eleves' %}">
                                     <i class="fas fa-users text-primary me-1"></i>Liste des élèves
                                 </a></li>
@@ -512,11 +518,6 @@
                 </ul>
             </div>
 
-            {% if annee_active and user.is_authenticated %}
-            <a href="{% url 'eleves:gestion_annees' %}" class="btn btn-sm btn-outline-light ms-2 d-none d-lg-inline-flex align-items-center" title="Année scolaire active — Cliquer pour changer">
-                <i class="fas fa-calendar-alt me-1"></i>{{ annee_active }}
-            </a>
-            {% endif %}
         </div>
     </nav>
 
