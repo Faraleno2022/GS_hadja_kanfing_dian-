@@ -265,6 +265,9 @@ LOGGING = {
         'file': {'level': 'INFO', 'class': 'logging.FileHandler', 'filename': LOGS_DIR / 'django.log', 'formatter': 'verbose'},
         'console': {'class': 'logging.StreamHandler', 'formatter': 'verbose'},
     },
+    'loggers': {
+        'django.request': {'handlers': ['file', 'console'], 'level': 'ERROR', 'propagate': True},
+    },
     'root': {'handlers': ['console', 'file'], 'level': 'INFO'},
 }
 

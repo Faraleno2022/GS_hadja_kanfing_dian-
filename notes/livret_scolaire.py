@@ -2056,40 +2056,45 @@ def _calculer_orientation(parcours):
 @login_required
 def livret_scolaire_selection(request):
     """Page de selection."""
-    ecole = user_school(request.user)
-    if not ecole:
-        messages.error(request, "Aucune ecole associee a votre compte.")
+    try:
+        ecole = user_school(request.user)
+        if not ecole:
+            messages.error(request, "Aucune ecole associee a votre compte.")
+            return redirect('notes:tableau_bord')
+
+        from eleves.utils_annee import get_annee_active
+        annee_active = get_annee_active(request, ecole)
+
+        classes = Classe.objects.filter(ecole=ecole)
+        if annee_active:
+            classes = classes.filter(annee_scolaire=annee_active)
+        classes = classes.order_by('niveau', 'nom')
+
+        classe_id = request.GET.get('classe_id')
+        eleves = []
+        classe_selected = None
+        if classe_id:
+            try:
+                classe_selected = classes.get(pk=classe_id)
+                eleves = Eleve.objects.filter(
+                    classe=classe_selected, statut='ACTIF'
+                ).order_by('nom', 'prenom')
+            except Classe.DoesNotExist:
+                pass
+
+        context = {
+            'ecole': ecole,
+            'classes': classes,
+            'classe_selected': classe_selected,
+            'eleves': eleves,
+            'annee_active': annee_active,
+            'titre_page': 'Livrets Scolaires',
+        }
+        return render(request, 'notes/livret_scolaire_selection.html', context)
+    except Exception as e:
+        logger.error(f"Erreur livret_scolaire_selection: {e}", exc_info=True)
+        messages.error(request, f"Erreur: {e}")
         return redirect('notes:tableau_bord')
-
-    from eleves.utils_annee import get_annee_active
-    annee_active = get_annee_active(request, ecole)
-
-    classes = Classe.objects.filter(ecole=ecole)
-    if annee_active:
-        classes = classes.filter(annee_scolaire=annee_active)
-    classes = classes.order_by('niveau', 'nom')
-
-    classe_id = request.GET.get('classe_id')
-    eleves = []
-    classe_selected = None
-    if classe_id:
-        try:
-            classe_selected = classes.get(pk=classe_id)
-            eleves = Eleve.objects.filter(
-                classe=classe_selected, statut='ACTIF'
-            ).order_by('nom', 'prenom')
-        except Classe.DoesNotExist:
-            pass
-
-    context = {
-        'ecole': ecole,
-        'classes': classes,
-        'classe_selected': classe_selected,
-        'eleves': eleves,
-        'annee_active': annee_active,
-        'titre_page': 'Livrets Scolaires',
-    }
-    return render(request, 'notes/livret_scolaire_selection.html', context)
 
 
 @login_required
