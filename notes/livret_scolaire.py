@@ -602,6 +602,332 @@ def _draw_half_page(c, x, y, w, h, ecole, entry, eleve, page_number):
 
 
 # ==============================================================================
+#  PAGES SPECIALES DU DEPLIANT
+# ==============================================================================
+
+def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
+    """Dessine la couverture (page 1) sur une demi-page GAUCHE."""
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setLineWidth(1.5)
+    c.rect(x, y, w, h)
+
+    # Fond bleu
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.rect(x + 1, y + 1, w - 2, h - 2, fill=1, stroke=0)
+
+    pad = 10
+    cx = x + w / 2
+    top = y + h
+
+    # Logo
+    if logo:
+        try:
+            c.drawImage(logo, cx - 25, top - 70, 50, 50,
+                        preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+
+    # Titre
+    c.setFillColor(colors.white)
+    c.setFont('Helvetica-Bold', 16)
+    c.drawCentredString(cx, top - 90, "LIVRET SCOLAIRE")
+
+    c.setFont('Helvetica', 8)
+    ty = top - 110
+    c.drawCentredString(cx, ty, "REPUBLIQUE DE GUINEE")
+    ty -= 10
+    c.drawCentredString(cx, ty, "Ministere de l'Enseignement Pre-Universitaire")
+    ty -= 10
+    c.drawCentredString(cx, ty, "et de l'Alphabetisation")
+    ty -= 10
+    c.setFont('Helvetica-Oblique', 7)
+    c.drawCentredString(cx, ty, "Travail - Justice - Solidarite")
+    ty -= 18
+
+    # Ecole
+    c.setFont('Helvetica-Bold', 10)
+    c.drawCentredString(cx, ty, _s(ecole.nom))
+    ty -= 14
+
+    c.setFont('Helvetica', 7)
+    for label, val in [
+        ("IRE/DEV", ecole.ire), ("DPE/DCE", ecole.dpe),
+        ("DSEE", ecole.desee), ("Adresse", ecole.adresse),
+        ("Tel", ecole.telephone),
+    ]:
+        if val:
+            c.drawCentredString(cx, ty, f"{label}: {_s(val)}")
+            ty -= 10
+    ty -= 10
+
+    # Cadre eleve
+    box_w = w - 2 * pad
+    box_h = 90
+    box_x = x + pad
+    box_y = ty - box_h
+    c.setStrokeColor(colors.white)
+    c.setLineWidth(1.5)
+    c.rect(box_x, box_y, box_w, box_h)
+
+    c.setFont('Helvetica-Bold', 11)
+    c.drawCentredString(cx, box_y + box_h - 18,
+                        f"{_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.setFont('Helvetica', 8)
+    c.drawCentredString(cx, box_y + box_h - 32, f"Matricule: {eleve.matricule}")
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawCentredString(cx, box_y + box_h - 44, f"Ne(e) le {dn}  a {lieu}")
+    sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
+    c.drawCentredString(cx, box_y + box_h - 56, f"Sexe: {sexe_txt}")
+    c.setFont('Helvetica', 7)
+    c.drawCentredString(cx, box_y + box_h - 70,
+                        f"Parcours : {len(parcours)} annee(s)")
+
+    # Numero de page
+    c.setFont('Helvetica', 7)
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
+
+
+def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
+    """Dessine la fiche de sante (derniere page du depliant) sur une demi-page DROITE."""
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y, w, h)
+
+    pad = 6
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y + h
+
+    # Titre
+    cy = top - 15
+    c.setFont('Helvetica-Bold', 10)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "FICHE DE SANTE DE L'ELEVE")
+
+    cy -= 5
+    c.setLineWidth(0.5)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    # Infos generales
+    cy -= 16
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.black)
+    c.drawString(lx, cy, f"Nom et Prenom : {_s(eleve.nom)} {_s(eleve.prenom)}")
+
+    cy -= 14
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    c.drawString(lx, cy, f"Date de naissance : {dn}")
+    c.drawString(lx + w * 0.5, cy, f"Sexe : {'M' if getattr(eleve, 'sexe', '') == 'M' else 'F'}")
+
+    # Tableau de sante
+    cy -= 18
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "Etat de sante general")
+
+    cy -= 5
+    fields = [
+        ("Groupe sanguin", "............"),
+        ("Allergies connues", "............................................"),
+        ("Maladies chroniques", "............................................"),
+        ("Traitements en cours", "............................................"),
+        ("Vaccinations a jour", "Oui ......    Non ......"),
+        ("Handicap / Deficience", "............................................"),
+        ("Porte des lunettes", "Oui ......    Non ......"),
+        ("Observations medicales", "............................................"),
+    ]
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    for label, val in fields:
+        cy -= 14
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(lx, cy, f"{label} :")
+        c.setFont('Helvetica', 6.5)
+        c.drawString(lx + w * 0.35, cy, val)
+
+    # Personne a contacter en cas d'urgence
+    cy -= 22
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "Personne a contacter en cas d'urgence")
+
+    urgence_fields = [
+        ("Nom et Prenom", "............................................"),
+        ("Lien de parente", "............................................"),
+        ("Telephone", "............................................"),
+        ("Adresse", "............................................"),
+    ]
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    for label, val in urgence_fields:
+        cy -= 14
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(lx, cy, f"{label} :")
+        c.setFont('Helvetica', 6.5)
+        c.drawString(lx + w * 0.30, cy, val)
+
+    # Tableau suivi annuel
+    cy -= 22
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "Suivi medical annuel")
+
+    cy -= 5
+    suivi_header = ['Annee', 'Taille', 'Poids', 'Observations', 'Visa Medical']
+    suivi_data = [suivi_header]
+    for _ in range(4):
+        suivi_data.append(['', '', '', '', ''])
+
+    col_w_s = [w * 0.15, w * 0.12, w * 0.12, w * 0.35, w * 0.20]
+    diff_s = w - 2 * pad - sum(col_w_s)
+    col_w_s[-1] += diff_s
+    rh_s = 16
+    table_s = Table(suivi_data, colWidths=col_w_s, rowHeights=[rh_s] * len(suivi_data))
+    table_s.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 5.5),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+    ]))
+    th_s = rh_s * len(suivi_data)
+    table_s.wrapOn(c, w - 2 * pad, th_s + 10)
+    table_s.drawOn(c, lx, cy - th_s)
+
+    # Numero de page
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+
+
+def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
+    """Dessine les renseignements des parents (page 2 du depliant)."""
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y, w, h)
+
+    pad = 6
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y + h
+
+    # Titre
+    cy = top - 15
+    c.setFont('Helvetica-Bold', 10)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "RENSEIGNEMENTS SUR LES PARENTS")
+
+    cy -= 5
+    c.setLineWidth(0.5)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    # Infos eleve recap
+    cy -= 16
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.black)
+    c.drawString(lx, cy, f"Eleve : {_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.drawString(lx + w * 0.5, cy, f"Matricule : {eleve.matricule}")
+
+    # ------- PERE / Responsable principal -------
+    cy -= 22
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "PERE / RESPONSABLE PRINCIPAL")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.line(lx, cy, rx, cy)
+
+    resp1 = getattr(eleve, 'responsable_principal', None)
+
+    pere_fields = [
+        ("Nom et Prenom", f"{_s(resp1.nom)} {_s(resp1.prenom)}" if resp1 else "............................................"),
+        ("Lien de parente", _s(resp1.get_relation_display()) if resp1 else "............................................"),
+        ("Profession", _s(resp1.profession) if resp1 and resp1.profession else "............................................"),
+        ("Telephone", _s(resp1.telephone) if resp1 else "............................................"),
+        ("Adresse", _s(resp1.adresse) if resp1 else "............................................"),
+        ("Email", _s(resp1.email) if resp1 and resp1.email else "............................................"),
+    ]
+
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    for label, val in pere_fields:
+        cy -= 14
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(lx, cy, f"{label} :")
+        c.setFont('Helvetica', 6.5)
+        c.drawString(lx + w * 0.28, cy, val)
+
+    # ------- MERE / Responsable secondaire -------
+    cy -= 22
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "MERE / RESPONSABLE SECONDAIRE")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx, cy, rx, cy)
+
+    resp2 = getattr(eleve, 'responsable_secondaire', None)
+
+    mere_fields = [
+        ("Nom et Prenom", f"{_s(resp2.nom)} {_s(resp2.prenom)}" if resp2 else "............................................"),
+        ("Lien de parente", _s(resp2.get_relation_display()) if resp2 else "............................................"),
+        ("Profession", _s(resp2.profession) if resp2 and resp2.profession else "............................................"),
+        ("Telephone", _s(resp2.telephone) if resp2 else "............................................"),
+        ("Adresse", _s(resp2.adresse) if resp2 else "............................................"),
+    ]
+
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    for label, val in mere_fields:
+        cy -= 14
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(lx, cy, f"{label} :")
+        c.setFont('Helvetica', 6.5)
+        c.drawString(lx + w * 0.28, cy, val)
+
+    # ------- SITUATION FAMILIALE -------
+    cy -= 22
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "ADRESSE ET SITUATION FAMILIALE")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.line(lx, cy, rx, cy)
+
+    sit_fields = [
+        ("Adresse de l'eleve", "............................................"),
+        ("Quartier / Secteur", "............................................"),
+        ("Ville", "............................................"),
+        ("Nombre de freres/soeurs", "............................................"),
+        ("Rang dans la fratrie", "............................................"),
+        ("Vit avec", "Pere ......  Mere ......  Tuteur ......"),
+        ("Observations", "............................................"),
+    ]
+
+    c.setFont('Helvetica', 6.5)
+    c.setFillColor(colors.black)
+    for label, val in sit_fields:
+        cy -= 14
+        c.setFont('Helvetica-Bold', 6.5)
+        c.drawString(lx, cy, f"{label} :")
+        c.setFont('Helvetica', 6.5)
+        c.drawString(lx + w * 0.35, cy, val)
+
+    # Numero de page
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+
+
+# ==============================================================================
 #  COLLECTE DES DONNEES DU PARCOURS
 # ==============================================================================
 
@@ -785,128 +1111,28 @@ def _collecter_parcours_eleve(eleve, ecole):
 #  GENERATION PDF COMPLETE
 # ==============================================================================
 
-def _generer_livret_pdf(eleve, ecole, parcours):
-    """Genere le PDF du livret scolaire complet.
-    Format: Paysage A4, deux niveaux par page GAUCHE/DROITE, numerotation par demi-page.
-    """
-    buffer = io.BytesIO()
-    width, height = landscape(A4)  # 842 x 595
-    c = canvas.Canvas(buffer, pagesize=landscape(A4))
-    c.setTitle(f"Livret Scolaire - {_s(eleve.nom)} {_s(eleve.prenom)}")
+def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number):
+    """Dessine la page de synthese/rapport final sur une demi-page."""
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y_base, w, h)
 
-    margin = 10
-    gap = 6  # Espace entre les deux moities
-    half_w = (width - 2 * margin - gap) / 2
-    usable_h = height - 2 * margin
+    pad = 6
+    lx = x + pad
+    cx = x + w / 2
+    top = y_base + h
+    usable_w = w - 2 * pad
 
-    page_counter = 0  # Numerotation des demi-pages
-
-    # === PAGE DE COUVERTURE ===
-    page_counter += 1
+    # Titre
+    cy = top - 15
+    c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.HexColor('#003d82'))
-    c.rect(0, 0, width, height, fill=1)
+    c.drawCentredString(cx, cy, "ANALYSE ET RAPPORT FINAL")
 
-    logo = _get_logo_reader(ecole)
-    if logo:
-        try:
-            c.drawImage(logo, width / 2 - 40, height - 150, 80, 80,
-                        preserveAspectRatio=True, mask='auto')
-        except Exception:
-            pass
-
-    c.setFillColor(colors.white)
-    c.setFont('Helvetica-Bold', 24)
-    c.drawCentredString(width / 2, height - 185, "LIVRET SCOLAIRE")
-
-    c.setFont('Helvetica', 11)
-    y = height - 215
-    c.drawCentredString(width / 2, y, "REPUBLIQUE DE GUINEE")
-    y -= 15
-    c.drawCentredString(width / 2, y, "Ministere de l'Enseignement Pre-Universitaire")
-    y -= 15
-    c.drawCentredString(width / 2, y, "et de l'Alphabetisation")
-    y -= 15
-    c.setFont('Helvetica-Oblique', 10)
-    c.drawCentredString(width / 2, y, "Travail - Justice - Solidarite")
-    y -= 30
-
-    c.setFont('Helvetica-Bold', 14)
-    c.drawCentredString(width / 2, y, _s(ecole.nom))
-    y -= 20
-
-    c.setFont('Helvetica', 10)
-    for label, val in [
-        ("IRE/DEV", ecole.ire), ("DPE/DCE", ecole.dpe),
-        ("DSEE", ecole.desee), ("Adresse", ecole.adresse),
-        ("Tel", ecole.telephone),
-    ]:
-        if val:
-            c.drawCentredString(width / 2, y, f"{label}: {_s(val)}")
-            y -= 15
-    y -= 15
-
-    # Cadre eleve
-    box_w, box_h = 400, 110
-    box_x = (width - box_w) / 2
-    box_y = y - box_h
-    c.setStrokeColor(colors.white)
-    c.setLineWidth(2)
-    c.rect(box_x, box_y, box_w, box_h)
-
-    c.setFont('Helvetica-Bold', 14)
-    c.drawCentredString(width / 2, box_y + box_h - 25,
-                        f"{_s(eleve.nom)} {_s(eleve.prenom)}")
-    c.setFont('Helvetica', 11)
-    c.drawCentredString(width / 2, box_y + box_h - 45, f"Matricule: {eleve.matricule}")
-    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
-    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
-    c.drawCentredString(width / 2, box_y + box_h - 60, f"Ne(e) le {dn}  a {lieu}")
-    sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
-    c.drawCentredString(width / 2, box_y + box_h - 75, f"Sexe: {sexe_txt}")
-    c.setFont('Helvetica', 9)
-    c.drawCentredString(width / 2, box_y + box_h - 92,
-                        f"Parcours : {len(parcours)} annee(s)")
-
-    c.setFont('Helvetica', 8)
-    c.drawCentredString(width / 2, 15, f"-{page_counter}-")
-    c.showPage()
-
-    # === PAGES DU PARCOURS (2 niveaux par page : GAUCHE / DROITE) ===
-    i = 0
-    while i < len(parcours):
-        # Demi-page GAUCHE
-        page_counter += 1
-        left_x = margin
-        _draw_half_page(c, left_x, margin, half_w, usable_h,
-                        ecole, parcours[i], eleve, page_counter)
-
-        # Demi-page DROITE
-        i += 1
-        if i < len(parcours):
-            page_counter += 1
-            right_x = margin + half_w + gap
-            _draw_half_page(c, right_x, margin, half_w, usable_h,
-                            ecole, parcours[i], eleve, page_counter)
-            i += 1
-        else:
-            # Droite vide : cadre pointille
-            right_x = margin + half_w + gap
-            c.setStrokeColor(colors.HexColor('#cccccc'))
-            c.setDash(3, 3)
-            c.rect(right_x, margin, half_w, usable_h)
-            c.setDash()
-
-        c.showPage()
-
-    # === PAGE DE SYNTHESE / RAPPORT FINAL ===
-    page_counter += 1
-    c.setFont('Helvetica-Bold', 14)
-    c.setFillColor(colors.HexColor('#003d82'))
-    c.drawCentredString(width / 2, height - 35, "ANALYSE ET RAPPORT FINAL DU PARCOURS")
-
-    c.setFont('Helvetica', 9)
+    cy -= 12
+    c.setFont('Helvetica', 6.5)
     c.setFillColor(colors.black)
-    c.drawCentredString(width / 2, height - 52,
+    c.drawCentredString(cx, cy,
                         f"Eleve : {_s(eleve.nom)} {_s(eleve.prenom)}"
                         f"  -  Matricule : {eleve.matricule}")
 
@@ -918,16 +1144,15 @@ def _generer_livret_pdf(eleve, ecole, parcours):
             cycles_data[cycle] = []
         cycles_data[cycle].append(p)
 
-    usable_w = width - 2 * margin
-    y = height - 75
+    cy -= 14
     for cycle_key, cycle_entries in cycles_data.items():
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
-        c.setFont('Helvetica-Bold', 10)
+        c.setFont('Helvetica-Bold', 7)
         c.setFillColor(colors.HexColor('#003d82'))
-        c.drawString(margin + 10, y, cycle_label)
-        y -= 16
+        c.drawString(lx, cy, cycle_label)
+        cy -= 10
 
-        synth_data = [['Annee', 'Classe', 'Moyenne Annuelle', 'Classement', 'Observation']]
+        synth_data = [['Annee', 'Classe', 'Moy. Ann.', 'Classement', 'Obs.']]
         for p in cycle_entries:
             moy_txt = f"{p['moyenne_annuelle']:.2f}/{p['sur']}" if p['moyenne_annuelle'] else '-'
             seuil = 5.0 if p['sur'] == 10 else 10.0
@@ -946,66 +1171,170 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         if moyennes_cycle:
             moy_cycle = round(sum(moyennes_cycle) / len(moyennes_cycle), 2)
             sur_cycle = cycle_entries[0]['sur']
-            synth_data.append(['', 'MOYENNE DU CYCLE', f'{moy_cycle:.2f}/{sur_cycle}', '', ''])
+            synth_data.append(['', 'MOY. CYCLE', f'{moy_cycle:.2f}/{sur_cycle}', '', ''])
 
-        col_w = [usable_w * 0.15, usable_w * 0.25, usable_w * 0.20,
+        col_w = [usable_w * 0.16, usable_w * 0.24, usable_w * 0.20,
                  usable_w * 0.20, usable_w * 0.20]
-        rh = 15
+        rh = 13
         table = Table(synth_data, colWidths=col_w, rowHeights=[rh] * len(synth_data))
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+            ('FONTSIZE', (0, 0), (-1, -1), 5.5),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#555555')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#555555')),
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8eef5')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ]))
         th = rh * len(synth_data)
-        table.wrapOn(c, usable_w, th + 10)
-        table.drawOn(c, margin + 10, y - th)
-        y -= th + 18
-
-        if y < 120:
-            c.setFont('Helvetica', 8)
-            c.drawCentredString(width / 2, 5, f"-{page_counter}-")
-            c.showPage()
-            page_counter += 1
-            y = height - 40
+        table.wrapOn(c, usable_w, th + 5)
+        table.drawOn(c, lx, cy - th)
+        cy -= th + 10
 
     # ORIENTATION
-    y -= 8
-    c.setFont('Helvetica-Bold', 11)
+    cy -= 4
+    c.setFont('Helvetica-Bold', 7)
     c.setFillColor(colors.HexColor('#003d82'))
-    c.drawString(margin + 10, y, "PROPOSITION D'ORIENTATION AUTOMATIQUE")
-    y -= 18
+    c.drawString(lx, cy, "PROPOSITION D'ORIENTATION")
+    cy -= 10
 
     orientation = _calculer_orientation(parcours)
-    c.setFont('Helvetica', 8.5)
+    c.setFont('Helvetica', 5.5)
     c.setFillColor(colors.black)
     for line in orientation:
-        c.drawString(margin + 20, y, line)
-        y -= 13
+        if cy < y_base + 55:
+            break
+        c.drawString(lx + 4, cy, line)
+        cy -= 9
 
-    # Signatures finales
-    y -= 18
-    c.setFont('Helvetica-Bold', 9)
-    c.drawString(margin + 10, y, "Le Directeur / Proviseur :")
-    c.drawString(width / 2, y, "Le Censeur :")
-    y -= 14
-    c.setFont('Helvetica', 8)
-    c.drawString(margin + 10, y, f"Nom: {_s(ecole.directeur) if ecole.directeur else ''}")
+    # Signatures
+    sig_y = y_base + 30
+    c.setFont('Helvetica-Bold', 6.5)
+    c.setFillColor(colors.black)
+    c.drawString(lx, sig_y, "Le Directeur / Proviseur :")
+    c.drawString(cx, sig_y, "Le Censeur :")
+    sig_y -= 10
+    c.setFont('Helvetica', 6)
+    c.drawString(lx, sig_y, f"Nom: {_s(ecole.directeur) if ecole.directeur else ''}")
     if ecole.censeur:
-        c.drawString(width / 2, y, f"Nom: {_s(ecole.censeur)}")
-    y -= 20
-    c.drawString(margin + 10, y, "Signature et cachet :")
-    c.drawString(width / 2, y, "Signature :")
+        c.drawString(cx, sig_y, f"Nom: {_s(ecole.censeur)}")
+    sig_y -= 12
+    c.drawString(lx, sig_y, "Signature et cachet :")
+    c.drawString(cx, sig_y, "Signature :")
 
-    c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#333333'))
-    c.drawCentredString(width / 2, 5, f"-{page_counter}-")
+    # Numero de page
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
+
+
+def _generer_livret_pdf(eleve, ecole, parcours):
+    """Genere le PDF du livret scolaire complet en format DEPLIANT.
+    Format: Paysage A4, deux demi-pages GAUCHE/DROITE par feuille.
+
+    Structure du depliant :
+      Feuille 1 : GAUCHE = Couverture  |  DROITE = Fiche de sante
+      Feuille 2 : GAUCHE = Renseignements parents  |  DROITE = 1er niveau scolaire
+      Feuilles suivantes : niveaux scolaires (2 par page)
+      Derniere demi-page : Analyse et rapport final + Orientation
+    """
+    buffer = io.BytesIO()
+    width, height = landscape(A4)  # 842 x 595
+    c = canvas.Canvas(buffer, pagesize=landscape(A4))
+    c.setTitle(f"Livret Scolaire - {_s(eleve.nom)} {_s(eleve.prenom)}")
+
+    margin = 10
+    gap = 6  # Espace entre les deux moities
+    half_w = (width - 2 * margin - gap) / 2
+    usable_h = height - 2 * margin
+
+    page_counter = 0  # Numerotation des demi-pages
+    logo = _get_logo_reader(ecole)
+
+    # =====================================================================
+    # FEUILLE 1 : Couverture (GAUCHE) + Fiche de sante (DROITE)
+    # =====================================================================
+    left_x = margin
+    right_x = margin + half_w + gap
+
+    page_counter += 1
+    _draw_cover_half(c, left_x, margin, half_w, usable_h,
+                     ecole, eleve, parcours, logo, page_counter)
+
+    page_counter += 1
+    _draw_fiche_sante_half(c, right_x, margin, half_w, usable_h,
+                           eleve, page_counter)
+
+    c.showPage()
+
+    # =====================================================================
+    # FEUILLE 2 : Renseignements parents (GAUCHE) + 1er parcours (DROITE)
+    # =====================================================================
+    page_counter += 1
+    _draw_renseignements_parents_half(c, left_x, margin, half_w, usable_h,
+                                     eleve, page_counter)
+
+    parcours_idx = 0
+    if parcours_idx < len(parcours):
+        page_counter += 1
+        _draw_half_page(c, right_x, margin, half_w, usable_h,
+                        ecole, parcours[parcours_idx], eleve, page_counter)
+        parcours_idx += 1
+    else:
+        # Droite vide
+        c.setStrokeColor(colors.HexColor('#cccccc'))
+        c.setDash(3, 3)
+        c.rect(right_x, margin, half_w, usable_h)
+        c.setDash()
+
+    c.showPage()
+
+    # =====================================================================
+    # FEUILLES SUIVANTES : Niveaux scolaires (2 par page GAUCHE/DROITE)
+    # =====================================================================
+    while parcours_idx < len(parcours):
+        # Demi-page GAUCHE
+        page_counter += 1
+        _draw_half_page(c, left_x, margin, half_w, usable_h,
+                        ecole, parcours[parcours_idx], eleve, page_counter)
+        parcours_idx += 1
+
+        # Demi-page DROITE
+        if parcours_idx < len(parcours):
+            page_counter += 1
+            _draw_half_page(c, right_x, margin, half_w, usable_h,
+                            ecole, parcours[parcours_idx], eleve, page_counter)
+            parcours_idx += 1
+        else:
+            # Derniere droite = synthese
+            page_counter += 1
+            _draw_synthese_half(c, right_x, margin, half_w, usable_h,
+                                ecole, eleve, parcours, page_counter)
+            c.showPage()
+            c.save()
+            buffer.seek(0)
+            return buffer
+
+        c.showPage()
+
+    # =====================================================================
+    # DERNIERE FEUILLE : Synthese / Rapport final
+    # (Si on arrive ici, il faut une nouvelle page avec synthese a gauche)
+    # =====================================================================
+    page_counter += 1
+    _draw_synthese_half(c, left_x, margin, half_w, usable_h,
+                        ecole, eleve, parcours, page_counter)
+
+    # Droite vide
+    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.setDash(3, 3)
+    c.rect(right_x, margin, half_w, usable_h)
+    c.setDash()
+
+    c.showPage()
 
     c.save()
     buffer.seek(0)
