@@ -1,14 +1,9 @@
 """
-Livret Scolaire — Génération PDF du parcours complet d'un élève.
+Livret Scolaire - Generation PDF du parcours complet d'un eleve.
+Format officiel guineen : paysage A4, deux niveaux par page.
 
-Format : Paysage (landscape), deux niveaux par page (page divisée en deux),
-imprimable recto-verso, bien numéroté.
-
-Structure du livret :
-1. Page de couverture (infos ministère, école, élève)
-2. Pour chaque année/classe : tableau des notes par semestre/trimestre + moyenne annuelle
-3. Analyse et rapport de fin de cycle (maternelle, primaire, collège, lycée)
-4. Page finale : rapport global + proposition d'orientation automatique
+Primaire : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy. Annuelle | Observations
+College/Lycee : Matieres | Coef | 1er Sem (Moy Cours | Compo | Moy Sem) | 2eme Sem (idem)
 """
 
 import io
@@ -40,38 +35,38 @@ from utilisateurs.utils import filter_by_user_school, user_school
 
 logger = logging.getLogger(__name__)
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  CONSTANTES
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  CONSTANTES & COULEURS
+# ==============================================================================
 
-MINISTERE = "RÉPUBLIQUE DE GUINÉE\nMinistère de l'Enseignement Pré-Universitaire\net de l'Alphabétisation"
-DEVISE = "Travail — Justice — Solidarité"
+BLEU_FONCE = colors.HexColor('#003d82')
+BLEU_CLAIR = colors.HexColor('#e8eef5')
+GRIS_TEXTE = colors.HexColor('#333333')
+GRIS_LIGNE = colors.HexColor('#555555')
+GRIS_CLAIR = colors.HexColor('#f5f5f5')
+GRIS_SEP   = colors.HexColor('#cccccc')
 
 CYCLE_LABELS = {
     'MATERNELLE': 'Cycle Maternelle',
-    'PRIMAIRE': 'Cycle Primaire',
-    'COLLEGE': 'Cycle Collège',
-    'LYCEE': 'Cycle Lycée / Terminale',
+    'PRIMAIRE':   'Cycle Primaire',
+    'COLLEGE':    'Cycle College',
+    'LYCEE':      'Cycle Lycee / Terminale',
 }
 
-# Ordre des matières standard
-MATIERES_PRIMAIRE = [
-    'Dictée et Questions', 'Rédaction', 'Mathématique', 'Histoire',
-    'Géographie', 'Instruction Civique', 'Physique', 'Chimie', 'Biologie',
-]
-MATIERES_SECONDAIRE = [
-    'Dictée et Questions', 'Rédaction', 'Mathématique', 'Histoire',
-    'Géographie', 'Instruction Civique', 'Physique', 'Chimie', 'Biologie',
-    'Anglais', 'Philosophie', 'Éducation Physique',
-]
 
+# ==============================================================================
+#  UTILITAIRES
+# ==============================================================================
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  UTILITAIRES PDF
-# ══════════════════════════════════════════════════════════════════════════════
+def _s(val):
+    """Convertit en string safe pour Helvetica (ASCII)."""
+    if val is None:
+        return ''
+    return str(val)
+
 
 def _get_logo_reader(ecole):
-    """Retourne un ImageReader pour le logo de l'école, ou None."""
+    """Retourne un ImageReader pour le logo de l'ecole, ou None."""
     try:
         if ecole.logo and hasattr(ecole.logo, 'path'):
             return ImageReader(ecole.logo.path)
@@ -80,286 +75,498 @@ def _get_logo_reader(ecole):
     return None
 
 
-def _draw_header_half(c, x, y, w, h, ecole, classe_nom, annee_scolaire, eleve, page_label=''):
-    """Dessine l'en-tête d'une demi-page (pour un niveau du livret)."""
-    # Cadre
-    c.setStrokeColor(colors.HexColor('#003d82'))
-    c.setLineWidth(1.5)
+def _fmt(v):
+    """Formate une note pour affichage."""
+    if v is None:
+        return ''
+    try:
+        return f'{float(v):.2f}'
+    except (ValueError, TypeError):
+        return ''
+
+
+# ==============================================================================
+#  DESSIN D'UNE DEMI-PAGE PRIMAIRE
+#  Format exact : IRE/DEV ... DPE/DCE
+#  Ecole Primaire de ...
+#  Date d'entree / Venant de / References certificat
+#  [Classe : X] [Annee scolaire]
+#  Maitre : ...
+#  Tableau sans Coef : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Ann | Obs
+#  Moyenne Annuelle /20  Classement /eleves
+#  Passe en classe superieure    Remis a ses parents
+#  Appreciations Generales | Date | Signature du Directeur
+# ==============================================================================
+
+def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve):
+    """Dessine une demi-page format PRIMAIRE."""
+    classe_nom = entry['classe_nom']
+    annee = entry['annee_scolaire']
+    matieres = entry['matieres_data']
+    sur = entry['sur']
+    moy_ann = entry['moyenne_annuelle']
+    rang = entry['rang']
+    passe_en = entry['passe_en']
+
+    # Cadre principal
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.0)
     c.rect(x, y, w, h)
 
-    # Ligne séparatrice en-tête
-    header_h = 55
-    c.setLineWidth(0.5)
-    c.line(x, y + h - header_h, x + w, y + h - header_h)
+    top = y + h
+    pad = 4
+    lx = x + pad
+    rx = x + w - pad
 
-    # Ministère (gauche)
-    c.setFont('Helvetica', 6)
-    c.setFillColor(colors.HexColor('#333333'))
-    text_x = x + 5
-    text_y = y + h - 12
-    for line in MINISTERE.split('\n'):
-        c.drawString(text_x, text_y, line.strip())
-        text_y -= 8
-    c.setFont('Helvetica-Oblique', 5)
-    c.drawString(text_x, text_y, DEVISE)
-
-    # IRE / DPE / DSEE (droite)
-    right_x = x + w - 5
-    c.setFont('Helvetica', 6)
-    info_y = y + h - 12
-    if ecole.ire:
-        c.drawRightString(right_x, info_y, f"IRE/DEV: {ecole.ire}")
-        info_y -= 8
-    if ecole.dpe:
-        c.drawRightString(right_x, info_y, f"DPE/DCE: {ecole.dpe}")
-        info_y -= 8
-    if ecole.desee:
-        c.drawRightString(right_x, info_y, f"DSEE: {ecole.desee}")
-        info_y -= 8
-
-    # Nom du collège / école (centre)
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
-    c.drawCentredString(x + w / 2, y + h - 15, f"Collège: {ecole.nom}")
-
-    # Classe et année
-    c.setFont('Helvetica-Bold', 9)
+    # --- EN-TETE : IRE/DEV ........... DPE/DCE ........... ---
+    c.setFont('Helvetica-Bold', 6)
     c.setFillColor(colors.black)
-    c.drawCentredString(x + w / 2, y + h - 30, f"Classe : {classe_nom}")
-    c.setFont('Helvetica', 7)
-    c.drawCentredString(x + w / 2, y + h - 40, f"Année scolaire : {annee_scolaire}")
+    ey = top - 10
+    c.drawString(lx, ey, f"IRE/DEV : {_s(ecole.ire)}")
+    c.drawRightString(rx, ey, f"DPE/DCE : {_s(ecole.dpe)}")
 
-    # Élève info (sous l'en-tête)
-    info_y = y + h - header_h - 12
-    c.setFont('Helvetica', 6.5)
-    c.drawString(x + 5, info_y, f"Élève: {eleve.nom} {eleve.prenom}")
-    c.drawString(x + w / 2, info_y, f"Né(e) le: {eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '—'}")
-    info_y -= 10
-    c.drawString(x + 5, info_y, f"Matricule: {eleve.matricule}")
-    if hasattr(eleve, 'lieu_naissance') and eleve.lieu_naissance:
-        c.drawString(x + w / 2, info_y, f"Lieu: {eleve.lieu_naissance}")
+    ey -= 9
+    c.setFont('Helvetica-Bold', 6.5)
+    c.drawString(lx, ey, f"Ecole Primaire de : {_s(ecole.nom)}")
+    if ecole.desee:
+        c.setFont('Helvetica', 5.5)
+        c.drawRightString(rx, ey, f"DSEE : {_s(ecole.desee)}")
 
-    return info_y - 5  # Retourne la position Y après l'en-tête
+    ey -= 8
+    c.setFont('Helvetica', 5.5)
+    c.drawString(lx, ey, "Date d'entree : ........................")
+    c.drawString(lx + w * 0.4, ey, "Venant de : ........................")
 
+    ey -= 8
+    c.drawString(lx, ey, "References du Certificat de transfert : ........................")
 
-def _draw_notes_table(c, x, y_start, w, matieres_data, periodes, sur=20, is_semestre=True):
-    """Dessine le tableau des notes pour un niveau.
+    # Ligne separatrice
+    ey -= 4
+    c.setLineWidth(0.5)
+    c.line(x, ey, x + w, ey)
 
-    matieres_data: list of dict {
-        'nom': str, 'coef': int/float,
-        'sem1_moy': float|None, 'sem1_compo': float|None, 'sem1_moyenne': float|None,
-        'sem2_moy': float|None, 'sem2_compo': float|None, 'sem2_moyenne': float|None,
-    }
-    """
-    # Construire les données du tableau
-    if is_semestre:
-        header1 = ['', '', '1er Semestre', '', '', '2ème Semestre', '', '']
-        header2 = ['Matières', 'Coef',
-                    'Moyenne\nCours', 'Compo', 'Moyenne\nSemestr.',
-                    'Moyenne\nCours', 'Compo', 'Moyenne\nSemestr.']
-    else:
-        header1 = ['', '', '1er Trimestre', '', '2ème Trimestre', '', '3ème Trimestre', '']
-        header2 = ['Matières', 'Coef',
-                    'Moy.', 'Compo',
-                    'Moy.', 'Compo',
-                    'Moy.', 'Compo']
+    # --- ENCADRE CLASSE / ANNEE SCOLAIRE ---
+    ey -= 14
+    # Cadre Classe
+    cls_w = w * 0.45
+    cls_h = 13
+    c.setLineWidth(1.0)
+    c.rect(lx, ey, cls_w, cls_h)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawCentredString(lx + cls_w / 2, ey + 3, f"Classe : {_s(classe_nom)}")
 
-    data = [header1, header2]
+    # Annee scolaire a droite
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(lx + cls_w + 10, ey + 3, f"Annee scolaire : {annee}")
 
-    def fmt(v):
-        if v is None:
-            return '—'
-        return f'{float(v):.2f}'
+    # --- MAITRE ---
+    ey -= 12
+    c.setFont('Helvetica-Bold', 6)
+    c.drawString(lx, ey, "Maitre : ..................................................................")
 
-    for m in matieres_data:
-        if is_semestre:
-            row = [
-                m['nom'], str(m.get('coef', '')),
-                fmt(m.get('sem1_moy')), fmt(m.get('sem1_compo')), fmt(m.get('sem1_moyenne')),
-                fmt(m.get('sem2_moy')), fmt(m.get('sem2_compo')), fmt(m.get('sem2_moyenne')),
-            ]
-        else:
-            row = [
-                m['nom'], str(m.get('coef', '')),
-                fmt(m.get('t1_moy')), fmt(m.get('t1_compo')),
-                fmt(m.get('t2_moy')), fmt(m.get('t2_compo')),
-                fmt(m.get('t3_moy')), fmt(m.get('t3_compo')),
-            ]
-        data.append(row)
+    ey -= 5
+    c.setLineWidth(0.3)
+    c.line(x, ey, x + w, ey)
 
-    # Colonnes
-    if is_semestre:
-        col_widths = [w * 0.22, w * 0.06,
-                      w * 0.10, w * 0.09, w * 0.11,
-                      w * 0.10, w * 0.09, w * 0.11]
-    else:
-        col_widths = [w * 0.22, w * 0.06,
-                      w * 0.10, w * 0.10,
-                      w * 0.10, w * 0.10,
-                      w * 0.10, w * 0.10]
+    # --- TABLEAU DES NOTES (SANS COEF) ---
+    # Colonnes : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Annuelle | Observations
+    header = ['Matieres', '1er\nTrimestre', '2eme\nTrimestre', '3eme\nTrimestre',
+              'Moyenne\nAnnuelle', 'Observations']
+    col_ratios = [0.26, 0.13, 0.13, 0.13, 0.14, 0.21]
+    col_widths = [w * r for r in col_ratios]
+    # Ajuster
+    diff = w - sum(col_widths)
+    col_widths[-1] += diff
 
-    # Ajuster pour être sûr que ça fait pile w
-    total = sum(col_widths)
-    if abs(total - w) > 1:
-        diff = w - total
-        col_widths[0] += diff
+    data = [header]
+    for m in matieres:
+        t1 = m.get('t1_moy')
+        t2 = m.get('t2_moy')
+        t3 = m.get('t3_moy')
+        vals = [v for v in [t1, t2, t3] if v is not None]
+        m_ann = round(sum(float(v) for v in vals) / len(vals), 2) if vals else None
 
-    row_height = 11
-    table = Table(data, colWidths=col_widths, rowHeights=[row_height] * len(data))
+        seuil = 5.0 if sur == 10 else 10.0
+        obs = ''
+        if m_ann is not None:
+            if sur == 10:
+                obs = 'TB' if m_ann >= 8 else 'B' if m_ann >= 7 else 'AB' if m_ann >= 6 else 'P' if m_ann >= seuil else 'I'
+            else:
+                obs = 'TB' if m_ann >= 16 else 'B' if m_ann >= 14 else 'AB' if m_ann >= 12 else 'P' if m_ann >= seuil else 'I'
 
-    style = TableStyle([
+        data.append([
+            _s(m['nom']), _fmt(t1), _fmt(t2), _fmt(t3), _fmt(m_ann), obs
+        ])
+
+    row_h = 9
+    nb_rows = len(data)
+    table = Table(data, colWidths=col_widths, rowHeights=[row_h + 3] + [row_h] * (nb_rows - 1))
+
+    style_cmds = [
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 0), (-1, -1), 5.5),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, 0), 5),
+        ('FONTSIZE', (0, 1), (-1, -1), 5.5),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#666666')),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#e8eef5')),
-        ('ROWBACKGROUNDS', (0, 2), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-        # Fusionner les en-têtes de période
-        ('SPAN', (2, 0), (4, 0) if is_semestre else (3, 0)),
-    ])
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 0), BLEU_CLAIR),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+    ]
+    table.setStyle(TableStyle(style_cmds))
 
-    if is_semestre:
-        style.add('SPAN', (5, 0), (7, 0))
-    else:
-        style.add('SPAN', (4, 0), (5, 0))
-        style.add('SPAN', (6, 0), (7, 0))
-
-    table.setStyle(style)
-
-    table_height = row_height * len(data)
-    table_y = y_start - table_height
-    table.wrapOn(c, w, table_height + 20)
+    table_h = (row_h + 3) + row_h * (nb_rows - 1)
+    table_y = ey - table_h - 2
+    table.wrapOn(c, w, table_h + 10)
     table.drawOn(c, x, table_y)
 
-    return table_y
-
-
-def _draw_footer_half(c, x, y, w, moyenne_annuelle, classement_info, ecole, pass_info=''):
-    """Dessine le pied (moyenne annuelle, classement, signature) d'une demi-page."""
-    c.setFont('Helvetica-Bold', 7)
-    c.setFillColor(colors.HexColor('#003d82'))
-
-    moy_txt = f'{float(moyenne_annuelle):.2f}' if moyenne_annuelle else '—'
-    c.drawString(x + 5, y, f"Moyenne Annuelle : {moy_txt}")
-
-    if classement_info:
-        c.drawString(x + w * 0.35, y, f"Classement : {classement_info}")
-
-    # Passe en classe / Appréciation
-    c.setFont('Helvetica', 6.5)
+    # --- PIED : Moyenne Annuelle /20   Classement /eleves ---
+    fy = table_y - 10
+    c.setFont('Helvetica-Bold', 6)
     c.setFillColor(colors.black)
-    y -= 10
-    if pass_info:
-        c.drawString(x + 5, y, f"Passe en classe : {pass_info}")
+    moy_txt = _fmt(moy_ann) if moy_ann else '......'
+    c.drawString(lx, fy, f"Moyenne Annuelle : {moy_txt} /{sur}")
+    c.drawString(lx + w * 0.4, fy, f"Classement : {_s(rang) if rang else '......'}")
+    c.drawRightString(rx, fy, "eleves")
 
-    # Signatures
-    y -= 12
+    fy -= 9
+    c.setFont('Helvetica', 5.5)
+    passe_txt = _s(passe_en) if passe_en else '..................'
+    c.drawString(lx, fy, f"Passe en classe superieure : {passe_txt}")
+    c.drawString(lx + w * 0.6, fy, "Remis a ses parents :")
+
+    # --- APPRECIATIONS GENERALES | Date | Signature du Directeur ---
+    fy -= 5
+    c.setLineWidth(0.5)
+    c.line(x, fy, x + w, fy)
+
+    fy -= 10
+    # 3 colonnes
+    col1_w = w * 0.40
+    col2_w = w * 0.20
+    col3_w = w * 0.40
+    c.setFont('Helvetica-Bold', 5.5)
+    c.drawString(lx, fy, "Appreciations Generales :")
+    c.drawString(lx + col1_w, fy, "Date :")
+    c.drawString(lx + col1_w + col2_w, fy, "Prenoms, Nom et")
+    fy -= 7
+    c.drawString(lx + col1_w + col2_w, fy, "Signature du Directeur")
+
+    # Lignes verticales separatrices
+    c.setLineWidth(0.3)
+    c.line(x + col1_w, fy + 17, x + col1_w, fy - 2)
+    c.line(x + col1_w + col2_w, fy + 17, x + col1_w + col2_w, fy - 2)
+
+
+# ==============================================================================
+#  DESSIN D'UNE DEMI-PAGE COLLEGE / LYCEE
+#  Format exact : IRE/DEV ... DPE/DCE
+#  College ...
+#  Date d'entree / Venant de / Reference
+#  [Classe : X] [Annee scolaire]
+#  Tableau avec Coef : Matieres | Coef | 1er Sem (Moy Cours|Compo|Moy Sem) | 2eme Sem (idem)
+#  Moyenne Annuelle /20  Classement /eleves
+#  Passe en classe superieure    Remis a ses parents
+#  Appreciations | Prenoms, Nom et Signature du Principal
+# ==============================================================================
+
+def _draw_half_college(c, x, y, w, h, ecole, entry, eleve):
+    """Dessine une demi-page format COLLEGE/LYCEE (semestre)."""
+    classe_nom = entry['classe_nom']
+    annee = entry['annee_scolaire']
+    matieres = entry['matieres_data']
+    sur = entry['sur']
+    moy_ann = entry['moyenne_annuelle']
+    rang = entry['rang']
+    passe_en = entry['passe_en']
+
+    # Cadre principal
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.0)
+    c.rect(x, y, w, h)
+
+    top = y + h
+    pad = 4
+    lx = x + pad
+    rx = x + w - pad
+
+    # --- EN-TETE ---
+    c.setFont('Helvetica-Bold', 6)
+    c.setFillColor(colors.black)
+    ey = top - 10
+    c.drawString(lx, ey, f"IRE/DEV : {_s(ecole.ire)}")
+    c.drawRightString(rx, ey, f"DPE/DCE : {_s(ecole.dpe)}")
+
+    ey -= 9
+    c.setFont('Helvetica-Bold', 6.5)
+    c.drawString(lx, ey, f"College : {_s(ecole.nom)}")
+    if ecole.desee:
+        c.setFont('Helvetica', 5.5)
+        c.drawRightString(rx, ey, f"DSEE : {_s(ecole.desee)}")
+
+    ey -= 8
+    c.setFont('Helvetica', 5.5)
+    c.drawString(lx, ey, "Date d'entree : .................")
+    c.drawString(lx + w * 0.35, ey, "Venant de : .................")
+    ey -= 8
+    c.drawString(lx, ey, "Reference : .................")
+
+    # Ligne separatrice
+    ey -= 4
+    c.setLineWidth(0.5)
+    c.line(x, ey, x + w, ey)
+
+    # --- ENCADRE CLASSE / ANNEE SCOLAIRE ---
+    ey -= 14
+    cls_w = w * 0.40
+    cls_h = 13
+    c.setLineWidth(1.0)
+    c.rect(lx, ey, cls_w, cls_h)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawCentredString(lx + cls_w / 2, ey + 3, f"Classe : {_s(classe_nom)}")
+
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(lx + cls_w + 10, ey + 3, f"Annee scolaire : {annee}")
+
+    ey -= 5
+    c.setLineWidth(0.3)
+    c.line(x, ey, x + w, ey)
+
+    # --- TABLEAU DES NOTES (AVEC COEF, SEMESTRES) ---
+    # En-tete sur 2 lignes :
+    # Ligne 1 : Matieres | Coef | 1er Semestre (span 3) | 2eme Semestre (span 3)
+    # Ligne 2 : (vide)  | (vide)| Moy Cours | Compo | Moy Sem | Moy Cours | Compo | Moy Sem
+    header1 = ['Matieres', 'Coef', '1er Semestre', '', '', '2eme Semestre', '', '']
+    header2 = ['', '', 'Moyenne\nCours', 'Compo', 'Moyenne\nSemestre',
+               'Moyenne\nCours', 'Compo', 'Moyenne\nSemestre']
+
+    col_ratios = [0.20, 0.05, 0.11, 0.09, 0.11, 0.11, 0.09, 0.11]
+    col_widths = [w * r for r in col_ratios]
+    # Ajuster le reste
+    diff_w = w - sum(col_widths)
+    col_widths[0] += diff_w
+
+    data = [header1, header2]
+    for m in matieres:
+        row = [
+            _s(m['nom']),
+            str(m.get('coef', '')),
+            _fmt(m.get('sem1_moy')),
+            _fmt(m.get('sem1_compo')),
+            _fmt(m.get('sem1_moyenne')),
+            _fmt(m.get('sem2_moy')),
+            _fmt(m.get('sem2_compo')),
+            _fmt(m.get('sem2_moyenne')),
+        ]
+        data.append(row)
+
+    row_h = 9
+    nb_rows = len(data)
+    row_heights = [row_h + 2, row_h + 2] + [row_h] * (nb_rows - 2)
+    table = Table(data, colWidths=col_widths, rowHeights=row_heights)
+
+    style_cmds = [
+        ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
+        ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 5),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+        ('BACKGROUND', (0, 0), (-1, 1), BLEU_CLAIR),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        # SPAN pour fusionner les en-tetes de semestre (ligne 0)
+        ('SPAN', (0, 0), (0, 1)),   # Matieres
+        ('SPAN', (1, 0), (1, 1)),   # Coef
+        ('SPAN', (2, 0), (4, 0)),   # 1er Semestre
+        ('SPAN', (5, 0), (7, 0)),   # 2eme Semestre
+    ]
+    table.setStyle(TableStyle(style_cmds))
+
+    table_h = sum(row_heights)
+    table_y = ey - table_h - 2
+    table.wrapOn(c, w, table_h + 10)
+    table.drawOn(c, x, table_y)
+
+    # --- PIED ---
+    fy = table_y - 10
+    c.setFont('Helvetica-Bold', 6)
+    c.setFillColor(colors.black)
+    moy_txt = _fmt(moy_ann) if moy_ann else '......'
+    c.drawString(lx, fy, f"Moyenne Annuelle : {moy_txt} /{sur}")
+    c.drawString(lx + w * 0.4, fy, f"Classement : {_s(rang) if rang else '......'}")
+    c.drawRightString(rx, fy, "eleves")
+
+    fy -= 9
+    c.setFont('Helvetica', 5.5)
+    passe_txt = _s(passe_en) if passe_en else '..................'
+    c.drawString(lx, fy, f"Passe en classe superieure : {passe_txt}")
+    c.drawString(lx + w * 0.6, fy, "Remis a ses parents :")
+
+    # --- APPRECIATIONS | Signature du Principal ---
+    fy -= 5
+    c.setLineWidth(0.5)
+    c.line(x, fy, x + w, fy)
+
+    fy -= 10
+    col1_w = w * 0.40
+    col2_w = w * 0.20
+    col3_w = w * 0.40
+    c.setFont('Helvetica-Bold', 5.5)
+    c.drawString(lx, fy, "Appreciations :")
+    c.drawString(lx + col1_w, fy, "Date :")
+    c.drawString(lx + col1_w + col2_w, fy, "Prenoms, Nom et")
+    fy -= 7
+    c.drawString(lx + col1_w + col2_w, fy, "Signature du Principal")
+
+    c.setLineWidth(0.3)
+    c.line(x + col1_w, fy + 17, x + col1_w, fy - 2)
+    c.line(x + col1_w + col2_w, fy + 17, x + col1_w + col2_w, fy - 2)
+
+
+# ==============================================================================
+#  DESSIN D'UNE DEMI-PAGE MATERNELLE
+# ==============================================================================
+
+def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve):
+    """Dessine une demi-page format MATERNELLE."""
+    classe_nom = entry['classe_nom']
+    annee = entry['annee_scolaire']
+
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1.0)
+    c.rect(x, y, w, h)
+
+    top = y + h
+    pad = 4
+    lx = x + pad
+    rx = x + w - pad
+
+    # En-tete
+    c.setFont('Helvetica-Bold', 6)
+    c.setFillColor(colors.black)
+    ey = top - 10
+    c.drawString(lx, ey, f"IRE/DEV : {_s(ecole.ire)}")
+    c.drawRightString(rx, ey, f"DPE/DCE : {_s(ecole.dpe)}")
+
+    ey -= 9
+    c.setFont('Helvetica-Bold', 6.5)
+    c.drawString(lx, ey, f"Ecole Maternelle : {_s(ecole.nom)}")
+
+    ey -= 4
+    c.setLineWidth(0.5)
+    c.line(x, ey, x + w, ey)
+
+    # Classe / Annee
+    ey -= 14
+    cls_w = w * 0.45
+    cls_h = 13
+    c.setLineWidth(1.0)
+    c.rect(lx, ey, cls_w, cls_h)
+    c.setFont('Helvetica-Bold', 8)
+    c.drawCentredString(lx + cls_w / 2, ey + 3, f"Classe : {_s(classe_nom)}")
+    c.setFont('Helvetica-Bold', 7)
+    c.drawString(lx + cls_w + 10, ey + 3, f"Annee scolaire : {annee}")
+
+    # Info eleve
+    ey -= 14
     c.setFont('Helvetica', 6)
-    c.drawString(x + 5, y, "Appréciation(s) :")
-    c.drawString(x + w * 0.4, y, "Nom et")
-    y -= 8
-    c.drawString(x + w * 0.4, y, "Signature du Principal :")
-    c.drawString(x + w * 0.7, y, "Parents / Élèves :")
+    c.drawString(lx, ey, f"Eleve: {_s(eleve.nom)} {_s(eleve.prenom)}")
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    c.drawString(lx + w * 0.45, ey, f"Ne(e) le: {dn}")
 
-    y -= 3
-    c.setStrokeColor(colors.HexColor('#cccccc'))
-    c.setDash(2, 2)
-    c.line(x + w * 0.4, y, x + w * 0.65, y)
-    c.line(x + w * 0.7, y, x + w * 0.95, y)
-    c.setDash()
+    ey -= 14
+    c.setFont('Helvetica-Oblique', 6.5)
+    c.drawString(lx, ey, "Evaluation qualitative (appreciations) - Voir bulletins trimestriels")
 
-    return y - 5
+    # Signature
+    ey -= 25
+    c.setFont('Helvetica-Bold', 5.5)
+    c.drawString(lx, ey, "Appreciations Generales :")
+    c.drawString(lx + w * 0.5, ey, "Signature du Directeur :")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  COLLECTE DES DONNÉES DU PARCOURS
-# ══════════════════════════════════════════════════════════════════════════════
+def _draw_half_page(c, x, y, w, h, ecole, entry, eleve):
+    """Dispatch vers le bon format selon le niveau."""
+    niveau = entry['niveau']
+    if niveau == 'MATERNELLE':
+        _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve)
+    elif niveau in ('COLLEGE', 'LYCEE'):
+        _draw_half_college(c, x, y, w, h, ecole, entry, eleve)
+    else:
+        _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve)
+
+
+# ==============================================================================
+#  COLLECTE DES DONNEES DU PARCOURS
+# ==============================================================================
 
 def _collecter_parcours_eleve(eleve, ecole):
-    """Collecte tout le parcours d'un élève : toutes les années, classes, notes.
-
-    Retourne une liste ordonnée par année :
-    [
-        {
-            'annee_scolaire': '2020-2021',
-            'classe_nom': '7ème Année',
-            'niveau': 'COLLEGE',
-            'cycle': 'COLLEGE',
-            'sur': 20,
-            'is_semestre': True,
-            'matieres_data': [...],
-            'moyenne_annuelle': 12.5,
-            'rang': '3ème/35',
-            'passe_en': '8ème Année',
-        },
-        ...
-    ]
-    """
+    """Collecte tout le parcours d'un eleve : toutes les annees, classes, notes."""
     parcours = []
-
-    # Chercher toutes les classes où l'élève a été (via HistoriqueEleve et classes)
-    # 1) Classe actuelle
-    # 2) Historique des changements de classe
     annees_classes = {}
 
     # Via l'historique
-    historiques = HistoriqueEleve.objects.filter(
-        eleve=eleve,
-        action='CHANGEMENT_CLASSE'
-    ).order_by('date_action')
+    try:
+        historiques = HistoriqueEleve.objects.filter(
+            eleve=eleve,
+            action='CHANGEMENT_CLASSE'
+        ).order_by('date_action')
 
-    for h in historiques:
-        # Extraire année et classe de la description
-        desc = h.description or ''
-        # Pattern: "Passage nouvelle année XXXX-XXXX: CLASSE → CLASSE"
-        match_annee = re.search(r'(\d{4}-\d{4})', desc)
-        if match_annee:
-            annee = match_annee.group(1)
-            # Chercher le nom de la classe d'origine
-            match_classe = re.search(r':\s*(.+?)\s*→', desc)
-            if match_classe and annee not in annees_classes:
-                prev_annee_parts = annee.split('-')
-                try:
-                    prev_annee = f"{int(prev_annee_parts[0])-1}-{int(prev_annee_parts[1])-1}"
-                except Exception:
-                    prev_annee = annee
-                annees_classes[prev_annee] = match_classe.group(1).strip()
+        for h in historiques:
+            desc = h.description or ''
+            match_annee = re.search(r'(\d{4}-\d{4})', desc)
+            if match_annee:
+                annee = match_annee.group(1)
+                # Chercher le nom de la classe d'origine (fleche ASCII ou Unicode)
+                match_classe = re.search(r':\s*(.+?)\s*(?:->|\u2192)', desc)
+                if match_classe and annee not in annees_classes:
+                    prev_annee_parts = annee.split('-')
+                    try:
+                        prev_annee = f"{int(prev_annee_parts[0])-1}-{int(prev_annee_parts[1])-1}"
+                    except Exception:
+                        prev_annee = annee
+                    annees_classes[prev_annee] = match_classe.group(1).strip()
+    except Exception as e:
+        logger.warning(f"Erreur lecture historique eleve {eleve.pk}: {e}")
 
     # Classe actuelle
     if eleve.classe:
         annees_classes[eleve.classe.annee_scolaire] = eleve.classe.nom
 
-    # Chercher aussi via les Classement existants
-    classements_eleve = Classement.objects.filter(eleve=eleve).order_by('annee_scolaire')
-    for cl in classements_eleve:
-        if cl.annee_scolaire not in annees_classes:
-            annees_classes[cl.annee_scolaire] = cl.classe.nom if cl.classe else '?'
+    # Via les Classements
+    try:
+        classements_eleve = Classement.objects.filter(eleve=eleve).order_by('annee_scolaire')
+        for cl in classements_eleve:
+            if cl.annee_scolaire not in annees_classes:
+                annees_classes[cl.annee_scolaire] = cl.classe.nom if cl.classe else '?'
+    except Exception as e:
+        logger.warning(f"Erreur lecture classements eleve {eleve.pk}: {e}")
 
-    # Pour chaque année trouvée, collecter les données
+    # Pour chaque annee, collecter les donnees
     for annee_scolaire in sorted(annees_classes.keys()):
         classe_nom = annees_classes[annee_scolaire]
         niveau = detecter_niveau_scolaire(classe_nom)
         sur = 10 if niveau == 'PRIMAIRE' else 20
         is_semestre = niveau in ('COLLEGE', 'LYCEE')
 
-        # Trouver la ClasseNote correspondante
+        # Trouver la ClasseNote
+        search_nom = classe_nom.split('(')[0].strip()[:15]
         classe_note = ClasseNote.objects.filter(
-            ecole=ecole,
-            annee_scolaire=annee_scolaire,
-            nom__icontains=classe_nom.split('(')[0].strip()[:15]  # Recherche partielle
+            ecole=ecole, annee_scolaire=annee_scolaire,
+            nom__icontains=search_nom
         ).first()
 
         if not classe_note:
-            # Essai plus large
             classe_note = ClasseNote.objects.filter(
-                ecole=ecole,
-                annee_scolaire=annee_scolaire,
+                ecole=ecole, annee_scolaire=annee_scolaire,
             ).first()
 
         matieres_data = []
@@ -368,7 +575,9 @@ def _collecter_parcours_eleve(eleve, ecole):
         passe_en = ''
 
         if classe_note:
-            matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+            matieres = MatiereNote.objects.filter(
+                classe=classe_note, actif=True
+            ).order_by('nom')
 
             for mat in matieres:
                 m_data = {'nom': mat.nom, 'coef': float(mat.coefficient)}
@@ -423,11 +632,13 @@ def _collecter_parcours_eleve(eleve, ecole):
                         sem2_moyenne = compo_s2_val
 
                     m_data.update({
-                        'sem1_moy': moy_s1, 'sem1_compo': compo_s1_val, 'sem1_moyenne': sem1_moyenne,
-                        'sem2_moy': moy_s2, 'sem2_compo': compo_s2_val, 'sem2_moyenne': sem2_moyenne,
+                        'sem1_moy': moy_s1, 'sem1_compo': compo_s1_val,
+                        'sem1_moyenne': sem1_moyenne,
+                        'sem2_moy': moy_s2, 'sem2_compo': compo_s2_val,
+                        'sem2_moyenne': sem2_moyenne,
                     })
                 else:
-                    # Trimestres pour le primaire
+                    # Trimestres
                     for i, (t_label, mois_list) in enumerate([
                         ('t1', ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']),
                         ('t2', ['JANVIER', 'FEVRIER', 'MARS']),
@@ -448,7 +659,16 @@ def _collecter_parcours_eleve(eleve, ecole):
                             moy_t = round(sum(vals) / len(vals), 2) if vals else None
 
                         compo_t_val = float(compo_t.note) if compo_t and compo_t.note is not None else None
-                        m_data[f'{t_label}_moy'] = moy_t
+
+                        final_t = None
+                        if moy_t is not None and compo_t_val is not None:
+                            final_t = round(moy_t * 0.4 + compo_t_val * 0.6, 2)
+                        elif moy_t is not None:
+                            final_t = moy_t
+                        elif compo_t_val is not None:
+                            final_t = compo_t_val
+
+                        m_data[f'{t_label}_moy'] = final_t
                         m_data[f'{t_label}_compo'] = compo_t_val
 
                 matieres_data.append(m_data)
@@ -461,23 +681,25 @@ def _collecter_parcours_eleve(eleve, ecole):
 
             if classement_annuel:
                 moyenne_annuelle = float(classement_annuel.moyenne_generale)
-                rang_info = classement_annuel.rang_formate or f"{classement_annuel.rang}ème/{classement_annuel.effectif}"
+                rang_info = classement_annuel.rang_formate or f"{classement_annuel.rang}eme/{classement_annuel.effectif}"
             else:
-                # Calculer depuis les classements de période
                 cls_periodes = Classement.objects.filter(
                     eleve=eleve, classe=classe_note, annee_scolaire=annee_scolaire,
                 ).exclude(periode__icontains='ANNUEL')
                 if cls_periodes.exists():
-                    moyennes = [float(c.moyenne_generale) for c in cls_periodes if c.moyenne_generale]
+                    moyennes = [float(cp.moyenne_generale) for cp in cls_periodes if cp.moyenne_generale]
                     if moyennes:
                         moyenne_annuelle = round(sum(moyennes) / len(moyennes), 2)
 
-        # Déterminer la classe suivante depuis l'historique
-        from eleves.views_nouvelle_annee import PROGRESSION_CLASSES, PROGRESSION_LABELS, _normaliser
-        base_norm = _normaliser(classe_nom.split('(')[0].strip())
-        next_base = PROGRESSION_CLASSES.get(base_norm)
-        if next_base:
-            passe_en = PROGRESSION_LABELS.get(next_base, next_base)
+        # Classe suivante
+        try:
+            from eleves.views_nouvelle_annee import PROGRESSION_CLASSES, PROGRESSION_LABELS, _normaliser
+            base_norm = _normaliser(classe_nom.split('(')[0].strip())
+            next_base = PROGRESSION_CLASSES.get(base_norm)
+            if next_base:
+                passe_en = PROGRESSION_LABELS.get(next_base, next_base)
+        except Exception:
+            pass
 
         parcours.append({
             'annee_scolaire': annee_scolaire,
@@ -495,29 +717,26 @@ def _collecter_parcours_eleve(eleve, ecole):
     return parcours
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  GÉNÉRATION PDF
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  GENERATION PDF COMPLETE
+# ==============================================================================
 
 def _generer_livret_pdf(eleve, ecole, parcours):
-    """Génère le PDF du livret scolaire complet.
-
-    Format: Paysage A4, deux niveaux par page (haut/bas), numéroté.
-    """
+    """Genere le PDF du livret scolaire complet."""
     buffer = io.BytesIO()
     width, height = landscape(A4)  # 842 x 595
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
-    c.setTitle(f"Livret Scolaire — {eleve.nom} {eleve.prenom}")
+    c.setTitle(f"Livret Scolaire - {_s(eleve.nom)} {_s(eleve.prenom)}")
 
-    margin = 15
+    margin = 12
     usable_w = width - 2 * margin
     usable_h = height - 2 * margin
-    half_h = usable_h / 2 - 5  # Espace entre les deux moitiés
+    half_h = usable_h / 2 - 4
     page_num = 0
 
-    # ─── PAGE DE COUVERTURE ───────────────────────────────────────────────
+    # === PAGE DE COUVERTURE ===
     page_num += 1
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(BLEU_FONCE)
     c.rect(0, 0, width, height, fill=1)
 
     # Logo
@@ -529,43 +748,46 @@ def _generer_livret_pdf(eleve, ecole, parcours):
         except Exception:
             pass
 
-    # Texte couverture
     c.setFillColor(colors.white)
-    c.setFont('Helvetica-Bold', 22)
+    c.setFont('Helvetica-Bold', 24)
     c.drawCentredString(width / 2, height - 180, "LIVRET SCOLAIRE")
 
-    c.setFont('Helvetica', 12)
+    c.setFont('Helvetica', 11)
     y = height - 210
-    for line in MINISTERE.split('\n'):
-        c.drawCentredString(width / 2, y, line.strip())
-        y -= 16
+    c.drawCentredString(width / 2, y, "REPUBLIQUE DE GUINEE")
+    y -= 15
+    c.drawCentredString(width / 2, y, "Ministere de l'Enseignement Pre-Universitaire")
+    y -= 15
+    c.drawCentredString(width / 2, y, "et de l'Alphabetisation")
+    y -= 15
     c.setFont('Helvetica-Oblique', 10)
-    c.drawCentredString(width / 2, y, DEVISE)
+    c.drawCentredString(width / 2, y, "Travail - Justice - Solidarite")
     y -= 30
 
     c.setFont('Helvetica-Bold', 14)
-    c.drawCentredString(width / 2, y, ecole.nom)
+    c.drawCentredString(width / 2, y, _s(ecole.nom))
     y -= 20
 
     c.setFont('Helvetica', 10)
     if ecole.ire:
-        c.drawCentredString(width / 2, y, f"IRE/DEV: {ecole.ire}")
+        c.drawCentredString(width / 2, y, f"IRE/DEV: {_s(ecole.ire)}")
         y -= 15
     if ecole.dpe:
-        c.drawCentredString(width / 2, y, f"DPE/DCE: {ecole.dpe}")
+        c.drawCentredString(width / 2, y, f"DPE/DCE: {_s(ecole.dpe)}")
         y -= 15
     if ecole.desee:
-        c.drawCentredString(width / 2, y, f"DSEE: {ecole.desee}")
+        c.drawCentredString(width / 2, y, f"DSEE: {_s(ecole.desee)}")
         y -= 15
     if ecole.adresse:
-        c.drawCentredString(width / 2, y, f"Adresse: {ecole.adresse}")
+        c.drawCentredString(width / 2, y, f"Adresse: {_s(ecole.adresse)}")
         y -= 15
     if ecole.telephone:
         c.drawCentredString(width / 2, y, f"Tel: {ecole.telephone}")
-    y -= 30
+        y -= 15
+    y -= 15
 
-    # Cadre élève
-    box_w, box_h = 400, 100
+    # Cadre eleve
+    box_w, box_h = 400, 110
     box_x = (width - box_w) / 2
     box_y = y - box_h
     c.setStrokeColor(colors.white)
@@ -573,100 +795,66 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     c.rect(box_x, box_y, box_w, box_h)
 
     c.setFont('Helvetica-Bold', 14)
-    c.drawCentredString(width / 2, box_y + box_h - 25, f"{eleve.nom} {eleve.prenom}")
+    c.drawCentredString(width / 2, box_y + box_h - 25,
+                        f"{_s(eleve.nom)} {_s(eleve.prenom)}")
     c.setFont('Helvetica', 11)
-    c.drawCentredString(width / 2, box_y + box_h - 45, f"Matricule: {eleve.matricule}")
-    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '—'
-    lieu = getattr(eleve, 'lieu_naissance', '') or ''
-    c.drawCentredString(width / 2, box_y + box_h - 60, f"Né(e) le {dn}  à {lieu}")
-    c.drawCentredString(width / 2, box_y + box_h - 75, f"Sexe: {'Masculin' if eleve.sexe == 'M' else 'Féminin'}")
+    c.drawCentredString(width / 2, box_y + box_h - 45,
+                        f"Matricule: {eleve.matricule}")
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawCentredString(width / 2, box_y + box_h - 60,
+                        f"Ne(e) le {dn}  a {lieu}")
+    sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
+    c.drawCentredString(width / 2, box_y + box_h - 75, f"Sexe: {sexe_txt}")
+    c.setFont('Helvetica', 9)
+    c.drawCentredString(width / 2, box_y + box_h - 92,
+                        f"Parcours : {len(parcours)} annee(s)")
 
-    # Numéro de page
     c.setFont('Helvetica', 8)
-    c.drawCentredString(width / 2, 20, f"— {page_num} —")
-
+    c.drawCentredString(width / 2, 20, f"- {page_num} -")
     c.showPage()
 
-    # ─── PAGES DU PARCOURS (2 niveaux par page) ──────────────────────────
+    # === PAGES DU PARCOURS (2 niveaux par page) ===
     i = 0
     while i < len(parcours):
         page_num += 1
 
-        # Moitié HAUTE
-        p1 = parcours[i]
-        top_y = margin + half_h + 10  # Position Y de la moitié haute
-        top_h = half_h
+        # Moitie HAUTE
+        top_y = margin + half_h + 8
+        _draw_half_page(c, margin, top_y, usable_w, half_h, ecole, parcours[i], eleve)
 
-        content_y = _draw_header_half(
-            c, margin, top_y, usable_w, top_h,
-            ecole, p1['classe_nom'], p1['annee_scolaire'], eleve
-        )
-
-        if p1['matieres_data']:
-            table_y = _draw_notes_table(
-                c, margin + 3, content_y, usable_w - 6,
-                p1['matieres_data'], [], p1['sur'], p1['is_semestre']
-            )
-            _draw_footer_half(
-                c, margin + 3, table_y - 5, usable_w - 6,
-                p1['moyenne_annuelle'], p1['rang'], ecole, p1['passe_en']
-            )
-        elif p1['niveau'] == 'MATERNELLE':
-            c.setFont('Helvetica-Oblique', 7)
-            c.drawString(margin + 10, content_y - 15, "Evaluation qualitative (appreciations) - Voir bulletins trimestriels")
-
-        # Moitié BASSE
+        # Moitie BASSE
         i += 1
         if i < len(parcours):
-            p2 = parcours[i]
-            bot_y = margin
-            bot_h = half_h
-
-            content_y2 = _draw_header_half(
-                c, margin, bot_y, usable_w, bot_h,
-                ecole, p2['classe_nom'], p2['annee_scolaire'], eleve
-            )
-
-            if p2['matieres_data']:
-                table_y2 = _draw_notes_table(
-                    c, margin + 3, content_y2, usable_w - 6,
-                    p2['matieres_data'], [], p2['sur'], p2['is_semestre']
-                )
-                _draw_footer_half(
-                    c, margin + 3, table_y2 - 5, usable_w - 6,
-                    p2['moyenne_annuelle'], p2['rang'], ecole, p2['passe_en']
-                )
-            elif p2['niveau'] == 'MATERNELLE':
-                c.setFont('Helvetica-Oblique', 7)
-                c.drawString(margin + 10, content_y2 - 15,
-                             "Évaluation qualitative (appréciations) — Voir bulletins trimestriels")
+            _draw_half_page(c, margin, margin, usable_w, half_h, ecole, parcours[i], eleve)
             i += 1
         else:
-            # Moitié basse vide : ligne de séparation
-            c.setStrokeColor(colors.HexColor('#cccccc'))
+            # Ligne de separation pointillee
+            c.setStrokeColor(GRIS_SEP)
             c.setDash(3, 3)
-            c.line(margin, margin + half_h + 5, width - margin, margin + half_h + 5)
+            mid_y = margin + half_h + 4
+            c.line(margin, mid_y, width - margin, mid_y)
             c.setDash()
 
-        # Numéro de page
+        # Numero de page
         c.setFont('Helvetica', 8)
-        c.setFillColor(colors.HexColor('#666666'))
-        c.drawCentredString(width / 2, 8, f"— {page_num} —")
-
+        c.setFillColor(GRIS_TEXTE)
+        c.drawCentredString(width / 2, 5, f"- {page_num} -")
         c.showPage()
 
-    # ─── PAGE DE SYNTHÈSE / RAPPORT FINAL ─────────────────────────────────
+    # === PAGE DE SYNTHESE ===
     page_num += 1
-    c.setFont('Helvetica-Bold', 16)
-    c.setFillColor(colors.HexColor('#003d82'))
-    c.drawCentredString(width / 2, height - 40, "ANALYSE ET RAPPORT FINAL DU PARCOURS")
+    c.setFont('Helvetica-Bold', 14)
+    c.setFillColor(BLEU_FONCE)
+    c.drawCentredString(width / 2, height - 35, "ANALYSE ET RAPPORT FINAL DU PARCOURS")
 
-    c.setFont('Helvetica', 10)
+    c.setFont('Helvetica', 9)
     c.setFillColor(colors.black)
-    c.drawCentredString(width / 2, height - 60,
-                        f"Élève : {eleve.nom} {eleve.prenom}  —  Matricule : {eleve.matricule}")
+    c.drawCentredString(width / 2, height - 52,
+                        f"Eleve : {_s(eleve.nom)} {_s(eleve.prenom)}"
+                        f"  -  Matricule : {eleve.matricule}")
 
-    # Tableau synthèse par cycle
+    # Synthese par cycle
     cycles_data = {}
     for p in parcours:
         cycle = p['cycle']
@@ -674,90 +862,93 @@ def _generer_livret_pdf(eleve, ecole, parcours):
             cycles_data[cycle] = []
         cycles_data[cycle].append(p)
 
-    y = height - 90
+    y = height - 75
     for cycle_key, cycle_entries in cycles_data.items():
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
-        c.setFont('Helvetica-Bold', 11)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFont('Helvetica-Bold', 10)
+        c.setFillColor(BLEU_FONCE)
         c.drawString(margin + 10, y, cycle_label)
-        y -= 18
+        y -= 16
 
-        # Tableau
-        synth_data = [['Année', 'Classe', 'Moyenne Annuelle', 'Classement', 'Observation']]
+        synth_data = [['Annee', 'Classe', 'Moyenne Annuelle', 'Classement', 'Observation']]
         for p in cycle_entries:
-            moy_txt = f"{p['moyenne_annuelle']:.2f}/{p['sur']}" if p['moyenne_annuelle'] else '—'
+            moy_txt = f"{p['moyenne_annuelle']:.2f}/{p['sur']}" if p['moyenne_annuelle'] else '-'
             seuil = 5.0 if p['sur'] == 10 else 10.0
-            obs = 'Admis(e)' if p['moyenne_annuelle'] and p['moyenne_annuelle'] >= seuil else 'Non admis(e)' if p['moyenne_annuelle'] else '—'
+            if p['moyenne_annuelle'] and p['moyenne_annuelle'] >= seuil:
+                obs = 'Admis(e)'
+            elif p['moyenne_annuelle']:
+                obs = 'Non admis(e)'
+            else:
+                obs = '-'
             synth_data.append([
-                p['annee_scolaire'], p['classe_nom'], moy_txt, p['rang'] or '—', obs
+                p['annee_scolaire'], _s(p['classe_nom']),
+                moy_txt, p['rang'] or '-', obs
             ])
 
-        # Moyenne du cycle
         moyennes_cycle = [p['moyenne_annuelle'] for p in cycle_entries if p['moyenne_annuelle']]
         if moyennes_cycle:
             moy_cycle = round(sum(moyennes_cycle) / len(moyennes_cycle), 2)
             sur_cycle = cycle_entries[0]['sur']
             synth_data.append(['', 'MOYENNE DU CYCLE', f'{moy_cycle:.2f}/{sur_cycle}', '', ''])
 
-        col_w = [usable_w * 0.15, usable_w * 0.25, usable_w * 0.20, usable_w * 0.20, usable_w * 0.20]
-        table = Table(synth_data, colWidths=col_w, rowHeights=[16] * len(synth_data))
+        col_w = [usable_w * 0.15, usable_w * 0.25, usable_w * 0.20,
+                 usable_w * 0.20, usable_w * 0.20]
+        rh = 15
+        table = Table(synth_data, colWidths=col_w, rowHeights=[rh] * len(synth_data))
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTSIZE', (0, 0), (-1, -1), 7.5),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#999999')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+            ('GRID', (0, 0), (-1, -1), 0.5, GRIS_LIGNE),
+            ('BACKGROUND', (0, 0), (-1, 0), BLEU_FONCE),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8eef5')),
+            ('BACKGROUND', (0, -1), (-1, -1), BLEU_CLAIR),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f8f9fa')]),
         ]))
-        table_h = 16 * len(synth_data)
-        table.wrapOn(c, usable_w, table_h + 10)
-        table.drawOn(c, margin + 10, y - table_h)
-        y -= table_h + 20
+        th = rh * len(synth_data)
+        table.wrapOn(c, usable_w, th + 10)
+        table.drawOn(c, margin + 10, y - th)
+        y -= th + 18
 
-        if y < 100:
+        if y < 120:
             c.setFont('Helvetica', 8)
-            c.drawCentredString(width / 2, 8, f"— {page_num} —")
+            c.drawCentredString(width / 2, 5, f"- {page_num} -")
             c.showPage()
             page_num += 1
             y = height - 40
 
-    # ─── PROPOSITION D'ORIENTATION ────────────────────────────────────────
-    y -= 10
-    c.setFont('Helvetica-Bold', 12)
-    c.setFillColor(colors.HexColor('#003d82'))
+    # === ORIENTATION ===
+    y -= 8
+    c.setFont('Helvetica-Bold', 11)
+    c.setFillColor(BLEU_FONCE)
     c.drawString(margin + 10, y, "PROPOSITION D'ORIENTATION AUTOMATIQUE")
-    y -= 20
+    y -= 18
 
-    # Calculer l'orientation basée sur les moyennes
     orientation = _calculer_orientation(parcours)
-    c.setFont('Helvetica', 9)
+    c.setFont('Helvetica', 8.5)
     c.setFillColor(colors.black)
     for line in orientation:
         c.drawString(margin + 20, y, line)
-        y -= 14
+        y -= 13
 
     # Signatures finales
-    y -= 20
+    y -= 18
     c.setFont('Helvetica-Bold', 9)
     c.drawString(margin + 10, y, "Le Directeur / Proviseur :")
     c.drawString(width / 2, y, "Le Censeur :")
-    y -= 15
+    y -= 14
     c.setFont('Helvetica', 8)
-    c.drawString(margin + 10, y, f"Nom: {ecole.directeur or ''}")
+    c.drawString(margin + 10, y, f"Nom: {_s(ecole.directeur) if ecole.directeur else ''}")
     if ecole.censeur:
-        c.drawString(width / 2, y, f"Nom: {ecole.censeur}")
-    y -= 25
+        c.drawString(width / 2, y, f"Nom: {_s(ecole.censeur)}")
+    y -= 20
     c.drawString(margin + 10, y, "Signature et cachet :")
     c.drawString(width / 2, y, "Signature :")
 
-    # Numéro de page
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#666666'))
-    c.drawCentredString(width / 2, 8, f"— {page_num} —")
+    c.setFillColor(GRIS_TEXTE)
+    c.drawCentredString(width / 2, 5, f"- {page_num} -")
 
     c.save()
     buffer.seek(0)
@@ -765,9 +956,9 @@ def _generer_livret_pdf(eleve, ecole, parcours):
 
 
 def _calculer_orientation(parcours):
-    """Propose une orientation automatique basée sur le parcours."""
+    """Propose une orientation automatique basee sur le parcours."""
     if not parcours:
-        return ["Aucune donnée disponible pour proposer une orientation."]
+        return ["Aucune donnee disponible pour proposer une orientation."]
 
     derniere = parcours[-1]
     moyennes_all = [p['moyenne_annuelle'] for p in parcours if p['moyenne_annuelle']]
@@ -782,11 +973,9 @@ def _calculer_orientation(parcours):
     lines = [
         f"- Moyenne generale du parcours : {moy_globale:.2f}/{sur}",
         f"- Nombre d'annees evaluees : {len(moyennes_all)}",
-        f"- Derniere classe : {derniere['classe_nom']} ({derniere['annee_scolaire']})",
+        f"- Derniere classe : {_s(derniere['classe_nom'])} ({derniere['annee_scolaire']})",
     ]
 
-    # Analyse des forces
-    # Chercher les matières avec les meilleures moyennes dans la dernière année
     if derniere['matieres_data']:
         mats_avg = []
         for m in derniere['matieres_data']:
@@ -794,43 +983,42 @@ def _calculer_orientation(parcours):
             for key in ['sem1_moyenne', 'sem2_moyenne', 't1_moy', 't2_moy', 't3_moy']:
                 v = m.get(key)
                 if v is not None:
-                    vals.append(v)
+                    vals.append(float(v))
             if vals:
-                mats_avg.append((m['nom'], round(sum(vals) / len(vals), 2)))
+                mats_avg.append((_s(m['nom']), round(sum(vals) / len(vals), 2)))
 
         if mats_avg:
             mats_avg.sort(key=lambda x: x[1], reverse=True)
             top_3 = mats_avg[:3]
             lines.append(f"- Points forts : {', '.join(f'{n} ({v:.1f})' for n, v in top_3)}")
 
-    # Propositions
     lines.append("")
-    if moy_globale >= seuil * 1.6:  # Excellent
-        lines.append(">> ORIENTATION PROPOSEE : Filiere d'excellence - Sciences ou Lettres selon les resultats")
-        lines.append("   L'eleve presente un profil academique excellent propice aux filieres selectives.")
-    elif moy_globale >= seuil * 1.3:  # Très bien
-        lines.append(">> ORIENTATION PROPOSEE : Filiere scientifique ou litteraire selon les aptitudes")
-        lines.append("   L'eleve presente de solides capacites dans l'ensemble des disciplines.")
-    elif moy_globale >= seuil:  # Suffisant
-        lines.append(">> ORIENTATION PROPOSEE : Filiere generale avec soutien dans les matieres faibles")
-        lines.append("   L'eleve a le niveau requis mais pourrait beneficier d'un accompagnement cible.")
+    if moy_globale >= seuil * 1.6:
+        lines.append(">> ORIENTATION PROPOSEE : Filiere d'excellence - Sciences ou Lettres")
+        lines.append("   Profil academique excellent propice aux filieres selectives.")
+    elif moy_globale >= seuil * 1.3:
+        lines.append(">> ORIENTATION PROPOSEE : Filiere scientifique ou litteraire")
+        lines.append("   Solides capacites dans l'ensemble des disciplines.")
+    elif moy_globale >= seuil:
+        lines.append(">> ORIENTATION PROPOSEE : Filiere generale avec soutien cible")
+        lines.append("   Niveau requis atteint, accompagnement recommande.")
     else:
-        lines.append(">> ORIENTATION PROPOSEE : Redoublement ou filiere professionnelle recommande")
-        lines.append("   Un renforcement des acquis est necessaire avant progression.")
+        lines.append(">> ORIENTATION PROPOSEE : Redoublement ou filiere professionnelle")
+        lines.append("   Renforcement des acquis necessaire avant progression.")
 
     return lines
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 #  VUES DJANGO
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 
 @login_required
 def livret_scolaire_selection(request):
-    """Page de sélection : choisir un élève ou une classe pour générer le livret."""
+    """Page de selection : choisir un eleve ou une classe pour generer le livret."""
     ecole = user_school(request.user)
     if not ecole:
-        messages.error(request, "Aucune école associée à votre compte.")
+        messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
     from eleves.utils_annee import get_annee_active
@@ -841,14 +1029,15 @@ def livret_scolaire_selection(request):
         classes = classes.filter(annee_scolaire=annee_active)
     classes = classes.order_by('niveau', 'nom')
 
-    # Si une classe est sélectionnée, charger ses élèves
     classe_id = request.GET.get('classe_id')
     eleves = []
     classe_selected = None
     if classe_id:
         try:
             classe_selected = classes.get(pk=classe_id)
-            eleves = Eleve.objects.filter(classe=classe_selected, statut='ACTIF').order_by('nom', 'prenom')
+            eleves = Eleve.objects.filter(
+                classe=classe_selected, statut='ACTIF'
+            ).order_by('nom', 'prenom')
         except Classe.DoesNotExist:
             pass
 
@@ -865,29 +1054,33 @@ def livret_scolaire_selection(request):
 
 @login_required
 def livret_scolaire_pdf(request, eleve_id):
-    """Génère et télécharge le livret scolaire PDF d'un élève."""
+    """Genere et telecharge le livret scolaire PDF d'un eleve."""
     ecole = user_school(request.user)
     if not ecole:
-        messages.error(request, "Aucune école associée à votre compte.")
+        messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
     eleve = get_object_or_404(Eleve, pk=eleve_id)
 
-    # Sécurité : vérifier que l'élève appartient à l'école
-    if not filter_by_user_school(Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole').exists():
-        messages.error(request, "Accès non autorisé à cet élève.")
+    if not filter_by_user_school(
+        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+    ).exists():
+        messages.error(request, "Acces non autorise a cet eleve.")
         return redirect('notes:livret_scolaire')
 
     try:
         parcours = _collecter_parcours_eleve(eleve, ecole)
 
         if not parcours:
-            messages.warning(request, f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}.")
+            messages.warning(
+                request,
+                f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}."
+            )
             return redirect('notes:livret_scolaire')
 
         buffer = _generer_livret_pdf(eleve, ecole, parcours)
 
-        filename = f"Livret_Scolaire_{eleve.nom}_{eleve.prenom}.pdf"
+        filename = f"Livret_Scolaire_{_s(eleve.nom)}_{_s(eleve.prenom)}.pdf"
         response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -899,45 +1092,33 @@ def livret_scolaire_pdf(request, eleve_id):
 
 @login_required
 def livret_scolaire_classe_pdf(request, classe_id):
-    """Génère les livrets scolaires de tous les élèves d'une classe (1 PDF)."""
+    """Genere les livrets scolaires de tous les eleves d'une classe."""
     ecole = user_school(request.user)
     if not ecole:
-        messages.error(request, "Aucune école associée.")
+        messages.error(request, "Aucune ecole associee.")
         return redirect('notes:tableau_bord')
 
     classe = get_object_or_404(Classe, pk=classe_id, ecole=ecole)
-    eleves = Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('nom', 'prenom')
+    eleves_qs = Eleve.objects.filter(
+        classe=classe, statut='ACTIF'
+    ).order_by('nom', 'prenom')
 
-    if not eleves.exists():
-        messages.warning(request, f"Aucun élève actif dans la classe {classe.nom}.")
+    if not eleves_qs.exists():
+        messages.warning(request, f"Aucun eleve actif dans la classe {classe.nom}.")
         return redirect('notes:livret_scolaire')
 
-    # Générer un PDF combiné
-    from reportlab.lib.pagesizes import landscape, A4
-    buffer = io.BytesIO()
-    width, height = landscape(A4)
-    c_pdf = canvas.Canvas(buffer, pagesize=landscape(A4))
-    c_pdf.setTitle(f"Livrets Scolaires — {classe.nom}")
+    for eleve in eleves_qs:
+        try:
+            parcours = _collecter_parcours_eleve(eleve, ecole)
+            if parcours:
+                buffer = _generer_livret_pdf(eleve, ecole, parcours)
+                filename = f"Livret_{_s(classe.nom)}_{_s(eleve.nom)}.pdf"
+                response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return response
+        except Exception as e:
+            logger.error(f"Erreur livret classe pour eleve {eleve.pk}: {e}", exc_info=True)
+            continue
 
-    for idx, eleve in enumerate(eleves):
-        parcours = _collecter_parcours_eleve(eleve, ecole)
-        if parcours:
-            eleve_buffer = _generer_livret_pdf(eleve, ecole, parcours)
-            # On ne peut pas fusionner facilement avec ReportLab seul,
-            # alors on génère chaque livret séparément et on retourne le premier
-            # Pour la V1, on retourne un PDF par élève
-            pass
-
-    # V1 simplifiée : générer pour le premier élève et informer
-    # Dans une V2, on utilisera PyPDF2/PyMuPDF pour fusionner
-    first_eleve = eleves.first()
-    parcours = _collecter_parcours_eleve(first_eleve, ecole)
-    if parcours:
-        buffer = _generer_livret_pdf(first_eleve, ecole, parcours)
-        filename = f"Livrets_{classe.nom}.pdf"
-        response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
-
-    messages.warning(request, "Aucune donnée disponible.")
+    messages.warning(request, "Aucune donnee disponible.")
     return redirect('notes:livret_scolaire')
