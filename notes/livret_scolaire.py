@@ -1273,14 +1273,43 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     c.setLineWidth(0.3)
     c.line(lx, cy, rx, cy)
 
+    # Auto-remplir depuis les donnees disponibles
+    dots = "............................................"
+    # Adresse: prendre celle du responsable principal ou secondaire
+    adresse_eleve = ''
+    if resp1 and resp1.adresse:
+        adresse_eleve = _s(resp1.adresse)
+    elif resp2 and resp2.adresse:
+        adresse_eleve = _s(resp2.adresse)
+
+    # Vit avec: deduire des responsables existants
+    vit_avec = ''
+    if resp1 and resp2:
+        rel1 = resp1.relation if resp1 else ''
+        rel2 = resp2.relation if resp2 else ''
+        parts = []
+        if rel1 == 'PERE' or rel2 == 'PERE':
+            parts.append('P\u00e8re')
+        if rel1 == 'MERE' or rel2 == 'MERE':
+            parts.append('M\u00e8re')
+        if rel1 in ('TUTEUR', 'TUTRICE') or rel2 in ('TUTEUR', 'TUTRICE'):
+            parts.append('Tuteur')
+        if rel1 in ('GRAND_PERE', 'GRAND_MERE', 'ONCLE', 'TANTE'):
+            parts.append(_s(resp1.get_relation_display()))
+        if not parts and resp1:
+            parts.append(_s(resp1.get_relation_display()))
+        vit_avec = ', '.join(parts)
+    elif resp1:
+        vit_avec = _s(resp1.get_relation_display())
+
     sit_fields = [
-        ("Adresse de l'eleve", "............................................"),
-        ("Quartier / Secteur", "............................................"),
-        ("Ville", "............................................"),
-        ("Nombre de freres/soeurs", "............................................"),
-        ("Rang dans la fratrie", "............................................"),
-        ("Vit avec", "Pere ......  Mere ......  Tuteur ......"),
-        ("Observations", "............................................"),
+        ("Adresse de l'eleve", adresse_eleve if adresse_eleve else dots),
+        ("Quartier / Secteur", dots),
+        ("Ville", dots),
+        ("Nombre de freres/soeurs", dots),
+        ("Rang dans la fratrie", dots),
+        ("Vit avec", vit_avec if vit_avec else "P\u00e8re ......  M\u00e8re ......  Tuteur ......"),
+        ("Observations", dots),
     ]
 
     c.setFont('Helvetica', 8)
