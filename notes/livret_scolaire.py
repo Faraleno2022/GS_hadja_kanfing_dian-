@@ -2134,6 +2134,429 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     c.drawCentredString(cx, y + 3, f"-{page_number}-")
 
 
+# ==============================================================================
+#  FICHE D'ORIENTATION FIN DE COLLEGE (choix de serie au lycee)
+# ==============================================================================
+
+# Matieres cles pour chaque serie du lycee guineen
+_SERIES_LYCEE = {
+    'MATH': {
+        'label': 'Sciences Math\u00e9matiques',
+        'code': 'Math',
+        'couleur': '#1565c0',
+        'matieres_cles': [
+            'math', 'algebre', 'geometrie', 'arithmetique', 'statistique',
+            'physique', 'chimie', 'sciences physiques',
+        ],
+        'matieres_secondaires': [
+            'biologie', 'svt', 'informatique', 'technologie',
+        ],
+        'debouches': [
+            "Ing\u00e9nierie (civil, m\u00e9canique, \u00e9lectrique)",
+            "Informatique / Intelligence artificielle",
+            "M\u00e9decine / Pharmacie (voie scientifique)",
+            "Architecture / Urbanisme",
+            "Recherche en sciences exactes",
+            "Ecoles militaires / Polytechnique",
+        ],
+    },
+    'SE': {
+        'label': 'Sciences Exp\u00e9rimentales',
+        'code': 'SE',
+        'couleur': '#2e7d32',
+        'matieres_cles': [
+            'biologie', 'svt', 'sciences naturelles', 'sciences de la vie',
+            'chimie', 'physique', 'sciences physiques',
+        ],
+        'matieres_secondaires': [
+            'math', 'algebre', 'ecologie', 'botanique', 'zoologie',
+        ],
+        'debouches': [
+            "M\u00e9decine / Chirurgie / Dentaire",
+            "Pharmacie / Biochimie",
+            "Sage-femme / Infirmerie",
+            "Agronomie / V\u00e9t\u00e9rinaire",
+            "Biologie / Environnement",
+            "Laboratoire / Recherche biom\u00e9dicale",
+        ],
+    },
+    'SS': {
+        'label': 'Sciences Sociales',
+        'code': 'SS',
+        'couleur': '#c62828',
+        'matieres_cles': [
+            'histoire', 'geographie', 'education civique', 'instruction civique',
+            'philosophie', 'francais', 'redaction', 'dictee',
+            'litterature', 'expression',
+        ],
+        'matieres_secondaires': [
+            'anglais', 'arabe', 'espagnol', 'economie', 'sociologie', 'droit',
+        ],
+        'debouches': [
+            "Droit / Sciences juridiques",
+            "Sciences politiques / Diplomatie",
+            "Economie / Gestion / Finance",
+            "Journalisme / Communication",
+            "Enseignement (ENS / Professorat)",
+            "Administration publique / Douane",
+        ],
+    },
+}
+
+
+def _normaliser_nom_matiere(nom):
+    """Normalise le nom d'une matiere pour la comparaison."""
+    return nom.lower().replace('\u00e9', 'e').replace('\u00e8', 'e') \
+        .replace('\u00ea', 'e').replace('\u00e0', 'a').replace('\u00e7', 'c') \
+        .replace('\u00ee', 'i').replace('\u00f4', 'o').replace('\u00fb', 'u') \
+        .replace('\u00e2', 'a').replace('\u00f9', 'u')
+
+
+def _calculer_score_serie(matieres_globales, serie_config, poids_recent=1.5):
+    """Calcule le score d'adequation d'un eleve pour une serie.
+
+    matieres_globales: dict { nom_matiere_normalise: [(moy, sur, annee_index)] }
+    serie_config: config d'une serie depuis _SERIES_LYCEE
+    poids_recent: multiplicateur pour les annees recentes
+    """
+    score_total = 0.0
+    nb_matieres = 0
+    details = []  # (nom_original, moyenne_ponderee_sur20)
+
+    for nom_orig, notes_list in matieres_globales.items():
+        nom_norm = _normaliser_nom_matiere(nom_orig)
+        is_cle = any(mot in nom_norm for mot in serie_config['matieres_cles'])
+        is_secondaire = any(mot in nom_norm for mot in serie_config['matieres_secondaires'])
+
+        if not is_cle and not is_secondaire:
+            continue
+
+        # Ponderer les notes (annees recentes comptent plus)
+        total_pond = 0.0
+        total_poids = 0.0
+        for moy, sur, annee_idx in notes_list:
+            moy_20 = moy * (20.0 / sur) if sur else moy
+            # Plus l'annee est recente (index eleve), plus le poids est fort
+            poids = 1.0 + (annee_idx * 0.3)
+            total_pond += moy_20 * poids
+            total_poids += poids
+
+        if total_poids > 0:
+            avg_pond = total_pond / total_poids
+            coef = 3.0 if is_cle else 1.0
+            score_total += avg_pond * coef
+            nb_matieres += coef
+            details.append((nom_orig, round(avg_pond, 2)))
+
+    score_final = round(score_total / nb_matieres, 2) if nb_matieres > 0 else 0.0
+    details.sort(key=lambda x: x[1], reverse=True)
+    return score_final, details
+
+
+def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, page_number):
+    """Fiche d'orientation fin de college - choix de serie pour le lycee.
+
+    Analyse toutes les notes de la maternelle a la 10eme pour determiner
+    si l'eleve doit s'orienter vers Math, Sciences Experimentales ou
+    Sciences Sociales.
+    """
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y, w, h, logo_wm)
+
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y, w, h)
+
+    pad = 8
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y + h
+    usable_w = w - 2 * pad
+
+    # Bordure tricolore en haut
+    stripe_h = 4
+    third = usable_w / 3
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+
+    cy = top - stripe_h - 14
+
+    # === TITRE ===
+    c.setFont('Helvetica-Bold', 10)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "FICHE D'ORIENTATION - FIN DE CYCLE COLLEGE")
+    cy -= 4
+    c.setLineWidth(0.6)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx + 20, cy, rx - 20, cy)
+
+    cy -= 11
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, cy,
+                        f"R\u00e9publique de Guin\u00e9e - Minist\u00e8re de l'Education Nationale")
+    cy -= 9
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.black)
+    c.drawCentredString(cx, cy, f"{_s(ecole.nom)}")
+
+    # === IDENTIFICATION ===
+    cy -= 14
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "IDENTIFICATION DE L'ELEVE")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.line(lx, cy, rx, cy)
+
+    cy -= 11
+    c.setFont('Helvetica', 7.5)
+    c.setFillColor(colors.black)
+    c.drawString(lx, cy, f"Nom et Pr\u00e9nom : {_s(eleve.prenom)} {_s(eleve.nom)}")
+    c.drawString(lx + usable_w * 0.55, cy, f"Matricule : {_s(eleve.matricule)}")
+    cy -= 10
+    dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
+    lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
+    c.drawString(lx, cy, f"N\u00e9(e) le : {dn}")
+    c.drawString(lx + usable_w * 0.35, cy, f"\u00e0 : {lieu}")
+    # Derniere classe college
+    derniere_college = None
+    for p in reversed(parcours):
+        if p['niveau'] in ('COLLEGE', 'LYCEE'):
+            derniere_college = p
+            break
+    if derniere_college:
+        cy -= 10
+        c.drawString(lx, cy, f"Derni\u00e8re classe : {_s(derniere_college['classe_nom'])}")
+        c.drawString(lx + usable_w * 0.55, cy,
+                     f"Ann\u00e9e : {derniere_college['annee_scolaire']}")
+
+    # === COLLECTE DES MATIERES SUR TOUT LE PARCOURS ===
+    matieres_globales = {}  # nom -> [(moy, sur, annee_index)]
+    for annee_idx, p in enumerate(parcours):
+        p_sur = p.get('sur', 20)
+        for m in p.get('matieres_data', []):
+            nom = _s(m.get('nom', ''))
+            if not nom:
+                continue
+            vals = []
+            for key in ['sem1_moyenne', 'sem2_moyenne', 't1_moy', 't2_moy', 't3_moy']:
+                v = m.get(key)
+                if v is not None:
+                    try:
+                        vals.append(float(v))
+                    except (ValueError, TypeError):
+                        pass
+            if vals:
+                avg = sum(vals) / len(vals)
+                matieres_globales.setdefault(nom, []).append((avg, p_sur, annee_idx))
+
+    # === CALCUL DES SCORES PAR SERIE ===
+    resultats = {}
+    for serie_code, config in _SERIES_LYCEE.items():
+        score, details = _calculer_score_serie(matieres_globales, config)
+        resultats[serie_code] = {'score': score, 'details': details, 'config': config}
+
+    # Trier par score decroissant
+    series_triees = sorted(resultats.items(), key=lambda x: x[1]['score'], reverse=True)
+    serie_recommandee = series_triees[0][0] if series_triees and series_triees[0][1]['score'] > 0 else None
+
+    # === TABLEAU COMPARATIF DES 3 SERIES ===
+    cy -= 16
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "ANALYSE COMPARATIVE DES TROIS SERIES")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.line(lx, cy, rx, cy)
+    cy -= 5
+
+    # Barres horizontales comparatives
+    bar_max_w = usable_w * 0.45
+    bar_h_each = 16
+    label_w = usable_w * 0.30
+    score_w = usable_w * 0.15
+
+    max_score = max((r['score'] for r in resultats.values()), default=1) or 1
+
+    for serie_code, data in series_triees:
+        config = data['config']
+        score = data['score']
+        frac = min(score / 20.0, 1.0)  # sur 20
+
+        # Label
+        c.setFont('Helvetica-Bold', 7.5)
+        color = config['couleur']
+        is_best = (serie_code == serie_recommandee)
+        if is_best:
+            # Fond surbrillance pour la serie recommandee
+            c.setFillColor(colors.HexColor('#f0f7ff'))
+            c.rect(lx - 2, cy - bar_h_each + 2, usable_w + 4, bar_h_each + 2, fill=1, stroke=0)
+
+        c.setFillColor(colors.HexColor(color))
+        c.drawString(lx, cy - 3, f"{config['label']}")
+        if is_best:
+            c.setFont('Helvetica-Bold', 6)
+            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.drawString(lx + label_w - 35, cy - 3, "RECOMMANDE")
+
+        # Barre
+        bar_x = lx + label_w + 5
+        bar_y = cy - bar_h_each + 5
+        # Fond gris
+        c.setFillColor(colors.HexColor('#e0e0e0'))
+        c.rect(bar_x, bar_y, bar_max_w, bar_h_each - 6, fill=1, stroke=0)
+        # Barre coloree
+        c.setFillColor(colors.HexColor(color))
+        c.rect(bar_x, bar_y, bar_max_w * frac, bar_h_each - 6, fill=1, stroke=0)
+
+        # Score
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(colors.black)
+        c.drawString(bar_x + bar_max_w + 5, cy - 5, f"{score:.1f}/20")
+
+        cy -= bar_h_each + 2
+
+    # === DETAIL DES MATIERES PAR SERIE ===
+    cy -= 8
+    c.setFont('Helvetica-Bold', 8)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawString(lx, cy, "DETAIL PAR SERIE (moyennes ponderees sur tout le parcours)")
+    cy -= 3
+    c.setLineWidth(0.3)
+    c.line(lx, cy, rx, cy)
+    cy -= 5
+
+    # Afficher les details des 3 series cote a cote
+    col_w_each = usable_w / 3
+    for idx, (serie_code, data) in enumerate(series_triees):
+        config = data['config']
+        details = data['details']
+        col_x = lx + idx * col_w_each
+
+        c.setFont('Helvetica-Bold', 7)
+        c.setFillColor(colors.HexColor(config['couleur']))
+        c.drawString(col_x + 2, cy, f"{config['code']}")
+
+        detail_y = cy - 10
+        c.setFont('Helvetica', 6.5)
+        c.setFillColor(colors.black)
+        for nom, avg in details[:6]:
+            if detail_y < y + 160:
+                break
+            # Tronquer le nom si trop long
+            nom_court = nom[:18] + '..' if len(nom) > 20 else nom
+            c.drawString(col_x + 2, detail_y, f"{nom_court}: {avg:.1f}")
+            detail_y -= 8
+
+    cy = cy - 10 - min(6, max(len(d['details']) for d in resultats.values())) * 8 - 5
+
+    # === RECOMMANDATION OFFICIELLE ===
+    cy -= 6
+    if cy < y + 130:
+        cy = y + 130
+
+    # Cadre recommandation
+    rec_h = 55
+    c.setFillColor(colors.HexColor('#f5f9ff'))
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setLineWidth(1)
+    c.rect(lx, cy - rec_h, usable_w, rec_h, fill=1, stroke=1)
+
+    rec_y = cy - 10
+    c.setFont('Helvetica-Bold', 9)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, rec_y, "SERIE RECOMMANDEE")
+    rec_y -= 13
+
+    if serie_recommandee:
+        config_rec = _SERIES_LYCEE[serie_recommandee]
+        c.setFont('Helvetica-Bold', 11)
+        c.setFillColor(colors.HexColor(config_rec['couleur']))
+        c.drawCentredString(cx, rec_y, f"{config_rec['label']} ({config_rec['code']})")
+        rec_y -= 11
+        score_rec = resultats[serie_recommandee]['score']
+        c.setFont('Helvetica', 7)
+        c.setFillColor(colors.HexColor('#555555'))
+        c.drawCentredString(cx, rec_y,
+                            f"Score d'ad\u00e9quation : {score_rec:.1f}/20")
+        rec_y -= 10
+        # Deuxieme choix
+        if len(series_triees) > 1:
+            alt = series_triees[1]
+            c.drawCentredString(cx, rec_y,
+                                f"Alternative : {alt[1]['config']['label']} "
+                                f"({alt[1]['score']:.1f}/20)")
+    else:
+        c.setFont('Helvetica', 8)
+        c.setFillColor(colors.HexColor('#666666'))
+        c.drawCentredString(cx, rec_y, "Donn\u00e9es insuffisantes pour une recommandation.")
+
+    cy -= rec_h + 8
+
+    # === DEBOUCHES DE LA SERIE RECOMMANDEE ===
+    if serie_recommandee and cy > y + 80:
+        c.setFont('Helvetica-Bold', 7.5)
+        c.setFillColor(colors.HexColor('#003d82'))
+        c.drawString(lx, cy, f"DEBOUCHES - {_SERIES_LYCEE[serie_recommandee]['label'].upper()}")
+        cy -= 3
+        c.setLineWidth(0.3)
+        c.line(lx, cy, lx + 200, cy)
+        cy -= 10
+
+        c.setFont('Helvetica', 7)
+        c.setFillColor(colors.black)
+        for deb in _SERIES_LYCEE[serie_recommandee]['debouches']:
+            if cy < y + 55:
+                break
+            c.drawString(lx + 6, cy, f"\u2022 {deb}")
+            cy -= 9
+
+    # === SIGNATURES ===
+    sig_y = y + 38
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.black)
+    col1 = lx
+    col2 = lx + usable_w * 0.33
+    col3 = lx + usable_w * 0.66
+
+    c.drawString(col1, sig_y, "Le Directeur :")
+    c.drawString(col2, sig_y, "Le Censeur :")
+    c.drawString(col3, sig_y, "Le Parent :")
+    sig_y -= 9
+    c.setFont('Helvetica', 7)
+    directeur = _s(ecole.directeur) if ecole.directeur else ''
+    censeur = _s(ecole.censeur) if ecole.censeur else ''
+    c.drawString(col1, sig_y, directeur)
+    c.drawString(col2, sig_y, censeur)
+
+    # Bordure tricolore en bas
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, y + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, y + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, y + 15, third, stripe_h, fill=1, stroke=0)
+
+    # Numero de page
+    c.setFont('Helvetica', 8)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+
+
+def _eleve_a_termine_college(parcours):
+    """Verifie si l'eleve a au moins une annee de college dans son parcours."""
+    for p in parcours:
+        if p.get('niveau') in ('COLLEGE', 'LYCEE'):
+            return True
+    return False
+
+
 def _draw_blank_half(c, x, y, w, h, page_number):
     """Dessine une demi-page vide (remplissage pour multiple de 4)."""
     c.setStrokeColor(colors.HexColor('#cccccc'))
@@ -2569,6 +2992,12 @@ def _generer_livret_pdf(eleve, ecole, parcours):
             lambda c, x, y, w, h, pn, e=entry: _draw_half_page(
                 c, x, y, w, h, ecole, e, eleve, pn))
 
+    # Fiche d'orientation fin de college (si l'eleve a fait le college)
+    if _eleve_a_termine_college(parcours):
+        logical_pages.append(
+            lambda c, x, y, w, h, pn: _draw_fiche_orientation_lycee_half(
+                c, x, y, w, h, ecole, eleve, parcours, pn))
+
     # Synthese du parcours par cycle
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_synthese_half(
@@ -2648,10 +3077,20 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
                            ecole, eleve, parcours, 4)
     c.showPage()
 
-    # Page 3 : Lettre de remerciement (gauche)
-    _draw_lettre_remerciement_half(c, left_x, margin, half_w, usable_h,
-                                   ecole, eleve, [entry], 5)
-    c.showPage()
+    page_num = 5
+
+    # Page optionnelle : Fiche d'orientation lycee (si college)
+    if _eleve_a_termine_college(parcours):
+        _draw_fiche_orientation_lycee_half(c, left_x, margin, half_w, usable_h,
+                                           ecole, eleve, parcours, page_num)
+        _draw_lettre_remerciement_half(c, right_x, margin, half_w, usable_h,
+                                       ecole, eleve, [entry], page_num + 1)
+        c.showPage()
+    else:
+        # Page 3 : Lettre de remerciement (gauche)
+        _draw_lettre_remerciement_half(c, left_x, margin, half_w, usable_h,
+                                       ecole, eleve, [entry], page_num)
+        c.showPage()
 
     c.save()
     buffer.seek(0)
@@ -3156,6 +3595,10 @@ def livret_scolaire_classe_pdf(request, classe_id):
                 pages.append(
                     lambda c, x, y, w, h, pn, e=entry, el=eleve: _draw_half_page(
                         c, x, y, w, h, ecole, e, el, pn))
+            if _eleve_a_termine_college(parcours):
+                pages.append(
+                    lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_fiche_orientation_lycee_half(
+                        c, x, y, w, h, ecole, el, pa, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_synthese_half(
                     c, x, y, w, h, ecole, el, pa, pn))
