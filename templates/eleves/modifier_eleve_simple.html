@@ -211,6 +211,215 @@
                         </div>
                     </div>
 
+                    <!-- Modifier le responsable principal existant -->
+                    {% if resp1_form %}
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="collapse" data-bs-target="#editResp1" aria-expanded="false">
+                            <i class="fas fa-pen me-1"></i>Modifier le responsable principal
+                        </button>
+                        <div class="collapse mt-2" id="editResp1">
+                            <div class="card card-body" style="border-left: 4px solid #28a745; background: #f0fdf4;">
+                                <h6 class="text-success mb-3"><i class="fas fa-user-edit me-1"></i>Modifier : {{ eleve.responsable_principal }}</h6>
+                                <input type="hidden" name="edit_resp1" id="edit_resp1_flag" value="">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Prenom</label>
+                                        {{ resp1_form.prenom }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Nom</label>
+                                        {{ resp1_form.nom }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Relation</label>
+                                        {{ resp1_form.relation }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Telephone</label>
+                                        {{ resp1_form.telephone }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Email</label>
+                                        {{ resp1_form.email }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Profession</label>
+                                        {{ resp1_form.profession }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label small fw-bold">Adresse</label>
+                                        {{ resp1_form.adresse }}
+                                    </div>
+                                </div>
+                                {% for field in resp1_form %}
+                                    {% if field.errors %}
+                                        <div class="text-danger small">{{ field.label }}: {{ field.errors.0 }}</div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Modifier le responsable secondaire existant -->
+                    {% if resp2_form %}
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-info btn-sm" data-bs-toggle="collapse" data-bs-target="#editResp2" aria-expanded="false">
+                            <i class="fas fa-pen me-1"></i>Modifier le responsable secondaire
+                        </button>
+                        <div class="collapse mt-2" id="editResp2">
+                            <div class="card card-body" style="border-left: 4px solid #0dcaf0; background: #f0f9ff;">
+                                <h6 class="text-info mb-3"><i class="fas fa-user-edit me-1"></i>Modifier : {{ eleve.responsable_secondaire }}</h6>
+                                <input type="hidden" name="edit_resp2" id="edit_resp2_flag" value="">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Prenom</label>
+                                        {{ resp2_form.prenom }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Nom</label>
+                                        {{ resp2_form.nom }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Relation</label>
+                                        {{ resp2_form.relation }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Telephone</label>
+                                        {{ resp2_form.telephone }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Email</label>
+                                        {{ resp2_form.email }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Profession</label>
+                                        {{ resp2_form.profession }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label small fw-bold">Adresse</label>
+                                        {{ resp2_form.adresse }}
+                                    </div>
+                                </div>
+                                {% for field in resp2_form %}
+                                    {% if field.errors %}
+                                        <div class="text-danger small">{{ field.label }}: {{ field.errors.0 }}</div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Creer un nouveau responsable -->
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#newResp1" aria-expanded="false">
+                            <i class="fas fa-user-plus me-1"></i>Creer un nouveau responsable principal
+                        </button>
+                        <div class="collapse mt-2" id="newResp1">
+                            <div class="card card-body" style="border-left: 4px solid #0d6efd; background: #f0f4ff;">
+                                <h6 class="text-primary mb-3"><i class="fas fa-user-plus me-1"></i>Nouveau responsable principal</h6>
+                                <input type="hidden" name="new_resp1" id="new_resp1_flag" value="">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Prenom <span class="required">*</span></label>
+                                        {{ new_resp1_form.prenom }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Nom <span class="required">*</span></label>
+                                        {{ new_resp1_form.nom }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Relation</label>
+                                        {{ new_resp1_form.relation }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Telephone</label>
+                                        {{ new_resp1_form.telephone }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Email</label>
+                                        {{ new_resp1_form.email }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Profession</label>
+                                        {{ new_resp1_form.profession }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label small fw-bold">Adresse</label>
+                                        {{ new_resp1_form.adresse }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#newResp2" aria-expanded="false">
+                            <i class="fas fa-user-plus me-1"></i>Creer un nouveau responsable secondaire
+                        </button>
+                        <div class="collapse mt-2" id="newResp2">
+                            <div class="card card-body" style="border-left: 4px solid #6f42c1; background: #f8f0ff;">
+                                <h6 style="color:#6f42c1;" class="mb-3"><i class="fas fa-user-plus me-1"></i>Nouveau responsable secondaire</h6>
+                                <input type="hidden" name="new_resp2" id="new_resp2_flag" value="">
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Prenom <span class="required">*</span></label>
+                                        {{ new_resp2_form.prenom }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Nom <span class="required">*</span></label>
+                                        {{ new_resp2_form.nom }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Relation</label>
+                                        {{ new_resp2_form.relation }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Telephone</label>
+                                        {{ new_resp2_form.telephone }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Email</label>
+                                        {{ new_resp2_form.email }}
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold">Profession</label>
+                                        {{ new_resp2_form.profession }}
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label small fw-bold">Adresse</label>
+                                        {{ new_resp2_form.adresse }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Photo -->
                     <h4 class="section-title mt-4"><i class="fas fa-camera me-2"></i>Photo</h4>
                     <div class="row">
@@ -516,6 +725,44 @@ document.addEventListener('DOMContentLoaded', function () {
       preview.classList.remove('d-none');
     }
   });
+
+  // --- Responsable inline edit: activer le flag hidden quand la section est ouverte ---
+  const editResp1 = document.getElementById('editResp1');
+  if (editResp1) {
+    editResp1.addEventListener('shown.bs.collapse', function() {
+      document.getElementById('edit_resp1_flag').value = '1';
+    });
+    editResp1.addEventListener('hidden.bs.collapse', function() {
+      document.getElementById('edit_resp1_flag').value = '';
+    });
+  }
+  const editResp2 = document.getElementById('editResp2');
+  if (editResp2) {
+    editResp2.addEventListener('shown.bs.collapse', function() {
+      document.getElementById('edit_resp2_flag').value = '1';
+    });
+    editResp2.addEventListener('hidden.bs.collapse', function() {
+      document.getElementById('edit_resp2_flag').value = '';
+    });
+  }
+  const newResp1 = document.getElementById('newResp1');
+  if (newResp1) {
+    newResp1.addEventListener('shown.bs.collapse', function() {
+      document.getElementById('new_resp1_flag').value = '1';
+    });
+    newResp1.addEventListener('hidden.bs.collapse', function() {
+      document.getElementById('new_resp1_flag').value = '';
+    });
+  }
+  const newResp2 = document.getElementById('newResp2');
+  if (newResp2) {
+    newResp2.addEventListener('shown.bs.collapse', function() {
+      document.getElementById('new_resp2_flag').value = '1';
+    });
+    newResp2.addEventListener('hidden.bs.collapse', function() {
+      document.getElementById('new_resp2_flag').value = '';
+    });
+  }
 
   // Anti double-submit
   const saveBtn = document.getElementById('saveBtn');

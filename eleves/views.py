@@ -773,7 +773,6 @@ def modifier_eleve(request, eleve_id):
         return redirect('eleves:liste_eleves')
     
     if request.method == 'POST':
-        print(f"POST data received: {request.POST}")  # Debug
         form = EleveForm(request.POST, request.FILES, instance=eleve)
         if not user_is_admin(request.user):
             try:
@@ -785,35 +784,78 @@ def modifier_eleve(request, eleve_id):
                 form.fields['classe'].queryset = qs
             except Exception:
                 pass
-        
-        print(f"Form is valid: {form.is_valid()}")  # Debug
-        if not form.is_valid():
-            print(f"Form errors: {form.errors}")  # Debug
-            
+
+        # --- Formulaires responsables (edition inline) ---
+        resp1_form = ResponsableForm(
+            request.POST if request.POST.get('edit_resp1') else None,
+            instance=eleve.responsable_principal,
+            prefix='resp1'
+        ) if eleve.responsable_principal else None
+
+        resp2_form = ResponsableForm(
+            request.POST if request.POST.get('edit_resp2') else None,
+            instance=eleve.responsable_secondaire,
+            prefix='resp2'
+        ) if eleve.responsable_secondaire else None
+
+        # Formulaire pour creer un nouveau responsable principal
+        new_resp1_form = ResponsableForm(
+            request.POST if request.POST.get('new_resp1') else None,
+            prefix='new_resp1'
+        )
+        # Formulaire pour creer un nouveau responsable secondaire
+        new_resp2_form = ResponsableForm(
+            request.POST if request.POST.get('new_resp2') else None,
+            prefix='new_resp2'
+        )
+
         if form.is_valid():
-            print("Form validation passed, saving...")  # Debug
             # Détecter les changements
             changements = []
             for field in form.changed_data:
                 if field in form.fields:
                     ancien_val = getattr(eleve, field, '')
                     nouveau_val = form.cleaned_data[field]
-                    changements.append(f"{form.fields[field].label}: {ancien_val} → {nouveau_val}")
-            
+                    changements.append(f"{form.fields[field].label}: {ancien_val} -> {nouveau_val}")
+
+            # Sauvegarder les responsables modifies
+            if request.POST.get('edit_resp1') and resp1_form and resp1_form.is_valid():
+                resp1_form.save()
+                changements.append("Responsable principal: informations mises a jour")
+
+            if request.POST.get('edit_resp2') and resp2_form and resp2_form.is_valid():
+                resp2_form.save()
+                changements.append("Responsable secondaire: informations mises a jour")
+
+            # Creer un nouveau responsable principal
+            if request.POST.get('new_resp1') and new_resp1_form.is_valid():
+                new_nom = new_resp1_form.cleaned_data.get('nom', '').strip()
+                new_prenom = new_resp1_form.cleaned_data.get('prenom', '').strip()
+                if new_nom or new_prenom:
+                    new_resp = new_resp1_form.save()
+                    form.instance.responsable_principal = new_resp
+                    changements.append(f"Nouveau responsable principal cree: {new_prenom} {new_nom}")
+
+            # Creer un nouveau responsable secondaire
+            if request.POST.get('new_resp2') and new_resp2_form.is_valid():
+                new_nom = new_resp2_form.cleaned_data.get('nom', '').strip()
+                new_prenom = new_resp2_form.cleaned_data.get('prenom', '').strip()
+                if new_nom or new_prenom:
+                    new_resp = new_resp2_form.save()
+                    form.instance.responsable_secondaire = new_resp
+                    changements.append(f"Nouveau responsable secondaire cree: {new_prenom} {new_nom}")
+
             # Passer l'utilisateur actuel pour la génération automatique du matricule
             eleve = form.save(commit=False)
             eleve._current_user = request.user
-            
+
             # Gérer la saisie manuelle du matricule (pour la modification)
             saisie_manuelle = form.cleaned_data.get('saisie_manuelle_matricule', False)
             if saisie_manuelle and form.cleaned_data.get('matricule'):
-                # Si saisie manuelle, le matricule a déjà été validé dans le formulaire
                 eleve.matricule = form.cleaned_data['matricule']
-                # Marquer pour éviter la génération automatique
                 eleve._skip_matricule_generation = True
-            
+
             eleve.save()
-            print(f"Eleve saved successfully: {eleve}")  # Debug
 
             # Afficher le résultat du transfert de notes (si changement de classe)
             transfert_info = getattr(eleve, '_transfert_info', None)
@@ -821,15 +863,15 @@ def modifier_eleve(request, eleve_id):
                 nb_trans = transfert_info.get('transferees', 0)
                 nb_ign = transfert_info.get('ignorees', 0)
                 if transfert_info.get('classe_note_manquante'):
-                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu être transférées (aucune configuration de notes trouvée pour la nouvelle classe).")
+                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu etre transferees (aucune configuration de notes trouvee pour la nouvelle classe).")
                 elif transfert_info.get('matieres_manquantes'):
-                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu être transférées (la nouvelle classe n'a aucune matière configurée).")
+                    messages.warning(request, f"Attention : les notes de {eleve.prenom} {eleve.nom} n'ont pas pu etre transferees (la nouvelle classe n'a aucune matiere configuree).")
                 elif nb_trans > 0 and nb_ign == 0:
-                    messages.success(request, f"{nb_trans} note(s) transférée(s) automatiquement vers la nouvelle classe.")
+                    messages.success(request, f"{nb_trans} note(s) transferee(s) automatiquement vers la nouvelle classe.")
                 elif nb_trans > 0 and nb_ign > 0:
-                    messages.warning(request, f"{nb_trans} note(s) transférée(s) vers la nouvelle classe, mais {nb_ign} note(s) n'ont pas pu être transférées (matières sans équivalent dans la nouvelle classe).")
+                    messages.warning(request, f"{nb_trans} note(s) transferee(s) vers la nouvelle classe, mais {nb_ign} note(s) n'ont pas pu etre transferees (matieres sans equivalent dans la nouvelle classe).")
                 elif nb_trans == 0 and nb_ign > 0:
-                    messages.warning(request, f"Attention : {nb_ign} note(s) n'ont pas pu être transférées (matières sans équivalent dans la nouvelle classe).")
+                    messages.warning(request, f"Attention : {nb_ign} note(s) n'ont pas pu etre transferees (matieres sans equivalent dans la nouvelle classe).")
 
             # Créer l'historique si des changements ont été effectués
             if changements:
@@ -841,8 +883,8 @@ def modifier_eleve(request, eleve_id):
                         utilisateur=request.user
                     )
                 except Exception as e:
-                    print(f"Error creating history: {e}")
-                
+                    logger.error(f"Error creating history: {e}")
+
                 # Log de l'activité
                 try:
                     JournalActivite.objects.create(
@@ -850,29 +892,28 @@ def modifier_eleve(request, eleve_id):
                         action='MODIFICATION',
                         type_objet='ELEVE',
                         objet_id=eleve.id,
-                        description=f"Modification de l'élève {eleve.nom_complet}: {', '.join(changements)}",
+                        description=f"Modification de l'eleve {eleve.nom_complet}: {', '.join(changements)}",
                         adresse_ip=request.META.get('REMOTE_ADDR', ''),
                         user_agent=request.META.get('HTTP_USER_AGENT', '')
                     )
                 except Exception as e:
-                    print(f"Error creating activity log: {e}")
-            
+                    logger.error(f"Error creating activity log: {e}")
+
             # Message de succès détaillé
             if changements:
                 nb_changements = len(changements)
-                message_changements = f" ({nb_changements} modification{'s' if nb_changements > 1 else ''} effectuée{'s' if nb_changements > 1 else ''})"
+                message_changements = f" ({nb_changements} modification{'s' if nb_changements > 1 else ''} effectuee{'s' if nb_changements > 1 else ''})"
                 messages.success(
-                    request, 
-                    f"✅ Les informations de {eleve.prenom} {eleve.nom} ont été mises à jour avec succès{message_changements}."
+                    request,
+                    f"Les informations de {eleve.prenom} {eleve.nom} ont ete mises a jour avec succes{message_changements}."
                 )
             else:
-                messages.success(request, f"✅ Les informations de {eleve.prenom} {eleve.nom} ont été sauvegardées.")
-            
+                messages.success(request, f"Les informations de {eleve.prenom} {eleve.nom} ont ete sauvegardees.")
+
             # Rediriger vers la page de modification pour voir les messages
             return redirect('eleves:modifier_eleve', eleve_id=eleve.id)
         else:
             # Formulaire invalide: informer l'utilisateur des erreurs
-            # Construire un résumé concis des erreurs (limité pour l'UI)
             erreurs = []
             try:
                 for champ, msgs in list(form.errors.items())[:5]:
@@ -883,7 +924,7 @@ def modifier_eleve(request, eleve_id):
             if erreurs:
                 messages.error(request, "Le formulaire contient des erreurs: " + " | ".join(erreurs))
             else:
-                messages.error(request, "Le formulaire est invalide. Veuillez corriger les erreurs et réessayer.")
+                messages.error(request, "Le formulaire est invalide. Veuillez corriger les erreurs et reessayer.")
     else:
         form = EleveForm(instance=eleve)
         if not user_is_admin(request.user):
@@ -896,14 +937,30 @@ def modifier_eleve(request, eleve_id):
                 form.fields['classe'].queryset = qs
             except Exception:
                 pass
-    
+
+        # Formulaires responsables pour edition inline (GET)
+        resp1_form = ResponsableForm(
+            instance=eleve.responsable_principal, prefix='resp1'
+        ) if eleve.responsable_principal else None
+
+        resp2_form = ResponsableForm(
+            instance=eleve.responsable_secondaire, prefix='resp2'
+        ) if eleve.responsable_secondaire else None
+
+        new_resp1_form = ResponsableForm(prefix='new_resp1')
+        new_resp2_form = ResponsableForm(prefix='new_resp2')
+
     context = {
         'form': form,
         'eleve': eleve,
+        'resp1_form': locals().get('resp1_form'),
+        'resp2_form': locals().get('resp2_form'),
+        'new_resp1_form': locals().get('new_resp1_form'),
+        'new_resp2_form': locals().get('new_resp2_form'),
         'titre_page': f'Modifier {eleve.nom_complet}',
         'action': 'Modifier'
     }
-    
+
     return render(request, 'eleves/modifier_eleve_simple.html', context)
 
 @login_required
