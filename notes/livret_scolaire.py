@@ -349,20 +349,38 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     fy = table_y - 11
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
-    moy_txt2 = _fmt(moy_ann) if moy_ann else ''
-    c.drawString(lx, fy, "Moyenne Annuelle")
-    c.drawString(lx + w * 0.27, fy, f"{moy_txt2}")
-    c.drawRightString(rx, fy, f"/{sur}")
+    if moy_ann is not None:
+        c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
+    else:
+        c.drawString(lx, fy, "Moyenne Annuelle : -")
 
     fy -= 11
     c.setFont('Helvetica', 8)
     passe_txt = _s(passe_en) if passe_en else ''
-    c.drawString(lx, fy, f"Passe en : {passe_txt}" if passe_txt else '')
+    if passe_txt:
+        c.drawString(lx, fy, f"Passe en : {passe_txt}")
     rang_txt2 = _s(rang) if rang else ''
-    c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+    if rang_txt2:
+        c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
     eff_entry = entry.get('effectif_classe', 0)
     if eff_entry:
         c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
+
+    # Stats de la classe
+    fy -= 11
+    moy_cl = entry.get('moy_classe')
+    note_min_cl = entry.get('note_min_classe')
+    note_max_cl = entry.get('note_max_classe')
+    c.setFont('Helvetica', 7)
+    stats_parts = []
+    if moy_cl is not None:
+        stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
+    if note_min_cl is not None:
+        stats_parts.append(f"Min: {note_min_cl:.2f}")
+    if note_max_cl is not None:
+        stats_parts.append(f"Max: {note_max_cl:.2f}")
+    if stats_parts:
+        c.drawString(lx, fy, "  |  ".join(stats_parts))
 
 
 def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -539,20 +557,38 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     fy = table_y - 11
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
-    moy_txt2 = _fmt(moy_ann) if moy_ann else ''
-    c.drawString(lx, fy, "Moyenne Annuelle")
-    c.drawString(lx + w * 0.27, fy, f"{moy_txt2}")
-    c.drawRightString(rx, fy, f"/{sur}")
+    if moy_ann is not None:
+        c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
+    else:
+        c.drawString(lx, fy, "Moyenne Annuelle : -")
 
     fy -= 11
     c.setFont('Helvetica', 8)
     passe_txt = _s(passe_en) if passe_en else ''
-    c.drawString(lx, fy, f"Passe en : {passe_txt}" if passe_txt else '')
+    if passe_txt:
+        c.drawString(lx, fy, f"Passe en : {passe_txt}")
     rang_txt2 = _s(rang) if rang else ''
-    c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+    if rang_txt2:
+        c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
     eff_entry = entry.get('effectif_classe', 0)
     if eff_entry:
         c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
+
+    # Stats de la classe
+    fy -= 11
+    moy_cl = entry.get('moy_classe')
+    note_min_cl = entry.get('note_min_classe')
+    note_max_cl = entry.get('note_max_classe')
+    c.setFont('Helvetica', 7)
+    stats_parts = []
+    if moy_cl is not None:
+        stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
+    if note_min_cl is not None:
+        stats_parts.append(f"Min: {note_min_cl:.2f}")
+    if note_max_cl is not None:
+        stats_parts.append(f"Max: {note_max_cl:.2f}")
+    if stats_parts:
+        c.drawString(lx, fy, "  |  ".join(stats_parts))
 
 
 def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -957,7 +993,6 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.HexColor('#333333'))
     for label, val in [
-        ("IRE/DEV", ecole.ire), ("DPE/DCE", ecole.dpe),
         ("DSEE", ecole.desee), ("Adresse", ecole.adresse),
         ("Tel", ecole.telephone),
     ]:
@@ -1429,10 +1464,19 @@ def _collecter_parcours_eleve(eleve, ecole):
             stats_classe = eleve_cls.classe if eleve_cls else classe_note
 
             # Moyenne annuelle via Classement
+            # Chercher d'abord avec stats_classe, puis sans filtre classe
             cl_ann = Classement.objects.filter(
                 eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
                 periode__icontains='ANNUEL'
             ).first()
+            if not cl_ann:
+                # Fallback: sans filtre classe
+                cl_ann = Classement.objects.filter(
+                    eleve=eleve, annee_scolaire=annee_scolaire,
+                    periode__icontains='ANNUEL'
+                ).first()
+                if cl_ann:
+                    stats_classe = cl_ann.classe
 
             if cl_ann and cl_ann.moyenne_generale is not None:
                 moyenne_annuelle = float(cl_ann.moyenne_generale)
@@ -1440,10 +1484,15 @@ def _collecter_parcours_eleve(eleve, ecole):
             else:
                 # Fallback: moyenne des periodes depuis Classement
                 cls_p = Classement.objects.filter(
-                    eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
+                    eleve=eleve, annee_scolaire=annee_scolaire,
                 ).exclude(periode__icontains='ANNUEL')
                 if cls_p.exists():
-                    moyennes = [float(cp.moyenne_generale) for cp in cls_p if cp.moyenne_generale]
+                    # Mettre a jour stats_classe si necessaire
+                    if not eleve_cls:
+                        first_cls = cls_p.first()
+                        if first_cls:
+                            stats_classe = first_cls.classe
+                    moyennes = [float(cp.moyenne_generale) for cp in cls_p if cp.moyenne_generale is not None]
                     if moyennes:
                         moyenne_annuelle = round(sum(moyennes) / len(moyennes), 2)
                     # Prendre le rang du dernier classement disponible
@@ -1462,34 +1511,59 @@ def _collecter_parcours_eleve(eleve, ecole):
             effectif_classe = 0
             try:
                 from django.db.models import Avg, Min, Max, Count
-                # Utiliser stats_classe (la vraie classe du Classement)
-                # Essayer ANNUEL d'abord
-                all_cls = Classement.objects.filter(
-                    classe=stats_classe, annee_scolaire=annee_scolaire,
-                    periode__icontains='ANNUEL'
+
+                def _get_class_stats(cls_filter):
+                    """Tente d'obtenir les stats depuis un queryset Classement."""
+                    # Essayer ANNUEL d'abord
+                    qs = cls_filter.filter(periode__icontains='ANNUEL')
+                    if not qs.exists():
+                        # Fallback: dernier trimestre/semestre
+                        qs = cls_filter.exclude(periode__icontains='ANNUEL')
+                        if qs.exists():
+                            last_per = qs.order_by('-periode').first().periode
+                            qs = qs.filter(periode=last_per)
+                    if qs.exists():
+                        return qs.aggregate(
+                            avg=Avg('moyenne_generale'),
+                            mn=Min('moyenne_generale'),
+                            mx=Max('moyenne_generale'),
+                            cnt=Count('eleve', distinct=True),
+                        )
+                    return None
+
+                # Strategie 1: via stats_classe (ClasseNote du Classement eleve)
+                stats = _get_class_stats(
+                    Classement.objects.filter(classe=stats_classe, annee_scolaire=annee_scolaire)
                 )
-                if not all_cls.exists():
-                    # Fallback: dernier trimestre/semestre disponible
-                    all_cls = Classement.objects.filter(
-                        classe=stats_classe, annee_scolaire=annee_scolaire,
-                    ).exclude(periode__icontains='ANNUEL')
-                    # Prendre la derniere periode seulement pour stats coherentes
-                    if all_cls.exists():
-                        last_per = all_cls.order_by('-periode').first().periode
-                        all_cls = all_cls.filter(periode=last_per)
-                if all_cls.exists():
-                    stats = all_cls.aggregate(
-                        avg=Avg('moyenne_generale'),
-                        mn=Min('moyenne_generale'),
-                        mx=Max('moyenne_generale'),
-                        cnt=Count('eleve', distinct=True),
+
+                # Strategie 2: si rien, essayer avec classe_note (ClasseNote trouvee par nom)
+                if stats is None and classe_note and classe_note != stats_classe:
+                    stats = _get_class_stats(
+                        Classement.objects.filter(classe=classe_note, annee_scolaire=annee_scolaire)
                     )
+
+                # Strategie 3: si rien, essayer tous les Classement de cette annee pour l'ecole
+                if stats is None:
+                    all_classes_ecole = ClasseNote.objects.filter(
+                        ecole=ecole, annee_scolaire=annee_scolaire,
+                        nom__icontains=classe_nom.split('(')[0].strip()[:10]
+                    )
+                    if all_classes_ecole.exists():
+                        stats = _get_class_stats(
+                            Classement.objects.filter(
+                                classe__in=all_classes_ecole,
+                                annee_scolaire=annee_scolaire
+                            )
+                        )
+
+                if stats:
                     moy_classe = round(float(stats['avg']), 2) if stats['avg'] else None
                     note_min_classe = round(float(stats['mn']), 2) if stats['mn'] else None
                     note_max_classe = round(float(stats['mx']), 2) if stats['mx'] else None
                     effectif_classe = stats['cnt'] or 0
+
                 # Fallback effectif depuis ClasseNote
-                if effectif_classe == 0 and classe_note.effectif:
+                if effectif_classe == 0 and classe_note and classe_note.effectif:
                     effectif_classe = classe_note.effectif
             except Exception as e:
                 logger.warning(f"Erreur stats classe: {e}")
