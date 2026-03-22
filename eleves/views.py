@@ -692,8 +692,13 @@ def ajouter_eleve(request):
                         f'classes_ecole_{user_school_obj.id if user_school_obj else "admin"}'
                     ])
                     
-                messages.success(request, f"L'élève {eleve.prenom} {eleve.nom} a été ajouté avec succès.")
-                return redirect('eleves:detail_eleve', eleve_id=eleve.id)
+                messages.success(request, f"L'eleve {eleve.prenom} {eleve.nom} a ete ajoute avec succes (Matricule: {eleve.matricule}). Vous pouvez ajouter un autre eleve.")
+                # Rediriger vers le formulaire d'ajout en preservant la classe selectionnee
+                url = reverse('eleves:ajouter_eleve')
+                classe_id = form.cleaned_data.get('classe')
+                if classe_id:
+                    url += f'?classe_id={classe_id.id if hasattr(classe_id, "id") else classe_id}'
+                return redirect(url)
                 
             except Exception as e:
                 logger.exception("Erreur lors de l'enregistrement d'un élève")
@@ -703,7 +708,7 @@ def ajouter_eleve(request):
     else:
         # GET: Initialisation optimisée des formulaires
         form = EleveForm(user=request.user)
-        
+
         # Cache des classes pour le formulaire GET (filtrées par année active)
         if not user_is_admin(request.user) and user_school_obj:
             annee_active = get_annee_active(request, user_school_obj)
@@ -716,7 +721,15 @@ def ajouter_eleve(request):
                 classes_qs = qs
                 cache.set(classes_cache_key, classes_qs, 600)
             form.fields['classe'].queryset = classes_qs
-        
+
+        # Pre-selectionner la classe si passee en parametre (apres ajout d'un eleve)
+        classe_id_param = request.GET.get('classe_id')
+        if classe_id_param:
+            try:
+                form.fields['classe'].initial = int(classe_id_param)
+            except (ValueError, TypeError):
+                pass
+
         responsable_principal_form = ResponsableForm(prefix='resp_principal', user=request.user)
         responsable_secondaire_form = ResponsableForm(prefix='resp_secondaire', user=request.user)
     
