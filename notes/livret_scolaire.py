@@ -1347,11 +1347,29 @@ def _collecter_parcours_eleve(eleve, ecole):
         sur = 10 if niveau == 'PRIMAIRE' else 20
         is_semestre = niveau in ('COLLEGE', 'LYCEE')
 
-        search_nom = classe_nom.split('(')[0].strip()[:15]
-        classe_note = ClasseNote.objects.filter(
-            ecole=ecole, annee_scolaire=annee_scolaire,
-            nom__icontains=search_nom
-        ).first()
+        # Strategie 1: trouver ClasseNote via les notes reelles de l'eleve
+        classe_note = None
+        actual_note = NoteMensuelle.objects.filter(
+            eleve=eleve, annee_scolaire=annee_scolaire
+        ).select_related('matiere__classe').first()
+        if actual_note and actual_note.matiere and actual_note.matiere.classe:
+            classe_note = actual_note.matiere.classe
+        else:
+            actual_compo = CompositionNote.objects.filter(
+                eleve=eleve, annee_scolaire=annee_scolaire
+            ).select_related('matiere__classe').first()
+            if actual_compo and actual_compo.matiere and actual_compo.matiere.classe:
+                classe_note = actual_compo.matiere.classe
+
+        # Strategie 2: recherche par nom de classe
+        if not classe_note:
+            search_nom = classe_nom.split('(')[0].strip()[:15]
+            classe_note = ClasseNote.objects.filter(
+                ecole=ecole, annee_scolaire=annee_scolaire,
+                nom__icontains=search_nom
+            ).first()
+
+        # Strategie 3: n'importe quelle ClasseNote de cette annee
         if not classe_note:
             classe_note = ClasseNote.objects.filter(
                 ecole=ecole, annee_scolaire=annee_scolaire,
