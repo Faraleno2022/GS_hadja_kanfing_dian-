@@ -1686,13 +1686,14 @@ def _collecter_parcours_eleve(eleve, ecole):
 # ==============================================================================
 
 def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number):
-    """Dessine la page de synthese/rapport final sur une demi-page."""
+    """Dessine la synthese du parcours par cycle sur une demi-page."""
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.8)
     c.rect(x, y_base, w, h)
 
     pad = 6
     lx = x + pad
+    rx = x + w - pad
     cx = x + w / 2
     top = y_base + h
     usable_w = w - 2 * pad
@@ -1701,7 +1702,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     cy = top - 15
     c.setFont('Helvetica-Bold', 10)
     c.setFillColor(colors.HexColor('#003d82'))
-    c.drawCentredString(cx, cy, "ANALYSE ET RAPPORT FINAL")
+    c.drawCentredString(cx, cy, "SYNTHESE DU PARCOURS SCOLAIRE")
 
     cy -= 12
     c.setFont('Helvetica', 8)
@@ -1720,6 +1721,8 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
 
     cy -= 14
     for cycle_key, cycle_entries in cycles_data.items():
+        if cy < y_base + 80:
+            break
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
         c.setFont('Helvetica-Bold', 8)
         c.setFillColor(colors.HexColor('#003d82'))
@@ -1749,12 +1752,12 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
 
         col_w = [usable_w * 0.16, usable_w * 0.24, usable_w * 0.20,
                  usable_w * 0.20, usable_w * 0.20]
-        rh = 13
+        rh = 12
         table = Table(synth_data, colWidths=col_w, rowHeights=[rh] * len(synth_data))
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('FONTSIZE', (0, 0), (-1, -1), 6.5),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#555555')),
@@ -1766,42 +1769,192 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
         th = rh * len(synth_data)
         table.wrapOn(c, usable_w, th + 5)
         table.drawOn(c, lx, cy - th)
-        cy -= th + 10
+        cy -= th + 8
 
-    # ORIENTATION
-    cy -= 4
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
-    c.drawString(lx, cy, "PROPOSITION D'ORIENTATION")
-    cy -= 10
+    # Graphique evolution (barres simplifiees)
+    moyennes_all = [(p['annee_scolaire'], p['moyenne_annuelle'], p['sur'])
+                    for p in parcours if p['moyenne_annuelle'] is not None]
+    if moyennes_all and cy > y_base + 100:
+        cy -= 8
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(colors.HexColor('#003d82'))
+        c.drawString(lx, cy, "EVOLUTION DES MOYENNES")
+        cy -= 3
+        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.setLineWidth(0.4)
+        c.line(lx, cy, rx, cy)
 
-    orientation = _calculer_orientation(parcours)
-    c.setFont('Helvetica', 7)
-    c.setFillColor(colors.black)
-    for line in orientation:
-        if cy < y_base + 55:
-            break
-        c.drawString(lx + 4, cy, line)
-        cy -= 9
+        graph_h = 50
+        graph_y = cy - graph_h - 5
+        nb = len(moyennes_all)
+        bar_gap = 6
+        bar_w_each = (usable_w - (nb + 1) * bar_gap) / nb if nb > 0 else 0
+
+        for i, (annee, moy, s) in enumerate(moyennes_all):
+            moy_20 = moy * (20.0 / s) if s else moy
+            frac = min(moy_20 / 20.0, 1.0)
+            bx = lx + bar_gap + i * (bar_w_each + bar_gap)
+            bh = graph_h * frac
+            s_threshold = 5.0 if s == 10 else 10.0
+            color = '#2e7d32' if moy >= s_threshold * 1.3 else '#43a047' if moy >= s_threshold else '#e53935'
+            c.setFillColor(colors.HexColor(color))
+            c.rect(bx, graph_y, bar_w_each, bh, fill=1, stroke=0)
+            c.setFont('Helvetica-Bold', 5.5)
+            c.setFillColor(colors.HexColor('#222222'))
+            c.drawCentredString(bx + bar_w_each / 2, graph_y + bh + 2, f"{moy:.1f}")
+            c.setFont('Helvetica', 5)
+            c.setFillColor(colors.HexColor('#555555'))
+            # Annee courte: "24-25"
+            short_annee = annee[-5:] if len(annee) >= 5 else annee
+            c.drawCentredString(bx + bar_w_each / 2, graph_y - 8, short_annee)
+
+        cy = graph_y - 14
 
     # Signatures
-    sig_y = y_base + 30
-    c.setFont('Helvetica-Bold', 8)
+    sig_y = y_base + 25
+    c.setFont('Helvetica-Bold', 7)
     c.setFillColor(colors.black)
     c.drawString(lx, sig_y, "Le Directeur / Proviseur :")
     c.drawString(cx, sig_y, "Le Censeur :")
-    sig_y -= 10
+    sig_y -= 9
     c.setFont('Helvetica', 7)
-    c.drawString(lx, sig_y, f"Nom: {_s(ecole.directeur) if ecole.directeur else ''}")
+    c.drawString(lx, sig_y, f"{_s(ecole.directeur) if ecole.directeur else ''}")
     if ecole.censeur:
-        c.drawString(cx, sig_y, f"Nom: {_s(ecole.censeur)}")
-    sig_y -= 12
-    c.drawString(lx, sig_y, "Signature et cachet :")
-    c.drawString(cx, sig_y, "Signature :")
+        c.drawString(cx, sig_y, f"{_s(ecole.censeur)}")
 
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
+    c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
+
+
+def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number):
+    """Dessine la page d'orientation universitaire/professionnelle."""
+    # Filigrane
+    logo_wm = _get_logo_reader(ecole)
+    _draw_watermark(c, x, y_base, w, h, logo_wm)
+
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.8)
+    c.rect(x, y_base, w, h)
+
+    pad = 8
+    lx = x + pad
+    rx = x + w - pad
+    cx = x + w / 2
+    top = y_base + h
+    usable_w = w - 2 * pad
+
+    # Bordure tricolore en haut
+    stripe_h = 3
+    third = usable_w / 3
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, top - stripe_h, third, stripe_h, fill=1, stroke=0)
+
+    cy = top - stripe_h - 16
+
+    # Titre
+    c.setFont('Helvetica-Bold', 10)
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.drawCentredString(cx, cy, "ANALYSE ET ORIENTATION")
+    cy -= 4
+    c.setLineWidth(0.6)
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.line(lx + 40, cy, rx - 40, cy)
+
+    cy -= 12
+    c.setFont('Helvetica', 7)
+    c.setFillColor(colors.HexColor('#555555'))
+    c.drawCentredString(cx, cy,
+                        f"{_s(eleve.prenom)} {_s(eleve.nom)}  -  "
+                        f"Matricule : {_s(eleve.matricule)}")
+
+    # Contenu de l'orientation
+    cy -= 14
+    orientation = _calculer_orientation(parcours)
+
+    for line in orientation:
+        if cy < y_base + 50:
+            break
+
+        # Mise en forme selon le contenu
+        if line.startswith('BILAN') or line.startswith('POINTS FORTS') \
+                or line.startswith('POINTS A') or line.startswith('ORIENTATION'):
+            cy -= 3
+            c.setFont('Helvetica-Bold', 8)
+            c.setFillColor(colors.HexColor('#003d82'))
+            c.drawString(lx, cy, line)
+            cy -= 2
+            c.setStrokeColor(colors.HexColor('#003d82'))
+            c.setLineWidth(0.3)
+            c.line(lx, cy, lx + 180, cy)
+        elif line.startswith('  >>'):
+            cy -= 2
+            c.setFont('Helvetica-Bold', 8)
+            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.drawString(lx + 4, cy, line.strip())
+        elif line.startswith('  +'):
+            c.setFont('Helvetica', 7)
+            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.drawString(lx + 8, cy, line.strip())
+        elif line.startswith('  -') and not line.startswith('  - '):
+            c.setFont('Helvetica', 7)
+            c.setFillColor(colors.HexColor('#c62828'))
+            c.drawString(lx + 8, cy, line.strip())
+        elif line.startswith('     Filieres') or line.startswith('     Options'):
+            c.setFont('Helvetica-Bold', 7)
+            c.setFillColor(colors.HexColor('#333333'))
+            c.drawString(lx + 12, cy, line.strip())
+        elif line.startswith('       - '):
+            c.setFont('Helvetica', 7)
+            c.setFillColor(colors.black)
+            c.drawString(lx + 18, cy, line.strip())
+        elif line.startswith('  Niveau'):
+            c.setFont('Helvetica-Bold', 7.5)
+            c.setFillColor(colors.HexColor('#003d82'))
+            c.drawString(lx + 8, cy, line.strip())
+        elif line.startswith('  Note') or line.startswith('  Attention') or line.startswith('  L\''):
+            c.setFont('Helvetica-Oblique', 7)
+            c.setFillColor(colors.HexColor('#555555'))
+            c.drawString(lx + 8, cy, line.strip())
+        elif line == '':
+            cy -= 2
+            continue
+        else:
+            c.setFont('Helvetica', 7)
+            c.setFillColor(colors.black)
+            c.drawString(lx + 8, cy, line.strip())
+
+        cy -= 8
+
+    # Signatures
+    sig_y = y_base + 35
+    c.setFont('Helvetica-Bold', 7)
+    c.setFillColor(colors.black)
+    directeur = _s(ecole.directeur) if ecole.directeur else ''
+    c.drawString(lx, sig_y, "Le Directeur :")
+    c.drawString(cx, sig_y, "Signature parent :")
+    sig_y -= 9
+    c.setFont('Helvetica', 7)
+    c.drawString(lx, sig_y, directeur)
+    sig_y -= 9
+    c.drawString(lx, sig_y, "Signature et cachet :")
+
+    # Bordure tricolore en bas
+    c.setFillColor(colors.HexColor('#CE1126'))
+    c.rect(lx, y_base + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#FCD116'))
+    c.rect(lx + third, y_base + 15, third, stripe_h, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor('#009460'))
+    c.rect(lx + 2 * third, y_base + 15, third, stripe_h, fill=1, stroke=0)
+
+    # Numero de page
+    c.setFont('Helvetica', 8)
+    c.setFillColor(colors.HexColor('#555555'))
     c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
 
 
@@ -2416,9 +2569,14 @@ def _generer_livret_pdf(eleve, ecole, parcours):
             lambda c, x, y, w, h, pn, e=entry: _draw_half_page(
                 c, x, y, w, h, ecole, e, eleve, pn))
 
-    # Avant-derniere page : Synthese / rapport final
+    # Synthese du parcours par cycle
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_synthese_half(
+            c, x, y, w, h, ecole, eleve, parcours, pn))
+
+    # Analyse et orientation universitaire/professionnelle
+    logical_pages.append(
+        lambda c, x, y, w, h, pn: _draw_orientation_half(
             c, x, y, w, h, ecole, eleve, parcours, pn))
 
     # Fiche de sante
@@ -2483,11 +2641,16 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
                     ecole, entry, eleve, 2)
     c.showPage()
 
-    # Page 2 : Analyse du niveau de l'eleve (gauche) + Lettre de remerciement (droite)
+    # Page 2 : Analyse du niveau de l'eleve (gauche) + Orientation (droite)
     _draw_analyse_annuelle_half(c, left_x, margin, half_w, usable_h,
                                 ecole, eleve, entry, 3)
-    _draw_lettre_remerciement_half(c, right_x, margin, half_w, usable_h,
-                                   ecole, eleve, [entry], 4)
+    _draw_orientation_half(c, right_x, margin, half_w, usable_h,
+                           ecole, eleve, parcours, 4)
+    c.showPage()
+
+    # Page 3 : Lettre de remerciement (gauche)
+    _draw_lettre_remerciement_half(c, left_x, margin, half_w, usable_h,
+                                   ecole, eleve, [entry], 5)
     c.showPage()
 
     c.save()
@@ -2495,54 +2658,325 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
     return buffer
 
 
+# Classement des matieres par domaine pour l'orientation
+_DOMAINES_MATIERES = {
+    'SCIENCES_EXACTES': [
+        'math', 'physique', 'chimie', 'sciences physiques', 'algebre',
+        'geometrie', 'arithmetique', 'statistique',
+    ],
+    'SCIENCES_VIE': [
+        'biologie', 'svt', 'sciences de la vie', 'sciences naturelles',
+        'botanique', 'zoologie', 'ecologie',
+    ],
+    'LETTRES_LANGUES': [
+        'francais', 'anglais', 'arabe', 'espagnol', 'allemand',
+        'redaction', 'dictee', 'grammaire', 'orthographe', 'vocabulaire',
+        'conjugaison', 'lecture', 'expression', 'litterature', 'langage',
+        'communication', 'ecriture', 'graphisme',
+    ],
+    'SCIENCES_SOCIALES': [
+        'histoire', 'geographie', 'education civique', 'philosophie',
+        'sociologie', 'economie', 'droit', 'instruction civique',
+        'decouverte du monde',
+    ],
+    'ARTS_CULTURE': [
+        'dessin', 'arts', 'musique', 'art plastique', 'arts plastiques',
+        'culture', 'theatre',
+    ],
+    'SPORT': [
+        'sport', 'education physique', 'eps', 'gymnastique',
+    ],
+    'TECHNIQUE': [
+        'informatique', 'technologie', 'technique', 'comptabilite',
+        'gestion', 'economie familiale',
+    ],
+}
+
+
+def _classifier_matiere(nom_matiere):
+    """Retourne le domaine d'une matiere."""
+    nom_lower = nom_matiere.lower().replace('\u00e9', 'e').replace('\u00e8', 'e') \
+        .replace('\u00ea', 'e').replace('\u00e0', 'a').replace('\u00e7', 'c') \
+        .replace('\u00ee', 'i').replace('\u00f4', 'o')
+    for domaine, mots_cles in _DOMAINES_MATIERES.items():
+        for mot in mots_cles:
+            if mot in nom_lower:
+                return domaine
+    return 'AUTRE'
+
+
 def _calculer_orientation(parcours):
-    """Propose une orientation automatique."""
+    """Analyse complete de l'evolution de l'eleve et proposition d'orientation.
+
+    Analyse:
+    - Evolution des moyennes annuelles (tendance)
+    - Moyennes par domaine sur tout le parcours
+    - Points forts et faibles persistants
+    - Proposition de filieres universitaires ou professionnelles
+    """
     if not parcours:
         return ["Aucune donnee disponible pour proposer une orientation."]
 
     derniere = parcours[-1]
-    moyennes_all = [p['moyenne_annuelle'] for p in parcours if p['moyenne_annuelle']]
-    if not moyennes_all:
-        return ["Aucune moyenne disponible pour proposer une orientation."]
-
-    moy_globale = round(sum(moyennes_all) / len(moyennes_all), 2)
     sur = derniere['sur']
     seuil = 5.0 if sur == 10 else 10.0
 
-    lines = [
-        f"- Moyenne generale du parcours : {moy_globale:.2f}/{sur}",
-        f"- Nombre d'annees evaluees : {len(moyennes_all)}",
-        f"- Derniere classe : {_s(derniere['classe_nom'])} ({derniere['annee_scolaire']})",
-    ]
+    # ---------------------------------------------------------------
+    # 1. EVOLUTION DES MOYENNES ANNUELLES
+    # ---------------------------------------------------------------
+    moyennes_all = []
+    for p in parcours:
+        if p['moyenne_annuelle'] is not None:
+            moyennes_all.append((p['annee_scolaire'], p['classe_nom'], p['moyenne_annuelle'], p['sur']))
 
-    if derniere['matieres_data']:
-        mats_avg = []
-        for m in derniere['matieres_data']:
+    if not moyennes_all:
+        return ["Aucune moyenne disponible pour proposer une orientation."]
+
+    # Normaliser toutes les moyennes sur 20 pour comparer
+    moyennes_norm = []
+    for annee, classe, moy, s in moyennes_all:
+        moy_sur20 = moy * (20.0 / s) if s else moy
+        moyennes_norm.append((annee, classe, moy_sur20, moy, s))
+
+    moy_globale_20 = round(sum(m[2] for m in moyennes_norm) / len(moyennes_norm), 2)
+    derniere_moy_20 = moyennes_norm[-1][2]
+
+    # Tendance (regression lineaire simple)
+    n = len(moyennes_norm)
+    tendance = "stable"
+    if n >= 2:
+        premiere_moy = moyennes_norm[0][2]
+        ecart = derniere_moy_20 - premiere_moy
+        if ecart > 1.5:
+            tendance = "progression"
+        elif ecart < -1.5:
+            tendance = "regression"
+
+    lines = []
+    lines.append("BILAN DU PARCOURS SCOLAIRE")
+    lines.append(f"  {len(moyennes_all)} annee(s) evaluee(s)")
+    moy_aff = moyennes_all[-1][2]
+    sur_aff = moyennes_all[-1][3]
+    lines.append(f"  Moyenne generale du parcours : {moy_globale_20:.2f}/20")
+    lines.append(f"  Derniere moyenne : {moy_aff:.2f}/{sur_aff}")
+    if tendance == "progression":
+        lines.append(f"  Tendance : En progression (+{derniere_moy_20 - moyennes_norm[0][2]:.1f} pts)")
+    elif tendance == "regression":
+        lines.append(f"  Tendance : En baisse ({derniere_moy_20 - moyennes_norm[0][2]:.1f} pts)")
+    else:
+        lines.append("  Tendance : Stable")
+    lines.append("")
+
+    # ---------------------------------------------------------------
+    # 2. ANALYSE PAR DOMAINE (toutes annees confondues)
+    # ---------------------------------------------------------------
+    domaines_notes = {}  # domaine -> liste de (moyenne_normalisee_sur20)
+    matieres_global = {}  # nom_matiere -> liste de notes
+
+    for p in parcours:
+        p_sur = p.get('sur', 20)
+        for m in p.get('matieres_data', []):
+            nom = _s(m.get('nom', ''))
             vals = []
             for key in ['sem1_moyenne', 'sem2_moyenne', 't1_moy', 't2_moy', 't3_moy']:
                 v = m.get(key)
                 if v is not None:
-                    vals.append(float(v))
+                    try:
+                        vals.append(float(v))
+                    except (ValueError, TypeError):
+                        pass
             if vals:
-                mats_avg.append((_s(m['nom']), round(sum(vals) / len(vals), 2)))
-        if mats_avg:
-            mats_avg.sort(key=lambda x: x[1], reverse=True)
-            top_3 = mats_avg[:3]
-            lines.append(f"- Points forts : {', '.join(f'{n} ({v:.1f})' for n, v in top_3)}")
+                avg = sum(vals) / len(vals)
+                avg_20 = avg * (20.0 / p_sur) if p_sur else avg
+                domaine = _classifier_matiere(nom)
+                domaines_notes.setdefault(domaine, []).append(avg_20)
+                matieres_global.setdefault(nom, []).append((avg, p_sur))
 
-    lines.append("")
-    if moy_globale >= seuil * 1.6:
-        lines.append(">> ORIENTATION PROPOSEE : Filiere d'excellence - Sciences ou Lettres")
-        lines.append("   Profil academique excellent propice aux filieres selectives.")
-    elif moy_globale >= seuil * 1.3:
-        lines.append(">> ORIENTATION PROPOSEE : Filiere scientifique ou litteraire")
-        lines.append("   Solides capacites dans l'ensemble des disciplines.")
-    elif moy_globale >= seuil:
-        lines.append(">> ORIENTATION PROPOSEE : Filiere generale avec soutien cible")
-        lines.append("   Niveau requis atteint, accompagnement recommande.")
+    # Moyenne par domaine
+    domaines_avg = {}
+    for dom, notes_list in domaines_notes.items():
+        if notes_list:
+            domaines_avg[dom] = round(sum(notes_list) / len(notes_list), 2)
+
+    # Top matieres globales
+    matieres_avg = {}
+    for nom, notes_list in matieres_global.items():
+        all_20 = [v * (20.0 / s) if s else v for v, s in notes_list]
+        if all_20:
+            matieres_avg[nom] = round(sum(all_20) / len(all_20), 2)
+
+    matieres_sorted = sorted(matieres_avg.items(), key=lambda x: x[1], reverse=True)
+    fortes = [(n, v) for n, v in matieres_sorted if v >= 12]
+    faibles = [(n, v) for n, v in matieres_sorted if v < 10]
+
+    lines.append("POINTS FORTS (sur tout le parcours)")
+    if fortes:
+        for nom, avg in fortes[:5]:
+            lines.append(f"  + {nom} : {avg:.1f}/20")
     else:
-        lines.append(">> ORIENTATION PROPOSEE : Redoublement ou filiere professionnelle")
-        lines.append("   Renforcement des acquis necessaire avant progression.")
+        lines.append("  Aucune matiere au-dessus de 12/20")
+    lines.append("")
+
+    if faibles:
+        lines.append("POINTS A AMELIORER")
+        for nom, avg in faibles[:4]:
+            lines.append(f"  - {nom} : {avg:.1f}/20")
+        lines.append("")
+
+    # ---------------------------------------------------------------
+    # 3. PROFIL DOMINANT ET ORIENTATION
+    # ---------------------------------------------------------------
+    DOMAINE_LABELS = {
+        'SCIENCES_EXACTES': 'Sciences exactes',
+        'SCIENCES_VIE': 'Sciences de la vie',
+        'LETTRES_LANGUES': 'Lettres et langues',
+        'SCIENCES_SOCIALES': 'Sciences sociales',
+        'ARTS_CULTURE': 'Arts et culture',
+        'SPORT': 'Sport',
+        'TECHNIQUE': 'Technique',
+    }
+
+    # Trier les domaines par moyenne decroissante (hors AUTRE)
+    domaines_sorted = sorted(
+        [(d, a) for d, a in domaines_avg.items() if d != 'AUTRE'],
+        key=lambda x: x[1], reverse=True
+    )
+
+    # Profil dominant = domaine(s) avec meilleure moyenne
+    profil_dom = domaines_sorted[0][0] if domaines_sorted else None
+    profil_score = domaines_sorted[0][1] if domaines_sorted else 0
+
+    lines.append("ORIENTATION PROPOSEE")
+
+    # Filieres selon le profil et le niveau
+    if moy_globale_20 >= 16:
+        excellence = True
+        lines.append("  Niveau : EXCELLENT - Acces aux filieres d'excellence")
+    elif moy_globale_20 >= 12:
+        excellence = False
+        lines.append("  Niveau : BON - Acces aux filieres universitaires")
+    elif moy_globale_20 >= 10:
+        excellence = False
+        lines.append("  Niveau : PASSABLE - Filieres generales ou professionnelles")
+    else:
+        excellence = False
+        lines.append("  Niveau : INSUFFISANT - Formation professionnelle recommandee")
+    lines.append("")
+
+    # Propositions basees sur le domaine dominant
+    if profil_dom == 'SCIENCES_EXACTES' and profil_score >= 12:
+        lines.append("  >> PROFIL SCIENTIFIQUE")
+        if excellence:
+            lines.append("     Filieres universitaires :")
+            lines.append("       - Medecine / Pharmacie / Dentaire")
+            lines.append("       - Ecoles d'ingenieurs (Polytechnique, Mines)")
+            lines.append("       - Licence Mathematiques / Physique")
+            lines.append("       - Informatique / Intelligence artificielle")
+        else:
+            lines.append("     Filieres recommandees :")
+            lines.append("       - BTS / DUT Genie civil, Electrotechnique")
+            lines.append("       - Licence Sciences et Technologies")
+            lines.append("       - Formation en Informatique / Reseaux")
+            lines.append("       - Comptabilite et Gestion")
+
+    elif profil_dom == 'SCIENCES_VIE' and profil_score >= 12:
+        lines.append("  >> PROFIL SCIENCES DE LA VIE")
+        if excellence:
+            lines.append("     Filieres universitaires :")
+            lines.append("       - Medecine / Pharmacie / Sage-femme")
+            lines.append("       - Biologie / Biochimie")
+            lines.append("       - Agronomie / Sciences de l'environnement")
+            lines.append("       - Veterinaire")
+        else:
+            lines.append("     Filieres recommandees :")
+            lines.append("       - Infirmier / Laborantin")
+            lines.append("       - Agriculture / Elevage")
+            lines.append("       - Technicien de laboratoire")
+            lines.append("       - Gestion des ressources naturelles")
+
+    elif profil_dom == 'LETTRES_LANGUES' and profil_score >= 12:
+        lines.append("  >> PROFIL LITTERAIRE ET LINGUISTIQUE")
+        if excellence:
+            lines.append("     Filieres universitaires :")
+            lines.append("       - Droit / Sciences juridiques")
+            lines.append("       - Lettres modernes / Linguistique")
+            lines.append("       - Journalisme / Communication")
+            lines.append("       - Relations internationales")
+            lines.append("       - Enseignement (ENS / Professorat)")
+        else:
+            lines.append("     Filieres recommandees :")
+            lines.append("       - Secretariat / Administration")
+            lines.append("       - Communication et Marketing")
+            lines.append("       - Tourisme et Hotellerie")
+            lines.append("       - Traduction / Interpretation")
+
+    elif profil_dom == 'SCIENCES_SOCIALES' and profil_score >= 12:
+        lines.append("  >> PROFIL SCIENCES HUMAINES ET SOCIALES")
+        if excellence:
+            lines.append("     Filieres universitaires :")
+            lines.append("       - Sciences politiques / Administration publique")
+            lines.append("       - Economie / Finance")
+            lines.append("       - Sociologie / Psychologie")
+            lines.append("       - Histoire / Geographie")
+        else:
+            lines.append("     Filieres recommandees :")
+            lines.append("       - Administration / Gestion")
+            lines.append("       - Banque et Assurance")
+            lines.append("       - Action sociale")
+            lines.append("       - Douane / Police / Armee")
+
+    elif profil_dom == 'TECHNIQUE' and profil_score >= 10:
+        lines.append("  >> PROFIL TECHNIQUE ET PROFESSIONNEL")
+        lines.append("     Filieres recommandees :")
+        lines.append("       - BTS Informatique / Reseaux")
+        lines.append("       - Gestion des entreprises")
+        lines.append("       - Comptabilite / Finance")
+        lines.append("       - Logistique / Transport")
+
+    elif profil_dom == 'ARTS_CULTURE' and profil_score >= 12:
+        lines.append("  >> PROFIL ARTISTIQUE ET CULTUREL")
+        lines.append("     Filieres recommandees :")
+        lines.append("       - Beaux-Arts / Design")
+        lines.append("       - Architecture")
+        lines.append("       - Communication visuelle")
+        lines.append("       - Animation culturelle")
+
+    elif profil_dom == 'SPORT' and profil_score >= 14:
+        lines.append("  >> PROFIL SPORTIF")
+        lines.append("     Filieres recommandees :")
+        lines.append("       - STAPS / Sciences du sport")
+        lines.append("       - Entraineur / Moniteur sportif")
+        lines.append("       - Kinesitherapie / Reeducation")
+
+    elif moy_globale_20 >= 10:
+        # Profil general sans domaine dominant
+        lines.append("  >> PROFIL GENERAL")
+        lines.append("     Filieres recommandees :")
+        if domaines_sorted:
+            top2 = domaines_sorted[:2]
+            for dom, avg in top2:
+                label = DOMAINE_LABELS.get(dom, dom)
+                lines.append(f"       - Domaine {label} ({avg:.1f}/20)")
+        lines.append("       - Filiere generale avec specialisation progressive")
+        lines.append("       - Formation professionnelle qualifiante")
+    else:
+        lines.append("  >> FORMATION PROFESSIONNELLE RECOMMANDEE")
+        lines.append("     Options possibles :")
+        lines.append("       - Centre de formation professionnelle (CFP)")
+        lines.append("       - Apprentissage d'un metier (artisanat, BTP)")
+        lines.append("       - Agriculture / Elevage / Peche")
+        lines.append("       - Formation en entrepreneuriat")
+        lines.append("     Conseil : renforcer les acquis de base avant toute")
+        lines.append("     orientation en filiere longue.")
+
+    # Conseil selon la tendance
+    lines.append("")
+    if tendance == "progression":
+        lines.append("  Note : Parcours en progression constante.")
+        lines.append("  L'eleve montre une capacite d'amelioration encourageante.")
+    elif tendance == "regression":
+        lines.append("  Attention : Parcours en baisse. Un soutien scolaire")
+        lines.append("  renforce est recommande pour inverser la tendance.")
 
     return lines
 
@@ -2724,6 +3158,9 @@ def livret_scolaire_classe_pdf(request, classe_id):
                         c, x, y, w, h, ecole, e, el, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_synthese_half(
+                    c, x, y, w, h, ecole, el, pa, pn))
+            pages.append(
+                lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_orientation_half(
                     c, x, y, w, h, ecole, el, pa, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve: _draw_fiche_sante_half(
