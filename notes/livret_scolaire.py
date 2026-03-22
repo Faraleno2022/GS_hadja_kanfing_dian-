@@ -243,7 +243,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # Numero de page (tout en bas)
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+    c.drawCentredString(x + w / 2, y + 5, f"-{page_number}-")
 
     # Ligne separatrice appreciations
     sep_y = footer_top
@@ -310,10 +310,25 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
             _fmt(m.get('sem2_moyenne')),
         ])
 
+    # Tronquer les noms de matieres trop longs pour eviter le debordement
+    for row in data[2:]:
+        if row[0] and len(str(row[0])) > 28:
+            row[0] = str(row[0])[:26] + '..'
+
     nb_rows = len(data)
     header1_rh = 16
     header2_rh = 26  # plus haut pour le texte sur 2 lignes
     data_rh = 20
+
+    # Ajuster dynamiquement la hauteur des lignes si le tableau deborde dans le pied
+    available_h = table_top - footer_top - 35  # 35pt pour moyenne/stats sous le tableau
+    needed_h = header1_rh + header2_rh + data_rh * (nb_rows - 2)
+    if needed_h > available_h and nb_rows > 2:
+        data_rh = max(11, int((available_h - header1_rh - header2_rh) / (nb_rows - 2)))
+
+    # Adapter la taille de police si les lignes sont petites
+    data_fs = 9 if data_rh >= 16 else 8 if data_rh >= 13 else 7
+
     row_heights = [header1_rh, header2_rh] + [data_rh] * (nb_rows - 2)
 
     table = Table(data, colWidths=col_widths, rowHeights=row_heights)
@@ -321,7 +336,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('FONTNAME', (0, 0), (-1, 1), 'Helvetica-Bold'),
         ('FONTNAME', (0, 2), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, 1), 8),
-        ('FONTSIZE', (0, 2), (-1, -1), 9),
+        ('FONTSIZE', (0, 2), (-1, -1), data_fs),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -329,9 +344,10 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#f0f0f0')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('TOPPADDING', (0, 1), (-1, 1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('TOPPADDING', (0, 1), (-1, 1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 3),
         ('SPAN', (0, 0), (0, 1)),
         ('SPAN', (1, 0), (1, 1)),
         ('SPAN', (2, 0), (4, 0)),
@@ -344,43 +360,46 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     table.drawOn(c, x, table_y)
 
     # ------------------------------------------------------------------
-    # MOYENNE ANNUELLE (collee juste sous le tableau)
+    # MOYENNE ANNUELLE (collee juste sous le tableau, avec garde anti-chevauchement)
     # ------------------------------------------------------------------
-    fy = table_y - 11
-    c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.black)
-    if moy_ann is not None:
-        c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
-    else:
-        c.drawString(lx, fy, "Moyenne Annuelle : -")
+    fy = table_y - 10
+    if fy > footer_top + 5:
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(colors.black)
+        if moy_ann is not None:
+            c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
+        else:
+            c.drawString(lx, fy, "Moyenne Annuelle : -")
 
-    fy -= 11
-    c.setFont('Helvetica', 8)
-    passe_txt = _s(passe_en) if passe_en else ''
-    if passe_txt:
-        c.drawString(lx, fy, f"Passe en : {passe_txt}")
-    rang_txt2 = _s(rang) if rang else ''
-    if rang_txt2:
-        c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
-    eff_entry = entry.get('effectif_classe', 0)
-    if eff_entry:
-        c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
+        fy -= 10
+        if fy > footer_top + 5:
+            c.setFont('Helvetica', 7)
+            passe_txt = _s(passe_en) if passe_en else ''
+            if passe_txt:
+                c.drawString(lx, fy, f"Passe en : {passe_txt}")
+            rang_txt2 = _s(rang) if rang else ''
+            if rang_txt2:
+                c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+            eff_entry = entry.get('effectif_classe', 0)
+            if eff_entry:
+                c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
 
-    # Stats de la classe
-    fy -= 11
-    moy_cl = entry.get('moy_classe')
-    note_min_cl = entry.get('note_min_classe')
-    note_max_cl = entry.get('note_max_classe')
-    c.setFont('Helvetica', 7)
-    stats_parts = []
-    if moy_cl is not None:
-        stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
-    if note_min_cl is not None:
-        stats_parts.append(f"Min: {note_min_cl:.2f}")
-    if note_max_cl is not None:
-        stats_parts.append(f"Max: {note_max_cl:.2f}")
-    if stats_parts:
-        c.drawString(lx, fy, "  |  ".join(stats_parts))
+            # Stats de la classe
+            fy -= 10
+            if fy > footer_top + 5:
+                moy_cl = entry.get('moy_classe')
+                note_min_cl = entry.get('note_min_classe')
+                note_max_cl = entry.get('note_max_classe')
+                c.setFont('Helvetica', 6.5)
+                stats_parts = []
+                if moy_cl is not None:
+                    stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
+                if note_min_cl is not None:
+                    stats_parts.append(f"Min: {note_min_cl:.2f}")
+                if note_max_cl is not None:
+                    stats_parts.append(f"Max: {note_max_cl:.2f}")
+                if stats_parts:
+                    c.drawString(lx, fy, "  |  ".join(stats_parts))
 
 
 def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -456,7 +475,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+    c.drawCentredString(x + w / 2, y + 5, f"-{page_number}-")
 
     sep_y = footer_top
     c.setLineWidth(0.5)
@@ -522,11 +541,23 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
                 obs = 'TB' if m_ann >= 8 else 'B' if m_ann >= 7 else 'AB' if m_ann >= 6 else 'P' if m_ann >= seuil else 'I'
             else:
                 obs = 'TB' if m_ann >= 16 else 'B' if m_ann >= 14 else 'AB' if m_ann >= 12 else 'P' if m_ann >= seuil else 'I'
-        data.append([_s(m['nom']), _fmt(t1), _fmt(t2), _fmt(t3), _fmt(m_ann), obs])
+        # Tronquer les noms de matieres trop longs
+        nom_m = _s(m['nom'])
+        if len(nom_m) > 30:
+            nom_m = nom_m[:28] + '..'
+        data.append([nom_m, _fmt(t1), _fmt(t2), _fmt(t3), _fmt(m_ann), obs])
 
     nb_rows = len(data)
     header_rh = 20
-    data_rh = 20  # hauteur fixe raisonnable
+    data_rh = 20
+
+    # Ajuster dynamiquement la hauteur des lignes si le tableau deborde dans le pied
+    available_h = table_top - footer_top - 35  # 35pt pour moyenne/stats sous le tableau
+    needed_h = header_rh + data_rh * (nb_rows - 1)
+    if needed_h > available_h and nb_rows > 1:
+        data_rh = max(11, int((available_h - header_rh) / (nb_rows - 1)))
+
+    data_fs = 9 if data_rh >= 16 else 8 if data_rh >= 13 else 7
     row_heights = [header_rh] + [data_rh] * (nb_rows - 1)
 
     table = Table(data, colWidths=col_widths, rowHeights=row_heights)
@@ -534,7 +565,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), data_fs),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -542,8 +573,8 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
 
     table_total_h = sum(row_heights)
@@ -552,43 +583,46 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
     table.drawOn(c, x, table_y)
 
     # ------------------------------------------------------------------
-    # MOYENNE ANNUELLE (collee sous le tableau)
+    # MOYENNE ANNUELLE (collee sous le tableau, avec garde anti-chevauchement)
     # ------------------------------------------------------------------
-    fy = table_y - 11
-    c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.black)
-    if moy_ann is not None:
-        c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
-    else:
-        c.drawString(lx, fy, "Moyenne Annuelle : -")
+    fy = table_y - 10
+    if fy > footer_top + 5:
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(colors.black)
+        if moy_ann is not None:
+            c.drawString(lx, fy, f"Moyenne Annuelle : {moy_ann:.2f}/{sur}")
+        else:
+            c.drawString(lx, fy, "Moyenne Annuelle : -")
 
-    fy -= 11
-    c.setFont('Helvetica', 8)
-    passe_txt = _s(passe_en) if passe_en else ''
-    if passe_txt:
-        c.drawString(lx, fy, f"Passe en : {passe_txt}")
-    rang_txt2 = _s(rang) if rang else ''
-    if rang_txt2:
-        c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
-    eff_entry = entry.get('effectif_classe', 0)
-    if eff_entry:
-        c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
+        fy -= 10
+        if fy > footer_top + 5:
+            c.setFont('Helvetica', 7)
+            passe_txt = _s(passe_en) if passe_en else ''
+            if passe_txt:
+                c.drawString(lx, fy, f"Passe en : {passe_txt}")
+            rang_txt2 = _s(rang) if rang else ''
+            if rang_txt2:
+                c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
+            eff_entry = entry.get('effectif_classe', 0)
+            if eff_entry:
+                c.drawRightString(rx, fy, f"Effectif : {eff_entry}")
 
-    # Stats de la classe
-    fy -= 11
-    moy_cl = entry.get('moy_classe')
-    note_min_cl = entry.get('note_min_classe')
-    note_max_cl = entry.get('note_max_classe')
-    c.setFont('Helvetica', 7)
-    stats_parts = []
-    if moy_cl is not None:
-        stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
-    if note_min_cl is not None:
-        stats_parts.append(f"Min: {note_min_cl:.2f}")
-    if note_max_cl is not None:
-        stats_parts.append(f"Max: {note_max_cl:.2f}")
-    if stats_parts:
-        c.drawString(lx, fy, "  |  ".join(stats_parts))
+            # Stats de la classe
+            fy -= 10
+            if fy > footer_top + 5:
+                moy_cl = entry.get('moy_classe')
+                note_min_cl = entry.get('note_min_classe')
+                note_max_cl = entry.get('note_max_classe')
+                c.setFont('Helvetica', 6.5)
+                stats_parts = []
+                if moy_cl is not None:
+                    stats_parts.append(f"Moy. classe: {moy_cl:.2f}/{sur}")
+                if note_min_cl is not None:
+                    stats_parts.append(f"Min: {note_min_cl:.2f}")
+                if note_max_cl is not None:
+                    stats_parts.append(f"Max: {note_max_cl:.2f}")
+                if stats_parts:
+                    c.drawString(lx, fy, "  |  ".join(stats_parts))
 
 
 def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
@@ -683,9 +717,22 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     page_num_h = 12
     footer_top = y + page_num_h + footer_h
 
+    # Tronquer les noms de matieres trop longs
+    for row in data_m[1:]:
+        if row[0] and len(str(row[0])) > 30:
+            row[0] = str(row[0])[:28] + '..'
+
     nb_rows_m = len(data_m)
     header_rh_m = 20
-    data_rh_m = 20  # hauteur fixe
+    data_rh_m = 20
+
+    # Ajuster dynamiquement la hauteur des lignes si le tableau deborde dans le pied
+    available_h_m = cy - footer_top - 5
+    needed_h_m = header_rh_m + data_rh_m * (nb_rows_m - 1)
+    if needed_h_m > available_h_m and nb_rows_m > 1:
+        data_rh_m = max(11, int((available_h_m - header_rh_m) / (nb_rows_m - 1)))
+
+    data_fs_m = 9 if data_rh_m >= 16 else 8 if data_rh_m >= 13 else 7
     row_heights_m = [header_rh_m] + [data_rh_m] * (nb_rows_m - 1)
 
     table_m = Table(data_m, colWidths=col_widths_m, rowHeights=row_heights_m)
@@ -693,7 +740,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('FONTSIZE', (0, 1), (-1, -1), data_fs_m),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -701,8 +748,8 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
     ]))
 
     table_total_h_m = sum(row_heights_m)
@@ -713,17 +760,12 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     # Pied
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+    c.drawCentredString(x + w / 2, y + 5, f"-{page_number}-")
 
     sep_y = footer_top
     c.setLineWidth(0.5)
     c.setStrokeColor(colors.black)
     c.line(x, sep_y, x + w, sep_y)
-
-    fy = footer_top + 12
-    c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.black)
-    c.drawString(lx, fy, "Appreciation globale du trimestre")
 
     left_w = w * 0.50
     c.setLineWidth(0.3)
@@ -1003,7 +1045,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
 
     # Cadre eleve (fond blanc avec bordure)
     box_w = w - 2 * pad
-    box_h = 95
+    box_h = 105  # augmente pour eviter que le texte touche les bords
     box_x = x + pad
     box_y = ty - box_h
     c.setFillColor(colors.white)
@@ -1019,19 +1061,24 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.drawCentredString(cx, box_y + box_h - 13, "IDENTIFICATION DE L'ELEVE")
 
     c.setFillColor(colors.HexColor('#222222'))
-    c.setFont('Helvetica-Bold', 13)
-    c.drawCentredString(cx, box_y + box_h - 32,
-                        f"{_s(eleve.nom)} {_s(eleve.prenom)}")
+    # Adapter la taille du nom si trop long
+    nom_complet = f"{_s(eleve.nom)} {_s(eleve.prenom)}"
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    nom_fs = 13
+    while nom_fs > 9 and stringWidth(nom_complet, 'Helvetica-Bold', nom_fs) > box_w - 20:
+        nom_fs -= 1
+    c.setFont('Helvetica-Bold', nom_fs)
+    c.drawCentredString(cx, box_y + box_h - 34, nom_complet)
     c.setFont('Helvetica', 9)
-    c.drawCentredString(cx, box_y + box_h - 46, f"Matricule: {eleve.matricule}")
+    c.drawCentredString(cx, box_y + box_h - 50, f"Matricule: {eleve.matricule}")
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
     lieu = _s(getattr(eleve, 'lieu_naissance', '') or '')
-    c.drawCentredString(cx, box_y + box_h - 58, f"Ne(e) le {dn}  a {lieu}")
+    c.drawCentredString(cx, box_y + box_h - 64, f"Ne(e) le {dn}  a {lieu}")
     sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
-    c.drawCentredString(cx, box_y + box_h - 70, f"Sexe: {sexe_txt}")
+    c.drawCentredString(cx, box_y + box_h - 78, f"Sexe: {sexe_txt}")
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.HexColor('#555555'))
-    c.drawCentredString(cx, box_y + box_h - 84,
+    c.drawCentredString(cx, box_y + box_h - 92,
                         f"Parcours : {len(parcours)} annee(s)")
 
     # Image de l'ecole (grande, sous le cadre eleve)
@@ -1173,7 +1220,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
 def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
@@ -1226,24 +1273,32 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
         ("Email", _s(resp1.email) if resp1 and resp1.email else "............................................"),
     ]
 
+    # Largeur max disponible pour les valeurs (eviter debordement droit)
+    max_val_chars_28 = 45  # pour offset w*0.28
+    max_val_chars_35 = 38  # pour offset w*0.35
+
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
     for label, val in pere_fields:
         cy -= 14
+        if cy < y + 15:
+            break
         c.setFont('Helvetica-Bold', 8)
         c.drawString(lx, cy, f"{label} :")
         c.setFont('Helvetica', 8)
-        c.drawString(lx + w * 0.28, cy, val)
+        val_trunc = val[:max_val_chars_28] if len(val) > max_val_chars_28 else val
+        c.drawString(lx + w * 0.28, cy, val_trunc)
 
     # ------- MERE / Responsable secondaire -------
     cy -= 22
-    c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
-    c.drawString(lx, cy, "MERE / RESPONSABLE SECONDAIRE")
-    cy -= 3
-    c.setLineWidth(0.3)
-    c.setStrokeColor(colors.HexColor('#003d82'))
-    c.line(lx, cy, rx, cy)
+    if cy > y + 15:
+        c.setFont('Helvetica-Bold', 9)
+        c.setFillColor(colors.HexColor('#003d82'))
+        c.drawString(lx, cy, "MERE / RESPONSABLE SECONDAIRE")
+        cy -= 3
+        c.setLineWidth(0.3)
+        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.line(lx, cy, rx, cy)
 
     resp2 = getattr(eleve, 'responsable_secondaire', None)
 
@@ -1259,10 +1314,13 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     c.setFillColor(colors.black)
     for label, val in mere_fields:
         cy -= 14
+        if cy < y + 15:
+            break
         c.setFont('Helvetica-Bold', 8)
         c.drawString(lx, cy, f"{label} :")
         c.setFont('Helvetica', 8)
-        c.drawString(lx + w * 0.28, cy, val)
+        val_trunc = val[:max_val_chars_28] if len(val) > max_val_chars_28 else val
+        c.drawString(lx + w * 0.28, cy, val_trunc)
 
     # ------- SITUATION FAMILIALE -------
     cy -= 22
@@ -1316,15 +1374,18 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     c.setFillColor(colors.black)
     for label, val in sit_fields:
         cy -= 14
+        if cy < y + 15:
+            break
         c.setFont('Helvetica-Bold', 8)
         c.drawString(lx, cy, f"{label} :")
         c.setFont('Helvetica', 8)
-        c.drawString(lx + w * 0.35, cy, val)
+        val_trunc = val[:max_val_chars_35] if len(val) > max_val_chars_35 else val
+        c.drawString(lx + w * 0.35, cy, val_trunc)
 
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
 # ==============================================================================
@@ -1781,7 +1842,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
 
         col_w = [usable_w * 0.16, usable_w * 0.24, usable_w * 0.20,
                  usable_w * 0.20, usable_w * 0.20]
-        rh = 12
+        rh = 13
         table = Table(synth_data, colWidths=col_w, rowHeights=[rh] * len(synth_data))
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -1794,6 +1855,10 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8eef5')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
         ]))
         th = rh * len(synth_data)
         table.wrapOn(c, usable_w, th + 5)
@@ -1905,10 +1970,16 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
     # Contenu de l'orientation
     cy -= 14
     orientation = _calculer_orientation(parcours)
+    # Largeur max en caracteres pour eviter debordement a droite
+    max_line_chars = int((rx - lx - 20) / 3.5)  # ~3.5pt par char a font 7
 
     for line in orientation:
         if cy < y_base + 50:
             break
+        # Tronquer les lignes trop longues
+        if len(line.strip()) > max_line_chars:
+            indent = len(line) - len(line.lstrip())
+            line = line[:indent] + line.strip()[:max_line_chars - 2] + '..'
 
         # Mise en forme selon le contenu
         if line.startswith('BILAN') or line.startswith('POINTS FORTS') \
@@ -2160,7 +2231,7 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.HexColor('#555555'))
-    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
 # ==============================================================================
@@ -2428,11 +2499,18 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
             c.rect(lx - 2, cy - bar_h_each + 2, usable_w + 4, bar_h_each + 2, fill=1, stroke=0)
 
         c.setFillColor(colors.HexColor(color))
-        c.drawString(lx, cy - 3, f"{config['label']}")
+        # Reduire la police si le label est trop long pour label_w
+        lbl_text = config['label']
+        lbl_fs = 7.5
+        from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+        if _sw(lbl_text, 'Helvetica-Bold', lbl_fs) > label_w - 5:
+            lbl_fs = 6.5
+        c.setFont('Helvetica-Bold', lbl_fs)
+        c.drawString(lx, cy - 3, lbl_text)
         if is_best:
-            c.setFont('Helvetica-Bold', 6)
+            c.setFont('Helvetica-Bold', 5.5)
             c.setFillColor(colors.HexColor('#2e7d32'))
-            c.drawString(lx + label_w - 35, cy - 3, "RECOMMANDE")
+            c.drawString(lx, cy - 3 - lbl_fs, "RECOMMANDE")
 
         # Barre
         bar_x = lx + label_w + 5
@@ -2575,7 +2653,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.HexColor('#555555'))
-    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
 def _eleve_a_termine_college(parcours):
@@ -2594,7 +2672,7 @@ def _draw_blank_half(c, x, y, w, h, page_number):
     c.setDash()
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.HexColor('#999999'))
-    c.drawCentredString(x + w / 2, y + 3, f"-{page_number}-")
+    c.drawCentredString(x + w / 2, y + 5, f"-{page_number}-")
 
 
 def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number):
@@ -2763,8 +2841,12 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
 
         col_w_m = [usable_w * 0.45, usable_w * 0.25, usable_w * 0.30]
         # Adapter la hauteur de ligne si beaucoup de matieres
-        rh_m = 10 if len(tbl_data) > 12 else 11
+        rh_m = 11 if len(tbl_data) > 12 else 12
         fs_m = 6 if len(tbl_data) > 12 else 7
+        # Tronquer les noms de matieres trop longs dans le tableau
+        for row in tbl_data[1:]:
+            if row[0] and len(str(row[0])) > 35:
+                row[0] = str(row[0])[:33] + '..'
         tbl = Table(tbl_data, colWidths=col_w_m, rowHeights=[rh_m] * len(tbl_data))
         style_cmds = [
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -2778,6 +2860,8 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('LEFTPADDING', (0, 0), (-1, -1), 3),
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('TOPPADDING', (0, 0), (-1, -1), 1),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
         ]
         # Colorier les lignes selon le niveau
         for i, (nom, avg) in enumerate(display_items, 1):
@@ -2971,7 +3055,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # Numero de page
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
-    c.drawCentredString(cx, y + 3, f"-{page_number}-")
+    c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
 def _generer_livret_pdf(eleve, ecole, parcours):
