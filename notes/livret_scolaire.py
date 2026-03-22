@@ -1303,11 +1303,16 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
 # ==============================================================================
 
 def _collecter_parcours_eleve(eleve, ecole):
-    """Collecte tout le parcours d'un eleve."""
+    """Collecte tout le parcours d'un eleve.
+
+    Decouvre TOUTES les annees scolaires ou l'eleve a des donnees
+    (notes mensuelles, compositions, appreciations, classements, historique)
+    et genere une entree par annee dans l'ordre chronologique.
+    """
     parcours = []
     annees_classes = {}
 
-    # Via l'historique
+    # Source 1: Historique des changements de classe
     try:
         historiques = HistoriqueEleve.objects.filter(
             eleve=eleve, action='CHANGEMENT_CLASSE'
@@ -1329,17 +1334,50 @@ def _collecter_parcours_eleve(eleve, ecole):
     except Exception as e:
         logger.warning(f"Erreur lecture historique eleve {eleve.pk}: {e}")
 
-    # Classe actuelle
+    # Source 2: Classe actuelle
     if eleve.classe:
         annees_classes[eleve.classe.annee_scolaire] = eleve.classe.nom
 
-    # Via les Classements
+    # Source 3: Classements (moyenne/rang deja calcules)
     try:
         for cl in Classement.objects.filter(eleve=eleve).order_by('annee_scolaire'):
             if cl.annee_scolaire not in annees_classes:
                 annees_classes[cl.annee_scolaire] = cl.classe.nom if cl.classe else '?'
     except Exception as e:
         logger.warning(f"Erreur lecture classements eleve {eleve.pk}: {e}")
+
+    # Source 4: Notes mensuelles (source la plus fiable - notes reelles)
+    try:
+        for nm in NoteMensuelle.objects.filter(eleve=eleve).values(
+            'annee_scolaire', 'matiere__classe__nom'
+        ).distinct().order_by('annee_scolaire'):
+            annee = nm['annee_scolaire']
+            if annee and annee not in annees_classes:
+                annees_classes[annee] = nm['matiere__classe__nom'] or '?'
+    except Exception as e:
+        logger.warning(f"Erreur lecture notes mensuelles eleve {eleve.pk}: {e}")
+
+    # Source 5: Compositions
+    try:
+        for cn in CompositionNote.objects.filter(eleve=eleve).values(
+            'annee_scolaire', 'matiere__classe__nom'
+        ).distinct().order_by('annee_scolaire'):
+            annee = cn['annee_scolaire']
+            if annee and annee not in annees_classes:
+                annees_classes[annee] = cn['matiere__classe__nom'] or '?'
+    except Exception as e:
+        logger.warning(f"Erreur lecture compositions eleve {eleve.pk}: {e}")
+
+    # Source 6: Appreciations maternelle
+    try:
+        for am in AppreciationMaternelle.objects.filter(eleve=eleve).values(
+            'annee_scolaire', 'matiere__classe__nom'
+        ).distinct().order_by('annee_scolaire'):
+            annee = am['annee_scolaire']
+            if annee and annee not in annees_classes:
+                annees_classes[annee] = am['matiere__classe__nom'] or '?'
+    except Exception as e:
+        logger.warning(f"Erreur lecture appreciations maternelle eleve {eleve.pk}: {e}")
 
     for annee_scolaire in sorted(annees_classes.keys()):
         classe_nom = annees_classes[annee_scolaire]
