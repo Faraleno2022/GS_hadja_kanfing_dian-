@@ -97,7 +97,17 @@ def pointer_presence(request):
         count_created = 0
         count_updated = 0
         
+        # Valider que tous les enseignants sélectionnés appartiennent à l'école de l'utilisateur
+        enseignants_valides = set(
+            Enseignant.objects.filter(
+                id__in=enseignants_ids,
+                ecole=user_school_obj
+            ).values_list('id', flat=True)
+        )
+        
         for ens_id in enseignants_ids:
+            if int(ens_id) not in enseignants_valides:
+                continue  # Ignorer les enseignants qui n'appartiennent pas à l'école
             statut = request.POST.get(f'statut_{ens_id}', 'PRESENT')
             heure_arrivee_str = request.POST.get(f'heure_arrivee_{ens_id}') or None
             heure_depart_str = request.POST.get(f'heure_depart_{ens_id}') or None

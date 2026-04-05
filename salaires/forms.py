@@ -83,6 +83,7 @@ class EnseignantForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
         
         # Rendre certains champs obligatoires
@@ -91,6 +92,15 @@ class EnseignantForm(forms.ModelForm):
         self.fields['ecole'].required = True
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
+        
+        # Restreindre les écoles visibles selon l'utilisateur
+        if self.user:
+            from utilisateurs.utils import user_is_admin, user_school
+            if not user_is_admin(self.user):
+                ecole_user = user_school(self.user)
+                if ecole_user:
+                    self.fields['ecole'].queryset = Ecole.objects.filter(id=ecole_user.id)
+                    self.fields['ecole'].initial = ecole_user
         
         # Définir le statut par défaut
         if not self.instance.pk:

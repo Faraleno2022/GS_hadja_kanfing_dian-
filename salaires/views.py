@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, Http404
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
@@ -119,7 +119,10 @@ def tableau_bord(request):
         })
     
     # Vérifier les périodes non clôturées
-    periodes_ouvertes = PeriodeSalaire.objects.filter(cloturee=False).count()
+    periodes_ouvertes_qs = PeriodeSalaire.objects.filter(cloturee=False)
+    if restreindre:
+        periodes_ouvertes_qs = periodes_ouvertes_qs.filter(ecole=ecole_user)
+    periodes_ouvertes = periodes_ouvertes_qs.count()
     if periodes_ouvertes > 2:
         alertes.append({
             'type': 'info',
@@ -1024,6 +1027,7 @@ def marquer_paye(request, etat_id):
 
 
 @login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def fiche_paie_pdf(request, etat_id):
     """Génère une fiche de paie PDF pour un état de salaire"""
     from reportlab.pdfgen import canvas
@@ -1036,7 +1040,7 @@ def fiche_paie_pdf(request, etat_id):
     
     etat = get_object_or_404(EtatSalaire, id=etat_id)
     
-    # Vérifier les permissions
+    # Vérifier les permissions (double vérification en plus du décorateur)
     ecole_user = _ecole_utilisateur(request)
     if not user_is_admin(request.user) and ecole_user and etat.periode.ecole != ecole_user:
         raise Http404("État de salaire non trouvé")
@@ -1382,7 +1386,10 @@ def rapport_paiements(request):
     total_annuel = qs.aggregate(total=Sum('salaire_net'))['total'] or 0
 
     # Filtres disponibles
-    annees_dispo = (PeriodeSalaire.objects
+    annees_dispo_qs = PeriodeSalaire.objects.all()
+    if restreindre:
+        annees_dispo_qs = annees_dispo_qs.filter(ecole=ecole_user)
+    annees_dispo = (annees_dispo_qs
                     .order_by('-annee')
                     .values_list('annee', flat=True)
                     .distinct())
@@ -1556,6 +1563,12 @@ def creer_periode(request):
             from eleves.models import Ecole
             ecole = get_object_or_404(Ecole, id=ecole_id)
             
+            # Vérifier que l'utilisateur a le droit de créer une période pour cette école
+            ecole_user = _ecole_utilisateur(request)
+            if not user_is_admin(request.user) and ecole_user is not None and ecole.id != ecole_user.id:
+                messages.error(request, "Vous n'avez pas le droit de créer une période pour cette école.")
+                return redirect('salaires:gestion_periodes')
+            
             # Vérifier si la période existe déjà
             periode_existante = PeriodeSalaire.objects.filter(
                 mois=mois,
@@ -1598,6 +1611,12 @@ def cloturer_periode(request, periode_id):
     if request.method == 'POST':
         try:
             periode = get_object_or_404(PeriodeSalaire, id=periode_id)
+            
+            # Vérifier que l'utilisateur a le droit de clôturer cette période
+            ecole_user = _ecole_utilisateur(request)
+            if not user_is_admin(request.user) and ecole_user is not None and periode.ecole_id != ecole_user.id:
+                messages.error(request, "Vous n'avez pas le droit de clôturer cette période.")
+                return redirect('salaires:gestion_periodes')
             
             # Vérifier que la période n'est pas déjà clôturée
             if periode.cloturee:
@@ -1656,7 +1675,11 @@ def cloturer_periode(request, periode_id):
 @login_required
 def changer_statut_enseignant(request, enseignant_id):
     """Changement de statut d'un enseignant"""
-    enseignant = get_object_or_404(Enseignant, id=enseignant_id)
+    ecole_user = _ecole_utilisateur(request)
+    qs = Enseignant.objects.all()
+    if not user_is_admin(request.user) and ecole_user is not None:
+        qs = qs.filter(ecole=ecole_user)
+    enseignant = get_object_or_404(qs, id=enseignant_id)
     
     if request.method == 'POST':
         nouveau_statut = request.POST.get('nouveau_statut')
@@ -1684,7 +1707,7 @@ def changer_statut_enseignant(request, enseignant_id):
 def ajouter_enseignant(request):
     """Ajouter un nouvel enseignant"""
     if request.method == 'POST':
-        form = EnseignantForm(request.POST)
+        form = EnseignantForm(request.POST, user=request.user)
         if form.is_valid():
             enseignant = form.save(commit=False)
             enseignant.cree_par = request.user
@@ -1698,7 +1721,7 @@ def ajouter_enseignant(request):
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
     else:
-        form = EnseignantForm()
+        form = EnseignantForm(user=request.user)
     
     context = {
         'form': form,
@@ -1712,10 +1735,14 @@ def ajouter_enseignant(request):
 @login_required
 def modifier_enseignant(request, enseignant_id):
     """Modifier un enseignant existant"""
-    enseignant = get_object_or_404(Enseignant, id=enseignant_id)
+    ecole_user = _ecole_utilisateur(request)
+    qs = Enseignant.objects.all()
+    if not user_is_admin(request.user) and ecole_user is not None:
+        qs = qs.filter(ecole=ecole_user)
+    enseignant = get_object_or_404(qs, id=enseignant_id)
     
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, instance=enseignant)
+        form = EnseignantForm(request.POST, instance=enseignant, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(
@@ -1726,7 +1753,7 @@ def modifier_enseignant(request, enseignant_id):
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
     else:
-        form = EnseignantForm(instance=enseignant)
+        form = EnseignantForm(instance=enseignant, user=request.user)
     
     context = {
         'form': form,
