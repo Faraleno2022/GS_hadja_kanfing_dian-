@@ -1,5 +1,6 @@
 from django import forms
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, ThemeBulletin
+from django.forms import ClearableFileInput
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
 
 class ClasseNoteForm(forms.ModelForm):
     """Formulaire pour créer/modifier une classe"""
@@ -252,3 +253,60 @@ class ThemeBulletinForm(forms.ModelForm):
                 'class': 'form-check-input'
             }),
         }
+
+
+class ActiviteJournaliereForm(forms.ModelForm):
+    class Meta:
+        model = ActiviteJournaliere
+        fields = ['classe', 'eleve', 'date', 'type_activite', 'titre', 'description', 'appreciation']
+        widgets = {
+            'classe': forms.Select(attrs={'class': 'form-select', 'id': 'id_classe'}),
+            'eleve': forms.Select(attrs={'class': 'form-select', 'id': 'id_eleve'}),
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'type_activite': forms.Select(attrs={'class': 'form-select'}),
+            'titre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': "Titre de l'activité"}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Description ou observation...'}),
+            'appreciation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Très bien, Bien, À améliorer...'}),
+        }
+
+
+class MultipleFileInput(ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    """FileField qui accepte plusieurs fichiers (liste retournée par MultipleFileInput)."""
+
+    def clean(self, data, initial=None):
+        # Le widget avec allow_multiple_selected retourne une liste
+        if isinstance(data, (list, tuple)):
+            if not data or all(d is None for d in data):
+                if self.required:
+                    raise forms.ValidationError(self.error_messages['required'])
+                return []
+            return [super().clean(f, initial) for f in data if f is not None]
+        if not data:
+            if self.required:
+                raise forms.ValidationError(self.error_messages['required'])
+            return []
+        return [super().clean(data, initial)]
+
+
+class PieceJointeActiviteForm(forms.Form):
+    fichiers = MultipleFileField(
+        widget=MultipleFileInput(attrs={'class': 'form-control', 'accept': 'image/*,.pdf,.doc,.docx'}),
+        required=False,
+        label="Pièces jointes (images, copies d'évaluations...)"
+    )
+
+    def clean_fichiers(self):
+        files = self.files.getlist('fichiers')
+        max_size = 10 * 1024 * 1024  # 10 MB
+        allowed_ext = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'jfif', 'heic', 'heif', 'svg', 'tiff', 'tif', 'pdf', 'doc', 'docx'}
+        for f in files:
+            ext = f.name.rsplit('.', 1)[-1].lower() if '.' in f.name else ''
+            if ext not in allowed_ext:
+                raise forms.ValidationError(f"Type de fichier non autorisé : {f.name}")
+            if f.size > max_size:
+                raise forms.ValidationError(f"Fichier trop volumineux (max 10 Mo) : {f.name}")
+        return files

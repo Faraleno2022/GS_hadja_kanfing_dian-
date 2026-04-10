@@ -79,6 +79,10 @@
     .notes-card.magic:hover { background: linear-gradient(135deg, #f5eef8 0%, #ffffff 100%); }
     .notes-card.magic .notes-card-icon { color: #9b59b6; }
     
+    .notes-card.rose { border-left: 5px solid #e91e63; }
+    .notes-card.rose:hover { background: linear-gradient(135deg, #fce4ec 0%, #ffffff 100%); }
+    .notes-card.rose .notes-card-icon { color: #e91e63; }
+    
     .page-header {
         background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
         color: white;
@@ -239,6 +243,17 @@
                 <h3 class="notes-card-title">Livrets Scolaires</h3>
                 <p class="notes-card-description">
                     Générer le livret scolaire complet : parcours, notes, orientation automatique
+                </p>
+            </a>
+        </div>
+
+        <!-- Activités Journalières -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:liste_activites' %}" class="notes-card rose">
+                <i class="fas fa-calendar-day notes-card-icon"></i>
+                <h3 class="notes-card-title">Activités Journalières</h3>
+                <p class="notes-card-description">
+                    Évaluations, activités sportives, culturelles, artistiques avec photos et pièces jointes
                 </p>
             </a>
         </div>

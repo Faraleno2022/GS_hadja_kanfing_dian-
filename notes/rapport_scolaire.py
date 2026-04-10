@@ -1,0 +1,716 @@
+"""
+Rapport Scolaire Public — Accessible aux parents sans authentification.
+Le parent renseigne le matricule de l'élève, son numéro de téléphone
+et la classe. Le système vérifie que les informations correspondent
+et génère un PDF complet : situation scolaire, notes, activités journalières.
+"""
+import io
+import os
+import re
+from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.http import HttpResponse, Http404
+from django.shortcuts import render, redirect
+from django.db.models import Q, Avg
+
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import Table, TableStyle
+from reportlab.lib.utils import ImageReader
+from PIL import Image
+
+from eleves.models import Eleve, Classe, Ecole
+from notes.models import (
+    ClasseNote, MatiereNote, NoteEleve, NoteMensuelle,
+    CompositionNote, AppreciationMaternelle,
+    ActiviteJournaliere, PieceJointeActivite, Classement,
+)
+
+from django.utils.crypto import get_random_string
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+
+
+# ────────────────────────────────────────────────────────────────
+# UTILITAIRE : Token signé pour sécuriser l'accès
+# ────────────────────────────────────────────────────────────────
+_signer = TimestampSigner(salt='rapport-scolaire')
+
+
+def _make_token(eleve_id):
+    return _signer.sign(str(eleve_id))
+
+
+def _verify_token(token, max_age=1800):
+    """Vérifie le token et retourne l'eleve_id. Expire après 30 min."""
+    try:
+        return int(_signer.unsign(token, max_age=max_age))
+    except (BadSignature, SignatureExpired, ValueError):
+        return None
+
+
+# ────────────────────────────────────────────────────────────────
+# UTILITAIRE : Collecter toutes les données scolaires
+# ────────────────────────────────────────────────────────────────
+
+def _collecter_donnees_scolaires(eleve):
+    """Collecte toutes les données scolaires d'un élève pour le template et le PDF."""
+    annee = eleve.classe.annee_scolaire if eleve.classe else ''
+    ecole = eleve.classe.ecole if eleve.classe else None
+
+    # ─── Classe Note ───
+    classe_note = ClasseNote.objects.filter(
+        nom=eleve.classe.nom,
+        ecole=eleve.classe.ecole,
+        annee_scolaire=annee,
+        actif=True,
+    ).first() if eleve.classe else None
+
+    # ─── Notes mensuelles ───
+    MOIS_ORDRE = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+    MOIS_LABELS = ['Oct', 'Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin']
+
+    matieres = []
+    matieres_data = []
+    compo_periodes = []
+
+    if classe_note:
+        matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
+
+        # Collecter les périodes de composition existantes
+        compo_periodes_set = set()
+        for mat in matieres:
+            compos = CompositionNote.objects.filter(
+                eleve=eleve, matiere=mat, annee_scolaire=annee
+            )
+            for c in compos:
+                compo_periodes_set.add((c.periode, c.get_periode_display()))
+        compo_periodes = sorted(compo_periodes_set, key=lambda x: x[0])
+
+        for mat in matieres:
+            # Notes mensuelles
+            notes_m = NoteMensuelle.objects.filter(eleve=eleve, matiere=mat, annee_scolaire=annee)
+            mois_dict = {n.mois: n for n in notes_m}
+            notes_par_mois = []
+            total_notes = 0
+            count_notes = 0
+            for m in MOIS_ORDRE:
+                n = mois_dict.get(m)
+                if n:
+                    if n.absent:
+                        notes_par_mois.append('ABS')
+                    elif n.note is not None:
+                        notes_par_mois.append(str(n.note))
+                        total_notes += float(n.note)
+                        count_notes += 1
+                    else:
+                        notes_par_mois.append('—')
+                else:
+                    notes_par_mois.append('—')
+
+            # Compositions
+            compos = CompositionNote.objects.filter(
+                eleve=eleve, matiere=mat, annee_scolaire=annee
+            ).order_by('periode')
+            compo_dict = {c.periode: ('ABS' if c.absent else str(c.note or '—')) for c in compos}
+            notes_compo = [compo_dict.get(p[0], '—') for p in compo_periodes]
+
+            moyenne_matiere = round(total_notes / count_notes, 2) if count_notes > 0 else None
+
+            matieres_data.append({
+                'nom': mat.nom,
+                'coefficient': mat.coefficient,
+                'notes_mensuelles': notes_par_mois,
+                'notes_compo': notes_compo,
+                'moyenne': moyenne_matiere,
+            })
+
+    # ─── Classements ───
+    classements = Classement.objects.filter(
+        eleve=eleve, annee_scolaire=annee
+    ).order_by('periode')
+
+    # ─── Forces et faiblesses (déduit des notes) ───
+    forces = []
+    faiblesses = []
+    for md in matieres_data:
+        if md['moyenne'] is not None:
+            if md['moyenne'] >= 14:
+                forces.append({'matiere': md['nom'], 'moyenne': md['moyenne']})
+            elif md['moyenne'] < 10:
+                faiblesses.append({'matiere': md['nom'], 'moyenne': md['moyenne']})
+    forces.sort(key=lambda x: x['moyenne'], reverse=True)
+    faiblesses.sort(key=lambda x: x['moyenne'])
+
+    # ─── Conseils personnalisés ───
+    conseils = []
+    if faiblesses:
+        for f in faiblesses[:3]:
+            conseils.append(f"Renforcer les efforts en {f['matiere']} (moyenne actuelle : {f['moyenne']}/20)")
+    if forces:
+        conseils.append(f"Continuer les excellents résultats en {forces[0]['matiere']}")
+    if not forces and not faiblesses:
+        conseils.append("Continuer les efforts pour maintenir un bon niveau général")
+
+    # Moyenne générale
+    moyennes_valides = [md['moyenne'] for md in matieres_data if md['moyenne'] is not None]
+    moyenne_generale = round(sum(moyennes_valides) / len(moyennes_valides), 2) if moyennes_valides else None
+
+    # ─── Activités journalières ───
+    activites = ActiviteJournaliere.objects.filter(
+        eleve=eleve
+    ).select_related('classe').prefetch_related('pieces_jointes').order_by('-date')[:50]
+
+    return {
+        'eleve': eleve,
+        'ecole': ecole,
+        'annee': annee,
+        'classe_note': classe_note,
+        'mois_labels': MOIS_LABELS,
+        'compo_periodes': compo_periodes,
+        'matieres_data': matieres_data,
+        'classements': classements,
+        'forces': forces,
+        'faiblesses': faiblesses,
+        'conseils': conseils,
+        'moyenne_generale': moyenne_generale,
+        'activites': activites,
+    }
+
+
+# ────────────────────────────────────────────────────────────────
+# VUE : Formulaire de recherche (public, pas de login_required)
+# ────────────────────────────────────────────────────────────────
+
+def rapport_scolaire_recherche(request):
+    """Affiche le formulaire de recherche et traite la soumission."""
+    erreur = None
+    eleve = None
+
+    if request.method == 'POST':
+        matricule = request.POST.get('matricule', '').strip().upper()
+        telephone = request.POST.get('telephone', '').strip()
+        classe_nom = request.POST.get('classe', '').strip()
+
+        if not matricule or not telephone or not classe_nom:
+            erreur = "Veuillez remplir tous les champs."
+        else:
+            # Normaliser le téléphone : accepter avec ou sans +224
+            tel_normalise = re.sub(r'[\s\-\.]', '', telephone)
+            if not tel_normalise.startswith('+'):
+                tel_normalise = '+224' + tel_normalise.lstrip('0')
+
+            # Chercher l'élève
+            try:
+                eleve = Eleve.objects.select_related(
+                    'classe', 'classe__ecole',
+                    'responsable_principal', 'responsable_secondaire'
+                ).get(matricule=matricule, statut='ACTIF')
+            except Eleve.DoesNotExist:
+                erreur = "Aucun élève actif trouvé avec ce matricule."
+
+            if eleve and not erreur:
+                # Vérifier la classe (par ID ou par nom)
+                try:
+                    classe_id = int(classe_nom)
+                    if eleve.classe_id != classe_id:
+                        erreur = "La classe ne correspond pas à cet élève."
+                except (ValueError, TypeError):
+                    if classe_nom.lower() not in eleve.classe.nom.lower():
+                        erreur = "La classe ne correspond pas à cet élève."
+
+                # Vérifier le téléphone du responsable
+                if not erreur:
+                    tel_match = False
+                    for resp in [eleve.responsable_principal, eleve.responsable_secondaire]:
+                        if resp and resp.telephone:
+                            resp_tel = re.sub(r'[\s\-\.]', '', resp.telephone)
+                            if not resp_tel.startswith('+'):
+                                resp_tel = '+224' + resp_tel.lstrip('0')
+                            if resp_tel == tel_normalise:
+                                tel_match = True
+                                break
+                    if not tel_match:
+                        erreur = "Le numéro de téléphone ne correspond à aucun responsable de cet élève."
+
+        if eleve and not erreur:
+            # Tout est valide — rediriger vers la page détail
+            token = _make_token(eleve.pk)
+            return redirect(f'/rapport-scolaire/detail/?token={token}')
+
+    # GET ou erreur — charger toutes les classes actives pour la liste déroulante
+    classes = Classe.objects.select_related('ecole').filter(
+        eleves__statut='ACTIF'
+    ).distinct().order_by('ecole__nom', 'niveau', 'nom')
+
+    return render(request, 'rapport_scolaire/recherche.html', {
+        'erreur': erreur,
+        'classes': classes,
+    })
+
+
+# ────────────────────────────────────────────────────────────────
+# VUE : Page détail complète (public, sécurisé par token signé)
+# ────────────────────────────────────────────────────────────────
+
+def rapport_scolaire_detail(request):
+    """Affiche le rapport scolaire complet en HTML pour les parents."""
+    token = request.GET.get('token', '')
+    eleve_id = _verify_token(token)
+    if not eleve_id:
+        return render(request, 'rapport_scolaire/recherche.html', {
+            'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
+            'classes': Classe.objects.select_related('ecole').filter(
+                eleves__statut='ACTIF'
+            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
+        })
+
+    try:
+        eleve = Eleve.objects.select_related(
+            'classe', 'classe__ecole',
+            'responsable_principal', 'responsable_secondaire'
+        ).get(pk=eleve_id, statut='ACTIF')
+    except Eleve.DoesNotExist:
+        raise Http404
+
+    donnees = _collecter_donnees_scolaires(eleve)
+    donnees['token'] = token
+
+    return render(request, 'rapport_scolaire/detail.html', donnees)
+
+
+# ────────────────────────────────────────────────────────────────
+# VUE : Téléchargement PDF (public, sécurisé par token signé)
+# ────────────────────────────────────────────────────────────────
+
+def rapport_scolaire_pdf(request):
+    """Télécharge le rapport scolaire en PDF."""
+    token = request.GET.get('token', '')
+    eleve_id = _verify_token(token)
+    if not eleve_id:
+        return render(request, 'rapport_scolaire/recherche.html', {
+            'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
+            'classes': Classe.objects.select_related('ecole').filter(
+                eleves__statut='ACTIF'
+            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
+        })
+
+    try:
+        eleve = Eleve.objects.select_related(
+            'classe', 'classe__ecole',
+            'responsable_principal', 'responsable_secondaire'
+        ).get(pk=eleve_id, statut='ACTIF')
+    except Eleve.DoesNotExist:
+        raise Http404
+
+    return _generer_rapport_pdf(eleve)
+
+
+# ────────────────────────────────────────────────────────────────
+# GÉNÉRATION PDF COMPLÈTE
+# ────────────────────────────────────────────────────────────────
+
+def _generer_rapport_pdf(eleve):
+    """Génère le PDF complet du rapport scolaire pour un élève."""
+    buf = io.BytesIO()
+    width, height = A4
+    c = canvas.Canvas(buf, pagesize=A4)
+    margin = 1.5 * cm
+    col_width = width - 2 * margin
+
+    ecole = eleve.classe.ecole if eleve.classe else None
+    annee = eleve.classe.annee_scolaire if eleve.classe else ''
+
+    # ── Filigrane ─────────────────────────────────────────────
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        _watermark = lambda c, w, h: draw_logo_watermark(c, w, h, opacity=0.04, rotate=30, scale=1.5, ecole=ecole)
+    except ImportError:
+        _watermark = lambda c, w, h: None
+
+    def new_page():
+        c.showPage()
+        _watermark(c, width, height)
+        return height - margin
+
+    _watermark(c, width, height)
+    y = height - margin
+
+    # ══════════════════════════════════════════════════════════
+    # PAGE 1 : EN-TÊTE + INFORMATIONS ÉLÈVE
+    # ══════════════════════════════════════════════════════════
+    y = _draw_report_header(c, ecole, eleve, annee, y, margin, width)
+
+    # ── Informations de l'élève ──
+    y -= 15
+    y = _draw_section_title(c, "INFORMATIONS DE L'ÉLÈVE", y, margin, col_width)
+    y -= 5
+
+    infos = [
+        ("Matricule", eleve.matricule),
+        ("Nom complet", f"{eleve.prenom} {eleve.nom}"),
+        ("Sexe", eleve.get_sexe_display()),
+        ("Date de naissance", eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '—'),
+        ("Lieu de naissance", eleve.lieu_naissance or '—'),
+        ("Classe", eleve.classe.nom if eleve.classe else '—'),
+        ("Statut", eleve.get_statut_display()),
+    ]
+    # Responsables
+    for label, resp in [("Responsable principal", eleve.responsable_principal),
+                        ("Responsable secondaire", eleve.responsable_secondaire)]:
+        if resp:
+            infos.append((label, f"{resp.nom_complet} ({resp.get_relation_display()}) — Tél: {resp.telephone}"))
+
+    for label, val in infos:
+        if y < margin + 30:
+            y = new_page()
+        c.setFont('Helvetica-Bold', 9)
+        c.drawString(margin, y, f"{label} :")
+        c.setFont('Helvetica', 9)
+        c.drawString(margin + 140, y, str(val))
+        y -= 14
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION NOTES – notes mensuelles & compositions
+    # ══════════════════════════════════════════════════════════
+    y -= 10
+    if y < margin + 60:
+        y = new_page()
+    y = _draw_section_title(c, "NOTES ET RÉSULTATS SCOLAIRES", y, margin, col_width)
+    y -= 5
+
+    # Trouver la ClasseNote correspondante
+    classe_note = ClasseNote.objects.filter(
+        nom=eleve.classe.nom,
+        ecole=eleve.classe.ecole,
+        annee_scolaire=annee,
+        actif=True,
+    ).first()
+
+    if classe_note:
+        matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+        if matieres.exists():
+            y = _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new_page)
+        else:
+            c.setFont('Helvetica-Oblique', 9)
+            c.drawString(margin, y, "Aucune matière configurée pour cette classe.")
+            y -= 14
+    else:
+        c.setFont('Helvetica-Oblique', 9)
+        c.drawString(margin, y, "Aucune donnée de notes trouvée pour cette classe.")
+        y -= 14
+
+    # ── Classements enregistrés ──
+    classements = Classement.objects.filter(
+        eleve=eleve, annee_scolaire=annee
+    ).order_by('periode')
+    if classements.exists():
+        y -= 10
+        if y < margin + 60:
+            y = new_page()
+        y = _draw_section_title(c, "CLASSEMENTS", y, margin, col_width)
+        y -= 5
+        y = _draw_classements(c, classements, y, margin, col_width, new_page)
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION ACTIVITÉS JOURNALIÈRES
+    # ══════════════════════════════════════════════════════════
+    activites = ActiviteJournaliere.objects.filter(
+        eleve=eleve
+    ).select_related('classe').prefetch_related('pieces_jointes').order_by('-date')[:50]
+
+    if activites.exists():
+        y -= 10
+        if y < margin + 60:
+            y = new_page()
+        y = _draw_section_title(c, "ACTIVITÉS JOURNALIÈRES", y, margin, col_width)
+        y -= 5
+        y = _draw_activites(c, activites, y, margin, col_width, new_page)
+
+    # ══════════════════════════════════════════════════════════
+    # PIED DE PAGE
+    # ══════════════════════════════════════════════════════════
+    y -= 20
+    if y < margin + 40:
+        y = new_page()
+    c.setFont('Helvetica-Oblique', 7)
+    c.setFillColor(colors.grey)
+    c.drawString(margin, margin, f"Rapport généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')} — MySchoolGN")
+    c.setFillColor(colors.black)
+
+    c.save()
+    buf.seek(0)
+
+    response = HttpResponse(buf, content_type='application/pdf')
+    filename = f"rapport_scolaire_{eleve.nom}_{eleve.prenom}_{annee}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
+
+# ────────────────────────────────────────────────────────────────
+# FONCTIONS UTILITAIRES PDF
+# ────────────────────────────────────────────────────────────────
+
+def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
+    """En-tête officiel du rapport."""
+    center = page_width / 2
+
+    # Ligne République
+    c.setFont('Helvetica-Bold', 14)
+    c.drawCentredString(center, y, "République de Guinée")
+    y -= 13
+    c.setFont('Helvetica-Oblique', 9)
+    c.drawCentredString(center, y, "Travail - Justice - Solidarité")
+    y -= 18
+
+    # Nom de l'école
+    if ecole:
+        c.setFont('Helvetica-Bold', 13)
+        c.drawCentredString(center, y, ecole.nom.upper())
+        y -= 14
+        if ecole.adresse:
+            c.setFont('Helvetica', 8)
+            c.drawCentredString(center, y, ecole.adresse)
+            y -= 11
+        if ecole.telephone:
+            c.setFont('Helvetica', 8)
+            c.drawCentredString(center, y, f"Tél: {ecole.telephone}")
+            y -= 11
+
+    # Logo
+    if ecole and hasattr(ecole, 'logo') and ecole.logo:
+        try:
+            logo_path = ecole.logo.path
+            if os.path.exists(logo_path):
+                img = Image.open(logo_path)
+                aspect = img.width / img.height
+                logo_h = 50
+                logo_w = logo_h * aspect
+                c.drawImage(ImageReader(logo_path), margin, y, width=logo_w, height=logo_h,
+                            preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+
+    # Titre du document
+    y -= 10
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFont('Helvetica-Bold', 16)
+    c.drawCentredString(center, y, "RAPPORT SCOLAIRE COMPLET")
+    y -= 14
+    c.setFont('Helvetica', 10)
+    c.drawCentredString(center, y, f"Année scolaire : {annee}")
+    c.setFillColor(colors.black)
+    y -= 6
+
+    # Ligne séparatrice
+    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setLineWidth(1.5)
+    c.line(margin, y, page_width - margin, y)
+    y -= 6
+    return y
+
+
+def _draw_section_title(c, title, y, margin, col_width):
+    """Dessine un titre de section avec fond coloré."""
+    c.setFillColor(colors.HexColor('#003d82'))
+    c.roundRect(margin, y - 4, col_width, 18, 3, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(margin + 8, y, title)
+    c.setFillColor(colors.black)
+    return y - 20
+
+
+def _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new_page):
+    """Dessine le tableau des notes mensuelles et compositions."""
+
+    # Collecter les données
+    MOIS = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
+    MOIS_COURT = ['Oct', 'Nov', 'Déc', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin']
+
+    annee = classe_note.annee_scolaire
+
+    rows_data = []
+    for mat in matieres:
+        row = {'matiere': mat.nom, 'coeff': str(mat.coefficient or ''), 'mois': [], 'compo': []}
+
+        # Notes mensuelles
+        notes_m = NoteMensuelle.objects.filter(
+            eleve=eleve, matiere=mat, annee_scolaire=annee
+        )
+        mois_dict = {n.mois: n for n in notes_m}
+        for m in MOIS:
+            note_obj = mois_dict.get(m)
+            if note_obj:
+                row['mois'].append('ABS' if note_obj.absent else (str(note_obj.note) if note_obj.note is not None else '—'))
+            else:
+                row['mois'].append('—')
+
+        # Compositions
+        compos = CompositionNote.objects.filter(
+            eleve=eleve, matiere=mat, annee_scolaire=annee
+        ).order_by('periode')
+        for comp in compos:
+            row['compo'].append((comp.get_periode_display(), 'ABS' if comp.absent else str(comp.note or '—')))
+
+        rows_data.append(row)
+
+    if not rows_data:
+        c.setFont('Helvetica-Oblique', 9)
+        c.drawString(margin, y, "Aucune note enregistrée.")
+        return y - 14
+
+    # Dessiner un tableau compact
+    # En-tête
+    header = ['Matière', 'Coeff'] + MOIS_COURT
+    # Trouver les périodes de compo qui existent
+    compo_periodes = set()
+    for rd in rows_data:
+        for p, _ in rd['compo']:
+            compo_periodes.add(p)
+    compo_periodes = sorted(compo_periodes)
+    header += [p[:6] for p in compo_periodes]  # Trim to 6 chars
+
+    num_cols = len(header)
+    # Calculer largeurs de colonnes
+    mat_w = 90
+    coeff_w = 30
+    note_w = (col_width - mat_w - coeff_w) / max((num_cols - 2), 1)
+    col_widths = [mat_w, coeff_w] + [note_w] * (num_cols - 2)
+
+    data = [header]
+    for rd in rows_data:
+        row_vals = [rd['matiere'][:18], rd['coeff']] + rd['mois']
+        # Ajouter les compos dans l'ordre des périodes
+        compo_dict = dict(rd['compo'])
+        for p in compo_periodes:
+            row_vals.append(compo_dict.get(p, '—'))
+        data.append(row_vals)
+
+    # Vérifier l'espace disponible
+    table_height = len(data) * 14 + 10
+    if y - table_height < margin:
+        y = new_page()
+
+    # Créer table ReportLab
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    style = TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 6.5),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ])
+    table.setStyle(style)
+
+    tw, th = table.wrap(col_width, 0)
+    if y - th < margin:
+        y = new_page()
+    table.drawOn(c, margin, y - th)
+    y -= th + 5
+
+    return y
+
+
+def _draw_classements(c, classements, y, margin, col_width, new_page):
+    """Dessine le tableau des classements."""
+    header = ['Période', 'Moyenne', 'Rang', 'Mention', 'Appréciation']
+    data = [header]
+    for cl in classements:
+        data.append([
+            cl.periode.replace('_', ' '),
+            str(cl.moyenne_generale),
+            cl.rang_formate,
+            cl.mention or '—',
+            (cl.appreciation or '—')[:40],
+        ])
+
+    col_widths = [100, 60, 70, 80, col_width - 310]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (4, 1), (4, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+
+    tw, th = table.wrap(col_width, 0)
+    if y - th < margin:
+        y = new_page()
+    table.drawOn(c, margin, y - th)
+    return y - th - 5
+
+
+def _draw_activites(c, activites, y, margin, col_width, new_page):
+    """Dessine le tableau des activités journalières."""
+    TYPE_COLORS = {
+        'EVALUATION': colors.HexColor('#1976d2'),
+        'SPORTIVE': colors.HexColor('#388e3c'),
+        'CULTURELLE': colors.HexColor('#f57c00'),
+        'ARTISTIQUE': colors.HexColor('#7b1fa2'),
+        'SORTIE': colors.HexColor('#00838f'),
+        'AUTRE': colors.HexColor('#546e7a'),
+    }
+
+    header = ['Date', 'Type', 'Titre', 'Appréciation', 'PJ']
+    data = [header]
+    type_cells = []  # (row, type) pour coloriser
+
+    for i, act in enumerate(activites):
+        pj_count = act.pieces_jointes.count()
+        data.append([
+            act.date.strftime('%d/%m/%Y'),
+            act.get_type_activite_display(),
+            act.titre[:35],
+            act.appreciation[:25] if act.appreciation else '—',
+            str(pj_count) if pj_count else '—',
+        ])
+        type_cells.append((i + 1, act.type_activite))
+
+    col_widths = [65, 75, col_width - 260, 80, 40]
+    table = Table(data, colWidths=col_widths, repeatRows=1)
+
+    base_style = [
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 7.5),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e91e63')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fce4ec')]),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]
+
+    # Coloriser les cellules "Type" par type d'activité
+    for row_idx, type_act in type_cells:
+        color = TYPE_COLORS.get(type_act, colors.grey)
+        base_style.append(('TEXTCOLOR', (1, row_idx), (1, row_idx), color))
+
+    table.setStyle(TableStyle(base_style))
+
+    tw, th = table.wrap(col_width, 0)
+    if y - th < margin:
+        y = new_page()
+    table.drawOn(c, margin, y - th)
+    return y - th - 5

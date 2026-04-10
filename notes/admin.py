@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote, AppreciationMaternelle, ThemeBulletin
+from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote, AppreciationMaternelle, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
 
 @admin.register(ClasseNote)
 class ClasseNoteAdmin(admin.ModelAdmin):
@@ -195,3 +195,17 @@ class ThemeBulletinAdmin(admin.ModelAdmin):
         if not change:
             obj.cree_par = request.user
         super().save_model(request, obj, form, change)
+
+
+class PieceJointeInline(admin.TabularInline):
+    model = PieceJointeActivite
+    extra = 1
+
+
+@admin.register(ActiviteJournaliere)
+class ActiviteJournaliereAdmin(admin.ModelAdmin):
+    list_display = ['titre', 'type_activite', 'eleve', 'classe', 'date', 'appreciation', 'date_creation']
+    list_filter = ['type_activite', 'date', 'classe']
+    search_fields = ['titre', 'eleve__nom', 'eleve__prenom']
+    date_hierarchy = 'date'
+    inlines = [PieceJointeInline]

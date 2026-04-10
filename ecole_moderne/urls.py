@@ -20,11 +20,16 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView, RedirectView
 from .static_views import serve_static_no_cache
+from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
+    # Rapport scolaire public (espace parent, pas de login)
+    path('rapport-scolaire/', rapport_scolaire_recherche, name='rapport_scolaire'),
+    path('rapport-scolaire/detail/', rapport_scolaire_detail, name='rapport_scolaire_detail'),
+    path('rapport-scolaire/pdf/', rapport_scolaire_pdf, name='rapport_scolaire_pdf'),
     # Friendly redirects for legacy/mistyped routes under /ecole/
     path('ecole/inscription/', RedirectView.as_view(pattern_name='home', permanent=False)),
     path('ecole/inscription-complete/', RedirectView.as_view(pattern_name='home', permanent=False)),

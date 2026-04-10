@@ -730,3 +730,62 @@ class Classement(models.Model):
     
     def __str__(self):
         return f"{self.eleve} - {self.periode} - {self.rang_formate}"
+
+
+# ============================================================================
+# ACTIVITÉS JOURNALIÈRES
+# ============================================================================
+
+class ActiviteJournaliere(models.Model):
+    """Activité journalière d'un élève (évaluation, sportive, culturelle, etc.)"""
+    TYPE_CHOICES = [
+        ('EVALUATION', 'Évaluation'),
+        ('SPORTIVE', 'Sportive'),
+        ('CULTURELLE', 'Culturelle'),
+        ('ARTISTIQUE', 'Artistique'),
+        ('SORTIE', 'Sortie éducative'),
+        ('AUTRE', 'Autre'),
+    ]
+
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='activites_journalieres')
+    eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='activites_journalieres')
+    date = models.DateField(verbose_name="Date de l'activité")
+    type_activite = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type d'activité")
+    titre = models.CharField(max_length=200, verbose_name="Titre de l'activité")
+    description = models.TextField(blank=True, verbose_name="Description / Observation")
+    appreciation = models.CharField(max_length=100, blank=True, verbose_name="Appréciation")
+
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Activité journalière"
+        verbose_name_plural = "Activités journalières"
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(fields=['classe', 'date']),
+            models.Index(fields=['eleve', 'date']),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve} - {self.titre} ({self.date})"
+
+
+class PieceJointeActivite(models.Model):
+    """Fichier joint à une activité (copie d'évaluation, photo sportive, etc.)"""
+    activite = models.ForeignKey(ActiviteJournaliere, on_delete=models.CASCADE, related_name='pieces_jointes')
+    fichier = models.FileField(upload_to='activites_journalieres/%Y/%m/', verbose_name="Fichier")
+    legende = models.CharField(max_length=255, blank=True, verbose_name="Légende")
+    date_ajout = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pièce jointe"
+        verbose_name_plural = "Pièces jointes"
+
+    def __str__(self):
+        return self.legende or self.fichier.name
+
+    @property
+    def is_image(self):
+        ext = self.fichier.name.lower().split('.')[-1] if self.fichier else ''
+        return ext in ('jpg', 'jpeg', 'png', 'gif', 'webp')

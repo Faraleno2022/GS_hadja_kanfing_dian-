@@ -25,6 +25,15 @@ from .views_maternelle import (
     api_get_eleves_classe,
     analyse_appreciations_auto
 )
+from .views_activites import (
+    liste_activites,
+    ajouter_activite,
+    modifier_activite,
+    detail_activite,
+    supprimer_activite,
+    supprimer_piece_jointe,
+    api_eleves_par_classe_note,
+)
 from .whatsapp_bulletin import envoyer_bulletin_whatsapp, apercu_message_whatsapp
 from .export_resultats import exporter_resultats_pdf, exporter_resultats_excel
 from .export_notes_complet import exporter_notes_complet_pdf, exporter_notes_complet_excel
@@ -153,6 +162,17 @@ urlpatterns = [
          views.bulletin_maternelle_modele2_pdf, name='bulletin_maternelle_modele2_pdf'),
     path('maternelle/bulletins-classe-modele2-pdf/',
          views.bulletins_classe_maternelle_modele2_pdf, name='bulletins_classe_maternelle_modele2_pdf'),
+
+    # ============================================================================
+    # ACTIVITÉS JOURNALIÈRES
+    # ============================================================================
+    path('activites/', liste_activites, name='liste_activites'),
+    path('activites/ajouter/', ajouter_activite, name='ajouter_activite'),
+    path('activites/<int:activite_id>/', detail_activite, name='detail_activite'),
+    path('activites/<int:activite_id>/modifier/', modifier_activite, name='modifier_activite'),
+    path('activites/<int:activite_id>/supprimer/', supprimer_activite, name='supprimer_activite'),
+    path('activites/pj/<int:pj_id>/supprimer/', supprimer_piece_jointe, name='supprimer_piece_jointe'),
+    path('activites/api/eleves/', api_eleves_par_classe_note, name='api_eleves_classe_activite'),
 
     # ============================================================================
     # LIVRET SCOLAIRE — Parcours complet de l'élève
