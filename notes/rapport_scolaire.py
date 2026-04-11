@@ -28,6 +28,7 @@ from notes.models import (
     CompositionNote, AppreciationMaternelle,
     ActiviteJournaliere, PieceJointeActivite, Classement,
 )
+from paiements.models import Paiement, EcheancierPaiement
 
 from django.utils.crypto import get_random_string
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
@@ -278,6 +279,24 @@ def rapport_scolaire_detail(request):
     donnees = _collecter_donnees_scolaires(eleve)
     donnees['token'] = token
 
+    # ─── Paiements validés de l'élève ───
+    paiements = Paiement.objects.filter(
+        eleve=eleve, statut='VALIDE'
+    ).select_related('type_paiement', 'mode_paiement').order_by('-date_paiement')
+    donnees['paiements'] = paiements
+
+    # ─── Situation financière (échéancier) ───
+    try:
+        ech = eleve.echeancier
+        donnees['echeancier'] = {
+            'total_du': ech.total_du,
+            'total_paye': ech.total_paye,
+            'solde_restant': ech.solde_restant,
+            'pourcentage_paye': ech.pourcentage_paye,
+        }
+    except EcheancierPaiement.DoesNotExist:
+        donnees['echeancier'] = None
+
     return render(request, 'rapport_scolaire/detail.html', donnees)
 
 
@@ -306,6 +325,162 @@ def rapport_scolaire_pdf(request):
         raise Http404
 
     return _generer_rapport_pdf(eleve)
+
+
+# ────────────────────────────────────────────────────────────────
+# VUE : Téléchargement d'un reçu de paiement (public, token signé)
+# ────────────────────────────────────────────────────────────────
+
+def rapport_scolaire_recu_pdf(request, paiement_id):
+    """Télécharge le reçu PDF d'un paiement, sécurisé par le token rapport-scolaire."""
+    token = request.GET.get('token', '')
+    eleve_id = _verify_token(token)
+    if not eleve_id:
+        return render(request, 'rapport_scolaire/recherche.html', {
+            'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
+            'classes': Classe.objects.select_related('ecole').filter(
+                eleves__statut='ACTIF'
+            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
+        })
+
+    # Vérifier que le paiement appartient bien à cet élève
+    try:
+        paiement = Paiement.objects.select_related(
+            'eleve', 'type_paiement', 'mode_paiement',
+            'eleve__classe', 'eleve__classe__ecole'
+        ).get(pk=paiement_id, eleve_id=eleve_id, statut='VALIDE')
+    except Paiement.DoesNotExist:
+        raise Http404
+
+    return _generer_recu_paiement_pdf(paiement)
+
+
+def _generer_recu_paiement_pdf(paiement):
+    """Génère le reçu PDF pour un paiement (version publique rapport-scolaire)."""
+    from django.db.models import Sum
+
+    buf = io.BytesIO()
+    width, height = A4
+    c = canvas.Canvas(buf, pagesize=A4)
+
+    # Filigrane
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
+        draw_logo_watermark(c, width, height, ecole=ecole_obj)
+    except Exception:
+        pass
+
+    left = 40
+    top = height - 40
+    line_h = 18
+
+    # ── En-tête ──
+    c.setFont('Helvetica-Bold', 18)
+    c.drawString(left, top, "REÇU DE PAIEMENT")
+    top -= 25
+
+    ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
+    if ecole_obj:
+        c.setFont('Helvetica-Bold', 12)
+        c.drawString(left, top, ecole_obj.nom)
+        top -= 15
+        c.setFont('Helvetica', 9)
+        if getattr(ecole_obj, 'telephone', None):
+            c.drawString(left, top, f"Tél: {ecole_obj.telephone}")
+            top -= 12
+        if getattr(ecole_obj, 'email', None):
+            c.drawString(left, top, f"Email: {ecole_obj.email}")
+            top -= 12
+    top -= 20
+
+    # ── Informations du reçu ──
+    c.setFont('Helvetica-Bold', 11)
+    c.drawString(left, top, f"Numéro de reçu: {paiement.numero_recu or 'N/A'}")
+    top -= line_h
+    c.drawString(left, top, f"Date: {paiement.date_paiement.strftime('%d/%m/%Y')}")
+    top -= line_h * 2
+
+    # ── Informations élève ──
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(left, top, "ÉLÈVE")
+    top -= line_h
+    c.setFont('Helvetica', 11)
+    c.drawString(left, top, f"Nom: {paiement.eleve.prenom or ''} {paiement.eleve.nom or ''}")
+    top -= line_h
+    c.drawString(left, top, f"Matricule: {paiement.eleve.matricule or 'N/A'}")
+    top -= line_h
+    if paiement.eleve.classe:
+        c.drawString(left, top, f"Classe: {paiement.eleve.classe.nom}")
+        top -= line_h
+    top -= line_h
+
+    # ── Détails du paiement ──
+    remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+    montant_net = paiement.montant - remises_total if remises_total > 0 else paiement.montant
+
+    c.setFont('Helvetica-Bold', 12)
+    c.drawString(left, top, "DÉTAILS DU PAIEMENT")
+    top -= line_h
+    c.setFont('Helvetica', 11)
+    c.drawString(left, top, f"Type: {paiement.type_paiement.nom if paiement.type_paiement else 'N/A'}")
+    top -= line_h
+    c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom if paiement.mode_paiement else 'N/A'}")
+    top -= line_h
+    c.drawString(left, top, f"Montant: {paiement.montant:,.0f} GNF".replace(",", " "))
+    top -= line_h
+
+    if remises_total > 0:
+        c.drawString(left, top, f"Remises: -{remises_total:,.0f} GNF".replace(",", " "))
+        top -= line_h
+        c.setFont('Helvetica-Bold', 11)
+        c.drawString(left, top, f"Net payé: {montant_net:,.0f} GNF".replace(",", " "))
+        c.setFont('Helvetica', 11)
+        top -= line_h
+
+    top -= 10
+
+    # ── Situation financière ──
+    try:
+        ech = paiement.eleve.echeancier
+        total_du = ech.total_du
+        total_paye = ech.total_paye
+        solde_restant = ech.solde_restant
+    except EcheancierPaiement.DoesNotExist:
+        total_du = total_paye = solde_restant = Decimal('0')
+
+    if total_du > 0:
+        c.setFont('Helvetica-Bold', 12)
+        c.drawString(left, top, "SITUATION FINANCIÈRE")
+        top -= line_h
+        c.setFont('Helvetica', 11)
+        c.drawString(left, top, f"Total frais de scolarité: {total_du:,.0f} GNF".replace(",", " "))
+        top -= line_h
+        c.drawString(left, top, f"Total déjà payé: {total_paye:,.0f} GNF".replace(",", " "))
+        top -= line_h
+        c.setFont('Helvetica-Bold', 11)
+        if solde_restant > 0:
+            c.setFillColorRGB(0.8, 0, 0)
+            c.drawString(left, top, f"Reste à payer: {solde_restant:,.0f} GNF".replace(",", " "))
+            c.setFillColorRGB(0, 0, 0)
+        else:
+            c.setFillColorRGB(0, 0.5, 0)
+            c.drawString(left, top, "Scolarité entièrement payée")
+            c.setFillColorRGB(0, 0, 0)
+        top -= line_h
+
+    top -= 10
+    c.setFont('Helvetica-Bold', 11)
+    c.drawString(left, top, f"Statut: {paiement.get_statut_display()}")
+
+    c.showPage()
+    c.save()
+
+    buf.seek(0)
+    response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+    filename = f"recu_{paiement.numero_recu}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 
 # ────────────────────────────────────────────────────────────────
