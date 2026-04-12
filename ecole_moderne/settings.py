@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     'notes',
     'abonnements',
     'chatbot',
+    'axes',
 ]
 
 # =================== Middleware ===================
@@ -130,6 +131,8 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Vérification licence : bloque l'accès web si essai/licence expiré
     'ecole_moderne.licence_middleware.LicenceMiddleware',
+    # Protection anti brute-force
+    'axes.middleware.AxesMiddleware',
 ]
 
 # Ajouter middlewares d'optimisation images
@@ -144,6 +147,19 @@ else:
     MIDDLEWARE.insert(3, 'ecole_moderne.security_middleware.SessionSecurityMiddleware')
     MIDDLEWARE.insert(5, 'ecole_moderne.security_middleware.CSRFSecurityMiddleware')
     MIDDLEWARE.append('ecole_moderne.security_middleware.CSPMiddleware')
+
+# =================== Authentication Backends ===================
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesStandaloneBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# =================== Django-Axes (anti brute-force) ===================
+AXES_FAILURE_LIMIT = 5              # Bloquer après 5 tentatives échouées
+AXES_COOLOFF_TIME = 1               # Débloquer après 1 heure
+AXES_LOCKOUT_PARAMETERS = ['username', 'ip_address']  # Bloquer par utilisateur + IP
+AXES_RESET_ON_SUCCESS = True        # Réinitialiser le compteur après un login réussi
+AXES_ENABLE_ADMIN = True            # Voir les tentatives dans l'admin Django
 
 ROOT_URLCONF = 'ecole_moderne.urls'
 

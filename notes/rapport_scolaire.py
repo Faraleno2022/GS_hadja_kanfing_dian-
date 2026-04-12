@@ -10,9 +10,10 @@ import re
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.http import HttpResponse, Http404
+from django.http import HttpResponse, Http404, JsonResponse
 from django.shortcuts import render, redirect
 from django.db.models import Q, Avg
+from django.views.decorators.http import require_POST
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -193,9 +194,9 @@ def rapport_scolaire_recherche(request):
     if request.method == 'POST':
         matricule = request.POST.get('matricule', '').strip().upper()
         telephone = request.POST.get('telephone', '').strip()
-        classe_nom = request.POST.get('classe', '').strip()
+        classe_id = request.POST.get('classe', '').strip()
 
-        if not matricule or not telephone or not classe_nom:
+        if not matricule or not telephone or not classe_id:
             erreur = "Veuillez remplir tous les champs."
         else:
             # Normaliser le téléphone : accepter avec ou sans +224
@@ -215,11 +216,11 @@ def rapport_scolaire_recherche(request):
             if eleve and not erreur:
                 # Vérifier la classe (par ID ou par nom)
                 try:
-                    classe_id = int(classe_nom)
-                    if eleve.classe_id != classe_id:
+                    cid = int(classe_id)
+                    if eleve.classe_id != cid:
                         erreur = "La classe ne correspond pas à cet élève."
                 except (ValueError, TypeError):
-                    if classe_nom.lower() not in eleve.classe.nom.lower():
+                    if classe_id.lower() not in eleve.classe.nom.lower():
                         erreur = "La classe ne correspond pas à cet élève."
 
                 # Vérifier le téléphone du responsable
@@ -241,14 +242,67 @@ def rapport_scolaire_recherche(request):
             token = _make_token(eleve.pk)
             return redirect(f'/rapport-scolaire/detail/?token={token}')
 
-    # GET ou erreur — charger toutes les classes actives pour la liste déroulante
-    classes = Classe.objects.select_related('ecole').filter(
-        eleves__statut='ACTIF'
-    ).distinct().order_by('ecole__nom', 'niveau', 'nom')
-
+    # GET ou erreur — PAS de liste de classes (sécurité : ne pas exposer les écoles/classes)
     return render(request, 'rapport_scolaire/recherche.html', {
         'erreur': erreur,
-        'classes': classes,
+    })
+
+
+# ────────────────────────────────────────────────────────────────
+# VUE AJAX : Charger les classes après validation matricule+téléphone
+# ────────────────────────────────────────────────────────────────
+
+@require_POST
+def rapport_scolaire_classes_ajax(request):
+    """Retourne la liste des classes pour un élève après validation du matricule et téléphone."""
+    import json
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Requête invalide.'}, status=400)
+
+    matricule = (data.get('matricule') or '').strip().upper()
+    telephone = (data.get('telephone') or '').strip()
+
+    if not matricule or not telephone:
+        return JsonResponse({'error': 'Matricule et téléphone requis.'}, status=400)
+
+    # Normaliser le téléphone
+    tel_normalise = re.sub(r'[\s\-\.]', '', telephone)
+    if not tel_normalise.startswith('+'):
+        tel_normalise = '+224' + tel_normalise.lstrip('0')
+
+    # Chercher l'élève
+    try:
+        eleve = Eleve.objects.select_related(
+            'classe', 'classe__ecole',
+            'responsable_principal', 'responsable_secondaire'
+        ).get(matricule=matricule, statut='ACTIF')
+    except Eleve.DoesNotExist:
+        return JsonResponse({'error': 'Aucun élève actif trouvé avec ce matricule.'}, status=404)
+
+    # Vérifier le téléphone du responsable
+    tel_match = False
+    for resp in [eleve.responsable_principal, eleve.responsable_secondaire]:
+        if resp and resp.telephone:
+            resp_tel = re.sub(r'[\s\-\.]', '', resp.telephone)
+            if not resp_tel.startswith('+'):
+                resp_tel = '+224' + resp_tel.lstrip('0')
+            if resp_tel == tel_normalise:
+                tel_match = True
+                break
+
+    if not tel_match:
+        return JsonResponse({'error': 'Le numéro de téléphone ne correspond pas.'}, status=403)
+
+    # Retourner uniquement la classe de cet élève (pas toute la base)
+    classe = eleve.classe
+    return JsonResponse({
+        'classes': [{
+            'id': classe.id,
+            'nom': classe.nom,
+            'ecole': classe.ecole.nom if classe.ecole else '',
+        }]
     })
 
 
@@ -263,9 +317,6 @@ def rapport_scolaire_detail(request):
     if not eleve_id:
         return render(request, 'rapport_scolaire/recherche.html', {
             'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
-            'classes': Classe.objects.select_related('ecole').filter(
-                eleves__statut='ACTIF'
-            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
         })
 
     try:
@@ -311,9 +362,6 @@ def rapport_scolaire_pdf(request):
     if not eleve_id:
         return render(request, 'rapport_scolaire/recherche.html', {
             'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
-            'classes': Classe.objects.select_related('ecole').filter(
-                eleves__statut='ACTIF'
-            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
         })
 
     try:
@@ -338,9 +386,6 @@ def rapport_scolaire_recu_pdf(request, paiement_id):
     if not eleve_id:
         return render(request, 'rapport_scolaire/recherche.html', {
             'erreur': "Lien expiré ou invalide. Veuillez relancer la recherche.",
-            'classes': Classe.objects.select_related('ecole').filter(
-                eleves__statut='ACTIF'
-            ).distinct().order_by('ecole__nom', 'niveau', 'nom'),
         })
 
     # Vérifier que le paiement appartient bien à cet élève

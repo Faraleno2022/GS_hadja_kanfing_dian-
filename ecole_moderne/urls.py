@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView, RedirectView
 from .static_views import serve_static_no_cache
-from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf, rapport_scolaire_recu_pdf
+from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf, rapport_scolaire_recu_pdf, rapport_scolaire_classes_ajax
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -31,6 +31,7 @@ urlpatterns = [
     path('rapport-scolaire/detail/', rapport_scolaire_detail, name='rapport_scolaire_detail'),
     path('rapport-scolaire/pdf/', rapport_scolaire_pdf, name='rapport_scolaire_pdf'),
     path('rapport-scolaire/recu/<int:paiement_id>/pdf/', rapport_scolaire_recu_pdf, name='rapport_scolaire_recu_pdf'),
+    path('rapport-scolaire/ajax/classes/', rapport_scolaire_classes_ajax, name='rapport_scolaire_classes_ajax'),
     # Friendly redirects for legacy/mistyped routes under /ecole/
     path('ecole/inscription/', RedirectView.as_view(pattern_name='home', permanent=False)),
     path('ecole/inscription-complete/', RedirectView.as_view(pattern_name='home', permanent=False)),

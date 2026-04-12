@@ -158,21 +158,25 @@
                 </div>
 
                 <!-- Classe -->
-                <div class="mb-4">
+                <div class="mb-4" id="classeGroup" style="display: none;">
                     <label class="form-label fw-bold">
                         <i class="fas fa-school me-1 text-warning"></i> Classe de l'élève
                     </label>
                     <div class="input-icon-group">
                         <i class="fas fa-chalkboard input-icon"></i>
-                        <select name="classe" class="form-select form-select-lg" style="padding-left: 42px;" required>
+                        <select name="classe" id="classeSelect" class="form-select form-select-lg" style="padding-left: 42px;" required>
                             <option value="">— Sélectionnez la classe —</option>
-                            {% for cls in classes %}
-                            <option value="{{ cls.id }}" {% if request.POST.classe == cls.id|stringformat:'d' %}selected{% endif %}>
-                                {{ cls.nom }} — {{ cls.ecole.nom }}
-                            </option>
-                            {% endfor %}
                         </select>
                     </div>
+                    <div id="classeLoading" class="form-text text-primary" style="display: none;">
+                        <i class="fas fa-spinner fa-spin me-1"></i> Chargement des classes...
+                    </div>
+                </div>
+
+                <!-- Message de vérification -->
+                <div id="verificationMsg" class="alert alert-info d-flex align-items-center" style="display: none !important;" role="alert">
+                    <i class="fas fa-info-circle me-2 fs-5"></i>
+                    <div>Renseignez d'abord le matricule et le téléphone, puis les classes disponibles s'afficheront.</div>
                 </div>
 
                 <button type="submit" class="btn btn-primary btn-lg w-100" id="btnSubmit">
@@ -241,12 +245,100 @@
 
 {% block extra_js %}
 <script>
-document.getElementById('rapportForm').addEventListener('submit', function() {
-    const btn = document.getElementById('btnSubmit');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Génération en cours...';
-    // Réactiver après 15 secondes en cas d'erreur
-    setTimeout(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf me-2"></i> Générer le rapport scolaire'; }, 15000);
-});
+(function() {
+    const form = document.getElementById('rapportForm');
+    const matriculeInput = document.querySelector('input[name="matricule"]');
+    const telephoneInput = document.querySelector('input[name="telephone"]');
+    const classeGroup = document.getElementById('classeGroup');
+    const classeSelect = document.getElementById('classeSelect');
+    const classeLoading = document.getElementById('classeLoading');
+    const btnSubmit = document.getElementById('btnSubmit');
+    let debounceTimer = null;
+    let classesLoaded = false;
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function tryLoadClasses() {
+        const matricule = matriculeInput.value.trim();
+        const telephone = telephoneInput.value.trim();
+
+        if (matricule.length < 3 || telephone.length < 6) {
+            classeGroup.style.display = 'none';
+            classesLoaded = false;
+            return;
+        }
+
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function() {
+            classeLoading.style.display = 'block';
+            classeGroup.style.display = 'block';
+            classeSelect.innerHTML = '<option value="">— Vérification en cours... —</option>';
+            classeSelect.disabled = true;
+
+            fetch('{% url "rapport_scolaire_classes_ajax" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({ matricule: matricule, telephone: telephone })
+            })
+            .then(function(response) { return response.json().then(function(data) { return {ok: response.ok, data: data}; }); })
+            .then(function(result) {
+                classeLoading.style.display = 'none';
+                classeSelect.disabled = false;
+
+                if (result.ok && result.data.classes) {
+                    classeSelect.innerHTML = '<option value="">— Sélectionnez la classe —</option>';
+                    result.data.classes.forEach(function(cls) {
+                        const opt = document.createElement('option');
+                        opt.value = cls.id;
+                        opt.textContent = cls.nom + ' — ' + cls.ecole;
+                        classeSelect.appendChild(opt);
+                    });
+                    classesLoaded = true;
+                    // Auto-sélectionner si une seule classe
+                    if (result.data.classes.length === 1) {
+                        classeSelect.value = result.data.classes[0].id;
+                    }
+                } else {
+                    classeSelect.innerHTML = '<option value="">— ' + (result.data.error || 'Erreur de vérification') + ' —</option>';
+                    classesLoaded = false;
+                }
+            })
+            .catch(function() {
+                classeLoading.style.display = 'none';
+                classeSelect.disabled = false;
+                classeSelect.innerHTML = '<option value="">— Erreur de connexion —</option>';
+                classesLoaded = false;
+            });
+        }, 600);
+    }
+
+    matriculeInput.addEventListener('input', tryLoadClasses);
+    telephoneInput.addEventListener('input', tryLoadClasses);
+
+    form.addEventListener('submit', function() {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Génération en cours...';
+        setTimeout(function() {
+            btnSubmit.disabled = false;
+            btnSubmit.innerHTML = '<i class="fas fa-file-pdf me-2"></i> Générer le rapport scolaire';
+        }, 15000);
+    });
+})();
 </script>
 {% endblock %}
