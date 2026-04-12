@@ -160,6 +160,11 @@ AXES_COOLOFF_TIME = 1               # Débloquer après 1 heure
 AXES_LOCKOUT_PARAMETERS = ['username', 'ip_address']  # Bloquer par utilisateur + IP
 AXES_RESET_ON_SUCCESS = True        # Réinitialiser le compteur après un login réussi
 AXES_ENABLE_ADMIN = True            # Voir les tentatives dans l'admin Django
+AXES_LOCKOUT_URL = '/utilisateurs/login/'  # Rediriger vers le login après blocage
+AXES_SENSITIVE_PARAMETERS = ['password']
+# Ne surveiller QUE la page de login (ne pas bloquer les autres POST publics)
+import re as _re
+AXES_URL_REGEX = _re.compile(r'^/utilisateurs/login/$')
 
 ROOT_URLCONF = 'ecole_moderne.urls'
 
