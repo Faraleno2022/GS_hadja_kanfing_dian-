@@ -6,7 +6,7 @@ Auteur  : GS Hadja Kanfing Dian
 Version : 1.0.0
 
 Pour compiler :
-    venv\Scripts\python.exe -m PyInstaller --clean --noconfirm myschool.spec
+    venv\\Scripts\\python.exe -m PyInstaller --clean --noconfirm myschool.spec
 """
 
 import os
@@ -54,11 +54,26 @@ except Exception:
 
 # WeasyPrint et ses dependances
 for _wp_pkg in ['weasyprint', 'pydyf', 'fonttools', 'cssselect2',
-                'tinycss2', 'html5lib', 'brotli', 'zopfli']:
+                'tinycss2', 'tinyhtml5', 'brotli', 'zopfli']:
     try:
         hiddenimports += collect_submodules(_wp_pkg)
     except Exception:
         pass
+
+# cffi / pycparser (requis par weasyprint.text.ffi via FFI().cdef())
+# IMPORTANT: pycparser.ply.yacc utilise les DOCSTRINGS comme règles de grammaire
+# → optimize=2 (qui supprime les docstrings) casse le parser → on utilise optimize=1
+for _cffi_pkg in ['cffi', 'pycparser', 'pycparser.ply']:
+    try:
+        hiddenimports += collect_submodules(_cffi_pkg)
+    except Exception:
+        pass
+hiddenimports += [
+    'cffi', 'cffi.api', 'cffi.cparser', 'cffi.backend_ctypes',
+    'pycparser', 'pycparser.c_parser', 'pycparser.c_lexer',
+    'pycparser.ply', 'pycparser.ply.yacc', 'pycparser.ply.lex',
+    'pycparser.lextab', 'pycparser.yacctab',
+]
 
 # Modules explicites
 hiddenimports += [
@@ -116,6 +131,10 @@ hiddenimports += [
     # JWT / auth
     'jwt',
     'jwt.algorithms',
+    # Intégrité
+    'integrity_check',
+    # Licence (import dynamique dans run_server.py)
+    'license_manager',
 ]
 
 # ─── Données à inclure ─────────────────────────────────────────────────────────
@@ -132,14 +151,18 @@ _add_if_exists('static', 'static')
 _add_if_exists('staticfiles', 'staticfiles')
 _add_if_exists('media', 'media')
 
-# Base de données (copiée, migrée automatiquement au premier lancement)
-_add_if_exists('db.sqlite3', '.')
+# Base de données : NE PAS inclure la DB du dev dans le build
+# Elle sera créée automatiquement via 'migrate' au premier lancement chez le client
+# _add_if_exists('db.sqlite3', '.')
 
 # Fichier .env
 _add_if_exists('.env', '.')
 
-# Chargeur d'env (license_manager est un .pyd Nuitka — voir binaries)
-_add_if_exists('load_env.py', '.')
+# PROTECTION ANTI-MODIFICATION :
+# Les modules critiques (integrity_check, license_manager, load_env) sont
+# inclus via hiddenimports (compilés en bytecode dans le PYZ).
+# Ils ne sont PAS copiés comme fichiers .py lisibles.
+# Cela empêche un attaquant de les ouvrir dans un éditeur.
 
 # Templates et templatetags + migrations de chaque app
 for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
@@ -171,6 +194,27 @@ except Exception:
 
 try:
     datas += collect_data_files('tinycss2')
+except Exception:
+    pass
+
+# pycparser : tables PLY pré-générées (lextab.py, yacctab.py, ply/*.py)
+# Ces fichiers sont indispensables pour que cffi/WeasyPrint fonctionnent
+# dans l'exe PyInstaller sans avoir à régénérer le parser depuis les docstrings
+try:
+    datas += collect_data_files('pycparser')
+except Exception:
+    pass
+try:
+    import pycparser as _pcp
+    _pcp_dir = os.path.dirname(_pcp.__file__)
+    # Inclure explicitement les tables pré-compilées et le sous-dossier ply
+    for _f in ['lextab.py', 'yacctab.py', '_c_ast.cfg', '_build_tables.py']:
+        _fp = os.path.join(_pcp_dir, _f)
+        if os.path.exists(_fp):
+            datas.append((_fp, 'pycparser'))
+    _ply_dir = os.path.join(_pcp_dir, 'ply')
+    if os.path.isdir(_ply_dir):
+        datas.append((_ply_dir, 'pycparser/ply'))
 except Exception:
     pass
 
@@ -243,10 +287,7 @@ if os.path.isdir(_pixbuf_loaders_dir):
 a = Analysis(
     [os.path.join(PROJECT_DIR, 'run_server.py')],
     pathex=[PROJECT_DIR],
-    binaries=[
-        # Nuitka-compiled license module (native binary — non-decompilable)
-        (os.path.join(PROJECT_DIR, 'dist_nuitka', 'license_manager.cp313-win_amd64.pyd'), '.'),
-    ] + _gtk_binaries,
+    binaries=[] + _gtk_binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -265,10 +306,14 @@ a = Analysis(
         'django.contrib.gis',
         'mysqlclient',
         'PyMySQL',
-        'license_manager',   # excluded: native .pyd is in binaries instead
+        # 'license_manager' is now a regular Python module (integrity-protected)
     ],
     noarchive=False,
-    optimize=2,   # strip docstrings + assert statements
+    # optimize=1 : supprime seulement les assert statements (pas les docstrings)
+    # optimize=2 était utilisé avant mais il supprime les DOCSTRINGS, ce qui casse
+    # pycparser.ply.yacc qui utilise les docstrings comme règles de grammaire
+    # → WeasyPrint (via cffi → pycparser) levait "Unable to build parser"
+    optimize=1,
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)
@@ -302,22 +347,5 @@ coll = COLLECT(
     name='MySchoolGN',
 )
 
-# ─── Post-build: remove license_manager.py source, keep only the .pyd ─────────
-import shutil as _shutil
-_internal = os.path.join(DISTPATH, 'MySchoolGN', '_internal')
-_py_src = os.path.join(_internal, 'license_manager.py')
-_pyc_dir = os.path.join(_internal, '__pycache__')
-_pyd_src = os.path.join(PROJECT_DIR, 'dist_nuitka', 'license_manager.cp313-win_amd64.pyd')
-_pyd_dst = os.path.join(_internal, 'license_manager.cp313-win_amd64.pyd')
-
-if os.path.exists(_py_src):
-    os.remove(_py_src)
-    print('[Protection] Removed license_manager.py from dist')
-if os.path.exists(_pyc_dir):
-    for _f in os.listdir(_pyc_dir):
-        if 'license_manager' in _f:
-            os.remove(os.path.join(_pyc_dir, _f))
-if os.path.exists(_pyd_src) and not os.path.exists(_pyd_dst):
-    _shutil.copy2(_pyd_src, _pyd_dst)
-    print('[Protection] Installed license_manager.pyd in dist')
-print('[Protection] license_manager protection applied.')
+# ─── Post-build: license_manager.py is now protected by integrity manifest ─────
+print('[Protection] license_manager.py is integrity-protected (no .pyd needed).')

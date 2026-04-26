@@ -168,6 +168,30 @@
                     </label>
                     {{ pj_form.fichiers }}
                     <div class="form-text">Images, copies d'évaluations, photos sportives... (max 10 Mo par fichier)</div>
+
+                    <!-- Déclencheur caméra -->
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button type="button" class="btn btn-outline-primary" id="btn-camera">
+                            <i class="fas fa-camera me-1"></i> Prendre une photo
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary d-none" id="btn-camera-stop">
+                            <i class="fas fa-stop me-1"></i> Arrêter la caméra
+                        </button>
+                    </div>
+                    <input type="file" accept="image/*" capture="environment" id="camera-capture" class="d-none">
+
+                    <!-- Zone caméra live (desktop / fallback getUserMedia) -->
+                    <div id="camera-live" class="mt-3 d-none">
+                        <video id="camera-video" autoplay playsinline
+                               style="width:100%;max-width:480px;border-radius:10px;background:#000;"></video>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-success" id="btn-camera-shoot">
+                                <i class="fas fa-circle me-1"></i> Capturer
+                            </button>
+                        </div>
+                        <canvas id="camera-canvas" class="d-none"></canvas>
+                    </div>
+
                     <div class="preview-container" id="preview-container"></div>
                 </div>
             </div>
@@ -239,6 +263,92 @@ document.addEventListener('DOMContentLoaded', function() {
                     previewContainer.appendChild(div);
                 }
             });
+        });
+    }
+
+    // ===== Déclenchement caméra =====
+    const btnCamera = document.getElementById('btn-camera');
+    const btnCameraStop = document.getElementById('btn-camera-stop');
+    const btnCameraShoot = document.getElementById('btn-camera-shoot');
+    const cameraCapture = document.getElementById('camera-capture');
+    const cameraLive = document.getElementById('camera-live');
+    const cameraVideo = document.getElementById('camera-video');
+    const cameraCanvas = document.getElementById('camera-canvas');
+    let cameraStream = null;
+
+    function isMobile() {
+        return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    }
+
+    function addFileToInput(file) {
+        if (!fileInput) return;
+        const dt = new DataTransfer();
+        Array.from(fileInput.files || []).forEach(f => dt.items.add(f));
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function stopCameraStream() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(t => t.stop());
+            cameraStream = null;
+        }
+        cameraLive.classList.add('d-none');
+        btnCameraStop.classList.add('d-none');
+        btnCamera.classList.remove('d-none');
+    }
+
+    if (btnCamera) {
+        btnCamera.addEventListener('click', async function() {
+            if (isMobile() || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                cameraCapture.click();
+                return;
+            }
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
+                });
+                cameraVideo.srcObject = cameraStream;
+                cameraLive.classList.remove('d-none');
+                btnCameraStop.classList.remove('d-none');
+                btnCamera.classList.add('d-none');
+            } catch (err) {
+                console.warn('getUserMedia indisponible, fallback input capture', err);
+                cameraCapture.click();
+            }
+        });
+    }
+
+    if (btnCameraStop) {
+        btnCameraStop.addEventListener('click', stopCameraStream);
+    }
+
+    if (btnCameraShoot) {
+        btnCameraShoot.addEventListener('click', function() {
+            if (!cameraStream) return;
+            const w = cameraVideo.videoWidth;
+            const h = cameraVideo.videoHeight;
+            cameraCanvas.width = w;
+            cameraCanvas.height = h;
+            cameraCanvas.getContext('2d').drawImage(cameraVideo, 0, 0, w, h);
+            cameraCanvas.toBlob(blob => {
+                if (!blob) return;
+                const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                const file = new File([blob], `photo-${ts}.jpg`, { type: 'image/jpeg' });
+                addFileToInput(file);
+                stopCameraStream();
+            }, 'image/jpeg', 0.92);
+        });
+    }
+
+    if (cameraCapture) {
+        cameraCapture.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                addFileToInput(this.files[0]);
+                this.value = '';
+            }
         });
     }
 

@@ -15,9 +15,20 @@ import time
 import webbrowser
 import socket
 import hashlib
+import hmac as _hmac_mod
+import json as _json_mod
 import secrets
 import traceback
 import datetime
+
+# ─── Clé de garde anti-modification (obfusquée) ──────────────────────────────
+def _gk_guard():
+    _d = [138,190,148,164,175,168,168,171,128,137,152,134,169,179,174,147,
+          166,170,183,162,181,152,128,178,166,181,163,152,245,247,245,243,
+          152,148,162,164,178,181,162,152,140,162,190,152,177,246]
+    return bytes(x ^ 0xC7 for x in _d)
+_GUARD_KEY = _gk_guard()
+del _gk_guard
 
 # ─── Répertoire de base ────────────────────────────────────────────────────────
 if getattr(sys, 'frozen', False):
@@ -284,6 +295,123 @@ def show_activation_window(mid: str, trial_days_left: int = 0) -> bool:
     return result[0]
 
 
+# ─── Protection anti-modification (garde) ──────────────────────────────────────
+def _tamper_exit():
+    """Arrêt immédiat si modification détectée."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(
+            "MySchoolGN — Erreur critique",
+            "L'application a été modifiée de manière non autorisée.\n\n"
+            "L'application ne peut pas démarrer.\n\n"
+            "Veuillez réinstaller MySchoolGN depuis le programme\n"
+            "officiel ou contactez GS Hadja Kanfing Dian."
+        )
+        root.destroy()
+    except Exception:
+        pass
+    os._exit(1)
+
+
+def _guard_check():
+    """Vérification secondaire anti-modification (défense en profondeur)."""
+    if not getattr(sys, 'frozen', False):
+        return  # Mode développement
+
+    guard_path = os.path.join(BASE_DIR, '.guard.dat')
+    if not os.path.exists(guard_path):
+        return  # Pas de fichier garde
+
+    try:
+        with open(guard_path, 'r', encoding='utf-8') as f:
+            guard_data = _json_mod.load(f)
+
+        stored_hash = guard_data.get('h', '')
+        stored_sig = guard_data.get('s', '')
+
+        # Vérifier la signature du fichier garde
+        expected_sig = _hmac_mod.new(
+            _GUARD_KEY, stored_hash.encode(), hashlib.sha256
+        ).hexdigest()
+        if not _hmac_mod.compare_digest(stored_sig, expected_sig):
+            _tamper_exit()
+
+        # Vérifier les empreintes des modules critiques
+        import license_manager
+        import integrity_check
+
+        lm_fp = _hmac_mod.new(
+            _GUARD_KEY, license_manager._DEV_SECRET, hashlib.sha256
+        ).hexdigest()
+        ic_fp = _hmac_mod.new(
+            _GUARD_KEY, integrity_check._INTEGRITY_KEY, hashlib.sha256
+        ).hexdigest()
+        combined = _hmac_mod.new(
+            _GUARD_KEY, (lm_fp + ic_fp).encode(), hashlib.sha256
+        ).hexdigest()
+
+        if not _hmac_mod.compare_digest(combined, stored_hash):
+            _tamper_exit()
+
+        # Canary : vérifier que la validation rejette les données invalides
+        test = license_manager._validate_license_data({
+            'license_data': 'GUARD_TEST', 'signature': 'INVALID'
+        })
+        if test.get('valid', False):
+            _tamper_exit()
+
+    except (ImportError, FileNotFoundError):
+        pass
+    except Exception:
+        pass
+
+
+# ─── Vérification d'intégrité ──────────────────────────────────────────────────
+def check_integrity():
+    """Vérifie que les fichiers critiques n'ont pas été modifiés."""
+    try:
+        import integrity_check
+        result = integrity_check.verify()
+        if not result['valid']:
+            print("")
+            print("!" * 60)
+            print("   ALERTE : Fichiers de l'application modifiés !")
+            print("!" * 60)
+            print(f"   {result['reason']}")
+            print("")
+            print("   L'application a été corrompue ou modifiée.")
+            print("   Veuillez réinstaller depuis le programme officiel.")
+            print("   Contact : GS Hadja Kanfing Dian")
+            print("!" * 60)
+            print("")
+            try:
+                import tkinter as tk
+                from tkinter import messagebox
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror(
+                    "MySchoolGN — Intégrité compromise",
+                    "Des fichiers de l'application ont été modifiés.\n\n"
+                    "L'application ne peut pas démarrer.\n\n"
+                    "Veuillez réinstaller MySchoolGN depuis le programme\n"
+                    "officiel ou contactez GS Hadja Kanfing Dian."
+                )
+                root.destroy()
+            except Exception:
+                pass
+            os._exit(1)
+        else:
+            if result.get('reason') != 'dev_mode':
+                print("  [Intégrité] ✓ Vérification OK")
+    except ImportError:
+        pass  # Mode développement, integrity_check non disponible
+    except Exception as e:
+        print(f"  [Intégrité] Avertissement : {e}")
+
+
 # ─── Vérification de la licence ────────────────────────────────────────────────
 def check_license():
     """Vérifie la licence au démarrage. Affiche une fenêtre si activation requise."""
@@ -349,13 +477,31 @@ def find_free_port(start_port=8000, max_port=8100):
 
 
 def setup_database():
-    """Initialise / migre la base de données SQLite."""
+    """Initialise / migre la base de données SQLite.
+    
+    En cas de mise à jour, sauvegarde automatiquement la DB avant migration.
+    """
     import django
     django.setup()
     from django.core.management import call_command
 
     db_path = os.path.join(BASE_DIR, 'db.sqlite3')
     is_new_db = not os.path.exists(db_path) or os.path.getsize(db_path) == 0
+
+    # Sauvegarder la DB existante avant migration (protection des données client)
+    if not is_new_db:
+        backup_dir = os.path.join(BASE_DIR, 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+        import shutil
+        backup_name = f"db_avant_migration_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3"
+        backup_path = os.path.join(backup_dir, backup_name)
+        try:
+            shutil.copy2(db_path, backup_path)
+            print(f"[MySchoolGN] Sauvegarde DB → {backup_name}")
+            # Garder seulement les 5 dernières sauvegardes automatiques
+            _cleanup_old_backups(backup_dir, prefix='db_avant_migration_', keep=5)
+        except Exception as e:
+            print(f"[MySchoolGN] Avertissement sauvegarde DB : {e}")
 
     print("[MySchoolGN] Migration de la base de données...")
     call_command('migrate', '--run-syncdb', verbosity=0)
@@ -382,11 +528,64 @@ def setup_database():
         pass
 
 
+def _cleanup_old_backups(backup_dir, prefix='db_avant_migration_', keep=5):
+    """Supprime les anciennes sauvegardes automatiques, garde les N plus récentes."""
+    try:
+        backups = sorted([
+            f for f in os.listdir(backup_dir)
+            if f.startswith(prefix) and f.endswith('.sqlite3')
+        ])
+        for old in backups[:-keep]:
+            os.remove(os.path.join(backup_dir, old))
+    except Exception:
+        pass
+
+
+def _find_modern_browser():
+    """Cherche un navigateur moderne (Edge Chromium, Chrome, Firefox) sous Windows."""
+    if os.name != 'nt':
+        return None
+    import shutil
+    import subprocess
+    # Chemins connus des navigateurs modernes sous Windows
+    candidates = [
+        # Edge Chromium
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        # Google Chrome
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        # Firefox
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Mozilla Firefox', 'firefox.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Mozilla Firefox', 'firefox.exe'),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    # Tenter via PATH
+    for name in ('msedge', 'chrome', 'firefox'):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
 def open_browser(port):
-    """Ouvre le navigateur après un délai."""
+    """Ouvre le navigateur après un délai. Préfère un navigateur moderne sous Windows 10."""
     time.sleep(2.5)
     url = f'http://127.0.0.1:{port}'
     print(f"[MySchoolGN] Navigateur → {url}")
+    browser_path = _find_modern_browser()
+    if browser_path:
+        try:
+            import subprocess
+            subprocess.Popen([browser_path, url])
+            print(f"[MySchoolGN] Ouvert avec : {os.path.basename(browser_path)}")
+            return
+        except Exception as e:
+            print(f"[MySchoolGN] Erreur lancement navigateur ({e}), utilisation par défaut")
     webbrowser.open(url)
 
 
@@ -433,6 +632,12 @@ def main():
     print("   Démarrage en mode offline...")
     print("*" * 60)
     print(f"   Répertoire : {BASE_DIR}")
+
+    # Vérification anti-modification (garde)
+    _guard_check()
+
+    # Vérification d'intégrité (anti-modification)
+    check_integrity()
 
     # Vérification de la licence
     license_status = None

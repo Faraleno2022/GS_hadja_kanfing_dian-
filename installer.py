@@ -39,8 +39,8 @@ IS_UPDATE = (INSTALL_DIR / EXE_NAME).exists()
 
 # Fichiers/dossiers à NE PAS écraser lors d'une mise à jour (données utilisateur)
 UPDATE_PRESERVE_FILES = {'db.sqlite3', 'license.dat', '.trial_start',
-                          '.secret_key', '.env'}
-UPDATE_PRESERVE_DIRS  = {'media'}
+                          '.secret_key', '.env', '.integrity.dat'}
+UPDATE_PRESERVE_DIRS  = {'media', 'backups', 'logs'}
 
 
 # ─── Création du raccourci .lnk ───────────────────────────────────────────────
@@ -224,9 +224,10 @@ def do_install(log_func, progress_func, done_func):
             # ── 2. Copier tous les fichiers
             log_func("Copie des fichiers de l'application ...")
             items = list(SRC_DIR.iterdir())
-            # Exclure les fichiers d'essai/licence pour que le client parte de zéro
+            # Exclure les fichiers d'essai/licence/données dev pour que le client parte de zéro
             skip = {"Installer_MySchoolGN.exe", "installer.py",
-                    ".trial_start", "license.dat", ".secret_key"}
+                    ".trial_start", "license.dat", ".secret_key",
+                    "db.sqlite3", ".env", ".integrity.dat"}
             total = len(items)
 
             for i, item in enumerate(items):

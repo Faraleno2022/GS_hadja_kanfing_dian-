@@ -128,15 +128,22 @@ def copy_extra_files():
         shutil.copytree(media_src, media_dst)
         print("  [OK] Dossier media copie")
 
-    # Copier la base de donnees
-    db_src = os.path.join(BASE_DIR, 'db.sqlite3')
+    # NE PAS copier la base de données du développeur dans le build
+    # run_server.py créera une base vierge via 'migrate' au premier démarrage
     db_dst = os.path.join(OUTPUT_DIR, 'db.sqlite3')
-    if os.path.exists(db_src) and not os.path.exists(db_dst):
-        shutil.copy2(db_src, db_dst)
-        print("  [OK] Base de donnees copiee")
+    if os.path.exists(db_dst):
+        os.remove(db_dst)
+        print("  [INFO] db.sqlite3 du dev supprimee du build (sera creee au 1er demarrage)")
+
+    # Supprimer les fichiers de licence/essai du dev s'ils ont été copiés
+    for dev_file in ['license.dat', '.trial_start', '.secret_key', '.env']:
+        dev_dst = os.path.join(OUTPUT_DIR, dev_file)
+        if os.path.exists(dev_dst):
+            os.remove(dev_dst)
+            print(f"  [INFO] {dev_file} du dev supprime du build")
 
     # Creer les dossiers necessaires
-    for folder in ['logs', 'media']:
+    for folder in ['logs', 'media', 'backups']:
         folder_path = os.path.join(OUTPUT_DIR, folder)
         os.makedirs(folder_path, exist_ok=True)
 
@@ -262,10 +269,138 @@ def show_summary():
     print(f"")
 
 
+def generate_integrity_manifest():
+    """Genere le manifeste d'integrite dans le dossier de distribution."""
+    step("Generation du manifeste d'integrite")
+
+    if not os.path.exists(OUTPUT_DIR):
+        print("  [ERREUR] Dossier de sortie introuvable")
+        return
+
+    # Copier integrity_check.py TEMPORAIREMENT pour generer le manifeste
+    ic_src = os.path.join(BASE_DIR, 'integrity_check.py')
+    ic_dst = os.path.join(OUTPUT_DIR, 'integrity_check.py')
+    if os.path.exists(ic_src):
+        shutil.copy2(ic_src, ic_dst)
+
+    # Generer le manifeste depuis le dossier de distribution
+    try:
+        env = os.environ.copy()
+        env['PYTHONPATH'] = OUTPUT_DIR
+        subprocess.check_call(
+            [sys.executable, ic_dst, '--generate'],
+            cwd=OUTPUT_DIR,
+            env=env,
+        )
+        print("  [OK] Manifeste d'integrite genere")
+    except subprocess.CalledProcessError as e:
+        print(f"  [AVERTISSEMENT] Erreur generation manifeste : {e}")
+    except Exception as e:
+        print(f"  [AVERTISSEMENT] {e}")
+
+
+def protect_source_files():
+    """Supprime les fichiers source .py lisibles de la distribution.
+
+    PROTECTION ANTI-MODIFICATION : Les modules critiques sont compiles
+    en bytecode dans le PYZ par PyInstaller (via hiddenimports).
+    Les copies .py lisibles sont supprimees pour empecher un attaquant
+    de les ouvrir dans un editeur et modifier le code.
+    """
+    step("Protection anti-modification des fichiers source")
+
+    if not os.path.exists(OUTPUT_DIR):
+        print("  [ERREUR] Dossier de sortie introuvable")
+        return
+
+    critical_files = [
+        'integrity_check.py',
+        'license_manager.py',
+        'load_env.py',
+    ]
+
+    removed = []
+    for fname in critical_files:
+        for location in [OUTPUT_DIR, os.path.join(OUTPUT_DIR, '_internal')]:
+            fpath = os.path.join(location, fname)
+            if os.path.exists(fpath):
+                os.remove(fpath)
+                removed.append(os.path.relpath(fpath, OUTPUT_DIR))
+
+    for r in removed:
+        print(f"  [OK] Source supprime : {r}")
+
+    if not removed:
+        print("  [INFO] Aucun fichier source expose trouve")
+
+    print(f"  [OK] {len(removed)} fichier(s) source supprime(s) de la distribution")
+
+
+def generate_guard_file():
+    """Genere le fichier de garde .guard.dat pour la verification anti-modification.
+
+    Ce fichier contient les empreintes HMAC des cles secretes des modules critiques.
+    Il est verifie par run_server.py (compile dans l'EXE) au demarrage.
+    Cle de garde differente des cles d'integrite et de licence.
+    """
+    step("Generation du fichier de garde anti-modification")
+
+    if not os.path.exists(OUTPUT_DIR):
+        print("  [ERREUR] Dossier de sortie introuvable")
+        return
+
+    import hmac as _hmac
+    import hashlib as _hl
+    import json
+
+    # Cle de garde (identique a celle dans run_server.py)
+    def _gk():
+        _d = [138,190,148,164,175,168,168,171,128,137,152,134,169,179,174,147,
+              166,170,183,162,181,152,128,178,166,181,163,152,245,247,245,243,
+              152,148,162,164,178,181,162,152,140,162,190,152,177,246]
+        return bytes(x ^ 0xC7 for x in _d)
+    guard_key = _gk()
+
+    # Importer les modules depuis les sources du projet
+    _saved_path = sys.path[:]
+    sys.path.insert(0, BASE_DIR)
+
+    for mod_name in ['license_manager', 'integrity_check']:
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
+    try:
+        import license_manager
+        import integrity_check
+
+        # Calculer les empreintes des cles secretes
+        lm_fp = _hmac.new(guard_key, license_manager._DEV_SECRET, _hl.sha256).hexdigest()
+        ic_fp = _hmac.new(guard_key, integrity_check._INTEGRITY_KEY, _hl.sha256).hexdigest()
+        combined = _hmac.new(guard_key, (lm_fp + ic_fp).encode(), _hl.sha256).hexdigest()
+
+        # Signer
+        sig = _hmac.new(guard_key, combined.encode(), _hl.sha256).hexdigest()
+
+        guard_data = {'h': combined, 's': sig}
+
+        guard_path = os.path.join(OUTPUT_DIR, '.guard.dat')
+        with open(guard_path, 'w', encoding='utf-8') as f:
+            json.dump(guard_data, f)
+
+        print(f"  [OK] Fichier de garde genere : .guard.dat")
+        print(f"  [OK] Empreintes des modules critiques enregistrees")
+
+    except Exception as e:
+        print(f"  [ERREUR] Impossible de generer le fichier de garde : {e}")
+    finally:
+        sys.path[:] = _saved_path
+
+
 def main():
     print("")
     print("*" * 60)
     print("  MySchoolGN - Compilation en .exe")
+    print("  AVEC PROTECTION ANTI-MODIFICATION")
     print("*" * 60)
 
     os.chdir(BASE_DIR)
@@ -277,6 +412,9 @@ def main():
     copy_gtk_dlls()
     create_launcher_bat()
     create_stop_bat()
+    generate_guard_file()
+    generate_integrity_manifest()
+    protect_source_files()
     show_summary()
 
 

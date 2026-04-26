@@ -11,7 +11,6 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.template.loader import render_to_string
-from weasyprint import HTML, CSS
 
 from .models import ClasseNote, MatiereNote
 from eleves.models import Eleve, Classe as ClasseEleve
@@ -337,6 +336,8 @@ def tableau_honneur_pdf(request):
 
     html_content = render_to_string('notes/tableau_honneur_pdf.html', context, request=request)
 
+    # Import lazy pour eviter l'erreur GTK au demarrage de l'application
+    from weasyprint import HTML, CSS
     html = HTML(string=html_content)
     css = CSS(string='''
         @page {

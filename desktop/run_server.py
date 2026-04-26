@@ -1,6 +1,6 @@
 """
-MySchool — Lanceur Desktop Offline
-Démarre le serveur Django sur localhost:8080 et ouvre le navigateur.
+MySchool - Lanceur Desktop Offline
+Demarre le serveur Django sur localhost:8080 et ouvre le navigateur.
 """
 import sys
 import os
@@ -8,6 +8,14 @@ import time
 import threading
 import webbrowser
 import socket
+
+# Forcer l'encodage UTF-8 pour eviter les erreurs cp1252 sur Windows
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 
 def get_free_port(preferred=8080):
@@ -45,29 +53,29 @@ def setup_environment():
 
 
 def run_migrations():
-    """Applique les migrations de base de données."""
+    """Applique les migrations de base de donnees."""
     from django.core.management import call_command
     print("[MySchool] Application des migrations...")
     call_command('migrate', '--run-syncdb', verbosity=1)
-    print("[MySchool] Migrations terminées.")
+    print("[MySchool] Migrations terminees.")
 
 
 def collect_static():
-    """Collecte les fichiers statiques si nécessaire."""
+    """Collecte les fichiers statiques si necessaire."""
     from django.conf import settings
     static_root = str(settings.STATIC_ROOT)
     if not os.path.exists(static_root) or not os.listdir(static_root):
         from django.core.management import call_command
         print("[MySchool] Collecte des fichiers statiques...")
         call_command('collectstatic', '--noinput', verbosity=0)
-        print("[MySchool] Fichiers statiques prêts.")
+        print("[MySchool] Fichiers statiques prets.")
 
 
 def create_default_user():
-    """Crée un utilisateur admin par défaut si la base est vide."""
+    """Cree un utilisateur admin par defaut si la base est vide."""
     from django.contrib.auth.models import User
     if not User.objects.exists():
-        print("[MySchool] Création du compte administrateur par défaut...")
+        print("[MySchool] Creation du compte administrateur par defaut...")
         user = User.objects.create_superuser(
             username='admin',
             email='admin@myschool.local',
@@ -85,33 +93,70 @@ def create_default_user():
                 is_validated=True,
             )
         except Exception as e:
-            print(f"[MySchool] Note : Profil non créé ({e})")
+            print(f"[MySchool] Note: Profil non cree ({e})")
 
-        print("[MySchool] ╔══════════════════════════════════════╗")
-        print("[MySchool] ║  Compte créé:                       ║")
-        print("[MySchool] ║  Utilisateur: admin                 ║")
-        print("[MySchool] ║  Mot de passe: admin1234            ║")
-        print("[MySchool] ║  CHANGEZ-LE après la 1ère connexion ║")
-        print("[MySchool] ╚══════════════════════════════════════╝")
+        print("[MySchool] +======================================+")
+        print("[MySchool] |  Compte cree:                       |")
+        print("[MySchool] |  Utilisateur: admin                 |")
+        print("[MySchool] |  Mot de passe: admin1234            |")
+        print("[MySchool] |  CHANGEZ-LE apres la 1ere connexion |")
+        print("[MySchool] +======================================+")
+
+
+def _find_modern_browser():
+    """Cherche un navigateur moderne (Edge Chromium, Chrome, Firefox) sous Windows."""
+    if os.name != 'nt':
+        return None
+    import shutil
+    candidates = [
+        # Edge Chromium
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        # Google Chrome
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        # Firefox
+        os.path.join(os.environ.get('PROGRAMFILES', ''), 'Mozilla Firefox', 'firefox.exe'),
+        os.path.join(os.environ.get('PROGRAMFILES(X86)', ''), 'Mozilla Firefox', 'firefox.exe'),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    for name in ('msedge', 'chrome', 'firefox'):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
 
 
 def open_browser(port):
-    """Ouvre le navigateur après un court délai."""
+    """Ouvre le navigateur après un court délai. Préfère un navigateur moderne sous Windows 10."""
     time.sleep(2.5)
     url = f'http://127.0.0.1:{port}/'
-    print(f"[MySchool] Ouverture du navigateur: {url}")
+    print("[MySchool] Ouverture du navigateur: %s" % url)
+    browser_path = _find_modern_browser()
+    if browser_path:
+        try:
+            import subprocess
+            subprocess.Popen([browser_path, url])
+            print("[MySchool] Ouvert avec : %s" % os.path.basename(browser_path))
+            return
+        except Exception as e:
+            print("[MySchool] Erreur lancement navigateur (%s), utilisation par défaut" % e)
     webbrowser.open(url)
 
 
 def print_banner():
-    """Affiche la bannière de démarrage."""
+    """Affiche la banniere de demarrage."""
     print()
-    print("╔════════════════════════════════════════════════════╗")
-    print("║                                                    ║")
-    print("║        MySchool — Gestion Scolaire                 ║")
-    print("║        Version Desktop Hors-Ligne                  ║")
-    print("║                                                    ║")
-    print("╚════════════════════════════════════════════════════╝")
+    print("+" + "=" * 52 + "+")
+    print("|                                                    |")
+    print("|        MySchool - Gestion Scolaire                 |")
+    print("|        Version Desktop Hors-Ligne                  |")
+    print("|                                                    |")
+    print("+" + "=" * 52 + "+")
     print()
 
 
@@ -128,7 +173,7 @@ def main():
         run_migrations()
         collect_static()
         create_default_user()
-        print("[MySchool] Configuration terminée.")
+        print("[MySchool] Configuration terminee.")
         return
 
     # Démarrage normal
@@ -141,8 +186,8 @@ def main():
     # Ouvrir le navigateur dans un thread séparé
     threading.Thread(target=open_browser, args=(port,), daemon=True).start()
 
-    print(f"[MySchool] Serveur démarré sur http://127.0.0.1:{port}/")
-    print("[MySchool] Fermez cette fenêtre pour arrêter le serveur.")
+    print("[MySchool] Serveur demarre sur http://127.0.0.1:%d/" % port)
+    print("[MySchool] Fermez cette fenetre pour arreter le serveur.")
     print()
 
     # Démarrer le serveur Django

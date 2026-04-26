@@ -18,14 +18,24 @@ from django.contrib import admin
 from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
 from django.views.generic import TemplateView, RedirectView
 from .static_views import serve_static_no_cache
 from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf, rapport_scolaire_recu_pdf, rapport_scolaire_classes_ajax
+
+
+def google_site_verification(request):
+    return HttpResponse(
+        "google-site-verification: google10babad53f3eade7.html",
+        content_type="text/html",
+    )
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
+    path('google10babad53f3eade7.html', google_site_verification, name='google_site_verification'),
     # Rapport scolaire public (espace parent, pas de login)
     path('rapport-scolaire/', rapport_scolaire_recherche, name='rapport_scolaire'),
     path('rapport-scolaire/detail/', rapport_scolaire_detail, name='rapport_scolaire_detail'),

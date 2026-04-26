@@ -164,15 +164,26 @@ def certificats_appreciation_pdf(request):
         
         # Créer le PDF avec WeasyPrint (import lazy pour eviter l'erreur GTK au demarrage)
         from weasyprint import HTML, CSS
-        html = HTML(string=html_content)
+        base_url = request.build_absolute_uri('/')
+        html = HTML(string=html_content, base_url=base_url)
         css = CSS(string='''
             @page {
                 size: A4 landscape;
                 margin: 10mm;
             }
         ''')
-        
-        pdf = html.write_pdf(stylesheets=[css])
+
+        try:
+            pdf = html.write_pdf(stylesheets=[css])
+        except Exception as wp_err:
+            # Fallback : désactive le sous-ensemble des polices (évite les erreurs
+            # "Unable to build parser" de fontTools sur certaines polices système)
+            logger.warning(
+                f"WeasyPrint erreur normale ({wp_err}), "
+                "nouvelle tentative avec full_fonts=True"
+            )
+            html = HTML(string=html_content, base_url=base_url)
+            pdf = html.write_pdf(stylesheets=[css], full_fonts=True)
         
         # Retourner le PDF
         response = HttpResponse(pdf, content_type='application/pdf')
@@ -180,7 +191,7 @@ def certificats_appreciation_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de la génération des certificats: {str(e)}")
         import traceback
-        traceback.print_exc()
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        tb = traceback.format_exc()
+        logger.error(f"Erreur lors de la génération des certificats: {str(e)}\n{tb}")
+        return HttpResponse(f"Erreur: {str(e)}\n\n{tb}", status=500)
