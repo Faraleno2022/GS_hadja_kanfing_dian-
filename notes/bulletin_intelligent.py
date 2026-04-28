@@ -1067,7 +1067,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         c.setFont("Helvetica", 7)
         c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du trimestre")
         c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition du trimestre")
-        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• {'Moyenne : composition' if est_primaire else 'Moyenne : 40% cours + 60% compo'} | {points_text}")
     elif system_type_indiv == 'semestriel':
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
@@ -1075,7 +1075,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         c.setFont("Helvetica", 7)
         c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du semestre")
         c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition (examen) du semestre")
-        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• {'Moyenne : composition' if est_primaire else 'Moyenne : 40% cours + 60% compo'} | {points_text}")
     else:
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
@@ -2473,7 +2473,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         c.setFont("Helvetica", 7)
         c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du trimestre")
         c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition du trimestre")
-        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• {'Moyenne : composition' if est_primaire else 'Moyenne : 40% cours + 60% compo'} | {points_text}")
     elif system_type == 'semestriel':
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME SEMESTRIEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)
@@ -2481,7 +2481,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         c.setFont("Helvetica", 7)
         c.drawString(1.4*cm, y - 0.6*cm, "• Cours : Moyenne des notes d'évaluations continues du semestre")
         c.drawString(1.4*cm, y - 0.9*cm, "• Compo : Note de composition (examen) du semestre")
-        c.drawString(1.4*cm, y - 1.2*cm, f"• Moyenne : (Cours + Compo) / 2 (50% chacun) | {points_text}")
+        c.drawString(1.4*cm, y - 1.2*cm, f"• {'Moyenne : composition' if est_primaire else 'Moyenne : 40% cours + 60% compo'} | {points_text}")
     else:
         titre_systeme = "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL (PRIMAIRE)" if est_primaire else "MÉTHODE DE CALCUL DES NOTES - SYSTÈME MENSUEL"
         c.drawString(1.4*cm, y - 0.3*cm, titre_systeme)

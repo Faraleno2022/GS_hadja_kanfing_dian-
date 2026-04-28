@@ -30,7 +30,7 @@ from .models import (
     NoteMensuelle, CompositionNote,
     AppreciationMaternelle,
 )
-from .calculs_moyennes import detecter_niveau_scolaire
+from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyenne_periode_guineenne
 from utilisateurs.utils import filter_by_user_school, user_school
 
 logger = logging.getLogger(__name__)
@@ -1537,8 +1537,8 @@ def _collecter_parcours_eleve(eleve, ecole):
                 if is_semestre:
                     # Memes mois que calculs_moyennes.calculer_moyenne_matiere
                     for sem_num, mois_list, prefix in [
-                        (1, ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER'], 'sem1'),
-                        (2, ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET'], 'sem2'),
+                        (1, ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'], 'sem1'),
+                        (2, ['MARS', 'AVRIL', 'MAI'], 'sem2'),
                     ]:
                         notes = NoteMensuelle.objects.filter(
                             eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
@@ -1555,23 +1555,21 @@ def _collecter_parcours_eleve(eleve, ecole):
                             moy = round(sum(vals) / len(vals), 2) if vals else None
 
                         compo_val = float(compo.note) if compo and compo.note is not None and not compo.absent else None
-                        # Formule identique a calculer_moyenne_matiere: (moy + compo) / 2
-                        sem_moy = None
-                        if moy is not None and compo_val is not None:
-                            sem_moy = round((moy + compo_val) / 2, 2)
-                        elif moy is not None:
-                            sem_moy = moy
-                        elif compo_val is not None:
-                            sem_moy = compo_val
+                        sem_calc = calculer_moyenne_periode_guineenne(
+                            moy,
+                            compo_val,
+                            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
+                        )
+                        sem_moy = round(sem_calc, 2) if sem_calc is not None else None
 
                         m_data[f'{prefix}_moy'] = moy
                         m_data[f'{prefix}_compo'] = compo_val
                         m_data[f'{prefix}_moyenne'] = sem_moy
                 else:
                     for i, (t_label, mois_list) in enumerate([
-                        ('t1', ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']),
-                        ('t2', ['JANVIER', 'FEVRIER', 'MARS']),
-                        ('t3', ['AVRIL', 'MAI', 'JUIN']),
+                        ('t1', ['OCTOBRE', 'NOVEMBRE']),
+                        ('t2', ['JANVIER', 'FEVRIER']),
+                        ('t3', ['AVRIL', 'MAI']),
                     ], 1):
                         notes_t = NoteMensuelle.objects.filter(
                             eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
@@ -1588,14 +1586,12 @@ def _collecter_parcours_eleve(eleve, ecole):
                             moy_t = round(sum(vals) / len(vals), 2) if vals else None
 
                         compo_t_val = float(compo_t.note) if compo_t and compo_t.note is not None and not compo_t.absent else None
-                        # Formule identique a calculer_moyenne_matiere: (moy + compo) / 2
-                        final_t = None
-                        if moy_t is not None and compo_t_val is not None:
-                            final_t = round((moy_t + compo_t_val) / 2, 2)
-                        elif moy_t is not None:
-                            final_t = moy_t
-                        elif compo_t_val is not None:
-                            final_t = compo_t_val
+                        final_calc = calculer_moyenne_periode_guineenne(
+                            moy_t,
+                            compo_t_val,
+                            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
+                        )
+                        final_t = round(final_calc, 2) if final_calc is not None else None
 
                         m_data[f'{t_label}_moy'] = final_t
                         m_data[f'{t_label}_compo'] = compo_t_val

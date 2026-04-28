@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.template.loader import render_to_string
 from django.db import IntegrityError
 from django.views.decorators.http import require_POST
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import json
 import os
 import io
@@ -7153,7 +7153,7 @@ def bulletin_dynamique(request):
                     # UTILISER LA FONCTION CENTRALISÉE INTELLIGENTE
                     # Elle gère tous les types: mensuel, trimestre, semestre, annuel
                     # ============================================================
-                    from .calculs_moyennes import calculer_bulletin_intelligent
+                    from .calculs_moyennes import calculer_bulletin_intelligent, calculer_moyenne_periode_guineenne
                     
                     result_intelligent = calculer_bulletin_intelligent(
                         eleve_selectionne, matiere, periode, system_type
@@ -7164,7 +7164,7 @@ def bulletin_dynamique(request):
                     moyennes_mensuelles = result_intelligent['moyennes_mensuelles']
                 
                 # Calculer la moyenne de la matière selon le système guinéen
-                # Si trimestre/semestre: moyenne = (moyenne_continue + composition) / 2 (poids égal)
+                # Secondaire: moyenne = 40% cours + 60% composition. Primaire: composition.
                 # Si mensuel: moyenne = moyenne_continue uniquement (pas de composition)
                 # Si annuel: moyenne = moyenne des périodes (T1+T2+T3)/3 ou (S1+S2)/2
                 moyenne_matiere = None
@@ -7175,8 +7175,12 @@ def bulletin_dynamique(request):
                 elif system_type == 'mensuel':
                     moyenne_matiere = moyenne_continue
                 elif moyenne_continue is not None and note_composition is not None:
-                    # Formule corrigée : (Moyenne Continue + Composition) / 2 (poids égal)
-                    moyenne_matiere = round((moyenne_continue + note_composition) / 2, 2)
+                    # Formule guinéenne centralisée.
+                    moyenne_matiere = round(calculer_moyenne_periode_guineenne(
+                        moyenne_continue,
+                        note_composition,
+                        'PRIMAIRE' if est_primaire else 'SECONDAIRE'
+                    ), 2)
                 elif note_composition is not None:
                     # Seulement la composition
                     moyenne_matiere = note_composition
@@ -7964,6 +7968,10 @@ def sauvegarder_notes_guineen(request):
         if not annee_scolaire:
             annee_scolaire = matiere.classe.annee_scolaire
 
+        from .calculs_moyennes import detecter_niveau_scolaire
+        niveau_note = detecter_niveau_scolaire(matiere.classe.nom)
+        note_max = Decimal('10') if niveau_note == 'PRIMAIRE' else Decimal('20')
+
         saved_count = 0
         updated_count = 0
 
@@ -7974,8 +7982,13 @@ def sauvegarder_notes_guineen(request):
                     note_value = note_data.get('note') if isinstance(note_data, dict) else note_data
                     absent = note_data.get('absent', False) if isinstance(note_data, dict) else False
                     
-                    if note_value is not None and note_value != '':
-                        note_decimal = Decimal(str(note_value))
+                    if absent or (note_value is not None and note_value != ''):
+                        note_decimal = Decimal('0') if absent else Decimal(str(note_value).replace(',', '.'))
+                        if note_decimal < 0 or note_decimal > note_max:
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'Note invalide: elle doit être entre 0 et {note_max}'
+                            }, status=400)
                         obj, created = NoteMensuelle.objects.update_or_create(
                             eleve=eleve,
                             matiere=matiere,
@@ -8006,8 +8019,13 @@ def sauvegarder_notes_guineen(request):
                     note_value = comp_data.get('note') if isinstance(comp_data, dict) else comp_data
                     absent = comp_data.get('absent', False) if isinstance(comp_data, dict) else False
                     
-                    if note_value is not None and note_value != '':
-                        note_decimal = Decimal(str(note_value))
+                    if absent or (note_value is not None and note_value != ''):
+                        note_decimal = Decimal('0') if absent else Decimal(str(note_value).replace(',', '.'))
+                        if note_decimal < 0 or note_decimal > note_max:
+                            return JsonResponse({
+                                'success': False,
+                                'error': f'Note invalide: elle doit être entre 0 et {note_max}'
+                            }, status=400)
                         obj, created = CompositionNote.objects.update_or_create(
                             eleve=eleve,
                             matiere=matiere,

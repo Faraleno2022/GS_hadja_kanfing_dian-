@@ -22,6 +22,55 @@ logger = logging.getLogger(__name__)
 CACHE_TIMEOUT_MOYENNES = 600  # 10 minutes
 CACHE_TIMEOUT_CLASSEMENT = 600  # 10 minutes
 
+# Règles de calcul utilisées par les bulletins et les classements.
+# Secondaire guinéen: moyenne de période = 40% cours + 60% composition.
+PONDERATION_COURS_SECONDAIRE = Decimal('0.4')
+PONDERATION_COMPOSITION_SECONDAIRE = Decimal('0.6')
+
+MOIS_PAR_PERIODE = {
+    'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE'],
+    'TRIMESTRE_2': ['JANVIER', 'FEVRIER'],
+    'TRIMESTRE_3': ['AVRIL', 'MAI'],
+    'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'],
+    'SEMESTRE_2': ['MARS', 'AVRIL', 'MAI'],
+}
+
+
+def obtenir_mois_periode(periode):
+    """Retourne les mois de cours continus pour une période."""
+    mapping_alias = {
+        '1er Trimestre': 'TRIMESTRE_1',
+        '2ème Trimestre': 'TRIMESTRE_2',
+        '3ème Trimestre': 'TRIMESTRE_3',
+        '1er Semestre': 'SEMESTRE_1',
+        '2ème Semestre': 'SEMESTRE_2',
+    }
+    return MOIS_PAR_PERIODE.get(mapping_alias.get(periode, periode), [])
+
+
+def calculer_moyenne_periode_guineenne(moyenne_continue, note_composition, niveau='SECONDAIRE'):
+    """
+    Calcule la moyenne de période selon le niveau.
+    Primaire: composition seule quand elle existe.
+    Secondaire: 40% cours + 60% composition.
+    """
+    if niveau == 'PRIMAIRE':
+        if note_composition is not None:
+            return note_composition
+        return moyenne_continue
+
+    if moyenne_continue is not None and note_composition is not None:
+        moyenne = (
+            Decimal(str(moyenne_continue)) * PONDERATION_COURS_SECONDAIRE
+            + Decimal(str(note_composition)) * PONDERATION_COMPOSITION_SECONDAIRE
+        )
+        return float(moyenne)
+    if note_composition is not None:
+        return note_composition
+    if moyenne_continue is not None:
+        return moyenne_continue
+    return None
+
 
 def detecter_notes_mensuelles_classe(classe_note, periode=None):
     """
@@ -193,17 +242,17 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
         # Accepter les deux variantes: 'trimestre' et 'trimestriel'
         if system_type in ['trimestriel', 'trimestre']:
             if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
-                mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+                mois_periode = ['OCTOBRE', 'NOVEMBRE']
             elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
-                mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
+                mois_periode = ['JANVIER', 'FEVRIER']
             elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
-                mois_periode = ['AVRIL', 'MAI', 'JUIN']
+                mois_periode = ['AVRIL', 'MAI']
         # Accepter les deux variantes: 'semestre' et 'semestriel'
         elif system_type in ['semestriel', 'semestre']:
             if 'SEMESTRE_1' in periode or periode == '1er Semestre':
-                mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+                mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
             elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
-                mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+                mois_periode = ['MARS', 'AVRIL', 'MAI']
         
         # Calculer la moyenne des notes mensuelles (si elles existent)
         if mois_periode:
@@ -247,9 +296,14 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
     if system_type == 'mensuel':
         moyenne_matiere = moyenne_continue
     elif moyenne_continue is not None and note_composition is not None:
-        # CAS 1: Les deux existent → Formule : (Moyenne Continue + Composition) / 2
+        # CAS 1: Les deux existent -> formule guineenne par niveau
         # PAS d'arrondi ici — garder la précision complète pour le calcul des points
-        moyenne_matiere = (moyenne_continue + note_composition) / 2
+        niveau = detecter_niveau_scolaire(matiere.classe.nom if hasattr(matiere.classe, 'nom') else '')
+        moyenne_matiere = calculer_moyenne_periode_guineenne(
+            moyenne_continue,
+            note_composition,
+            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
+        )
     elif note_composition is not None:
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
         moyenne_matiere = note_composition
@@ -449,16 +503,16 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     mois_periode = []
     if system_type in ['trimestriel', 'trimestre']:
         if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
-            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+            mois_periode = ['OCTOBRE', 'NOVEMBRE']
         elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
-            mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
+            mois_periode = ['JANVIER', 'FEVRIER']
         elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
-            mois_periode = ['AVRIL', 'MAI', 'JUIN']
+            mois_periode = ['AVRIL', 'MAI']
     elif system_type in ['semestriel', 'semestre']:
         if 'SEMESTRE_1' in periode or periode == '1er Semestre':
-            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
         elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
-            mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+            mois_periode = ['MARS', 'AVRIL', 'MAI']
     
     # OPTIMISATION: Charger TOUTES les notes mensuelles en une seule requête
     if system_type == 'mensuel':
@@ -542,9 +596,13 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
             if system_type == 'mensuel':
                 moyenne_matiere = moyenne_continue
             elif moyenne_continue is not None and note_composition is not None:
-                # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
+                # CAS 1: Les deux existent -> formule guineenne par niveau
                 # PAS d'arrondi — garder la précision complète
-                moyenne_matiere = (moyenne_continue + note_composition) / 2
+                moyenne_matiere = calculer_moyenne_periode_guineenne(
+                    moyenne_continue,
+                    note_composition,
+                    'PRIMAIRE' if est_primaire else 'SECONDAIRE'
+                )
             elif note_composition is not None:
                 # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
                 moyenne_matiere = note_composition
@@ -891,7 +949,8 @@ def calculer_moyenne_annuelle_matiere(eleve, matiere, system_type='annuel_trimes
     
     moyenne_annuelle = None
     if moyennes_valides:
-        moyenne_annuelle = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+        moyennes_avec_absents = [m if m is not None else 0 for m in moyennes_periodes.values()]
+        moyenne_annuelle = round(sum(moyennes_avec_absents) / len(moyennes_avec_absents), 2)
     
     # Calculer les points (valeur EXACTE, pas d'arrondi intermédiaire)
     points = None
@@ -1024,7 +1083,7 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
     
     FORMULES:
     - Mensuel: Moyenne = Note du mois
-    - Trimestriel/Semestriel: Moyenne = (Moyenne Continue + Composition) / 2
+    - Trimestriel/Semestriel: Primaire = composition, Secondaire = 40% cours + 60% composition
     - Annuel Trimestriel: Moyenne = (Moy T1 + Moy T2 + Moy T3) / 3
     - Annuel Semestriel: Moyenne = (Moy S1 + Moy S2) / 2
     
@@ -1130,15 +1189,16 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             result['note_composition'] = float(compo.note)
         
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
-        # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
+        # CAS 1: Les deux existent -> formule guineenne par niveau
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
         # CAS 3: Seulement notes mensuelles → Utiliser directement
-        if result['moyenne_continue'] is not None and result['note_composition'] is not None:
-            result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
-        elif result['note_composition'] is not None:
-            result['moyenne'] = result['note_composition']
-        elif result['moyenne_continue'] is not None:
-            result['moyenne'] = result['moyenne_continue']
+        moyenne_calculee = calculer_moyenne_periode_guineenne(
+            result['moyenne_continue'],
+            result['note_composition'],
+            'PRIMAIRE' if est_primaire else 'SECONDAIRE'
+        )
+        if moyenne_calculee is not None:
+            result['moyenne'] = round(moyenne_calculee, 2)
     
     # ============================================================
     # SYSTÈME SEMESTRIEL: Moyenne des mois + Composition
@@ -1195,15 +1255,16 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             result['note_composition'] = float(compo.note)
         
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
-        # CAS 1: Les deux existent → (Moyenne Continue + Composition) / 2
+        # CAS 1: Les deux existent -> formule guineenne par niveau
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
         # CAS 3: Seulement notes mensuelles → Utiliser directement
-        if result['moyenne_continue'] is not None and result['note_composition'] is not None:
-            result['moyenne'] = round((result['moyenne_continue'] + result['note_composition']) / 2, 2)
-        elif result['note_composition'] is not None:
-            result['moyenne'] = result['note_composition']
-        elif result['moyenne_continue'] is not None:
-            result['moyenne'] = result['moyenne_continue']
+        moyenne_calculee = calculer_moyenne_periode_guineenne(
+            result['moyenne_continue'],
+            result['note_composition'],
+            'PRIMAIRE' if est_primaire else 'SECONDAIRE'
+        )
+        if moyenne_calculee is not None:
+            result['moyenne'] = round(moyenne_calculee, 2)
     
     # ============================================================
     # SYSTÈME ANNUEL TRIMESTRIEL: (T1 + T2 + T3) / 3
@@ -1229,7 +1290,8 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         # Calculer la moyenne annuelle: (T1 + T2 + T3) / 3
         moyennes_valides = [m['moyenne'] for m in moyennes_periodes if m['moyenne'] is not None]
         if moyennes_valides:
-            result['moyenne'] = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+            moyennes_avec_absents = [m['moyenne'] if m['moyenne'] is not None else 0 for m in moyennes_periodes]
+            result['moyenne'] = round(sum(moyennes_avec_absents) / len(moyennes_avec_absents), 2)
             result['moyenne_continue'] = result['moyenne']  # Pour compatibilité
     
     # ============================================================
@@ -1256,7 +1318,8 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         # Calculer la moyenne annuelle: (S1 + S2) / 2
         moyennes_valides = [m['moyenne'] for m in moyennes_periodes if m['moyenne'] is not None]
         if moyennes_valides:
-            result['moyenne'] = round(sum(moyennes_valides) / len(moyennes_valides), 2)
+            moyennes_avec_absents = [m['moyenne'] if m['moyenne'] is not None else 0 for m in moyennes_periodes]
+            result['moyenne'] = round(sum(moyennes_avec_absents) / len(moyennes_avec_absents), 2)
             result['moyenne_continue'] = result['moyenne']  # Pour compatibilité
     
     # ============================================================

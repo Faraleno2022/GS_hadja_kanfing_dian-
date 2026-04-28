@@ -4,6 +4,7 @@ pour les bulletins trimestriels et semestriels
 """
 from decimal import Decimal
 from .models import NoteMensuelle, CompositionNote, Evaluation, NoteEleve
+from .calculs_moyennes import calculer_moyenne_periode_guineenne, detecter_niveau_scolaire
 
 
 def get_mois_periode(periode_type, periode, inclure_dernier_mois=True):
@@ -343,9 +344,14 @@ def calculer_bulletin_avec_details_mensuels(eleve, matiere, periode_type, period
     
     moyenne_finale = None
     if moyenne_continue is not None and note_composition is not None:
-        # Formule : (Moyenne Continue + Composition) / 2
+        # Formule guineenne centralisee selon le niveau.
         # PAS d'arrondi — garder la précision complète pour le calcul des points
-        moyenne_finale = (moyenne_continue + note_composition) / 2
+        niveau = detecter_niveau_scolaire(matiere.classe.nom if hasattr(matiere.classe, 'nom') else '')
+        moyenne_finale = calculer_moyenne_periode_guineenne(
+            moyenne_continue,
+            note_composition,
+            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
+        )
     elif note_composition is not None:
         moyenne_finale = note_composition
     elif moyenne_continue is not None:

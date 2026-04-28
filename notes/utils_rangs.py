@@ -84,7 +84,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
     # Détecter le niveau scolaire pour gérer les coefficients
-    from .calculs_moyennes import detecter_niveau_scolaire
+    from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyenne_periode_guineenne
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
     est_maternelle = (niveau == 'MATERNELLE')
@@ -189,15 +189,15 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
         # Déterminer les mois de la période
         mois_periode = []
         if 'TRIMESTRE_1' in periode or periode == '1er Trimestre':
-            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE']
+            mois_periode = ['OCTOBRE', 'NOVEMBRE']
         elif 'TRIMESTRE_2' in periode or periode == '2ème Trimestre':
-            mois_periode = ['JANVIER', 'FEVRIER', 'MARS']
+            mois_periode = ['JANVIER', 'FEVRIER']
         elif 'TRIMESTRE_3' in periode or periode == '3ème Trimestre':
-            mois_periode = ['AVRIL', 'MAI', 'JUIN']
+            mois_periode = ['AVRIL', 'MAI']
         elif 'SEMESTRE_1' in periode or periode == '1er Semestre':
-            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER']
+            mois_periode = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
         elif 'SEMESTRE_2' in periode or periode == '2ème Semestre':
-            mois_periode = ['MARS', 'AVRIL', 'MAI', 'JUIN', 'JUILLET']
+            mois_periode = ['MARS', 'AVRIL', 'MAI']
         
         # OPTIMISATION: Charger TOUTES les notes mensuelles en une seule requête
         notes_mensuelles_all = NoteMensuelle.objects.filter(
@@ -260,14 +260,12 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                 
                 # Calculer la moyenne de la matière selon la formule guinéenne
                 moyenne_matiere = None
-                if moyenne_continue is not None and note_composition is not None:
-                    # Formule: (Moyenne Continue + Composition) / 2 (50% chacun)
-                    moyenne_matiere = (moyenne_continue + note_composition) / 2
-                elif note_composition is not None:
-                    moyenne_matiere = note_composition
-                elif moyenne_continue is not None:
-                    moyenne_matiere = moyenne_continue
-                else:
+                moyenne_matiere = calculer_moyenne_periode_guineenne(
+                    moyenne_continue,
+                    note_composition,
+                    'PRIMAIRE' if est_primaire else 'SECONDAIRE'
+                )
+                if moyenne_matiere is None:
                     moyenne_matiere = 0.0  # Pas de note = 0
                 
                 total_points += Decimal(str(moyenne_matiere)) * coefficient
@@ -367,7 +365,7 @@ def invalider_cache_rangs(classe_note, periode: str = None):
             'OCTOBRE', 'NOVEMBRE', 'DECEMBRE',
             'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN',
             'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3',
-            'SEMESTRE_1', 'SEMESTRE_2', 'ANNUEL',
+            'SEMESTRE_1', 'SEMESTRE_2', 'ANNUEL', 'ANNUEL_TRIM', 'ANNUEL_SEM',
             '1er Trimestre', '2ème Trimestre', '3ème Trimestre',
             '1er Semestre', '2ème Semestre'
         ]

@@ -13,7 +13,7 @@ import json
 
 from .models import (
     ClasseNote, MatiereNote, EvaluationMaternelle, NoteMaternelle,
-    AnalyseTravailMaternelle, RecommandationMaternelle
+    AnalyseTravailMaternelle, RecommandationMaternelle, AppreciationMaternelle
 )
 from eleves.models import Eleve, Classe
 from eleves.utils_annee import get_annee_active
@@ -172,12 +172,27 @@ def sauvegarder_evaluation_maternelle(request, evaluation, matieres, analyse, re
             if note_value:
                 try:
                     note_decimal = float(note_value.replace(',', '.'))
+                    if note_decimal < 0 or note_decimal > 10:
+                        messages.warning(request, f"Note ignorée pour {matiere.nom}: elle doit être entre 0 et 10.")
+                        continue
                     NoteMaternelle.objects.update_or_create(
                         evaluation=evaluation,
                         matiere=matiere,
                         defaults={
                             'note': note_decimal,
                             'commentaire': commentaire
+                        }
+                    )
+                    AppreciationMaternelle.objects.update_or_create(
+                        eleve=evaluation.eleve,
+                        matiere=matiere,
+                        trimestre=evaluation.trimestre,
+                        annee_scolaire=evaluation.annee_scolaire,
+                        defaults={
+                            'appreciation': EvaluationMaternelle.note_vers_lettre(note_decimal),
+                            'commentaire': commentaire or None,
+                            'absent': False,
+                            'cree_par': request.user,
                         }
                     )
                 except ValueError:
