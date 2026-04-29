@@ -9,7 +9,27 @@
     <div class="card-body p-4">
       <h1 class="h4 mb-3 text-center"><i class="fas fa-sign-in-alt me-2"></i>Connexion</h1>
 
-      {# Les erreurs/infos sont affichées via messages dans base.html #}
+      {# Affichage des messages d'erreur/info directement dans le formulaire pour ne rien rater #}
+      {% if messages %}
+        {% for message in messages %}
+          {% if 'error' in message.tags or 'warning' in message.tags %}
+            <div class="alert alert-danger d-flex align-items-center" role="alert">
+              <i class="fas fa-exclamation-triangle me-2"></i>
+              <div>{{ message }}</div>
+            </div>
+          {% elif 'success' in message.tags %}
+            <div class="alert alert-success d-flex align-items-center" role="alert">
+              <i class="fas fa-check-circle me-2"></i>
+              <div>{{ message }}</div>
+            </div>
+          {% else %}
+            <div class="alert alert-info d-flex align-items-center" role="alert">
+              <i class="fas fa-info-circle me-2"></i>
+              <div>{{ message }}</div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
 
       {% if blocked %}
         <div class="alert alert-danger d-flex align-items-center" role="alert">
@@ -22,7 +42,7 @@
           L'accès au formulaire est temporairement bloqué pour des raisons de sécurité.
         </p>
       {% else %}
-        <form method="post" action="{% url 'utilisateurs:login' %}" novalidate>
+        <form method="post" action="{% url 'utilisateurs:login' %}" novalidate id="login-form" data-no-fast-submit="1">
           {% csrf_token %}
           {# Préserve la redirection vers la page d'origine (next) #}
           {% if request.GET.next %}
@@ -40,7 +60,7 @@
           </div>
           <div class="d-flex justify-content-between align-items-center">
             <a href="{% url 'utilisateurs:password_reset_info' %}" class="small">Mot de passe oublié ?</a>
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" id="login-submit">
               <i class="fas fa-unlock me-1"></i> Se connecter
             </button>
           </div>
@@ -49,4 +69,33 @@
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  var form = document.getElementById('login-form');
+  if (!form) return;
+  var btn = document.getElementById('login-submit');
+  var origHTML = btn ? btn.innerHTML : '';
+  form.addEventListener('submit', function(){
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Connexion…';
+    // Filet de sécurité : si la page n'a pas navigué après 4s (validation, erreur réseau),
+    // on réactive le bouton pour permettre une nouvelle tentative.
+    setTimeout(function(){
+      if (!document.hidden && btn) {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+      }
+    }, 4000);
+  });
+  // Réinitialiser au retour via bouton "Précédent" du navigateur (bfcache)
+  window.addEventListener('pageshow', function(e){
+    if (e.persisted && btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHTML;
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -7,6 +7,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}G.S HKD{% endblock %}</title>
 
+    {# SEO : description par défaut, écrasable par les pages via le bloc meta_description #}
+    <meta name="description" content="{% block meta_description %}Myschool — système de gestion scolaire moderne : élèves, paiements, salaires, transport, notes et statistiques pour les établissements en Guinée.{% endblock %}">
+    <meta name="robots" content="{% block meta_robots %}index,follow{% endblock %}">
+    <meta name="theme-color" content="#0d6efd">
+    <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}">
+
+    {# Open Graph (Facebook, WhatsApp, LinkedIn, etc.) #}
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Myschool">
+    <meta property="og:title" content="{% block og_title %}{{ self.title|default:'Myschool' }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Gestion scolaire moderne — automatisation des inscriptions, paiements, notes et bulletins.{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}">
+    <meta property="og:locale" content="fr_FR">
+
+    {# Twitter Card #}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}{{ self.title|default:'Myschool' }}{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}Gestion scolaire moderne, automatisée et fiable pour les établissements scolaires.{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}">
+
     {% if is_offline %}
     <!-- Mode offline : fichiers locaux -->
     <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
@@ -693,6 +714,8 @@
     (function(){
       function enhanceForm(form){
         if (!form || form.__fastSubmitBound) return; form.__fastSubmitBound = true;
+        // Permettre à un formulaire d'opter explicitement pour son propre comportement
+        if (form.hasAttribute('data-no-fast-submit')) return;
         form.addEventListener('submit', function(e){
           try {
             // Ignore if already processing

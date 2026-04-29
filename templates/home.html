@@ -198,9 +198,7 @@
 </style>
 <!-- Préchargement critique de l'image héro optimisée (WebP pour vitesse maximale) -->
 <link rel="preload" as="image" href="{% static 'images/optimized/ecole.webp' %}" type="image/webp" imagesizes="100vw">
-<!-- Préchargement des images de cartes pour éviter le lazy loading sur le viewport initial -->
-<link rel="preload" as="image" href="{% static 'images/optimized/carte1.webp' %}" type="image/webp" media="(min-width: 768px)">
-<link rel="preload" as="image" href="{% static 'images/optimized/carte2.webp' %}" type="image/webp" media="(min-width: 768px)">
+{# Les images des cartes sont sous le pli : on laisse le navigateur les charger en lazy plutôt que de les précharger #}
 {% endblock %}
 
 {% block breadcrumb %}{% endblock %}
@@ -309,16 +307,17 @@
     <div class="col-md-6">
       <div class="card shadow-sm image-card">
 
-        <!-- Image optimisée WebP avec fallback JPEG -->
+        <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
         <picture>
           <source type="image/webp"
                   srcset="{% static 'images/optimized/carte1.webp' %}"
-                  media="(min-width: 1px)">
+                  sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
           <img src="{% static 'images/optimized/carte1_optimized.jpg' %}"
                alt="Nos installations modernes"
                class="card-img-top"
-               loading="eager"
+               loading="lazy"
                decoding="async"
+               sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw"
                width="1200"
                height="800">
         </picture>
@@ -338,16 +337,17 @@
       <div class="card shadow-sm image-card">
 
 
-        <!-- Image optimisée WebP avec fallback JPEG -->
+        <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
         <picture>
           <source type="image/webp"
                   srcset="{% static 'images/optimized/carte2.webp' %}"
-                  media="(min-width: 1px)">
+                  sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
           <img src="{% static 'images/optimized/carte2_optimized.jpg' %}"
                alt="Notre équipe pédagogique"
                class="card-img-top"
-               loading="eager"
+               loading="lazy"
                decoding="async"
+               sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw"
                width="1200"
                height="800">
         </picture>
