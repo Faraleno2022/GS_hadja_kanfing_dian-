@@ -146,7 +146,10 @@ class LicenceMiddleware:
     Retourne une page 403 bloquante si expiré ou si fichiers modifiés.
     """
 
-    EXEMPT_PREFIXES = ('/static/', '/media/', '/favicon', '/utilisateurs/login/', '/activer/')
+    EXEMPT_PREFIXES = (
+        '/static/', '/media/', '/favicon', '/utilisateurs/login/',
+        '/activer/', '/admin/', '/api/v1/license/',
+    )
     EXEMPT_EXACT    = {'/', '/utilisateurs/login/', '/activer/'}
 
     def __init__(self, get_response):

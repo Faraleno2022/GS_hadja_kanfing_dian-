@@ -307,7 +307,7 @@ import urllib.error
 # URL de base — surchargeable via variable d'environnement pour les tests
 _LICENCE_API_BASE = os.environ.get(
     'LICENCE_API_BASE',
-    'https://licences.myschoolgn.space/api/v1/license',
+    'https://www.myschoolgn.space/api/v1/license',
 )
 _API_TIMEOUT_SEC = 5
 _CHECK_INTERVAL_HOURS = 6   # idem côté serveur

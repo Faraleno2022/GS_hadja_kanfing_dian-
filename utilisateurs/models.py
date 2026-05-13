@@ -1,7 +1,64 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
+from django.utils import timezone
 from eleves.models import Ecole
+import secrets
+
+
+def generate_license_key_value():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    groups = []
+    for _ in range(5):
+        groups.append("".join(secrets.choice(alphabet) for _ in range(4)))
+    return "-".join(groups)
+
+
+class LicenceServeur(models.Model):
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('suspended', 'Suspendue'),
+        ('expired', 'Expirée'),
+        ('revoked', 'Révoquée'),
+    ]
+
+    license_key = models.CharField(
+        max_length=29,
+        unique=True,
+        default=generate_license_key_value,
+        verbose_name="Clé de licence",
+    )
+    machine_id = models.CharField(max_length=64, verbose_name="ID machine")
+    school = models.CharField(max_length=120, verbose_name="École")
+    edition = models.CharField(max_length=30, default="Standard", verbose_name="Édition")
+    deploiement = models.CharField(max_length=30, default="local", verbose_name="Déploiement")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active", verbose_name="Statut")
+    expires_at = models.DateField(verbose_name="Date d'expiration")
+    hostname = models.CharField(max_length=120, blank=True, verbose_name="Nom de machine")
+    activated_at = models.DateTimeField(null=True, blank=True, verbose_name="Activée le")
+    last_check_at = models.DateTimeField(null=True, blank=True, verbose_name="Dernière vérification")
+    notes = models.TextField(blank=True, verbose_name="Notes")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Créée le")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Modifiée le")
+
+    class Meta:
+        verbose_name = "Licence serveur"
+        verbose_name_plural = "Licences serveur"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.school} - {self.license_key}"
+
+    @property
+    def days_left(self):
+        return max(0, (self.expires_at - timezone.localdate()).days)
+
+    def is_usable_for(self, machine_id):
+        return (
+            self.status == 'active'
+            and self.expires_at >= timezone.localdate()
+            and self.machine_id.upper() == machine_id.upper()
+        )
 
 class Profil(models.Model):
     """Modèle pour étendre le profil utilisateur"""
@@ -189,4 +246,3 @@ class ParametreSysteme(models.Model):
             return json.loads(self.valeur)
         else:
             return self.valeur
-

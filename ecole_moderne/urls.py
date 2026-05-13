@@ -22,6 +22,7 @@ from django.http import HttpResponse
 from django.views.generic import TemplateView, RedirectView
 from .static_views import serve_static_no_cache
 from .activation_views import activer_licence
+from utilisateurs.license_api import activate_license, verify_license
 from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf, rapport_scolaire_recu_pdf, rapport_scolaire_classes_ajax
 
 
@@ -35,6 +36,10 @@ def google_site_verification(request):
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('activer/', activer_licence, name='activer_licence'),
+    path('api/v1/license/activate', activate_license, name='license_api_activate'),
+    path('api/v1/license/activate/', activate_license, name='license_api_activate_slash'),
+    path('api/v1/license/verify', verify_license, name='license_api_verify'),
+    path('api/v1/license/verify/', verify_license, name='license_api_verify_slash'),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
     path('google10babad53f3eade7.html', google_site_verification, name='google_site_verification'),
