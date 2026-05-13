@@ -29,7 +29,7 @@ MAX_LOGIN_ATTEMPTS = 3
 BLOCK_DURATION_SECONDS = 1800
 # Message personnalisé demandé par le client
 LOCKOUT_MESSAGE = (
-    "Trop de tentatives de connexion. Veuillez consulter l'administrateur du système au 622613559."
+    "Trop de tentatives de connexion. Contactez l'administrateur FARA LENO AU +224622613559."
 )
 
 def get_client_ip(request):
@@ -113,7 +113,7 @@ def secure_login(request):
         # Cas spécifique demandé: /login/?next=/admin/password_reset/
         if unsafe_next.startswith('/admin/password_reset'):
             return render(request, 'utilisateurs/login.html', {
-                'error': "Veuillez contacter l'administrateur du système au 622613559.",
+                'error': "Contactez l'administrateur FARA LENO AU +224622613559.",
                 'blocked': True,
             })
         # Pour toute autre cible admin, on ignore simplement et n'expose pas cette destination
@@ -523,7 +523,7 @@ def verify_phone(request):
     """
     profil = getattr(request.user, 'profil', None)
     if not profil or not profil.telephone:
-        messages.error(request, _("Aucun numéro de téléphone n'est enregistré sur votre profil. Veuillez contacter un administrateur."))
+        messages.error(request, _("Aucun numéro de téléphone n'est enregistré sur votre profil. Contactez l'administrateur FARA LENO AU +224622613559."))
         return redirect('utilisateurs:logout')
 
     # Si déjà vérifié pour la session courante, on passe
@@ -583,7 +583,7 @@ def password_reset_info(request):
     Ne propose pas de formulaire, indique seulement de contacter l'administrateur.
     """
     return render(request, 'utilisateurs/password_reset_info.html', {
-        'message': "Veuillez contacter l'administrateur du système au 622613559 pour réinitialiser votre mot de passe.",
+        'message': "Contactez l'administrateur FARA LENO AU +224622613559 pour réinitialiser votre mot de passe.",
     })
 
 

@@ -49,7 +49,7 @@ _PAGE_HTML = """<!DOCTYPE html>
 <body>
 <div class="card">
   <h1>🔑 Activation de licence</h1>
-  <p class="subtitle">MySchoolGN — Saisissez la clé fournie par GS Hadja Kanfing Dian</p>
+  <p class="subtitle">MySchoolGN — Saisissez la clé fournie par l'administrateur FARA LENO AU +224622613559</p>
 
   {alert}
 
@@ -67,7 +67,7 @@ _PAGE_HTML = """<!DOCTYPE html>
   </form>
 
   <div class="footer">
-    Besoin d'aide ? Contactez <strong>GS Hadja Kanfing Dian</strong><br>
+    Besoin d'aide ? Contactez l'administrateur <strong>FARA LENO AU +224622613559</strong><br>
     <a href="/">← Retour à l'accueil</a>
   </div>
 </div>

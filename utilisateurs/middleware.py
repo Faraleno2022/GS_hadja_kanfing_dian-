@@ -40,7 +40,7 @@ class EcoleIsolationMiddleware:
         profil = getattr(request.user, 'profil', None)
         if not profil:
             logger.warning(f"Utilisateur {request.user.username} sans profil tente d'accéder à {request.path}")
-            messages.error(request, "Votre profil n'est pas configuré. Contactez l'administrateur.")
+            messages.error(request, "Votre profil n'est pas configuré. Contactez l'administrateur FARA LENO AU +224622613559.")
             return redirect('home')
             
         # Vérifier si le profil est validé
@@ -52,7 +52,7 @@ class EcoleIsolationMiddleware:
         # Vérifier si l'utilisateur a une école assignée
         if not profil.ecole:
             logger.warning(f"Utilisateur {request.user.username} sans école tente d'accéder à {request.path}")
-            messages.error(request, "Aucune école assignée à votre compte. Contactez l'administrateur.")
+            messages.error(request, "Aucune école assignée à votre compte. Contactez l'administrateur FARA LENO AU +224622613559.")
             return redirect('home')
             
         # Stocker l'école de l'utilisateur dans la requête pour un accès facile

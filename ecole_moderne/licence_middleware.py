@@ -71,8 +71,8 @@ _BLOCKED_HTML = """<!DOCTYPE html>
   <div class="reason">{reason}</div>
   <a href="/activer/" class="btn">&#x1F511; J'ai une clé — Activer ma licence</a>
   <div class="contact">
-    Pour obtenir une licence, contactez :<br>
-    <strong>GS Hadja Kanfing Dian</strong>
+    Pour obtenir une licence, contactez l'administrateur :<br>
+    <strong>FARA LENO AU +224622613559</strong>
   </div>
   <small>L'activation est immédiate dès saisie de la clé.</small>
 </div>
@@ -132,7 +132,7 @@ _TAMPERED_HTML = """<!DOCTYPE html>
   <div class="reason">Modification non autorisée détectée</div>
   <div class="contact">
     Veuillez réinstaller l'application depuis le programme officiel<br>
-    ou contactez <strong>GS Hadja Kanfing Dian</strong>
+    ou contactez l'administrateur <strong>FARA LENO AU +224622613559</strong>
   </div>
   <small>Code erreur : INTEGRITY_VIOLATION</small>
 </div>
@@ -191,7 +191,7 @@ class LicenceMiddleware:
                     request,
                     f"Votre {'essai' if status.get('trial') else 'licence'} "
                     f"expire dans {status['days_left']} jour(s). "
-                    "Contactez GS Hadja Kanfing Dian."
+                    "Contactez l'administrateur FARA LENO AU +224622613559."
                 )
                 request.session[session_key] = True
 
