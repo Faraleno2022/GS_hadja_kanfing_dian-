@@ -84,11 +84,17 @@ def get_machine_id_short() -> str:
     return get_machine_id()[:8]
 
 
-# ─── Empreinte machine autorisée pour la génération ───────────────────────────
+# ─── Empreintes machine autorisées pour la génération ─────────────────────────
+# Chaque entrée = liste d'octets XORés avec 0x95 (obfuscation anti-`strings`).
+# Pour ajouter une machine : récupérer son ID court (8 chars hex via
+# `python license_manager.py info`), puis XORer chaque caractère avec 0x95.
 def _ak():
-    _d = [0xD4,0xD1,0xA5,0xD4,0xA3,0xA0,0xA0,0xA3]
-    return bytes(x ^ 0x95 for x in _d).decode()
-_AUTHORIZED_PREFIX = _ak()
+    _entries = [
+        [0xD4,0xD1,0xA5,0xD4,0xA3,0xA0,0xA0,0xA3],  # AD0A6556 (machine dev historique)
+        [0xA7,0xD0,0xA6,0xD1,0xA7,0xA1,0xA2,0xA2],  # 2E3D2477 (machine dev actuelle)
+    ]
+    return tuple(bytes(x ^ 0x95 for x in entry).decode() for entry in _entries)
+_AUTHORIZED_PREFIXES = _ak()
 del _ak
 
 
@@ -96,7 +102,7 @@ def _is_authorized_machine() -> bool:
     """Vérifie que la machine courante est autorisée à générer des licences."""
     try:
         mid = get_machine_id()[:8]
-        return hmac.compare_digest(mid, _AUTHORIZED_PREFIX)
+        return any(hmac.compare_digest(mid, p) for p in _AUTHORIZED_PREFIXES)
     except Exception:
         return False
 
@@ -287,6 +293,261 @@ def activate_from_file(activation_file_path: str) -> dict:
         return {'valid': False, 'reason': f'Erreur lecture du fichier : {e}'}
 
 
+# ─── Vérification en ligne (API serveur de licences) ─────────────────────────
+# Le serveur de licences signe un JWT HMAC-SHA256 que cette app vérifie
+# localement (offline-friendly). Tant que le JWT n'est pas expiré (30 j max
+# = grace period), l'app continue de fonctionner même sans réseau.
+#
+# Le secret HMAC est _DEV_SECRET (le même obfusqué plus haut). Il DOIT être
+# identique côté serveur (LICENCE_HMAC_SECRET dans licence_server/settings.py).
+
+import urllib.request
+import urllib.error
+
+# URL de base — surchargeable via variable d'environnement pour les tests
+_LICENCE_API_BASE = os.environ.get(
+    'LICENCE_API_BASE',
+    'https://licences.myschoolgn.space/api/v1/license',
+)
+_API_TIMEOUT_SEC = 5
+_CHECK_INTERVAL_HOURS = 6   # idem côté serveur
+
+
+def _b64url_decode(s: str) -> bytes:
+    pad = '=' * ((4 - len(s) % 4) % 4)
+    return base64.urlsafe_b64decode((s + pad).encode('ascii'))
+
+
+def _verify_jwt_offline(token: str) -> dict:
+    """
+    Vérifie la signature HMAC-SHA256 d'un JWT et son expiration.
+    Retourne le payload décodé. Lève ValueError si invalide.
+    """
+    try:
+        header_b64, payload_b64, sig_b64 = token.split('.')
+    except ValueError:
+        raise ValueError("Token JWT mal formé.")
+
+    signing_input = f"{header_b64}.{payload_b64}".encode('ascii')
+    expected_sig = hmac.new(_DEV_SECRET, signing_input, hashlib.sha256).digest()
+    actual_sig = _b64url_decode(sig_b64)
+
+    if not hmac.compare_digest(expected_sig, actual_sig):
+        raise ValueError("Signature JWT invalide.")
+
+    payload = json.loads(_b64url_decode(payload_b64).decode('utf-8'))
+
+    # Vérifier exp
+    now_ts = int(_now_utc().timestamp())
+    if 'exp' in payload and payload['exp'] < now_ts:
+        raise ValueError("Token JWT expiré (grace period écoulée).")
+
+    return payload
+
+
+def _call_api(endpoint: str, body: dict) -> dict | None:
+    """
+    POST JSON vers l'API serveur. Retourne {status_code, body_dict} ou None
+    si réseau indisponible.
+    """
+    url = f"{_LICENCE_API_BASE}/{endpoint}"
+    data = json.dumps(body).encode('utf-8')
+    req = urllib.request.Request(
+        url, data=data, method='POST',
+        headers={
+            'Content-Type': 'application/json',
+            'User-Agent': f'MySchoolGN/{platform.system()} python-urllib',
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=_API_TIMEOUT_SEC) as resp:
+            body_str = resp.read().decode('utf-8')
+            return {'status_code': resp.status, 'body': json.loads(body_str)}
+    except urllib.error.HTTPError as e:
+        # 4xx → on a quand même un JSON exploitable
+        try:
+            body_str = e.read().decode('utf-8')
+            return {'status_code': e.code, 'body': json.loads(body_str)}
+        except Exception:
+            return {'status_code': e.code, 'body': {'status': 'invalid',
+                                                    'reason': f'HTTP {e.code}'}}
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return None  # réseau indisponible
+
+
+def activate_online(license_key: str) -> dict:
+    """
+    1re activation : envoie la clé + machine_id au serveur, reçoit un JWT
+    signé et le sauvegarde dans license.dat.
+    """
+    key = license_key.strip().upper()
+    mid = get_machine_id()
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = ''
+
+    resp = _call_api('activate', {
+        'license_key': key,
+        'machine_id': mid,
+        'hostname': hostname,
+    })
+
+    if resp is None:
+        return {'valid': False,
+                'reason': 'Serveur de licences injoignable. Vérifiez votre connexion internet.'}
+
+    body = resp['body']
+    if resp['status_code'] != 200:
+        return {'valid': False,
+                'reason': body.get('reason', f"Erreur HTTP {resp['status_code']}"),
+                'status': body.get('status', 'invalid')}
+
+    # Sauvegarder le token + métadonnées
+    license_dict = {
+        'version':        '2.0',
+        'license_key':    key,
+        'machine_id':     mid,
+        'signed_token':   body['signed_token'],
+        'school':         body.get('school', ''),
+        'edition':        body.get('edition', 'Standard'),
+        'deploiement':    body.get('deploiement', 'local'),
+        'expires_at':     body.get('expires_at'),
+        'last_check_at':  _now_utc().isoformat() + 'Z',
+    }
+    if not save_license(license_dict):
+        return {'valid': False, 'reason': 'Impossible de sauvegarder la licence localement.'}
+
+    return {
+        'valid':      True,
+        'message':    'Licence activée avec succès !',
+        'school':     body.get('school', ''),
+        'edition':    body.get('edition', 'Standard'),
+        'days_left':  body.get('days_left', 0),
+        'expires_at': body.get('expires_at'),
+    }
+
+
+def _load_local_token_status() -> dict | None:
+    """
+    Lit license.dat v2.0 et valide le JWT hors-ligne.
+    Retourne un dict {valid, payload, license_key, last_check_at} ou None.
+    """
+    for path in (_get_license_path(), _get_appdata_license_path()):
+        if not path.exists():
+            continue
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            continue
+        if data.get('version') != '2.0' or not data.get('signed_token'):
+            continue  # ancien format, traité ailleurs
+        try:
+            payload = _verify_jwt_offline(data['signed_token'])
+        except ValueError:
+            continue
+        # Vérifier que le token correspond à CETTE machine
+        if payload.get('machine_id', '').upper() != get_machine_id().upper():
+            continue
+        last_check = data.get('last_check_at')
+        try:
+            last_check_dt = datetime.fromisoformat(last_check.rstrip('Z'))
+        except Exception:
+            last_check_dt = _now_utc() - timedelta(days=999)
+        return {
+            'valid': True,
+            'payload': payload,
+            'license_key': data.get('license_key', ''),
+            'last_check_at': last_check_dt,
+            'local_data': data,
+            'license_path': str(path),
+        }
+    return None
+
+
+def _update_local_check_timestamp(local_data: dict, new_body: dict | None = None):
+    """Met à jour last_check_at (et le token si new_body fourni)."""
+    local_data['last_check_at'] = _now_utc().isoformat() + 'Z'
+    if new_body:
+        local_data['signed_token'] = new_body.get('signed_token', local_data['signed_token'])
+        local_data['expires_at']   = new_body.get('expires_at', local_data.get('expires_at'))
+        local_data['school']       = new_body.get('school', local_data.get('school'))
+        local_data['edition']      = new_body.get('edition', local_data.get('edition'))
+    save_license(local_data)
+
+
+def verify_online() -> dict | None:
+    """
+    Vérification périodique. Retourne un dict {valid, ...} ou None si
+    aucune licence locale (→ fallback essai/legacy).
+    """
+    local = _load_local_token_status()
+    if not local:
+        return None
+
+    payload = local['payload']
+    age_hours = (_now_utc() - local['last_check_at']).total_seconds() / 3600
+
+    # Cache frais → pas d'appel réseau
+    if age_hours < _CHECK_INTERVAL_HOURS:
+        return _status_from_payload(payload, source='cache')
+
+    # Tenter une vérification fraîche
+    resp = _call_api('verify', {
+        'license_key': local['license_key'],
+        'machine_id':  get_machine_id(),
+    })
+
+    if resp is None:
+        # Réseau KO → on tolère tant que le JWT n'est pas expiré (déjà vérifié dans _verify_jwt_offline)
+        return _status_from_payload(payload, source='offline_grace')
+
+    if resp['status_code'] == 200:
+        _update_local_check_timestamp(local['local_data'], resp['body'])
+        return _status_from_payload_dict(resp['body'], source='online')
+
+    # 4xx → licence pas OK selon le serveur (suspendue/expirée/révoquée…)
+    body = resp['body']
+    return {
+        'valid': False,
+        'reason': body.get('reason', 'Licence refusée par le serveur.'),
+        'status': body.get('status', 'invalid'),
+        'source': 'online_refused',
+    }
+
+
+def _status_from_payload(payload: dict, source: str) -> dict:
+    """Construit un statut à partir d'un payload JWT décodé."""
+    try:
+        exp_date = datetime.strptime(payload['expires_at'], '%Y-%m-%d')
+        days_left = max(0, (exp_date - _now_utc()).days)
+    except Exception:
+        days_left = 0
+    return {
+        'valid':      payload.get('status') == 'active' and days_left > 0,
+        'trial':      False,
+        'school':     payload.get('school', ''),
+        'edition':    payload.get('edition', 'Standard'),
+        'days_left':  days_left,
+        'reason':     f"Licence active (vérif: {source}).",
+        'source':     source,
+    }
+
+
+def _status_from_payload_dict(body: dict, source: str) -> dict:
+    """Idem mais à partir de la réponse JSON brute de l'API."""
+    return {
+        'valid':      body.get('status') == 'active',
+        'trial':      False,
+        'school':     body.get('school', ''),
+        'edition':    body.get('edition', 'Standard'),
+        'days_left':  body.get('days_left', 0),
+        'reason':     f"Licence active (vérif: {source}).",
+        'source':     source,
+    }
+
+
 # ─── Mode démo (30 jours sans licence) ────────────────────────────────────────
 _TRIAL_FILE_NAME = '.trial_start'
 
@@ -363,16 +624,23 @@ def get_or_create_trial() -> dict:
 # ─── Point d'entrée principal ──────────────────────────────────────────────────
 def check_license_or_trial() -> dict:
     """
-    Vérifie la licence. Si absente, démarre/continue le mode essai.
-    Retourne un dict complet avec le statut.
+    Stratégie de vérification :
+      1. Licence en ligne v2.0 (JWT signé, cache 6 h, grace offline 30 j)
+      2. Licence locale v1.0 (ancien fichier .lic envoyé par mail)
+      3. Mode essai gratuit 30 jours
     """
-    result = load_and_validate_license()
-    if result['valid']:
-        return result
+    # 1. Nouvelle licence en ligne
+    online = verify_online()
+    if online is not None:
+        return online
 
-    # Pas de licence valide → essai
-    trial = get_or_create_trial()
-    return trial
+    # 2. Ancien format local (compat)
+    legacy = load_and_validate_license()
+    if legacy['valid']:
+        return legacy
+
+    # 3. Mode essai
+    return get_or_create_trial()
 
 
 def print_license_status():
@@ -427,7 +695,12 @@ if __name__ == '__main__':
         print("  python license_manager.py info")
         print("  python license_manager.py generate <machine_id> <jours> <ecole> <edition>")
         print("  python license_manager.py activate <fichier.lic>")
+        print("  python license_manager.py activate-online <CLE-LICENCE>")
         print("  python license_manager.py check")
+        print("  python license_manager.py encode <prefix8>")
+        print("")
+        print(f"  Serveur de licences : {_LICENCE_API_BASE}")
+        print("  (Surchargeable via la variable d'environnement LICENCE_API_BASE)")
         sys.exit(0)
 
     cmd = sys.argv[1]
@@ -472,5 +745,42 @@ if __name__ == '__main__':
             print(f"\n✗ Échec : {result['reason']}")
             sys.exit(1)
 
+    elif cmd == 'activate-online':
+        if len(sys.argv) < 3:
+            print("Usage: python license_manager.py activate-online <CLE-LICENCE>")
+            print("       Ex: ABCD-1234-EFGH-5678-IJKL")
+            sys.exit(1)
+        key = sys.argv[2]
+        print(f"\nActivation en ligne via : {_LICENCE_API_BASE}")
+        print(f"Clé    : {key}")
+        print(f"Machine: {get_machine_id()}")
+        print("...")
+        result = activate_online(key)
+        if result['valid']:
+            print(f"\n✓ {result['message']}")
+            print(f"  École      : {result.get('school', 'N/A')}")
+            print(f"  Édition    : {result.get('edition', 'Standard')}")
+            print(f"  Expire le  : {result.get('expires_at', 'N/A')}")
+            print(f"  Reste      : {result.get('days_left', 0)} jour(s)")
+        else:
+            print(f"\n✗ Échec activation : {result['reason']}")
+            sys.exit(1)
+
     elif cmd == 'check':
         print_license_status()
+
+    elif cmd == 'encode':
+        if len(sys.argv) < 3:
+            print("Usage: python license_manager.py encode <prefix8>")
+            print("  prefix8 = 8 premiers caractères hex de l'ID machine (ex: 2E3D2477)")
+            sys.exit(1)
+        prefix = sys.argv[2].strip().upper()
+        if len(prefix) != 8 or any(c not in '0123456789ABCDEF' for c in prefix):
+            print(f"\n✗ Préfixe invalide : '{prefix}'")
+            print("  Doit faire exactement 8 caractères hexadécimaux (0-9, A-F).")
+            sys.exit(1)
+        encoded = [ord(c) ^ 0x95 for c in prefix]
+        line = '[' + ','.join(f'0x{b:02X}' for b in encoded) + ']'
+        print(f"\nPréfixe        : {prefix}")
+        print(f"Ligne à coller : {line},  # {prefix}")
+        print(f"\nÀ ajouter dans `_entries` (fonction _ak), vers la ligne 91 de license_manager.py.")

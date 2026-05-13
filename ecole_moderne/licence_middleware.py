@@ -56,6 +56,10 @@ _BLOCKED_HTML = """<!DOCTYPE html>
               padding: 12px 16px; color: #c0392b; font-weight: bold; margin: 20px 0; }}
   .contact {{ background: #eaf4fb; border-radius: 6px; padding: 12px 16px;
                color: #1a5276; margin-top: 16px; }}
+  .btn {{ display: inline-block; margin-top: 20px; padding: 12px 28px;
+           background: #1a3a5c; color: white; text-decoration: none;
+           border-radius: 6px; font-weight: bold; }}
+  .btn:hover {{ background: #0d2438; }}
   small {{ color: #aaa; display: block; margin-top: 20px; font-size: 0.8rem; }}
 </style>
 </head>
@@ -65,11 +69,12 @@ _BLOCKED_HTML = """<!DOCTYPE html>
   <h1>Accès bloqué</h1>
   <p>Votre accès à <strong>MySchoolGN</strong> est suspendu.</p>
   <div class="reason">{reason}</div>
+  <a href="/activer/" class="btn">&#x1F511; J'ai une clé — Activer ma licence</a>
   <div class="contact">
     Pour obtenir une licence, contactez :<br>
     <strong>GS Hadja Kanfing Dian</strong>
   </div>
-  <small>Redémarrez l'application après activation de la licence.</small>
+  <small>L'activation est immédiate dès saisie de la clé.</small>
 </div>
 </body>
 </html>"""
@@ -141,8 +146,8 @@ class LicenceMiddleware:
     Retourne une page 403 bloquante si expiré ou si fichiers modifiés.
     """
 
-    EXEMPT_PREFIXES = ('/static/', '/media/', '/favicon', '/utilisateurs/login/')
-    EXEMPT_EXACT    = {'/', '/utilisateurs/login/'}
+    EXEMPT_PREFIXES = ('/static/', '/media/', '/favicon', '/utilisateurs/login/', '/activer/')
+    EXEMPT_EXACT    = {'/', '/utilisateurs/login/', '/activer/'}
 
     def __init__(self, get_response):
         self.get_response = get_response
