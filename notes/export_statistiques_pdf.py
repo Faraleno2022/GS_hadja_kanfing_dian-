@@ -105,7 +105,13 @@ def _calculer_statistiques_classe(classe_note, periode):
     # Source officielle: meme moyenne/rang que le tableau des resultats.
     rangs_officiels = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
     # Details par matiere uniquement pour les analyses secondaires.
-    resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+    resultats = calculer_moyennes_classe_optimise(
+        eleves,
+        matieres,
+        periode,
+        system_type,
+        use_cache=False,
+    )
 
     # Initialiser les stats par matière
     stats_matieres = {}

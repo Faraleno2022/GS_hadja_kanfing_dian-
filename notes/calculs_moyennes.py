@@ -423,7 +423,7 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
     }
 
 
-def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='mensuel'):
+def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='mensuel', use_cache=True):
     """
     OPTIMISATION: Calcule les moyennes de tous les élèves d'une classe en une seule passe.
     
@@ -470,9 +470,10 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     # La version est incrémentée à chaque sauvegarde de note pour invalider le cache
     _version = cache.get(f"moy_version_classe_{classe.id}", 0)
     _cache_key = f"moy_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe.id}_{periode}_{system_type}_v{_version}"
-    _cached = cache.get(_cache_key)
-    if _cached is not None:
-        return _cached
+    if use_cache:
+        _cached = cache.get(_cache_key)
+        if _cached is not None:
+            return _cached
 
     # Détecter le niveau scolaire
     niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
@@ -650,7 +651,8 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
         }
 
     # Mettre en cache 10 min (invalidé automatiquement dès qu'une note est saisie)
-    cache.set(_cache_key, resultats, CACHE_TIMEOUT_MOYENNES)
+    if use_cache:
+        cache.set(_cache_key, resultats, CACHE_TIMEOUT_MOYENNES)
     return resultats
 
 
@@ -707,7 +709,13 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
     # OPTIMISATION: Utiliser la fonction optimisée pour les systèmes non-annuels
     if system_type not in ['annuel_trimestriel', 'annuel_semestriel']:
         # Calcul en lot (2-3 requêtes au lieu de N*M)
-        resultats_optimises = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+        resultats_optimises = calculer_moyennes_classe_optimise(
+            eleves,
+            matieres,
+            periode,
+            system_type,
+            use_cache=use_cache,
+        )
         
         for eleve_id, result in resultats_optimises.items():
             if result['moyenne_generale'] is not None:

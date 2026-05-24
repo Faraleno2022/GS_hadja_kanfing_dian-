@@ -106,7 +106,13 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
         else:
             system_type = 'semestre'
 
-        resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+        resultats = calculer_moyennes_classe_optimise(
+            eleves,
+            matieres,
+            periode,
+            system_type,
+            use_cache=use_cache,
+        )
         moyennes_pour_rang = []
         for eleve in eleves:
             result = resultats.get(eleve.id, {})

@@ -167,6 +167,17 @@ class ImportNotesProcessor:
             return self._importer_notes_evaluation(matiere)
         
         raise ImportNotesError(f"Type d'import non supporté: {self.type_import}")
+
+    def _invalider_cache_import(self, matiere, periode=None):
+        """Invalide les caches apres un import en bloc.
+
+        Les bulk_create/bulk_update ne declenchent pas les signaux Django.
+        """
+        try:
+            from .utils_rangs import invalider_cache_rangs
+            invalider_cache_rangs(matiere.classe, periode or self.periode)
+        except Exception as e:
+            print(f"Erreur invalidation cache apres import: {e}")
     
     def _importer_notes_mensuelles(self, matiere):
         """Importe des notes mensuelles - VERSION OPTIMISÉE"""
@@ -249,6 +260,9 @@ class ImportNotesProcessor:
                     batch_size=500
                 )
         
+        if notes_a_creer or notes_a_modifier:
+            self._invalider_cache_import(matiere)
+
         return self.stats
     
     def _importer_notes_composition(self, matiere):
@@ -327,6 +341,9 @@ class ImportNotesProcessor:
                     batch_size=500
                 )
         
+        if notes_a_creer or notes_a_modifier:
+            self._invalider_cache_import(matiere)
+
         return self.stats
     
     def _importer_notes_evaluation(self, matiere):
@@ -410,6 +427,9 @@ class ImportNotesProcessor:
             # (bulk_create/bulk_update ne déclenchent pas les signaux Django)
             self._sync_notes_to_mensuelle(evaluation, notes_a_creer + notes_a_modifier)
         
+        if notes_a_creer or notes_a_modifier:
+            self._invalider_cache_import(matiere, evaluation.periode)
+
         return self.stats
     
     def _sync_notes_to_mensuelle(self, evaluation, notes_eleve_list):
@@ -471,6 +491,9 @@ class ImportNotesProcessor:
                 ['note', 'absent', 'cree_par'],
                 batch_size=500
             )
+
+        if notes_mensuelle_a_creer or notes_mensuelle_existantes:
+            self._invalider_cache_import(matiere, evaluation.periode)
 
 
 def lire_fichier_import(file_path_or_obj):
