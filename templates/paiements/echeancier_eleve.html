@@ -130,6 +130,35 @@
     .payment-item.validated { border-left-color: #28a745; }
     .payment-item.pending { border-left-color: #ffc107; }
     .payment-item.rejected { border-left-color: #dc3545; }
+
+    .finance-focus-card {
+        background: #fff;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 18px;
+        height: 100%;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+
+    .finance-focus-label {
+        color: #6c757d;
+        font-size: .78rem;
+        text-transform: uppercase;
+        letter-spacing: .06rem;
+        margin-bottom: 6px;
+    }
+
+    .finance-focus-value {
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .relance-message-box {
+        min-height: 190px;
+        font-size: .95rem;
+        white-space: pre-line;
+    }
 </style>
 {% endblock %}
 
@@ -172,41 +201,115 @@
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="stat-box">
-                <div class="stat-value text-primary">{{ echeancier.total_du|floatformat:0|intcomma }}</div>
+                <div class="stat-value text-primary">{{ finance_eleve.total_du|floatformat:0|intcomma }}</div>
                 <div class="stat-label">Total dû (GNF)</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-box">
-                <div class="stat-value text-success">{{ echeancier.total_paye|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Déjà payé (GNF)</div>
+                <div class="stat-value text-success">{{ finance_eleve.total_couvert|floatformat:0|intcomma }}</div>
+                <div class="stat-label">Payé + remises (GNF)</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-box">
-                <div class="stat-value text-danger">{{ echeancier.solde_restant|floatformat:0|intcomma }}</div>
+                <div class="stat-value text-danger">{{ finance_eleve.reste_a_payer|floatformat:0|intcomma }}</div>
                 <div class="stat-label">Reste à payer (GNF)</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-box">
-                <div class="stat-value text-info">{{ echeancier.annee_scolaire }}</div>
-                <div class="stat-label">Année scolaire</div>
+                <div class="stat-value {% if finance_eleve.retard_reel > 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ finance_eleve.retard_reel|floatformat:0|intcomma }}
+                </div>
+                <div class="stat-label">Retard réel (GNF)</div>
             </div>
         </div>
     </div>
+
+    <!-- Situation rapide secrétariat -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="finance-focus-card">
+                <div class="finance-focus-label">Situation immédiate</div>
+                <div class="finance-focus-value {% if finance_eleve.reste_a_payer > 0 %}text-danger{% else %}text-success{% endif %}">
+                    {% if finance_eleve.reste_a_payer > 0 %}Non soldé{% else %}Soldé{% endif %}
+                </div>
+                <div class="mt-2 text-muted">
+                    Paiements saisis : {{ finance_eleve.total_paye_brut|floatformat:0|intcomma }} GNF<br>
+                    Remises/Bourses : {{ finance_eleve.remises_total|floatformat:0|intcomma }} GNF<br>
+                    Année scolaire : {{ echeancier.annee_scolaire }}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="finance-focus-card">
+                <div class="finance-focus-label">Prochain paiement attendu</div>
+                {% if finance_eleve.prochain_paiement %}
+                    <div class="finance-focus-value text-primary">{{ finance_eleve.prochain_paiement.libelle }}</div>
+                    <div class="mt-2 text-muted">
+                        Montant restant : {{ finance_eleve.prochain_paiement.reste|floatformat:0|intcomma }} GNF<br>
+                        Échéance : {{ finance_eleve.prochain_paiement.echeance|date:"d/m/Y"|default:"Non définie" }}
+                        {% if finance_eleve.prochain_paiement.en_retard %}
+                            <br><span class="badge bg-danger mt-2">En retard</span>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="finance-focus-value text-success">Aucun paiement attendu</div>
+                    <p class="text-muted mb-0 mt-2">Toutes les échéances prévues sont couvertes.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="finance-focus-card">
+                <div class="finance-focus-label">Action parent</div>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'paiements:generer_note_rappel_pdf' eleve.id %}" class="btn btn-outline-danger">
+                        <i class="fas fa-file-pdf me-2"></i>Note de rappel PDF
+                    </a>
+                    {% if finance_eleve.whatsapp_relance_link %}
+                    <a href="{{ finance_eleve.whatsapp_relance_link }}" target="_blank" rel="noopener" class="btn btn-success">
+                        <i class="fab fa-whatsapp me-2"></i>Ouvrir WhatsApp
+                    </a>
+                    {% else %}
+                    <button type="button" class="btn btn-outline-secondary" disabled>
+                        <i class="fab fa-whatsapp me-2"></i>Téléphone parent absent
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if finance_eleve.reste_a_payer > 0 %}
+    <div class="echeancier-card">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+            <div class="flex-grow-1">
+                <h5><i class="fas fa-message me-2"></i>Message de relance prêt à envoyer</h5>
+                <textarea id="relanceMessage" class="form-control relance-message-box" readonly>{{ finance_eleve.message_relance }}</textarea>
+            </div>
+            <div style="min-width: 220px;">
+                <h6 class="text-muted">Contact parent</h6>
+                <p class="mb-3">{{ finance_eleve.telephone_parent|default:"Non renseigné" }}</p>
+                <button type="button" class="btn btn-outline-primary w-100" onclick="copyRelanceMessage()">
+                    <i class="fas fa-copy me-2"></i>Copier le message
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Barre de progression -->
     <div class="echeancier-card">
         <h5><i class="fas fa-chart-line me-2"></i>Progression des paiements</h5>
         <div class="progress-custom">
-            <div class="progress-bar-custom" style="width: {{ echeancier.pourcentage_paye }}%">
-                {{ echeancier.pourcentage_paye|floatformat:1 }}%
+            <div class="progress-bar-custom" style="width: {{ finance_eleve.taux_paye_bar }}%">
+                {{ finance_eleve.taux_paye|floatformat:1 }}%
             </div>
         </div>
         <div class="d-flex justify-content-between mt-2">
             <small class="text-muted">0 GNF</small>
-            <small class="text-muted">{{ echeancier.total_du|floatformat:0|intcomma }} GNF</small>
+            <small class="text-muted">{{ finance_eleve.total_du|floatformat:0|intcomma }} GNF</small>
         </div>
     </div>
 
@@ -449,5 +552,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 200 * (index + 1));
     });
 });
+
+function copyRelanceMessage() {
+    const textarea = document.getElementById('relanceMessage');
+    if (!textarea) return;
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(textarea.value).then(() => {
+        const old = textarea.value;
+        textarea.value = 'Message copié avec succès.';
+        setTimeout(() => {
+            textarea.value = old;
+        }, 1200);
+    }).catch(() => {
+        document.execCommand('copy');
+    });
+}
 </script>
 {% endblock %}

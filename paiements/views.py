@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 import os
 import logging
+import urllib.parse
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
@@ -2314,12 +2315,133 @@ def echeancier_eleve(request, eleve_id:int):
     except Exception:
         today = date.today()
 
+    finance_eleve = None
+    if echeancier:
+        remises_total = int(
+            PaiementRemise.objects
+            .filter(paiement__eleve=eleve, paiement__statut='VALIDE')
+            .aggregate(total=Coalesce(
+                Sum('montant_remise'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ))
+            .get('total') or 0
+        )
+
+        postes = [
+            {
+                'code': 'INSCRIPTION',
+                'libelle': "Frais d'inscription",
+                'du': int(echeancier.frais_inscription_du or 0),
+                'paye': int(echeancier.frais_inscription_paye or 0),
+                'echeance': echeancier.date_echeance_inscription,
+            },
+            {
+                'code': 'TRANCHE_1',
+                'libelle': '1ère tranche',
+                'du': int(echeancier.tranche_1_due or 0),
+                'paye': int(echeancier.tranche_1_payee or 0),
+                'echeance': echeancier.date_echeance_tranche_1,
+            },
+            {
+                'code': 'TRANCHE_2',
+                'libelle': '2ème tranche',
+                'du': int(echeancier.tranche_2_due or 0),
+                'paye': int(echeancier.tranche_2_payee or 0),
+                'echeance': echeancier.date_echeance_tranche_2,
+            },
+            {
+                'code': 'TRANCHE_3',
+                'libelle': '3ème tranche',
+                'du': int(echeancier.tranche_3_due or 0),
+                'paye': int(echeancier.tranche_3_payee or 0),
+                'echeance': echeancier.date_echeance_tranche_3,
+            },
+        ]
+        total_du = sum(poste['du'] for poste in postes)
+        total_paye_brut = sum(poste['paye'] for poste in postes)
+        total_couvert = min(total_du, total_paye_brut + remises_total)
+        reste_a_payer = max(total_du - total_couvert, 0)
+        exigible = sum(poste['du'] for poste in postes if poste['echeance'] and poste['echeance'] <= today)
+        retard_reel = max(exigible - total_couvert, 0)
+        taux_paye = round((total_couvert / total_du * 100), 1) if total_du > 0 else 0
+
+        postes_non_soldes = [
+            {
+                **poste,
+                'reste': max(poste['du'] - poste['paye'], 0),
+                'en_retard': bool(poste['echeance'] and poste['echeance'] < today and poste['paye'] < poste['du']),
+            }
+            for poste in postes
+            if poste['du'] > poste['paye']
+        ]
+        postes_non_soldes.sort(key=lambda item: (not item['en_retard'], item['echeance'] or today))
+        prochain_paiement = postes_non_soldes[0] if postes_non_soldes else None
+
+        responsable = getattr(eleve, 'responsable_principal', None) or getattr(eleve, 'responsable_secondaire', None)
+        telephone_parent = getattr(responsable, 'telephone', '') if responsable else ''
+
+        def _format_whatsapp_number(numero):
+            clean = (numero or '').replace(' ', '').replace('-', '').replace('.', '')
+            if not clean:
+                return ''
+            if clean.startswith('00'):
+                clean = '+' + clean[2:]
+            elif clean.startswith('224'):
+                clean = '+' + clean
+            elif not clean.startswith('+'):
+                clean = '+224' + clean
+            return clean
+
+        ecole = eleve.classe.ecole if eleve.classe else None
+        nom_ecole = ecole.nom if ecole else 'École'
+        tel_ecole = ecole.tous_telephones if ecole else ''
+        message_relance = (
+            f"Bonjour Cher Parent,\n\n"
+            f"Voici la situation financière de {eleve.prenom} {eleve.nom} ({eleve.matricule}) à {nom_ecole}.\n"
+            f"Total dû : {total_du:,.0f} GNF\n"
+            f"Total payé/remises : {total_couvert:,.0f} GNF\n"
+            f"Reste à payer : {reste_a_payer:,.0f} GNF\n"
+        ).replace(',', ' ')
+        if retard_reel > 0:
+            message_relance += f"Montant en retard : {retard_reel:,.0f} GNF\n".replace(',', ' ')
+        if prochain_paiement:
+            date_txt = prochain_paiement['echeance'].strftime('%d/%m/%Y') if prochain_paiement['echeance'] else 'non définie'
+            message_relance += (
+                f"Prochain paiement attendu : {prochain_paiement['libelle']} - "
+                f"{prochain_paiement['reste']:,.0f} GNF, échéance {date_txt}.\n"
+            ).replace(',', ' ')
+        message_relance += "\nMerci de régulariser la situation. La Direction"
+        if tel_ecole:
+            message_relance += f"\nContact école : {tel_ecole}"
+
+        whatsapp_number = _format_whatsapp_number(telephone_parent)
+        whatsapp_relance_link = ''
+        if whatsapp_number:
+            whatsapp_relance_link = f"https://wa.me/{whatsapp_number.replace('+', '')}?text={urllib.parse.quote(message_relance)}"
+
+        finance_eleve = {
+            'total_du': total_du,
+            'total_paye_brut': total_paye_brut,
+            'remises_total': remises_total,
+            'total_couvert': total_couvert,
+            'reste_a_payer': reste_a_payer,
+            'retard_reel': retard_reel,
+            'taux_paye': taux_paye,
+            'taux_paye_bar': min(100, max(0, int(round(taux_paye)))),
+            'prochain_paiement': prochain_paiement,
+            'message_relance': message_relance,
+            'telephone_parent': telephone_parent,
+            'whatsapp_relance_link': whatsapp_relance_link,
+        }
+
     context = {
         'titre_page': "Échéancier des paiements",
         'eleve': eleve,
         'echeancier': echeancier,
         'paiements': paiements,
         'today': today,
+        'finance_eleve': finance_eleve,
     }
     return render(request, 'paiements/echeancier_eleve.html', context)
 
