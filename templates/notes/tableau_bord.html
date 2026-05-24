@@ -159,6 +159,17 @@
             </a>
         </div>
 
+        <!-- Evaluations -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:gerer_evaluations' %}" class="notes-card primary">
+                <i class="fas fa-clipboard-check notes-card-icon"></i>
+                <h3 class="notes-card-title">Evaluations</h3>
+                <p class="notes-card-description">
+                    Creer les devoirs, compositions et examens avant la saisie des notes
+                </p>
+            </a>
+        </div>
+
         <!-- Consulter les Notes -->
         <div class="col-md-6 col-lg-4">
             <a href="{% url 'notes:consulter_notes' %}" class="notes-card success">
@@ -181,6 +192,17 @@
             </a>
         </div>
 
+        <!-- Bulletin guineen -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:bulletin_guineen' %}" class="notes-card danger">
+                <i class="fas fa-file-signature notes-card-icon"></i>
+                <h3 class="notes-card-title">Bulletin guineen</h3>
+                <p class="notes-card-description">
+                    Acceder au bulletin adapte au format scolaire guineen
+                </p>
+            </a>
+        </div>
+
         <!-- Statistiques -->
         <div class="col-md-6 col-lg-4">
             <a href="{% url 'notes:statistiques' %}" class="notes-card purple">
@@ -188,6 +210,17 @@
                 <h3 class="notes-card-title">Statistiques</h3>
                 <p class="notes-card-description">
                     Consulter les statistiques et analyses de performance
+                </p>
+            </a>
+        </div>
+
+        <!-- Maternelle -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:saisie_evaluation_maternelle' %}" class="notes-card info">
+                <i class="fas fa-child notes-card-icon"></i>
+                <h3 class="notes-card-title">Maternelle</h3>
+                <p class="notes-card-description">
+                    Saisir les appreciations et generer les bulletins de maternelle
                 </p>
             </a>
         </div>
@@ -247,13 +280,35 @@
             </a>
         </div>
 
-        <!-- Activités Journalières -->
+        <!-- Fiche de saisie PDF -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:saisir_notes' %}" class="notes-card primary">
+                <i class="fas fa-file-pdf notes-card-icon"></i>
+                <h3 class="notes-card-title">Fiche de saisie PDF</h3>
+                <p class="notes-card-description">
+                    Imprimer une fiche vierge pour preparer la saisie des notes
+                </p>
+            </a>
+        </div>
+
+        <!-- Fiche de report PDF -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:saisir_notes' %}" class="notes-card orange">
+                <i class="fas fa-file-alt notes-card-icon"></i>
+                <h3 class="notes-card-title">Fiche de report PDF</h3>
+                <p class="notes-card-description">
+                    Imprimer une fiche de report pour controler les moyennes et periodes
+                </p>
+            </a>
+        </div>
+
+        <!-- Vie scolaire -->
         <div class="col-md-6 col-lg-4">
             <a href="{% url 'notes:liste_activites' %}" class="notes-card rose">
-                <i class="fas fa-calendar-day notes-card-icon"></i>
-                <h3 class="notes-card-title">Activités Journalières</h3>
+                <i class="fas fa-user-shield notes-card-icon"></i>
+                <h3 class="notes-card-title">Vie scolaire</h3>
                 <p class="notes-card-description">
-                    Évaluations, activités sportives, culturelles, artistiques avec photos et pièces jointes
+                    Suivre les absences, retards, convocations, discipline et activites des eleves
                 </p>
             </a>
         </div>
