@@ -2569,6 +2569,25 @@ def generer_ticket_retrait_pdf(request, eleve_id):
         main_font = 'Helvetica'
         main_font_bold = 'Helvetica-Bold'
     
+    _dessiner_ticket_retrait(c, eleve, 0, 0, width, height, main_font, main_font_bold)
+    c.showPage()
+    c.save()
+
+    # Log de l'action
+    try:
+        JournalActivite.objects.create(
+            user=request.user,
+            action='GENERATION_PDF',
+            type_objet='TICKET_RETRAIT',
+            description=f"Ticket de retrait genere pour {eleve.prenom} {eleve.nom} ({eleve.matricule})",
+            adresse_ip=request.META.get('REMOTE_ADDR', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]
+        )
+    except:
+        pass
+
+    return response
+
     # Extraire les couleurs du logo
     primary_color = '#3b82f6'
     light_color = '#dbeafe'
@@ -2921,6 +2940,25 @@ def generer_ticket_bus_pdf(request, eleve_id):
         main_font = 'Helvetica'
         main_font_bold = 'Helvetica-Bold'
     
+    _dessiner_ticket_bus(c, eleve, abonnement, 0, 0, width, height, main_font, main_font_bold)
+    c.showPage()
+    c.save()
+
+    # Log de l'action
+    try:
+        JournalActivite.objects.create(
+            user=request.user,
+            action='GENERATION_PDF',
+            type_objet='TICKET_BUS',
+            description=f"Ticket bus genere pour {eleve.prenom} {eleve.nom} ({eleve.matricule})",
+            adresse_ip=request.META.get('REMOTE_ADDR', ''),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]
+        )
+    except:
+        pass
+
+    return response
+
     # Extraire les couleurs du logo (thème orange pour bus)
     primary_color = '#f59e0b'
     light_color = '#fef3c7'
@@ -3459,8 +3497,165 @@ def _extraire_couleurs_logo(logo_path):
     return '#6366f1', '#e0e7ff'
 
 
+def _ticket_safe_text(value, default='-'):
+    if value is None:
+        return default
+    value = str(value).strip()
+    return value if value else default
+
+
+def _ticket_fit_text(c, text, x, y, max_width, font_name, max_size, min_size=5, color=None):
+    text = _ticket_safe_text(text)
+    size = max_size
+    while size > min_size and pdfmetrics.stringWidth(text, font_name, size) > max_width:
+        size -= 0.5
+
+    if pdfmetrics.stringWidth(text, font_name, size) > max_width:
+        while text and pdfmetrics.stringWidth(text + '...', font_name, size) > max_width:
+            text = text[:-1]
+        text = text + '...' if text else '...'
+
+    if color:
+        c.setFillColor(colors.HexColor(color))
+    c.setFont(font_name, size)
+    c.drawString(x, y, text)
+
+
+def _ticket_draw_photo(c, eleve, x, y, size, accent_color, main_font_bold):
+    c.setFillColor(colors.white)
+    c.roundRect(x, y, size, size, 6, stroke=0, fill=1)
+    c.setStrokeColor(colors.HexColor(accent_color))
+    c.setLineWidth(1.5)
+    c.roundRect(x, y, size, size, 6, stroke=1, fill=0)
+
+    try:
+        if eleve.photo and hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+            c.drawImage(eleve.photo.path, x + 2, y + 2, size - 4, size - 4, preserveAspectRatio=True, anchor='c', mask='auto')
+            return
+    except Exception:
+        pass
+
+    c.setFillColor(colors.HexColor('#f1f5f9'))
+    c.roundRect(x + 2, y + 2, size - 4, size - 4, 5, stroke=0, fill=1)
+    c.setFillColor(colors.HexColor(accent_color))
+    c.setFont(main_font_bold, 6)
+    c.drawCentredString(x + size / 2, y + size / 2 - 2, 'PHOTO')
+
+
+def _ticket_draw_logo(c, ecole, x, y, size):
+    try:
+        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
+            c.setFillColor(colors.white)
+            c.roundRect(x, y, size, size, 5, stroke=0, fill=1)
+            c.drawImage(ecole.logo.path, x + 2, y + 2, size - 4, size - 4, preserveAspectRatio=True, anchor='c', mask='auto')
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _ticket_draw_row(c, label, value, x, y, value_width, accent_color, main_font, main_font_bold):
+    c.setFillColor(colors.HexColor('#64748b'))
+    c.setFont(main_font_bold, 5.8)
+    c.drawString(x, y + 5, label.upper())
+    _ticket_fit_text(c, value, x, y - 3, value_width, main_font_bold, 8.2, 5.2, '#0f172a')
+
+
+def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_bold, title, accent_color, light_color, rows, serial_label):
+    c.saveState()
+    ecole = eleve.classe.ecole
+
+    c.setFillColor(colors.HexColor('#ffffff'))
+    c.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 10, stroke=0, fill=1)
+
+    c.setFillColor(colors.HexColor(light_color))
+    c.setFillAlpha(0.32)
+    c.circle(x + width - 10, y + height - 5, 36, stroke=0, fill=1)
+    c.circle(x + 12, y + 9, 24, stroke=0, fill=1)
+    c.setFillAlpha(1)
+
+    try:
+        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
+            c.saveState()
+            c.translate(x + width / 2, y + height / 2)
+            c.rotate(18)
+            c.setFillAlpha(0.08)
+            mark_size = min(width, height) * 0.72
+            c.drawImage(ecole.logo.path, -mark_size / 2, -mark_size / 2, mark_size, mark_size, preserveAspectRatio=True, anchor='c', mask='auto')
+            c.restoreState()
+    except Exception:
+        pass
+
+    c.setFillColor(colors.HexColor(accent_color))
+    c.roundRect(x + 4, y + height - 28, width - 8, 23, 7, stroke=0, fill=1)
+    c.setFillColor(colors.HexColor('#0f172a'))
+    c.setFillAlpha(0.08)
+    c.rect(x + 4, y + height - 13, width - 8, 8, stroke=0, fill=1)
+    c.setFillAlpha(1)
+
+    _ticket_draw_logo(c, ecole, x + 8, y + height - 25, 16)
+    c.setFillColor(colors.white)
+    c.setFont(main_font_bold, 10.5)
+    c.drawCentredString(x + width / 2 + 6, y + height - 15, title)
+    _ticket_fit_text(c, ecole.nom, x + 28, y + height - 24, width - 48, main_font, 5.8, 4.8, '#ffffff')
+
+    photo_size = 34
+    photo_x = x + width - photo_size - 10
+    photo_y = y + 18
+    _ticket_draw_photo(c, eleve, photo_x, photo_y, photo_size, accent_color, main_font_bold)
+
+    content_x = x + 10
+    content_top = y + height - 38
+    info_width = width - photo_size - 28
+    full_name = f"{_ticket_safe_text(eleve.prenom, '')} {_ticket_safe_text(eleve.nom, '')}".strip().upper()
+    _ticket_fit_text(c, full_name, content_x, content_top, info_width, main_font_bold, 10.5, 6.5, '#111827')
+
+    c.setStrokeColor(colors.HexColor(accent_color))
+    c.setLineWidth(1.4)
+    c.line(content_x, content_top - 4, content_x + min(info_width, 82), content_top - 4)
+
+    row_y = content_top - 15
+    for label, value in rows[:4]:
+        _ticket_draw_row(c, label, value, content_x, row_y, info_width, accent_color, main_font, main_font_bold)
+        row_y -= 13
+
+    c.setFillColor(colors.HexColor('#f8fafc'))
+    c.roundRect(x + 7, y + 5, width - 14, 9, 4, stroke=0, fill=1)
+    c.setFillColor(colors.HexColor('#475569'))
+    c.setFont(main_font_bold, 5.8)
+    c.drawString(x + 12, y + 8, f"{serial_label}-{eleve.id:06d}")
+    c.setFont(main_font, 5.4)
+    c.drawRightString(x + width - 12, y + 8, timezone.now().strftime('%d/%m/%Y'))
+
+    c.setStrokeColor(colors.HexColor(accent_color))
+    c.setLineWidth(1.2)
+    c.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 10, stroke=1, fill=0)
+    c.restoreState()
+
+
 def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font_bold):
     """Fonction helper pour dessiner un ticket de retrait avec design moderne"""
+    responsable = getattr(eleve, 'responsable_principal', None)
+    responsable_nom = 'Non renseigne'
+    responsable_tel = '-'
+    if responsable:
+        responsable_nom = _ticket_safe_text(
+            getattr(responsable, 'nom_complet', None) or f"{getattr(responsable, 'prenom', '')} {getattr(responsable, 'nom', '')}",
+            'Non renseigne'
+        )
+        responsable_tel = _ticket_safe_text(getattr(responsable, 'telephone', None))
+
+    rows = [
+        ('Matricule', getattr(eleve, 'matricule', None)),
+        ('Classe', getattr(eleve.classe, 'nom', None)),
+        ('Parent', responsable_nom),
+        ('Telephone', responsable_tel),
+    ]
+    return _dessiner_ticket_carte(
+        c, eleve, x, y, width, height, main_font, main_font_bold,
+        'TICKET DE RETRAIT', '#1746a2', '#dbeafe', rows, 'RETRAIT'
+    )
+
     c.saveState()
     
     # Extraire les couleurs du logo
@@ -3619,6 +3814,21 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
 
 def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, main_font_bold):
     """Fonction helper pour dessiner un ticket bus avec design moderne"""
+    validite = '-'
+    if getattr(abonnement, 'date_debut', None) and getattr(abonnement, 'date_expiration', None):
+        validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
+
+    rows = [
+        ('Matricule', getattr(eleve, 'matricule', None)),
+        ('Classe', getattr(eleve.classe, 'nom', None)),
+        ('Zone', getattr(abonnement, 'zone', None) or 'Non specifiee'),
+        ('Validite', validite),
+    ]
+    return _dessiner_ticket_carte(
+        c, eleve, x, y, width, height, main_font, main_font_bold,
+        'ABONNEMENT BUS', '#d97706', '#fef3c7', rows, 'BUS'
+    )
+
     c.saveState()
     
     # Extraire les couleurs du logo (version orange pour bus)

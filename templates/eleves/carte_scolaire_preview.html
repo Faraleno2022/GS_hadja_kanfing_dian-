@@ -1,585 +1,394 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Carte Scolaire - {{ eleve.nom_complet }}{% endblock %}
+{% block title %}Carte scolaire - {{ eleve.nom_complet }}{% endblock %}
 
 {% block extra_css %}
-<link href="{% static 'vendor/fonts/inter.css' %}" rel="stylesheet">
 <style>
-    
+    :root {
+        --card-blue: #1746a2;
+        --card-blue-soft: #eef4fb;
+        --card-green: #0f766e;
+        --card-ink: #0f172a;
+        --card-muted: #64748b;
+        --card-line: #dbe3ef;
+    }
+
     body {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        font-family: 'Inter', sans-serif;
+        background: #edf2f7;
     }
 
-    .card-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        padding: 2rem;
+    .preview-shell {
+        min-height: calc(100vh - 96px);
+        display: grid;
+        place-items: center;
+        padding: 32px 16px 96px;
     }
 
-    .school-card {
+    .student-card-preview {
         width: 86mm;
         height: 54mm;
-        border: 2px solid #1e40af;
-        border-radius: 12px;
-        background: white;
-        overflow: hidden;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         position: relative;
+        overflow: hidden;
+        background: #fff;
+        border: 1px solid var(--card-line);
+        border-radius: 8px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+        color: var(--card-ink);
     }
-    
-    /* Filigrane du logo */
-    .watermark-logo {
+
+    .student-card-preview::after {
+        content: "";
         position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 120px;
-        height: 120px;
-        transform: translate(-50%, -50%) rotate(15deg);
-        opacity: 0.06;
-        z-index: 0;
+        inset: 0;
+        border: 2px solid var(--card-blue);
+        border-radius: 8px;
         pointer-events: none;
     }
-    
-    .watermark-logo img {
+
+    .card-watermark {
+        position: absolute;
+        right: 7mm;
+        top: 19mm;
+        width: 30mm;
+        height: 30mm;
+        opacity: 0.055;
+        object-fit: contain;
+    }
+
+    .card-watermark-text {
+        position: absolute;
+        right: 9mm;
+        top: 24mm;
+        color: var(--card-blue);
+        font-size: 30px;
+        font-weight: 800;
+        opacity: 0.055;
+    }
+
+    .card-top {
+        position: relative;
+        z-index: 1;
+        height: 10.5mm;
+        margin: 0.8mm;
+        padding: 1.4mm 2.2mm;
+        display: flex;
+        align-items: center;
+        gap: 2mm;
+        background: var(--card-blue);
+        color: #fff;
+        border-radius: 7px 7px 0 0;
+    }
+
+    .card-logo {
+        width: 7.2mm;
+        height: 7.2mm;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        flex: 0 0 auto;
+        overflow: hidden;
+        background: #fff;
+        color: var(--card-blue);
+        font-size: 9px;
+        font-weight: 800;
+    }
+
+    .card-logo img {
         width: 100%;
         height: 100%;
         object-fit: contain;
-    }
-    
-    .watermark-text {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(15deg);
-        font-size: 48px;
-        font-weight: bold;
-        color: #1e40af;
-        opacity: 0.06;
-        z-index: 0;
-        pointer-events: none;
+        padding: 0.6mm;
     }
 
-    /* En-tête avec logo et nom de l'école */
-    .card-header {
-        background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
-        color: white;
-        padding: 15px 20px;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    .school-title {
+        min-width: 0;
+        line-height: 1.1;
     }
 
-    .school-logo {
-        width: 45px;
-        height: 45px;
-        background: white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
+    .school-title strong {
+        display: block;
+        max-width: 70mm;
         overflow: hidden;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 7.6px;
+        letter-spacing: 0;
     }
 
-    .school-logo img {
+    .school-title span {
+        display: block;
+        margin-top: 1px;
+        color: #dbeafe;
+        font-size: 5.2px;
+        letter-spacing: 0;
+    }
+
+    .card-main {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 24.5mm 1fr;
+        gap: 3mm;
+        padding: 3.2mm 3mm 0;
+    }
+
+    .photo-frame {
+        width: 22.5mm;
+        height: 27.5mm;
+        border: 1px solid var(--card-line);
+        border-radius: 4px;
+        background: #f5f8fc;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+    }
+
+    .photo-frame img {
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
 
-    .school-logo .logo-placeholder {
-        font-size: 20px;
-        font-weight: bold;
-        color: #2563eb;
-    }
-
-    .school-info {
-        flex: 1;
-    }
-
-    .school-name {
+    .photo-initials {
+        color: var(--card-blue);
         font-size: 18px;
-        font-weight: 700;
-        margin: 0;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+        font-weight: 800;
     }
 
-    .school-subtitle {
-        font-size: 11px;
-        opacity: 0.9;
-        margin-top: 2px;
-    }
-
-    /* Corps de la carte */
-    .card-body {
-        flex: 1;
-        display: flex;
-        padding: 20px;
-        gap: 20px;
-    }
-
-    /* Section photo (gauche) */
-    .photo-section {
-        width: 35%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .student-photo {
-        width: 120px;
-        height: 150px;
-        border-radius: 12px;
-        overflow: hidden;
-        border: 3px solid #e5e7eb;
-        background: #f3f4f6;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-
-    .student-photo img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-
-    .photo-placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: #9ca3af;
-    }
-
-    .photo-placeholder i {
-        font-size: 40px;
-        margin-bottom: 5px;
-    }
-
-    .photo-placeholder span {
-        font-size: 12px;
-        text-align: center;
-    }
-
-    /* Section informations (droite) */
-    .info-section {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
+    .card-info {
+        min-width: 0;
+        padding-top: 0.5mm;
     }
 
     .student-name {
-        font-size: 20px;
+        max-width: 51mm;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--card-ink);
+        font-size: 8.8px;
         font-weight: 800;
-        color: #1f2937;
-        margin-bottom: 3px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        line-height: 1.1;
     }
 
-    .info-row {
+    .name-rule {
+        width: 100%;
+        height: 1px;
+        margin: 1.7mm 0 2.2mm;
+        background: var(--card-green);
+    }
+
+    .detail-row {
+        display: grid;
+        grid-template-columns: 14mm 1fr;
+        gap: 1mm;
+        align-items: baseline;
+        min-height: 4.2mm;
+        font-size: 6.5px;
+        line-height: 1.1;
+    }
+
+    .detail-row .label {
+        color: var(--card-muted);
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .detail-row .value {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #111827;
+    }
+
+    .card-footer {
+        position: absolute;
+        left: 0.8mm;
+        right: 0.8mm;
+        bottom: 0.8mm;
+        height: 6.2mm;
         display: flex;
         align-items: center;
-        margin-bottom: 8px;
-        font-size: 13px;
-    }
-
-    .info-label {
-        font-weight: 600;
-        color: #6b7280;
-        width: 80px;
-        flex-shrink: 0;
-    }
-
-    .info-value {
-        color: #374151;
-        font-weight: 500;
-    }
-    
-    .info-item {
-        display: flex;
         justify-content: space-between;
-        padding: 3px 0;
-        border-bottom: 1px dotted #e5e7eb;
-        font-size: 12px;
-        margin-bottom: 4px;
-    }
-    
-    .info-item .label {
-        color: #6b7280;
-        font-weight: 600;
-        min-width: 70px;
-    }
-    
-    .info-item .value {
-        color: #1f2937;
-        flex: 1;
-        text-align: right;
+        padding: 0 2.2mm;
+        background: var(--card-blue-soft);
+        border-top: 1px solid var(--card-line);
+        font-size: 5.6px;
+        color: var(--card-muted);
     }
 
-    .validity-badge {
-        display: inline-block;
-        background: #fef3c7;
-        color: #92400e;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        margin-top: 5px;
+    .card-footer strong {
+        color: var(--card-blue);
     }
 
-    /* Section contact d'urgence */
-    .emergency-section {
-        margin-top: 15px;
-        padding-top: 15px;
-        border-top: 1px dashed #e5e7eb;
-    }
-
-    .emergency-title {
-        font-size: 11px;
-        font-weight: 700;
-        color: #ef4444;
-        text-transform: uppercase;
-        margin-bottom: 5px;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-
-    .emergency-title i {
-        font-size: 12px;
-    }
-
-    .emergency-info {
-        font-size: 12px;
-        color: #6b7280;
-        line-height: 1.4;
-    }
-
-    .emergency-info strong {
-        color: #374151;
-        font-weight: 600;
-    }
-
-    /* Bande décorative */
-    .decoration-stripe {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, #10b981 0%, #3b82f6 50%, #8b5cf6 100%);
-    }
-
-    /* QR Code optionnel */
-    .qr-code {
-        position: absolute;
-        bottom: 15px;
-        right: 20px;
-        width: 50px;
-        height: 50px;
-        background: #f3f4f6;
-        border: 2px solid #e5e7eb;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 10px;
-        color: #9ca3af;
-    }
-
-    /* Boutons d'action */
-    .action-buttons {
+    .preview-actions {
         position: fixed;
-        bottom: 30px;
-        right: 30px;
+        right: 24px;
+        bottom: 24px;
+        z-index: 20;
         display: flex;
         gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
-    .action-btn {
-        padding: 12px 24px;
-        border-radius: 12px;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.3s;
-        font-size: 14px;
+    .preview-actions .btn {
+        box-shadow: 0 10px 22px rgba(15, 23, 42, 0.18);
     }
 
-    .btn-print {
-        background: white;
-        color: #6b7280;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
+    @media (max-width: 520px) {
+        .preview-shell {
+            align-items: start;
+            overflow-x: auto;
+            place-items: start center;
+        }
 
-    .btn-print:hover {
-        background: #f9fafb;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-    }
+        .student-card-preview {
+            transform: scale(0.92);
+            transform-origin: top center;
+        }
 
-    .btn-download {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-        box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
-    }
+        .preview-actions {
+            left: 12px;
+            right: 12px;
+        }
 
-    .btn-download:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
+        .preview-actions .btn {
+            flex: 1 1 auto;
+        }
     }
 
     @media print {
         body {
-            background: white;
+            background: #fff;
         }
 
-        .card-container {
+        body > *:not(.container):not(main),
+        .preview-actions,
+        nav,
+        footer {
+            display: none !important;
+        }
+
+        .preview-shell {
             min-height: auto;
             padding: 0;
+            display: block;
         }
 
-        .school-card {
+        .student-card-preview {
             box-shadow: none;
-            width: 85mm;
-            height: 54mm;
-            page-break-inside: avoid;
-        }
-
-        .action-buttons {
-            display: none;
-        }
-
-        .decoration-stripe {
+            margin: 0;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
         }
     }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="card-container">
-    <div class="school-card" id="schoolCard">
-        <!-- Filigrane -->
+<div class="preview-shell">
+    <article class="student-card-preview" aria-label="Carte scolaire de {{ eleve.nom_complet }}">
         {% if eleve.classe.ecole.logo %}
-        <div class="watermark-logo">
-            <img src="{{ eleve.classe.ecole.logo.url }}" alt="Logo filigrane">
-        </div>
+            <img class="card-watermark" src="{{ eleve.classe.ecole.logo.url }}" alt="">
         {% else %}
-        <div class="watermark-text">
-            {{ eleve.classe.ecole.nom|slice:":3"|upper }}
-        </div>
+            <div class="card-watermark-text">{{ eleve.classe.ecole.nom|slice:":3"|upper }}</div>
         {% endif %}
-        
-        <!-- En-tête avec logo et nom de l'école -->
-        <div class="card-header">
-            <div class="school-logo">
+
+        <header class="card-top">
+            <div class="card-logo">
                 {% if eleve.classe.ecole.logo %}
-                    <img src="{{ eleve.classe.ecole.logo.url }}" alt="Logo">
+                    <img src="{{ eleve.classe.ecole.logo.url }}" alt="Logo {{ eleve.classe.ecole.nom }}">
                 {% else %}
-                    <span class="logo-placeholder">{{ eleve.classe.ecole.nom|slice:":2"|upper }}</span>
+                    {{ eleve.classe.ecole.nom|slice:":2"|upper }}
                 {% endif %}
             </div>
-            <div class="school-info">
-                <h1 class="school-name">{{ eleve.classe.ecole.nom }}</h1>
-                <div class="school-subtitle">Excellence - Discipline - Réussite</div>
+            <div class="school-title">
+                <strong>{{ eleve.classe.ecole.nom|upper }}</strong>
+                <span>CARTE SCOLAIRE</span>
             </div>
-        </div>
+        </header>
 
-        <!-- Corps de la carte -->
-        <div class="card-body">
-            <!-- Section photo (gauche) -->
-            <div class="photo-section">
-                <div class="student-photo">
-                    {% if eleve.photo %}
-                        <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}">
-                    {% else %}
-                        <div class="photo-placeholder">
-                            <i class="fas fa-user"></i>
-                            <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
-                        </div>
-                    {% endif %}
+        <section class="card-main">
+            <div class="photo-frame">
+                {% if eleve.photo %}
+                    <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}">
+                {% else %}
+                    <div class="photo-initials">{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</div>
+                {% endif %}
+            </div>
+
+            <div class="card-info">
+                <div class="student-name">{{ eleve.nom_complet }}</div>
+                <div class="name-rule"></div>
+
+                <div class="detail-row">
+                    <span class="label">Mat.</span>
+                    <span class="value">{{ eleve.matricule|default:"-" }}</span>
                 </div>
-            </div>
-
-            <!-- Section informations (droite) -->
-            <div class="info-section">
-                <div>
-                    <div class="student-name">{{ eleve.prenom }} {{ eleve.nom }}</div>
-                    
-                    <div class="info-row">
-                        <span class="info-label">Matricule:</span>
-                        <span class="info-value">{{ eleve.matricule }}</span>
-                    </div>
-                    
-                    <div class="info-row">
-                        <span class="info-label">Classe:</span>
-                        <span class="info-value">{{ eleve.classe.nom }}</span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <span class="label">Niveau:</span>
-                        <span class="value">{{ eleve.classe.niveau }}</span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <span class="label">Né(e) le:</span>
-                        <span class="value">{{ eleve.date_naissance|date:"d/m/Y" }} ({{ eleve.age }} ans)</span>
-                    </div>
-                    
-                    <div class="info-item">
-                        <span class="label">À:</span>
-                        <span class="value">{{ eleve.lieu_naissance|truncatechars:30 }}</span>
-                    </div>
-                    
-                    <div class="validity-badge">
-                        <i class="fas fa-calendar-check"></i>
-                        Valide jusqu'au {{ eleve.classe.get_fin_annee_scolaire|date:"d/m/Y" }}
-                    </div>
+                <div class="detail-row">
+                    <span class="label">Classe</span>
+                    <span class="value">{{ eleve.classe.nom|default:"-" }}</span>
                 </div>
-            </div>
-
-            <!-- Corps de la carte -->
-            <div class="card-body">
-                <!-- Section photo (gauche) -->
-                <div class="photo-section">
-                    <div class="student-photo">
-                        {% if eleve.photo %}
-                            <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}">
+                <div class="detail-row">
+                    <span class="label">Niveau</span>
+                    <span class="value">{{ eleve.classe.get_niveau_display|default:eleve.classe.niveau }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Né(e)</span>
+                    <span class="value">
+                        {% if eleve.date_naissance %}{{ eleve.date_naissance|date:"d/m/Y" }}{% if eleve.age %} ({{ eleve.age }} ans){% endif %}{% else %}-{% endif %}
+                    </span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Lieu</span>
+                    <span class="value">{{ eleve.lieu_naissance|default:"-" }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Contact</span>
+                    <span class="value">
+                        {% if eleve.responsable_principal and eleve.responsable_principal.telephone %}
+                            {{ eleve.responsable_principal.telephone }}
                         {% else %}
-                            <div class="photo-placeholder">
-                                <i class="fas fa-user"></i>
-                                <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
-                            </div>
+                            -
                         {% endif %}
-                    </div>
-                </div>
-
-                <!-- Section informations (droite) -->
-                <div class="info-section">
-                    <div>
-                        <div class="student-name">{{ eleve.prenom }} {{ eleve.nom }}</div>
-                        
-                        <div class="info-row">
-                            <span class="info-label">Matricule:</span>
-                            <span class="info-value">{{ eleve.matricule }}</span>
-                        </div>
-                        
-                        <div class="info-row">
-                            <span class="info-label">Classe:</span>
-                            <span class="info-value">{{ eleve.classe.nom }}</span>
-                        </div>
-                        
-                        <div class="info-item">
-                            <span class="label">Niveau:</span>
-                            <span class="value">{{ eleve.classe.niveau }}</span>
-                        </div>
-                        
-                        <div class="info-item">
-                            <span class="label">Né(e) le:</span>
-                            <span class="value">{{ eleve.date_naissance|date:"d/m/Y" }} ({{ eleve.age }} ans)</span>
-                        </div>
-                        
-                        <div class="info-item">
-                            <span class="label">À:</span>
-                            <span class="value">{{ eleve.lieu_naissance|truncatechars:30 }}</span>
-                        </div>
-                        
-                        <div class="validity-badge">
-                            <i class="fas fa-calendar-check"></i>
-                            Valide jusqu'au {{ eleve.classe.get_fin_annee_scolaire|date:"d/m/Y" }}
-                        </div>
-                    </div>
-
-                    <!-- Section contact d'urgence -->
-                    <div class="emergency-section">
-                        <div class="emergency-title">CONTACT D'URGENCE</div>
-                        {% if eleve.responsable_principal %}
-                            <div class="emergency-name">
-                                {% if eleve.responsable_principal.prenom %}
-                                    {{ eleve.responsable_principal.prenom }} {{ eleve.responsable_principal.nom|truncatechars:20 }}
-                                {% else %}
-                                    {{ eleve.responsable_principal.nom_complet|truncatechars:30 }}
-                                {% endif %}
-                            </div>
-                            <div class="emergency-info">
-                                <strong><br>
-                                📞 {{ eleve.responsable_principal.telephone }}<br>
-                                {% if eleve.responsable_principal.adresse %}
-                                    📍 {{ eleve.responsable_principal.adresse|truncatechars:50 }}
-                                {% endif %}
-                            </div>
-                        {% else %}
-                            <div class="emergency-info">
-                                Non renseigné
-                            </div>
-                        {% endif %}
-                    </div>
+                    </span>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Bande décorative -->
-        <div class="decoration-stripe"></div>
-
-        <!-- QR Code (optionnel) -->
-        <div class="qr-code" title="Code QR">
-            <span>QR</span>
-        </div>
-    </div>
+        <footer class="card-footer">
+            <strong>ANNÉE SCOLAIRE {{ eleve.classe.annee_scolaire }}</strong>
+            <span>ID #{{ eleve.id|stringformat:"06d" }}</span>
+        </footer>
+    </article>
 </div>
 
-<!-- Boutons d'action -->
-<div class="actions">
-    <button onclick="window.print()" class="btn btn-primary">
-        <i class="fas fa-print"></i> Imprimer
+<div class="preview-actions">
+    <button type="button" onclick="window.print()" class="btn btn-outline-secondary">
+        <i class="fas fa-print me-1"></i>Imprimer
     </button>
-    <button onclick="downloadPDF()" class="btn btn-success">
-        <i class="fas fa-download"></i> Télécharger PDF
-    </button>
-    <button onclick="downloadPVC()" class="btn btn-warning">
-        <i class="fas fa-credit-card"></i> Format PVC Pro
-    </button>
+    <a href="{% url 'eleves:carte_scolaire_pdf' eleve.id %}?format=standard" class="btn btn-primary">
+        <i class="fas fa-download me-1"></i>PDF
+    </a>
+    <a href="{% url 'eleves:carte_scolaire_pdf' eleve.id %}?format=pvc" class="btn btn-success">
+        <i class="fas fa-credit-card me-1"></i>PVC
+    </a>
 </div>
 
 <script>
-function downloadPDF() {
-    window.location.href = "{% url 'eleves:carte_scolaire_pdf' eleve.id %}";
-}
-
-function downloadPVC() {
-    window.location.href = "{% url 'eleves:carte_scolaire_pdf' eleve.id %}?format=pvc";
-}
-
-// Charger la photo de l'élève si elle existe
-document.addEventListener('DOMContentLoaded', function() {
-    const photoImg = document.querySelector('.student-photo img');
-    if (photoImg) {
-        photoImg.onerror = function() {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'photo-placeholder';
-            placeholder.innerHTML = `
-                <i class="fas fa-user"></i>
-                <span>{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</span>
-            `;
-            this.parentElement.replaceChild(placeholder, this);
-        };
-    }
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.photo-frame img, .card-logo img, .card-watermark').forEach(function (img) {
+        img.addEventListener('error', function () {
+            if (img.closest('.photo-frame')) {
+                img.parentElement.innerHTML = '<div class="photo-initials">{{ eleve.prenom|slice:":1" }}{{ eleve.nom|slice:":1" }}</div>';
+            } else {
+                img.remove();
+            }
+        });
+    });
 });
 </script>
 {% endblock %}
