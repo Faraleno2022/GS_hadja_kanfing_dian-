@@ -9,6 +9,7 @@ import os
 import re
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
+from types import SimpleNamespace
 
 from django.http import HttpResponse, Http404, JsonResponse
 from django.shortcuts import render, redirect
@@ -53,6 +54,69 @@ def _verify_token(token, max_age=1800):
         return None
 
 
+class ClassementList(list):
+    def last(self):
+        return self[-1] if self else None
+
+
+def _classements_courants(eleve, classe_note, annee):
+    """Construit les classements depuis le calcul central, pas depuis un snapshot."""
+    if not classe_note:
+        return []
+
+    from .calculs_moyennes import (
+        detecter_niveau_scolaire,
+        obtenir_appreciation_intelligente,
+        obtenir_mention_intelligente,
+    )
+    from .utils_rangs import calculer_rangs_classe_periode
+
+    periodes = []
+    periodes.extend(
+        NoteMensuelle.objects.filter(
+            eleve=eleve,
+            matiere__classe=classe_note,
+            annee_scolaire=annee,
+            note__isnull=False,
+        ).values_list('mois', flat=True).distinct()
+    )
+    periodes.extend(
+        CompositionNote.objects.filter(
+            eleve=eleve,
+            matiere__classe=classe_note,
+            annee_scolaire=annee,
+            note__isnull=False,
+        ).values_list('periode', flat=True).distinct()
+    )
+
+    ordre = {
+        'OCTOBRE': 1, 'NOVEMBRE': 2, 'DECEMBRE': 3,
+        'TRIMESTRE_1': 4, 'JANVIER': 5, 'FEVRIER': 6, 'MARS': 7,
+        'TRIMESTRE_2': 8, 'SEMESTRE_1': 9, 'AVRIL': 10, 'MAI': 11,
+        'JUIN': 12, 'TRIMESTRE_3': 13, 'SEMESTRE_2': 14,
+    }
+    resultats = []
+    niveau = detecter_niveau_scolaire(classe_note.nom)
+    for periode in sorted(set(periodes), key=lambda p: ordre.get(p, 999)):
+        rangs = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
+        info = rangs.get(eleve.id)
+        if not info:
+            continue
+        moyenne = Decimal(str(info['moyenne']))
+        total_eleves = info.get('total_eleves') or 0
+        rang = info.get('rang_num') or info.get('rang')
+        resultats.append(SimpleNamespace(
+            periode=periode,
+            moyenne_generale=moyenne,
+            rang=rang,
+            rang_formate=f"{info['rang']}/{total_eleves}" if total_eleves else str(info['rang']),
+            effectif=total_eleves,
+            mention=obtenir_mention_intelligente(moyenne, niveau),
+            appreciation=obtenir_appreciation_intelligente(moyenne, eleve.prenom, niveau),
+        ))
+    return ClassementList(resultats)
+
+
 # ────────────────────────────────────────────────────────────────
 # UTILITAIRE : Collecter toutes les données scolaires
 # ────────────────────────────────────────────────────────────────
@@ -79,7 +143,9 @@ def _collecter_donnees_scolaires(eleve):
     compo_periodes = []
 
     if classe_note:
-        matieres = list(MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom'))
+        matieres_qs = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
+        matieres = list(matieres_qs)
+        from .calculs_moyennes import calculer_moyenne_annuelle_matiere, calculer_moyenne_generale_annuelle
 
         # Collecter les périodes de composition existantes
         compo_periodes_set = set()
@@ -90,6 +156,12 @@ def _collecter_donnees_scolaires(eleve):
             for c in compos:
                 compo_periodes_set.add((c.periode, c.get_periode_display()))
         compo_periodes = sorted(compo_periodes_set, key=lambda x: x[0])
+        compo_codes = {p[0] for p in compo_periodes}
+        annual_system = None
+        if any(p.startswith('TRIMESTRE') for p in compo_codes):
+            annual_system = 'annuel_trimestriel'
+        elif any(p.startswith('SEMESTRE') for p in compo_codes):
+            annual_system = 'annuel_semestriel'
 
         for mat in matieres:
             # Notes mensuelles
@@ -120,6 +192,10 @@ def _collecter_donnees_scolaires(eleve):
             notes_compo = [compo_dict.get(p[0], '—') for p in compo_periodes]
 
             moyenne_matiere = round(total_notes / count_notes, 2) if count_notes > 0 else None
+            if annual_system:
+                moyenne_centrale = calculer_moyenne_annuelle_matiere(eleve, mat, annual_system).get('moyenne_annuelle')
+                if moyenne_centrale is not None:
+                    moyenne_matiere = moyenne_centrale
 
             matieres_data.append({
                 'nom': mat.nom,
@@ -130,9 +206,7 @@ def _collecter_donnees_scolaires(eleve):
             })
 
     # ─── Classements ───
-    classements = Classement.objects.filter(
-        eleve=eleve, annee_scolaire=annee
-    ).order_by('periode')
+    classements = _classements_courants(eleve, classe_note, annee)
 
     # ─── Forces et faiblesses (déduit des notes) ───
     forces = []
@@ -157,8 +231,12 @@ def _collecter_donnees_scolaires(eleve):
         conseils.append("Continuer les efforts pour maintenir un bon niveau général")
 
     # Moyenne générale
-    moyennes_valides = [md['moyenne'] for md in matieres_data if md['moyenne'] is not None]
-    moyenne_generale = round(sum(moyennes_valides) / len(moyennes_valides), 2) if moyennes_valides else None
+    moyenne_generale = None
+    if classe_note and matieres and 'annual_system' in locals() and annual_system:
+        moyenne_generale = calculer_moyenne_generale_annuelle(eleve, matieres_qs, annual_system).get('moyenne_generale')
+    if moyenne_generale is None:
+        moyennes_valides = [md['moyenne'] for md in matieres_data if md['moyenne'] is not None]
+        moyenne_generale = round(sum(moyennes_valides) / len(moyennes_valides), 2) if moyennes_valides else None
 
     # ─── Activités journalières ───
     activites = ActiviteJournaliere.objects.filter(
@@ -622,11 +700,9 @@ def _generer_rapport_pdf(eleve):
         c.drawString(margin, y, "Aucune donnée de notes trouvée pour cette classe.")
         y -= 14
 
-    # ── Classements enregistrés ──
-    classements = Classement.objects.filter(
-        eleve=eleve, annee_scolaire=annee
-    ).order_by('periode')
-    if classements.exists():
+    # ── Classements courants ──
+    classements = _classements_courants(eleve, classe_note, annee)
+    if classements:
         y -= 10
         if y < margin + 60:
             y = new_page()

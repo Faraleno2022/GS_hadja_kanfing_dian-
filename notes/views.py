@@ -1010,7 +1010,6 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     c.showPage(); c.save()
     return response
 
-
 @login_required
 def imprimer_tableau_notes_pdf(request):
     """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
@@ -6873,11 +6872,6 @@ def consulter_notes(request):
     return render(request, 'notes/consulter_notes.html', context)
 
 @login_required
-def bulletin_guineen(request):
-    """Bulletin guinéen"""
-    return render(request, 'notes/bulletin_guineen.html', {'titre_page': 'Bulletin Guinéen'})
-
-@login_required
 def bulletin_dynamique(request):
     """Bulletin dynamique - Génération de bulletins personnalisés"""
     from decimal import Decimal
@@ -7420,46 +7414,29 @@ def bulletin_dynamique(request):
                 elif total_coefficients > 0:
                     moyenne_generale = round(float(total_points / total_coefficients), 2)
                     bulletin_data['moyenne_generale'] = moyenne_generale
-                    
-                    # Essayer d'abord de récupérer depuis le Classement (plus précis)
-                    from .models import Classement
-                    classement = Classement.objects.filter(
-                        eleve=eleve_selectionne,
-                        classe=classe_selectionnee,
-                        periode=periode,
-                        annee_scolaire=classe_selectionnee.annee_scolaire
-                    ).first()
-                    
-                    if classement:
-                        # Utiliser les données du classement (plus précis)
-                        bulletin_data['moyenne_generale'] = float(classement.moyenne_generale)
-                        bulletin_data['mention'] = classement.mention
-                        bulletin_data['appreciation'] = classement.appreciation
-                        bulletin_data['rang'] = classement.rang_formate
-                        bulletin_data['total_points'] = float(classement.total_points)
-                        bulletin_data['total_coefficients'] = float(classement.total_coefficients)
-                    else:
-                        # IMPORTANT: Récupérer depuis la source centralisée (utils_rangs)
-                        if periode:
-                            rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
-                            
-                            rang_info = rangs_dict.get(eleve_selectionne.id)
-                            if rang_info:
-                                moyenne_eleve = float(rang_info['moyenne'])
-                                moyenne_dec = _Dec(str(moyenne_eleve))
-                                bulletin_data['moyenne_generale'] = moyenne_eleve
-                                bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
-                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom, niveau_detecte)
-                                bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
-                            else:
-                                bulletin_data['mention'] = None
-                                bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom, niveau_detecte)
-                                bulletin_data['rang'] = "-"
-                        else:
-                            moyenne_dec = _Dec(str(moyenne_generale))
+                    # Source unique: recalcul centralise des rangs et moyennes.
+                    # Le modele Classement peut etre un ancien instantane; il ne doit
+                    # pas remplacer le calcul courant du bulletin.
+                    if periode:
+                        rangs_dict = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
+
+                        rang_info = rangs_dict.get(eleve_selectionne.id)
+                        if rang_info:
+                            moyenne_eleve = float(rang_info['moyenne'])
+                            moyenne_dec = _Dec(str(moyenne_eleve))
+                            bulletin_data['moyenne_generale'] = moyenne_eleve
                             bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
                             bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom, niveau_detecte)
+                            bulletin_data['rang'] = f"{rang_info['rang']}/{rang_info['total_eleves']}"
+                        else:
+                            bulletin_data['mention'] = None
+                            bulletin_data['appreciation'] = obtenir_appreciation_intelligente(_Dec('0'), eleve_selectionne.prenom, niveau_detecte)
                             bulletin_data['rang'] = "-"
+                    else:
+                        moyenne_dec = _Dec(str(moyenne_generale))
+                        bulletin_data['mention'] = obtenir_mention_intelligente(moyenne_dec, niveau_detecte)
+                        bulletin_data['appreciation'] = obtenir_appreciation_intelligente(moyenne_dec, eleve_selectionne.prenom, niveau_detecte)
+                        bulletin_data['rang'] = "-"
     
     # Déterminer est_maternelle et est_primaire pour le contexte
     est_maternelle_ctx = False
@@ -8777,249 +8754,6 @@ def fiches_recommandations_pdf(request):
     # Créer la réponse
     response = HttpResponse(pdf_file, content_type='application/pdf')
     filename = f"fiches_recommandations_{classe_note.nom}_{trimestre}.pdf"
-    response['Content-Disposition'] = f'inline; filename="{filename}"'
-    
-    return response
-
-
-@login_required
-def fiche_saisie_notes_pdf(request):
-    """Générer une fiche PDF de saisie des notes à distribuer aux professeurs"""
-    from django.http import HttpResponse
-    from django.template.loader import render_to_string
-    from weasyprint import HTML
-    
-    # Récupérer les paramètres
-    classe_id = request.GET.get('classe_id')
-    matiere_id = request.GET.get('matiere_id')
-    system_type = request.GET.get('system_type', 'trimestre')  # trimestre ou semestre
-    
-    if not classe_id:
-        return HttpResponse("Paramètre classe_id requis", status=400)
-    
-    try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
-    except Exception as e:
-        return HttpResponse(f"Erreur: {str(e)}", status=400)
-    
-    # Récupérer la matière si spécifiée
-    matiere = None
-    if matiere_id:
-        try:
-            matiere = get_object_or_404(MatiereNote, pk=matiere_id)
-        except:
-            pass
-    
-    # Récupérer les élèves
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
-    
-    if classe.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire,
-            ecole=classe.ecole
-        ).first()
-        
-        if not classe_eleve:
-            classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe.nom,
-                annee_scolaire=classe.annee_scolaire
-            ).first()
-    
-    eleves = []
-    if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
-    
-    # Déterminer les colonnes selon le système
-    if system_type == 'semestre':
-        # Système semestriel
-        colonnes_periode1 = ['Octobre', 'Novembre', 'Décembre', 'Janvier', 'Moy. Cours', 'Composition']
-        colonnes_periode2 = ['Février', 'Mars', 'Avril', 'Mai', 'Moy. Cours', 'Composition']
-        periode1_nom = '1er Semestre'
-        periode2_nom = '2ème Semestre'
-    else:
-        # Système trimestriel
-        colonnes_periode1 = ['Octobre', 'Novembre', 'Décembre', 'Moy. Cours', 'Composition']
-        colonnes_periode2 = ['Janvier', 'Février', 'Mars', 'Moy. Cours', 'Composition']
-        colonnes_periode3 = ['Avril', 'Mai', 'Juin', 'Moy. Cours', 'Composition']
-        periode1_nom = '1er Trimestre'
-        periode2_nom = '2ème Trimestre'
-        periode3_nom = '3ème Trimestre'
-    
-    # Récupérer l'école
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else classe.ecole
-    
-    # Détecter le niveau scolaire (primaire = notes sur 10)
-    from .calculs_moyennes import detecter_niveau_scolaire
-    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
-    est_primaire = (niveau_scolaire == 'PRIMAIRE')
-    note_max = 10 if est_primaire else 20
-    
-    # Récupérer le logo de l'école en base64 pour le filigrane
-    logo_base64 = None
-    if ecole and ecole.logo:
-        try:
-            import base64
-            with ecole.logo.open('rb') as logo_file:
-                logo_data = logo_file.read()
-                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
-        except Exception:
-            pass
-    
-    # Préparer le contexte
-    context = {
-        'classe': classe,
-        'matiere': matiere,
-        'eleves': eleves,
-        'system_type': system_type,
-        'ecole': ecole,
-        'annee_scolaire': classe.annee_scolaire,
-        'date_impression': timezone.now(),
-        'logo_base64': logo_base64,
-        'est_primaire': est_primaire,
-        'note_max': note_max,
-    }
-    
-    if system_type == 'semestre':
-        context.update({
-            'colonnes_periode1': colonnes_periode1,
-            'colonnes_periode2': colonnes_periode2,
-            'periode1_nom': periode1_nom,
-            'periode2_nom': periode2_nom,
-        })
-    else:
-        context.update({
-            'colonnes_periode1': colonnes_periode1,
-            'colonnes_periode2': colonnes_periode2,
-            'colonnes_periode3': colonnes_periode3,
-            'periode1_nom': periode1_nom,
-            'periode2_nom': periode2_nom,
-            'periode3_nom': periode3_nom,
-        })
-    
-    # Générer le HTML
-    html_content = render_to_string('notes/fiche_saisie_notes_pdf.html', context)
-    
-    # Générer le PDF
-    pdf_file = HTML(string=html_content).write_pdf()
-    
-    # Créer la réponse
-    response = HttpResponse(pdf_file, content_type='application/pdf')
-    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
-    filename = f"fiche_saisie_{nom_classe_clean}_{system_type}.pdf"
-    response['Content-Disposition'] = f'inline; filename="{filename}"'
-    
-    return response
-
-
-@login_required
-def fiche_report_notes_pdf(request):
-    """Générer une fiche PDF de report de notes avec toutes les matières en colonnes"""
-    from django.http import HttpResponse
-    from django.template.loader import render_to_string
-    from weasyprint import HTML
-    import base64
-    
-    # Récupérer les paramètres
-    classe_id = request.GET.get('classe_id')
-    periode = request.GET.get('periode', 'TRIMESTRE_1')
-    
-    if not classe_id:
-        return HttpResponse("Paramètre classe_id requis", status=400)
-    
-    try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
-    except Exception as e:
-        return HttpResponse(f"Erreur: {str(e)}", status=400)
-    
-    # Récupérer toutes les matières de la classe
-    matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
-    
-    # Récupérer les élèves
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
-    
-    if classe.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire,
-            ecole=classe.ecole
-        ).first()
-        
-        if not classe_eleve:
-            classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe.nom,
-                annee_scolaire=classe.annee_scolaire
-            ).first()
-    
-    eleves = []
-    if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
-    
-    # Récupérer l'école
-    user_profil = getattr(request.user, 'profil', None)
-    ecole = user_profil.ecole if user_profil else classe.ecole
-    
-    # Récupérer le logo de l'école en base64 pour le filigrane
-    logo_base64 = None
-    if ecole and ecole.logo:
-        try:
-            with ecole.logo.open('rb') as logo_file:
-                logo_data = logo_file.read()
-                logo_base64 = base64.b64encode(logo_data).decode('utf-8')
-        except Exception:
-            pass
-    
-    # Déterminer le nom de la période
-    periode_display = {
-        'TRIMESTRE_1': '1er Trimestre',
-        'TRIMESTRE_2': '2ème Trimestre',
-        'TRIMESTRE_3': '3ème Trimestre',
-        'SEMESTRE_1': '1er Semestre',
-        'SEMESTRE_2': '2ème Semestre',
-    }.get(periode, periode)
-    
-    # Détecter le niveau scolaire (primaire = notes sur 10)
-    from .calculs_moyennes import detecter_niveau_scolaire
-    niveau_scolaire = detecter_niveau_scolaire(classe.nom)
-    est_primaire = (niveau_scolaire == 'PRIMAIRE')
-    note_max = 10 if est_primaire else 20
-    
-    # Préparer le contexte
-    context = {
-        'classe': classe,
-        'matieres': matieres,
-        'eleves': eleves,
-        'ecole': ecole,
-        'annee_scolaire': classe.annee_scolaire,
-        'date_impression': timezone.now(),
-        'logo_base64': logo_base64,
-        'periode': periode,
-        'periode_display': periode_display,
-        'est_primaire': est_primaire,
-        'note_max': note_max,
-    }
-    
-    # Générer le HTML
-    html_content = render_to_string('notes/fiche_report_notes_pdf.html', context)
-    
-    # Générer le PDF
-    pdf_file = HTML(string=html_content).write_pdf()
-    
-    # Créer la réponse
-    response = HttpResponse(pdf_file, content_type='application/pdf')
-    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
-    filename = f"fiche_report_{nom_classe_clean}_{periode}.pdf"
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     
     return response

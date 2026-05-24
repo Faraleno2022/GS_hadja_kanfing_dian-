@@ -60,7 +60,6 @@ urlpatterns = [
     path('saisir/', views.saisir_notes, name='saisir_notes'),
     path('consulter/', views.consulter_notes, name='consulter_notes'),
     path('bulletins/', views.bulletin_dynamique, name='generer_bulletins'),
-    path('bulletin-guineen/', views.bulletin_guineen, name='bulletin_guineen'),
     path('bulletin-dynamique/', views.bulletin_dynamique, name='bulletin_dynamique'),
     path('saisie-notes-guineen/', views.saisie_notes_simple, name='saisie_notes_guineen'),
     path('sauvegarder-notes-guineen/', views.sauvegarder_notes_guineen, name='sauvegarder_notes_guineen'),
@@ -142,12 +141,6 @@ urlpatterns = [
          views.saisie_bulletin_maternelle, name='saisie_bulletin_maternelle'),
     path('maternelle/fiches-recommandations-pdf/', 
          views.fiches_recommandations_pdf, name='fiches_recommandations_pdf'),
-    
-    # Fiche de saisie des notes à imprimer pour les professeurs
-    path('fiche-saisie-notes-pdf/', views.fiche_saisie_notes_pdf, name='fiche_saisie_notes_pdf'),
-    
-    # Fiche de report des notes avec toutes les matières en colonnes
-    path('fiche-report-notes-pdf/', views.fiche_report_notes_pdf, name='fiche_report_notes_pdf'),
     
     # Importation intelligente - Template avec toutes les matières en colonnes
     path('import-intelligent/', import_intelligent, name='import_intelligent'),

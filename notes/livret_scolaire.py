@@ -30,7 +30,12 @@ from .models import (
     NoteMensuelle, CompositionNote,
     AppreciationMaternelle,
 )
-from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyenne_periode_guineenne
+from .calculs_moyennes import (
+    calculer_classement_classe,
+    calculer_moyenne_generale_annuelle,
+    calculer_moyenne_periode_guineenne,
+    detecter_niveau_scolaire,
+)
 from utilisateurs.utils import filter_by_user_school, user_school
 
 logger = logging.getLogger(__name__)
@@ -1506,6 +1511,8 @@ def _collecter_parcours_eleve(eleve, ecole):
         matieres_data = []
         moyenne_annuelle = None
         rang_info = ''
+        classement_annuel_courant = None
+        result_annuel = None
         passe_en = ''
 
         if classe_note:
@@ -1598,12 +1605,40 @@ def _collecter_parcours_eleve(eleve, ecole):
 
                 matieres_data.append(m_data)
 
+            # Source courante: meme moteur de calcul que les bulletins.
+            # Classement est un ancien instantane et ne doit servir que de secours.
+            stats_classe = classe_note
+            if niveau != 'MATERNELLE':
+                system_type_annuel = 'annuel_semestriel' if is_semestre else 'annuel_trimestriel'
+                result_annuel = calculer_moyenne_generale_annuelle(eleve, matieres, system_type_annuel)
+                if result_annuel.get('moyenne_generale') is not None:
+                    moyenne_annuelle = float(result_annuel['moyenne_generale'])
+                    try:
+                        classe_eleve = Classe.objects.filter(
+                            nom=classe_note.nom,
+                            ecole=classe_note.ecole,
+                            annee_scolaire=annee_scolaire,
+                        ).first()
+                        eleves_classe = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF') if classe_eleve else Eleve.objects.none()
+                        periode_annuelle = 'ANNUEL_SEM' if is_semestre else 'ANNUEL_TRIM'
+                        classement_calc = calculer_classement_classe(
+                            eleves_classe, matieres, periode_annuelle, system_type_annuel, use_cache=False
+                        )
+                        classement_annuel_courant = classement_calc
+                        rang_num = classement_calc.get('rang_map', {}).get(eleve.id)
+                        total = classement_calc.get('total_eleves', 0)
+                        if rang_num:
+                            rang_info = f"{rang_num}eme/{total}" if total else f"{rang_num}eme"
+                    except Exception as e:
+                        logger.warning(f"Erreur classement annuel courant: {e}")
+
             # Trouver la classe reelle utilisee dans Classement pour cet eleve
             # (peut differer de classe_note trouvee par nom__icontains)
             eleve_cls = Classement.objects.filter(
                 eleve=eleve, annee_scolaire=annee_scolaire,
             ).first()
-            stats_classe = eleve_cls.classe if eleve_cls else classe_note
+            if eleve_cls and moyenne_annuelle is None:
+                stats_classe = eleve_cls.classe
 
             # Moyenne annuelle via Classement
             # Chercher d'abord avec stats_classe, puis sans filtre classe
@@ -1620,10 +1655,10 @@ def _collecter_parcours_eleve(eleve, ecole):
                 if cl_ann:
                     stats_classe = cl_ann.classe
 
-            if cl_ann and cl_ann.moyenne_generale is not None:
+            if moyenne_annuelle is None and cl_ann and cl_ann.moyenne_generale is not None:
                 moyenne_annuelle = float(cl_ann.moyenne_generale)
                 rang_info = cl_ann.rang_formate or f"{cl_ann.rang}eme/{cl_ann.effectif}"
-            else:
+            elif moyenne_annuelle is None:
                 # Fallback: moyenne des periodes depuis Classement
                 cls_p = Classement.objects.filter(
                     eleve=eleve, annee_scolaire=annee_scolaire,
@@ -1651,6 +1686,17 @@ def _collecter_parcours_eleve(eleve, ecole):
             note_min_classe = None
             note_max_classe = None
             effectif_classe = 0
+            if classement_annuel_courant:
+                moyennes_courantes = [
+                    float(moy)
+                    for moy in classement_annuel_courant.get('moyennes_par_eleve', {}).values()
+                    if moy is not None
+                ]
+                if moyennes_courantes:
+                    moy_classe = round(sum(moyennes_courantes) / len(moyennes_courantes), 2)
+                    note_min_classe = round(min(moyennes_courantes), 2)
+                    note_max_classe = round(max(moyennes_courantes), 2)
+                    effectif_classe = len(moyennes_courantes)
             try:
                 from django.db.models import Avg, Min, Max, Count
 
@@ -1698,7 +1744,7 @@ def _collecter_parcours_eleve(eleve, ecole):
                             )
                         )
 
-                if stats:
+                if stats and moy_classe is None:
                     moy_classe = round(float(stats['avg']), 2) if stats['avg'] else None
                     note_min_classe = round(float(stats['mn']), 2) if stats['mn'] else None
                     note_max_classe = round(float(stats['mx']), 2) if stats['mx'] else None
@@ -1712,16 +1758,24 @@ def _collecter_parcours_eleve(eleve, ecole):
 
             # Moyennes par periode pour graphique d'evolution
             moyennes_periodes = []
-            try:
-                cls_periods = Classement.objects.filter(
-                    eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
-                ).exclude(periode__icontains='ANNUEL').order_by('periode')
-                for cp in cls_periods:
-                    if cp.moyenne_generale is not None:
+            if result_annuel:
+                for per, moy in result_annuel.get('moyennes_periodes', {}).items():
+                    if moy is not None:
                         moyennes_periodes.append({
-                            'periode': cp.periode,
-                            'moyenne': float(cp.moyenne_generale),
+                            'periode': per,
+                            'moyenne': float(moy),
                         })
+            try:
+                if not moyennes_periodes:
+                    cls_periods = Classement.objects.filter(
+                        eleve=eleve, classe=stats_classe, annee_scolaire=annee_scolaire,
+                    ).exclude(periode__icontains='ANNUEL').order_by('periode')
+                    for cp in cls_periods:
+                        if cp.moyenne_generale is not None:
+                            moyennes_periodes.append({
+                                'periode': cp.periode,
+                                'moyenne': float(cp.moyenne_generale),
+                            })
             except Exception:
                 pass
 

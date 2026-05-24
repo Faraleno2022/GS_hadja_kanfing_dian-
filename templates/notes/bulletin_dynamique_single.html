@@ -387,7 +387,7 @@
         <div style="margin-top: 4px; font-style: italic; color: #6c757d;">
             {% if has_notes_mensuelles %}
             💡 La moyenne continue est calculée à partir des notes mensuelles disponibles. 
-            La moyenne finale = (Moyenne continue + Composition) ÷ 2
+            La moyenne finale = 40% moyenne continue + 60% composition (primaire : composition seule)
             {% else %}
             💡 La moyenne finale est calculée directement à partir de la note de composition.
             {% endif %}
@@ -501,7 +501,7 @@
                     <strong>📊 Calcul Trimestriel :</strong> La moyenne combine les évaluations continues et la composition de fin de trimestre.
                 </p>
                 <p style="margin: 1px 0; color: #555;">
-                    <strong>📈 Formule :</strong> Moyenne = (Moy. Continue + Composition) / 2
+                    <strong>📈 Formule :</strong> Moyenne = 40% Moy. Continue + 60% Composition (primaire : composition seule)
                 </p>
                 <p style="margin: 1px 0; color: #555;">
                     <strong>⚖️ Pondération :</strong> La composition et les contrôles continus ont le même poids (50% chacun)
@@ -526,7 +526,7 @@
             {% endif %}
             <p style="margin: 1px 0; color: #555;">
                 {% if niveau_enseignement == 'PRIMAIRE' or niveau_enseignement == 'MATERNELLE' %}
-                <strong>🎯 Moyenne Générale :</strong> Somme des moyennes / Nombre de matières (pas de coefficients)
+                <strong>🎯 Moyenne Générale :</strong> Somme des points / Somme des coefficients (primaire : coefficients égaux à 1)
                 {% else %}
                 <strong>🎯 Moyenne Générale :</strong> (Σ (Moyenne × Coefficient matière)) / Σ Coefficients
                 {% endif %}

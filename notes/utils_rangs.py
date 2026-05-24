@@ -359,6 +359,24 @@ def invalider_cache_rangs(classe_note, periode: str = None):
     
     if periode:
         periodes_a_invalider = [periode]
+        periodes_dependantes = {
+            'OCTOBRE': ['TRIMESTRE_1', 'SEMESTRE_1', 'ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'NOVEMBRE': ['TRIMESTRE_1', 'SEMESTRE_1', 'ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'DECEMBRE': ['SEMESTRE_1', 'ANNUEL_SEM'],
+            'JANVIER': ['TRIMESTRE_2', 'SEMESTRE_1', 'ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'FEVRIER': ['TRIMESTRE_2', 'ANNUEL_TRIM'],
+            'MARS': ['SEMESTRE_2', 'ANNUEL_SEM'],
+            'AVRIL': ['TRIMESTRE_3', 'SEMESTRE_2', 'ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'MAI': ['TRIMESTRE_3', 'SEMESTRE_2', 'ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'JUIN': ['ANNUEL_TRIM', 'ANNUEL_SEM'],
+            'TRIMESTRE_1': ['ANNUEL_TRIM'],
+            'TRIMESTRE_2': ['ANNUEL_TRIM'],
+            'TRIMESTRE_3': ['ANNUEL_TRIM'],
+            'SEMESTRE_1': ['ANNUEL_SEM'],
+            'SEMESTRE_2': ['ANNUEL_SEM'],
+        }
+        periodes_a_invalider.extend(periodes_dependantes.get(periode, []))
+        periodes_a_invalider = list(dict.fromkeys(periodes_a_invalider))
     else:
         # Invalider toutes les périodes possibles
         periodes_a_invalider = [

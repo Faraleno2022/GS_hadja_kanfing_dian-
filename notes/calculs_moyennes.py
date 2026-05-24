@@ -1176,7 +1176,7 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             result['moyennes_mensuelles'] = moyennes_detail
             
             if count_notes > 0:
-                result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
+                result['moyenne_continue'] = float(total_notes / count_notes)
         
         # Récupérer la note de composition
         compo = CompositionNote.objects.filter(
@@ -1242,7 +1242,7 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             result['moyennes_mensuelles'] = moyennes_detail
             
             if count_notes > 0:
-                result['moyenne_continue'] = round(float(total_notes / count_notes), 2)
+                result['moyenne_continue'] = float(total_notes / count_notes)
         
         # Récupérer la note de composition
         compo = CompositionNote.objects.filter(
