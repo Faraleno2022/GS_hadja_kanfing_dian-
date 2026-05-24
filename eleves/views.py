@@ -3563,73 +3563,146 @@ def _ticket_draw_row(c, label, value, x, y, value_width, accent_color, main_font
 
 def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_bold, title, accent_color, light_color, rows, serial_label):
     c.saveState()
+    from reportlab.lib.units import mm
+
     ecole = eleve.classe.ecole
+    primary = '#1746a2'
+    accent = accent_color or '#0f766e'
+    dark = '#0f172a'
+    muted = '#64748b'
+    line = '#dbe3ef'
+    soft = '#f5f8fc'
+    footer_soft = '#eef4fb'
 
-    c.setFillColor(colors.HexColor('#ffffff'))
-    c.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 10, stroke=0, fill=1)
+    margin = 2.2 * mm
+    header_h = 10.5 * mm
+    footer_h = 6.2 * mm
+    radius = 4.5
 
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.32)
-    c.circle(x + width - 10, y + height - 5, 36, stroke=0, fill=1)
-    c.circle(x + 12, y + 9, 24, stroke=0, fill=1)
-    c.setFillAlpha(1)
+    school_name = _ticket_safe_text(getattr(ecole, 'nom', '')).upper()
+    full_name = f"{_ticket_safe_text(eleve.prenom, '')} {_ticket_safe_text(eleve.nom, '')}".strip().upper()
 
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.7)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=1)
+
+    c.setFillColor(colors.HexColor(primary))
+    c.roundRect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h, radius, stroke=0, fill=1)
+    c.rect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h / 2, stroke=0, fill=1)
+
+    logo_size = 7.2 * mm
+    logo_x = x + margin
+    logo_y = y + height - header_h + 1.1 * mm
+    c.setFillColor(colors.white)
+    c.circle(logo_x + logo_size / 2, logo_y + logo_size / 2, logo_size / 2, stroke=0, fill=1)
     try:
         if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
-            c.saveState()
-            c.translate(x + width / 2, y + height / 2)
-            c.rotate(18)
-            c.setFillAlpha(0.08)
-            mark_size = min(width, height) * 0.72
-            c.drawImage(ecole.logo.path, -mark_size / 2, -mark_size / 2, mark_size, mark_size, preserveAspectRatio=True, anchor='c', mask='auto')
-            c.restoreState()
+            c.drawImage(
+                ecole.logo.path,
+                logo_x + 0.6,
+                logo_y + 0.6,
+                width=logo_size - 1.2,
+                height=logo_size - 1.2,
+                preserveAspectRatio=True,
+                mask='auto',
+            )
+        else:
+            raise ValueError('No logo')
     except Exception:
-        pass
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(main_font_bold, 7)
+        c.drawCentredString(logo_x + logo_size / 2, logo_y + logo_size / 2 - 2, school_name[:2] or 'EC')
 
-    c.setFillColor(colors.HexColor(accent_color))
-    c.roundRect(x + 4, y + height - 28, width - 8, 23, 7, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor('#0f172a'))
-    c.setFillAlpha(0.08)
-    c.rect(x + 4, y + height - 13, width - 8, 8, stroke=0, fill=1)
-    c.setFillAlpha(1)
+    title_x = logo_x + logo_size + 2 * mm
+    title_w = width - (title_x - x) - margin
+    _ticket_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, '#ffffff')
+    _ticket_fit_text(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, '#dbeafe')
 
-    _ticket_draw_logo(c, ecole, x + 8, y + height - 25, 16)
-    c.setFillColor(colors.white)
-    c.setFont(main_font_bold, 10.5)
-    c.drawCentredString(x + width / 2 + 6, y + height - 15, title)
-    _ticket_fit_text(c, ecole.nom, x + 28, y + height - 24, width - 48, main_font, 5.8, 4.8, '#ffffff')
+    try:
+        c.saveState()
+        c.setFillAlpha(0.06)
+        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
+            mark = 30 * mm
+            c.drawImage(
+                ecole.logo.path,
+                x + width - mark - 4 * mm,
+                y + footer_h + 5 * mm,
+                width=mark,
+                height=mark,
+                preserveAspectRatio=True,
+                mask='auto',
+            )
+        else:
+            c.setFillColor(colors.HexColor(primary))
+            c.setFont(main_font_bold, 28)
+            c.drawCentredString(x + width * 0.70, y + height * 0.46, school_name[:3])
+        c.restoreState()
+    except Exception:
+        try:
+            c.restoreState()
+        except Exception:
+            pass
 
-    photo_size = 34
-    photo_x = x + width - photo_size - 10
-    photo_y = y + 18
-    _ticket_draw_photo(c, eleve, photo_x, photo_y, photo_size, accent_color, main_font_bold)
+    photo_w = 22.5 * mm
+    photo_h = 27.5 * mm
+    photo_x = x + margin
+    photo_y = y + footer_h + 3.2 * mm
+    c.setFillColor(colors.HexColor(soft))
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.7)
+    c.roundRect(photo_x, photo_y, photo_w, photo_h, 3.2, stroke=1, fill=1)
 
-    content_x = x + 10
-    content_top = y + height - 38
-    info_width = width - photo_size - 28
-    full_name = f"{_ticket_safe_text(eleve.prenom, '')} {_ticket_safe_text(eleve.nom, '')}".strip().upper()
-    _ticket_fit_text(c, full_name, content_x, content_top, info_width, main_font_bold, 10.5, 6.5, '#111827')
+    photo_drawn = False
+    try:
+        if eleve.photo and hasattr(eleve.photo, 'path') and eleve.photo.name and os.path.exists(eleve.photo.path):
+            c.drawImage(eleve.photo.path, photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, preserveAspectRatio=True, anchor='c', mask='auto')
+            photo_drawn = True
+    except Exception:
+        photo_drawn = False
 
-    c.setStrokeColor(colors.HexColor(accent_color))
-    c.setLineWidth(1.4)
-    c.line(content_x, content_top - 4, content_x + min(info_width, 82), content_top - 4)
+    if not photo_drawn:
+        initials = (_ticket_safe_text(getattr(eleve, 'prenom', 'E'), 'E')[:1] + _ticket_safe_text(getattr(eleve, 'nom', 'L'), 'L')[:1]).upper()
+        c.setFillColor(colors.HexColor('#e8eef8'))
+        c.roundRect(photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, 2.5, stroke=0, fill=1)
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(main_font_bold, 17)
+        c.drawCentredString(photo_x + photo_w / 2, photo_y + photo_h / 2 - 4, initials or 'EL')
 
-    row_y = content_top - 15
-    for label, value in rows[:4]:
-        _ticket_draw_row(c, label, value, content_x, row_y, info_width, accent_color, main_font, main_font_bold)
-        row_y -= 13
+    info_x = photo_x + photo_w + 3 * mm
+    info_w = x + width - margin - info_x
+    name_y = y + height - header_h - 4.4 * mm
+    _ticket_fit_text(c, full_name, info_x, name_y, info_w, main_font_bold, 8.7, 5.8, dark)
 
-    c.setFillColor(colors.HexColor('#f8fafc'))
-    c.roundRect(x + 7, y + 5, width - 14, 9, 4, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor('#475569'))
-    c.setFont(main_font_bold, 5.8)
-    c.drawString(x + 12, y + 8, f"{serial_label}-{eleve.id:06d}")
-    c.setFont(main_font, 5.4)
-    c.drawRightString(x + width - 12, y + 8, timezone.now().strftime('%d/%m/%Y'))
+    c.setStrokeColor(colors.HexColor(accent))
+    c.setLineWidth(1.0)
+    c.line(info_x, name_y - 1.7 * mm, info_x + info_w, name_y - 1.7 * mm)
 
-    c.setStrokeColor(colors.HexColor(accent_color))
-    c.setLineWidth(1.2)
-    c.roundRect(x + 1.5, y + 1.5, width - 3, height - 3, 10, stroke=1, fill=0)
+    row_y = name_y - 5.3 * mm
+    label_w = 14 * mm
+    value_w = info_w - label_w
+    for label, value in rows[:5]:
+        c.setFillColor(colors.HexColor(muted))
+        c.setFont(main_font_bold, 5.6)
+        c.drawString(info_x, row_y, _ticket_safe_text(label).upper())
+        _ticket_fit_text(c, value, info_x + label_w, row_y, value_w, main_font, 6.6, 4.7, dark)
+        row_y -= 4.2 * mm
+
+    c.setFillColor(colors.HexColor(footer_soft))
+    c.rect(x + 0.8, y + 0.8, width - 1.6, footer_h, stroke=0, fill=1)
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.5)
+    c.line(x + 0.8, y + footer_h + 0.8, x + width - 0.8, y + footer_h + 0.8)
+
+    annee = _ticket_safe_text(getattr(eleve.classe, 'annee_scolaire', ''))
+    _ticket_fit_text(c, f'ANNEE SCOLAIRE {annee}', x + margin, y + 2.4 * mm, width * 0.55, main_font_bold, 5.8, 4.2, primary)
+    c.setFillColor(colors.HexColor(muted))
+    c.setFont(main_font, 4.6)
+    c.drawRightString(x + width - margin, y + 2.4 * mm, f'{serial_label} #{getattr(eleve, "id", 0):06d}')
+
+    c.setStrokeColor(colors.HexColor(primary))
+    c.setLineWidth(0.9)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=0)
     c.restoreState()
 
 
@@ -3653,7 +3726,7 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
     ]
     return _dessiner_ticket_carte(
         c, eleve, x, y, width, height, main_font, main_font_bold,
-        'TICKET DE RETRAIT', '#1746a2', '#dbeafe', rows, 'RETRAIT'
+        'CARTE DE RETRAIT', '#0f766e', '#dbeafe', rows, 'RETRAIT'
     )
 
     c.saveState()
@@ -3822,11 +3895,12 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
         ('Matricule', getattr(eleve, 'matricule', None)),
         ('Classe', getattr(eleve.classe, 'nom', None)),
         ('Zone', getattr(abonnement, 'zone', None) or 'Non specifiee'),
+        ('Arret', getattr(abonnement, 'point_arret', None) or 'Non specifie'),
         ('Validite', validite),
     ]
     return _dessiner_ticket_carte(
         c, eleve, x, y, width, height, main_font, main_font_bold,
-        'ABONNEMENT BUS', '#d97706', '#fef3c7', rows, 'BUS'
+        'CARTE BUS', '#0f766e', '#fef3c7', rows, 'BUS'
     )
 
     c.saveState()
