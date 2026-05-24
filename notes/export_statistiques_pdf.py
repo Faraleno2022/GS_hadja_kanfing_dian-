@@ -210,6 +210,9 @@ def _calculer_statistiques_classe(classe_note, periode):
             'moyenne_classe': round(sum(moyennes) / len(moyennes), 2),
             'moyenne_max': max(moyennes),
             'moyenne_min': min(moyennes),
+            'ecart_type': round((__import__('math').sqrt(sum((m - sum(moyennes)/len(moyennes))**2 for m in moyennes) / len(moyennes))), 2),
+            'nb_admis': len([e for e in eleves_data if e['moyenne'] >= seuil_reussite]),
+            'nb_non_admis': len([e for e in eleves_data if e['moyenne'] < seuil_reussite]),
             'nb_excellent': len([e for e in eleves_data if e['categorie'] == 'excellent']),
             'nb_tres_bien': len([e for e in eleves_data if e['categorie'] == 'tres_bien']),
             'nb_bien': len([e for e in eleves_data if e['categorie'] == 'bien']),
@@ -219,9 +222,6 @@ def _calculer_statistiques_classe(classe_note, periode):
             'nb_faible': len([e for e in eleves_data if e['categorie'] == 'faible']),
             'nb_tres_faible': len([e for e in eleves_data if e['categorie'] == 'tres_faible']),
         }
-        nb_echec = stats_globales['nb_insuffisant'] + stats_globales['nb_faible'] + stats_globales['nb_tres_faible']
-        stats_globales['nb_non_admis'] = nb_echec
-        stats_globales['nb_admis'] = stats_globales['total_eleves'] - nb_echec
         stats_globales['taux_reussite'] = round(
             stats_globales['nb_admis'] /
             stats_globales['total_eleves'] * 100, 1
