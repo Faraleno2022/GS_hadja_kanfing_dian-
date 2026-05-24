@@ -451,6 +451,16 @@ def invalider_cache_note_mensuelle(sender, instance, **kwargs):
     except Exception as e:
         print(f"Erreur invalidation cache: {e}")
 
+@receiver(post_save, sender=CompositionNote)
+@receiver(post_delete, sender=CompositionNote)
+def invalider_cache_composition(sender, instance, **kwargs):
+    """Invalide le cache des rangs et moyennes quand une composition change"""
+    try:
+        invalider_cache_rangs(instance.matiere.classe, instance.periode)
+        print(f"Cache invalidé pour {instance.matiere.classe.nom} - {instance.periode}")
+    except Exception as e:
+        print(f"Erreur invalidation cache: {e}")
+
 @receiver(post_save, sender=NoteEleve)
 @receiver(post_delete, sender=NoteEleve)
 def invalider_cache_note_eleve(sender, instance, **kwargs):

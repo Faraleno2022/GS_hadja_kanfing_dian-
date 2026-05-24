@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Constantes de cache
 CACHE_TIMEOUT_MOYENNES = 600  # 10 minutes
 CACHE_TIMEOUT_CLASSEMENT = 600  # 10 minutes
+CALCUL_CACHE_SCHEMA_VERSION = 2
 
 # Règles de calcul utilisées par les bulletins et les classements.
 # Secondaire guinéen: moyenne de période = 40% cours + 60% composition.
@@ -468,7 +469,7 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     # ── Cache: évite de recalculer si déjà fait dans les 10 dernières minutes ──
     # La version est incrémentée à chaque sauvegarde de note pour invalider le cache
     _version = cache.get(f"moy_version_classe_{classe.id}", 0)
-    _cache_key = f"moy_classe_{classe.id}_{periode}_{system_type}_v{_version}"
+    _cache_key = f"moy_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe.id}_{periode}_{system_type}_v{_version}"
     _cached = cache.get(_cache_key)
     if _cached is not None:
         return _cached
@@ -677,14 +678,14 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
     if isinstance(matieres, list):
         if matieres:
             classe_id = matieres[0].classe_id
-            cache_key = f"classement_classe_{classe_id}_periode_{periode}_type_{system_type}"
+            cache_key = f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_id}_periode_{periode}_type_{system_type}"
         else:
             cache_key = None
     else:
         # Générer une clé de cache basée sur les paramètres
         if matieres.exists():
             classe_id = matieres.first().classe_id
-            cache_key = f"classement_classe_{classe_id}_periode_{periode}_type_{system_type}"
+            cache_key = f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_id}_periode_{periode}_type_{system_type}"
         else:
             cache_key = None
     

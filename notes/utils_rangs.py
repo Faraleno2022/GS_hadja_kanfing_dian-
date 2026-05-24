@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _cache_classes = {}
 _cache_matieres = {}
 CACHE_TIMEOUT = 600  # 10 minutes
+RANGS_CACHE_SCHEMA_VERSION = 2
 
 
 def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = True) -> Dict[int, dict]:
@@ -45,7 +46,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
         Dictionnaire {eleve_id: {'rang': '10ème', 'rang_num': 10, 'moyenne': Decimal('15.5')}}
     """
     # Vérifier le cache (priorité au cache Django)
-    cache_key = f"rangs_classe_{classe_note.id}_periode_{periode}"
+    cache_key = f"rangs_classe_s{RANGS_CACHE_SCHEMA_VERSION}_{classe_note.id}_periode_{periode}"
     if use_cache:
         rangs_cached = cache.get(cache_key)
         if rangs_cached is not None:
@@ -55,7 +56,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     start_time = time.time()
     
     from eleves.models import Eleve, Classe as ClasseEleve
-    from .models import MatiereNote, Evaluation, NoteEleve
+    from .models import MatiereNote
     
     # Récupérer la classe élève correspondante avec mapping spécial
     mapping_classes = {
@@ -84,7 +85,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
     # Détecter le niveau scolaire pour gérer les coefficients
-    from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyenne_periode_guineenne
+    from .calculs_moyennes import detecter_niveau_scolaire
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
     est_maternelle = (niveau == 'MATERNELLE')
@@ -92,6 +93,51 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     # Pour la maternelle, calcul de rangs basé sur les appréciations
     if est_maternelle:
         return calculer_rangs_maternelle(classe_note, periode, eleves)
+
+    # Source unique pour les periodes mensuelles, trimestrielles et semestrielles:
+    # on reprend les moyennes de calculs_moyennes.py au lieu de recalculer ici.
+    if periode not in ['ANNUEL_TRIM', 'ANNUEL_SEM']:
+        from .calculs_moyennes import calculer_moyennes_classe_optimise
+
+        if periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
+            system_type = 'mensuel'
+        elif 'TRIMESTRE' in periode or 'Trimestre' in periode:
+            system_type = 'trimestre'
+        else:
+            system_type = 'semestre'
+
+        resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+        moyennes_pour_rang = []
+        for eleve in eleves:
+            result = resultats.get(eleve.id, {})
+            moyenne_generale = result.get('moyenne_generale')
+            if moyenne_generale is None:
+                moyenne_generale = 0
+            moyennes_pour_rang.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
+                'sexe': getattr(eleve, 'sexe', None) or 'M',
+                'moyenne': Decimal(str(moyenne_generale))
+            })
+
+        resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
+        rangs_dict = {}
+        for r in resultats_rangs:
+            rangs_dict[r['eleve_id']] = {
+                'rang': r['rang'],
+                'rang_num': r['rang_num'],
+                'moyenne': r['moyenne'],
+                'total_eleves': r.get('total_eleves', len(resultats_rangs))
+            }
+
+        elapsed_time = (time.time() - start_time) * 1000
+        logger.info(f"Rangs calcules pour {len(rangs_dict)} eleves en {elapsed_time:.1f}ms")
+
+        if use_cache:
+            cache.set(cache_key, rangs_dict, timeout=CACHE_TIMEOUT)
+
+        return rangs_dict
     
     # Calculer les moyennes pour chaque élève
     moyennes_pour_rang = []
@@ -389,16 +435,22 @@ def invalider_cache_rangs(classe_note, periode: str = None):
         ]
     
     system_types = ['mensuel', 'trimestre', 'trimestriel', 'semestre', 'semestriel']
+    from .calculs_moyennes import CALCUL_CACHE_SCHEMA_VERSION
     
     for p in periodes_a_invalider:
         # Invalider le cache des rangs
-        cache_key_rangs = f"rangs_classe_{classe_note.id}_periode_{p}"
+        cache_key_rangs = f"rangs_classe_s{RANGS_CACHE_SCHEMA_VERSION}_{classe_note.id}_periode_{p}"
         cache.delete(cache_key_rangs)
         
         # Invalider le cache des classements (pour chaque type de système)
         for st in system_types:
-            cache_key_classement = f"classement_classe_{classe_note.id}_periode_{p}_type_{st}"
+            cache_key_classement = f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_note.id}_periode_{p}_type_{st}"
             cache.delete(cache_key_classement)
+
+    # Invalider aussi le cache des moyennes de classe utilise par les conseils,
+    # statistiques et decisions. La cle de cache inclut cette version.
+    version_key = f"moy_version_classe_{classe_note.id}"
+    cache.set(version_key, cache.get(version_key, 0) + 1, 86400)
     
     logger.debug(f"Cache invalidé pour classe {classe_note.id}, périodes: {periodes_a_invalider}")
 
