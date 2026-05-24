@@ -8,7 +8,10 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Image as ReportlabImage
-from PIL import Image, ImageDraw, ImageOps
+try:
+    from PIL import Image, ImageDraw, ImageOps
+except Exception:
+    Image = ImageDraw = ImageOps = None
 import io
 import os
 from django.utils import timezone
@@ -60,6 +63,8 @@ def _draw_value_row(c, label, value, x, y, label_width, value_width, main_font, 
 
 def _draw_cover_image(c, image_path, x, y, width, height, radius=0):
     """Draw an image cropped to fill the requested box."""
+    if Image is None or ImageOps is None:
+        raise RuntimeError("Pillow is unavailable")
     img = Image.open(image_path)
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -122,6 +127,13 @@ def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None,
         bold_font = 'Helvetica-Bold'
         italic_font = 'Helvetica-Oblique'
     
+    # Utiliser le moteur robuste partage avec les cartes en lot.
+    _dessiner_carte_simple(c, eleve, offset_x, offset_y, width, height, main_font, bold_font)
+    if not custom_canvas:
+        c.showPage()
+        c.save()
+    return response
+
     # Couleurs du thème
     primary_blue = '#1e40af'
     secondary_blue = '#3b82f6'
