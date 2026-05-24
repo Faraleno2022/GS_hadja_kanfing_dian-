@@ -581,6 +581,7 @@ def get_or_create_trial() -> dict:
     current_mid = get_machine_id()[:16]
     trial_start = None
     trial_path_used = None
+    trial_started = False
 
     for tp in trial_paths:
         if tp.exists():
@@ -611,6 +612,7 @@ def get_or_create_trial() -> dict:
     if trial_start is None:
         # Nouvelle machine ou première installation → nouvel essai de 30 jours
         trial_start = _now_utc()
+        trial_started = True
         for tp in trial_paths:
             try:
                 with open(tp, 'w') as f:
@@ -628,6 +630,8 @@ def get_or_create_trial() -> dict:
         'valid': days_left > 0,
         'days_left': days_left,
         'days_elapsed': days_elapsed,
+        'trial_started': trial_started,
+        'trial_path': str(trial_path_used) if trial_path_used else '',
         'reason': (
             f"Mode essai : {days_left} jour(s) restant(s)."
             if days_left > 0

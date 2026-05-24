@@ -135,7 +135,7 @@ Type: files;          Name: "{app}\install_path.txt"
 WelcomeLabel1=Bienvenue dans l'assistant d'installation de MySchoolGN
 WelcomeLabel2=Ce programme va installer MySchoolGN - Système de Gestion Scolaire sur votre ordinateur.%n%nMySchoolGN est une solution complète de gestion scolaire développée par GS Hadja Kanfing Dian. Elle fonctionne entièrement hors ligne.%n%nFermez toutes les autres applications avant de continuer.
 FinishedHeadingLabel=Installation de MySchoolGN terminée !
-FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans votre navigateur sur http://127.0.0.1:8000%n%nNOTE : Une période d'essai de 30 jours est incluse. Pour activer votre licence permanente, contactez GS Hadja Kanfing Dian.
+FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans votre navigateur sur http://127.0.0.1:8000%n%nNOTE : Si aucune licence annuelle n'a été ajoutée pendant l'installation, une période d'essai de 30 jours démarre automatiquement.
 
 [Code]
 
@@ -341,6 +341,61 @@ begin
   CleanupBackupDir();
 end;
 
+// ── Question licence pendant l'installation fraîche ─────────────────────────
+procedure ConfigureLicenseAfterInstall();
+var
+  LicenseFile: String;
+  DestFile: String;
+begin
+  if WizardSilent() then
+    Exit;
+
+  if MsgBox(
+    'Avez-vous déjà une licence annuelle MySchoolGN ?' + #13#10 + #13#10 +
+    'Oui : sélectionnez votre fichier .lic pour l''ajouter maintenant.' + #13#10 +
+    'Non : MySchoolGN continuera avec la version d''essai gratuite de 30 jours.',
+    mbConfirmation, MB_YESNO
+  ) = IDYES then
+  begin
+    LicenseFile := '';
+    if GetOpenFileName(
+      'Sélectionner le fichier de licence annuelle',
+      LicenseFile,
+      '',
+      'Fichiers de licence (*.lic)|*.lic|Tous les fichiers (*.*)|*.*',
+      'lic'
+    ) then
+    begin
+      DestFile := ExpandConstant('{app}\license.dat');
+      if CopyFile(LicenseFile, DestFile, False) then
+      begin
+        CopyFile(LicenseFile, ExpandConstant('{app}\') + ExtractFileName(LicenseFile), False);
+        MsgBox(
+          'Licence ajoutée avec succès.' + #13#10 + #13#10 +
+          'MySchoolGN démarrera en version activée.',
+          mbInformation, MB_OK
+        );
+      end
+      else
+      begin
+        MsgBox(
+          'Impossible de copier la licence dans le dossier d''installation.' + #13#10 +
+          'Vous pourrez l''activer plus tard depuis MySchoolGN.',
+          mbError, MB_OK
+        );
+      end;
+    end
+    else
+    begin
+      MsgBox(
+        'Aucune licence sélectionnée.' + #13#10 +
+        'MySchoolGN continuera avec l''essai gratuit de 30 jours.',
+        mbInformation, MB_OK
+      );
+    end;
+  end;
+end;
+
 // ── Adapter les messages selon le mode (installation / mise à jour) ──────────
 procedure CurPageChanged(CurPageID: Integer);
 var
@@ -405,6 +460,10 @@ begin
       RestoreUserData();
       Log('Restauration terminée. Mise à jour réussie.');
     end;
+    if not IsUpdate then
+    begin
+      ConfigureLicenseAfterInstall();
+    end;
   end;
 end;
 
@@ -468,9 +527,9 @@ begin
               MemoTasksInfo + NewLine + NewLine +
               '─────────────────────────────────────────' + NewLine +
               'ACTIVATION DE LICENCE' + NewLine +
-              'Une période d''essai de 30 jours démarre automatiquement.' + NewLine +
-              'Pour activer votre licence permanente, notez votre ID Machine' + NewLine +
-              'et contactez GS Hadja Kanfing Dian.' + NewLine +
+              'Pendant l''installation, MySchoolGN demandera si vous avez' + NewLine +
+              'une licence annuelle. Si oui, elle sera ajoutée immédiatement.' + NewLine +
+              'Sinon, l''essai gratuit de 30 jours démarre automatiquement.' + NewLine +
               '─────────────────────────────────────────';
   end;
 end;

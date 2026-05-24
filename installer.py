@@ -16,7 +16,7 @@ import sys
 import shutil
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, filedialog, messagebox
 import winreg
 import ctypes
 from pathlib import Path
@@ -142,7 +142,7 @@ def get_startmenu() -> Path:
 
 
 # ─── Logique d'installation / mise à jour ─────────────────────────────────────
-def do_install(log_func, progress_func, done_func):
+def do_install(log_func, progress_func, done_func, license_source=None):
     try:
         if IS_UPDATE:
             # ── MODE MISE À JOUR ──────────────────────────────────────────────
@@ -303,6 +303,18 @@ def do_install(log_func, progress_func, done_func):
                 "pause\n",
                 encoding="utf-8"
             )
+
+            if license_source:
+                log_func("Activation de la licence fournie ...")
+                try:
+                    shutil.copy2(license_source, INSTALL_DIR / "license.dat")
+                    shutil.copy2(license_source, INSTALL_DIR / Path(license_source).name)
+                    log_func("  Licence installee avec succes.")
+                except Exception as e:
+                    log_func(f"  [AVERT] Licence non installee : {e}")
+            else:
+                log_func("  Aucune licence fournie : essai gratuit de 30 jours au premier lancement.")
+
             progress_func(100)
             log_func("\n✓ Installation terminée avec succès !")
             log_func(f"  Dossier : {INSTALL_DIR}")
@@ -486,11 +498,29 @@ class InstallerApp(tk.Tk):
         self.update_idletasks()
 
     def _start_install(self):
+        license_source = None
         if IS_UPDATE:
             action_text = "Mise à jour..."
             status_text = "Mise à jour en cours, veuillez patienter..."
             log_start   = "Démarrage de la mise à jour..."
         else:
+            has_license = messagebox.askyesno(
+                "Licence MySchoolGN",
+                "Avez-vous deja une licence annuelle MySchoolGN ?\n\n"
+                "Oui : selectionnez votre fichier .lic pour l'ajouter pendant l'installation.\n"
+                "Non : l'installation continuera avec la version d'essai gratuite de 30 jours."
+            )
+            if has_license:
+                license_source = filedialog.askopenfilename(
+                    title="Selectionner le fichier de licence annuelle",
+                    filetypes=[("Licence MySchoolGN", "*.lic"), ("Tous les fichiers", "*.*")]
+                )
+                if not license_source:
+                    messagebox.showinfo(
+                        "Licence non selectionnee",
+                        "Aucun fichier de licence n'a ete selectionne.\n"
+                        "L'installation continuera avec l'essai gratuit de 30 jours."
+                    )
             action_text = "Installation..."
             status_text = "Installation en cours, veuillez patienter..."
             log_start   = "Démarrage de l'installation..."
@@ -505,7 +535,7 @@ class InstallerApp(tk.Tk):
 
         t = threading.Thread(
             target=do_install,
-            args=(self._log, self._set_progress, self._on_done),
+            args=(self._log, self._set_progress, self._on_done, license_source),
             daemon=True
         )
         t.start()

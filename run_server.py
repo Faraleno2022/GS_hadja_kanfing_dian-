@@ -109,10 +109,11 @@ os.environ['MYSCHOOL_BASE_DIR'] = BASE_DIR
 
 
 # ─── Fenêtre d'activation de licence (tkinter) ────────────────────────────────
-def show_activation_window(mid: str, trial_days_left: int = 0) -> bool:
+def show_activation_window(mid: str, trial_days_left: int = 0, first_trial_prompt: bool = False) -> bool:
     """
     Affiche une fenêtre graphique d'activation de licence.
     - Si trial_days_left > 0 : le bouton "Continuer l'essai" est affiché.
+    - Si first_trial_prompt=True : demande si l'utilisateur a deja une licence.
     - Si trial_days_left <= 0 : l'utilisateur DOIT activer pour continuer.
     Retourne True si l'application peut démarrer, False si l'utilisateur quitte.
     """
@@ -131,7 +132,7 @@ def show_activation_window(mid: str, trial_days_left: int = 0) -> bool:
     root.configure(bg='#ecf0f1')
 
     # ── Dimensions et centrage ──
-    W, H = 540, 460
+    W, H = 540, 490 if first_trial_prompt else 460
     root.geometry(f"{W}x{H}")
     root.update_idletasks()
     sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -156,7 +157,12 @@ def show_activation_window(mid: str, trial_days_left: int = 0) -> bool:
     body.pack(fill='both', expand=True)
 
     # Message de statut
-    if trial_days_left <= 0:
+    if first_trial_prompt and trial_days_left > 0:
+        status_txt = ("Avez-vous deja une licence annuelle MySchoolGN ?\n"
+                      "Si oui, cliquez sur Parcourir puis Activer la Licence.\n"
+                      "Sinon, continuez avec la version d'essai gratuite de 30 jours.")
+        status_col = '#1a5276'
+    elif trial_days_left <= 0:
         status_txt = ("⚠  Votre période d'essai de 30 jours est expirée.\n"
                       "Veuillez activer votre licence pour continuer.")
         status_col = '#c0392b'
@@ -272,7 +278,7 @@ def show_activation_window(mid: str, trial_days_left: int = 0) -> bool:
             result[0] = True
             root.destroy()
         tk.Button(btn_frm,
-                  text=f"   Continuer l'essai ({trial_days_left}j)   ",
+                  text=f"   Continuer avec l'essai ({trial_days_left}j)   ",
                   command=_continue_trial,
                   font=('Arial', 10), bg='#e67e22', fg='white',
                   relief='flat', padx=10, pady=8, cursor='hand2').pack(
@@ -433,7 +439,11 @@ def check_license():
         # Licence valide OU essai encore actif
         if status.get('trial'):
             days_left = status.get('days_left', 0)
-            if days_left <= 7:
+            if status.get('trial_started'):
+                print("  [ESSAI GRATUIT] Premiere utilisation detectee.")
+                print("  [ESSAI GRATUIT] L'utilisateur peut activer une licence annuelle ou continuer l'essai.")
+                show_activation_window(mid, trial_days_left=days_left, first_trial_prompt=True)
+            elif days_left <= 7:
                 print(f"  [ESSAI] Il vous reste {days_left} jour(s) d'essai.")
                 print(f"  [ESSAI] Contactez GS Hadja Kanfing Dian pour acheter une licence.")
                 show_activation_window(mid, trial_days_left=days_left)
