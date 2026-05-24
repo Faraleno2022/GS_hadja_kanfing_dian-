@@ -184,16 +184,19 @@ class CalculateurBulletinIntelligent:
         
         # Calculer le rang en utilisant la source centralisée des rangs
         # ET utiliser la moyenne de cette même source pour garantir la cohérence
-        # entre bulletin, classement et satisfécit
+        # entre bulletin, classement et satisfécit.
         rang = None
-        from .utils_rangs import get_rang_eleve
-        rang_info = get_rang_eleve(self.classe_note, self.periode, self.eleve.id)
+        from .utils_rangs import calculer_rangs_classe_periode
+        rangs_dict = calculer_rangs_classe_periode(self.classe_note, self.periode, use_cache=False)
+        rang_info = rangs_dict.get(self.eleve.id)
         if rang_info:
             rang = rang_info['rang']
             # Utiliser la moyenne de la source centralisée pour cohérence
             moyenne_source = float(rang_info['moyenne'])
             if moyenne_source is not None:
                 moyenne_generale = moyenne_source
+                total_coefficients = result_centralized.get('total_coefficients') or 0
+                result_centralized['total_points'] = round(moyenne_source * float(total_coefficients), 2) if total_coefficients else result_centralized.get('total_points')
         
         return {
             'eleve': f"{self.eleve.prenom} {self.eleve.nom}",
@@ -204,6 +207,8 @@ class CalculateurBulletinIntelligent:
             'section': self.section,
             'matieres': resultats_matieres,
             'moyenne_generale': moyenne_generale,
+            'total_points': result_centralized.get('total_points'),
+            'total_coefficients': result_centralized.get('total_coefficients'),
             'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
             'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom, self.niveau) if moyenne_generale else None,
             'rang': rang,
@@ -743,6 +748,12 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             else:
                 data.append([nom_matiere, f"{coef:.0f}", cours_str, moyenne_str, points_str])
     
+    moyenne_officielle = bulletin_data.get('moyenne_generale')
+    total_coefficients_officiel = bulletin_data.get('total_coefficients') or total_coef
+    if moyenne_officielle is not None and total_coefficients_officiel:
+        total_points = round(float(moyenne_officielle) * float(total_coefficients_officiel), 2)
+        total_coef = float(total_coefficients_officiel)
+
     # Ligne TOTAL — avec totaux de toutes les colonnes
     if system_type_indiv in ['annuel_trimestriel', 'annuel_semestriel'] and periodes_labels:
         # BULLETIN ANNUEL: Ligne total
@@ -1697,6 +1708,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     
     # ===== OPTIMISATION: Pré-calculer le classement pour tous les élèves =====
     from notes.calculs_moyennes import calculer_classement_classe, detecter_notes_mensuelles_classe
+    from notes.utils_rangs import calculer_rangs_classe_periode
     
     # Récupérer les matières de la classe (MatiereNote.classe est une FK vers ClasseNote)
     matieres = MatiereNote.objects.filter(classe=classe_note)
@@ -1705,11 +1717,14 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     detection_notes = detecter_notes_mensuelles_classe(classe_note, periode)
     has_notes_mensuelles = detection_notes['has_notes_mensuelles']
     
-    # Calculer le classement une seule fois pour toute la classe
+    # Calculer le classement officiel une seule fois pour toute la classe.
+    # C'est la même source que les exports notes_completes et resultats.
+    rangs_officiels = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
+
+    # Garder ce calcul pour obtenir les détails par matière du bulletin.
     classement_result = calculer_classement_classe(eleves, matieres, periode, system_type)
     
     # Extraire les données pré-calculées
-    rang_map = classement_result.get('rang_map', {})
     moyennes_map = classement_result.get('moyennes_par_eleve', {})
     details_map = classement_result.get('details_par_eleve', {})
     
@@ -1767,15 +1782,20 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                         matieres_enrichies.append(mat_data)
                     matieres_data = matieres_enrichies
                 
-                # Récupérer et formater le rang avec accord grammatical
-                rang_brut = rang_map.get(eleve.id, '-')
-                if rang_brut and rang_brut != '-':
-                    sexe = getattr(eleve, 'sexe', 'M')
-                    rang_formate = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                # Utiliser le rang officiel pour rester aligné avec les exports.
+                rang_info = rangs_officiels.get(eleve.id)
+                if rang_info:
+                    rang_formate = rang_info['rang']
                 else:
                     rang_formate = '-'
                 
-                moyenne_gen = details.get('moyenne_generale')
+                moyenne_gen = float(rang_info['moyenne']) if rang_info else details.get('moyenne_generale')
+                total_coefficients = details.get('total_coefficients')
+                total_points = (
+                    round(float(moyenne_gen) * float(total_coefficients), 2)
+                    if moyenne_gen is not None and total_coefficients
+                    else details.get('total_points')
+                )
                 bulletin_data = {
                     'eleve': f"{eleve.prenom} {eleve.nom}",
                     'classe': classe_note.nom,
@@ -1783,8 +1803,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                     'system_type': system_type,
                     'matieres': matieres_data,
                     'moyenne_generale': moyenne_gen,
-                    'total_points': details.get('total_points'),
-                    'total_coefficients': details.get('total_coefficients'),
+                    'total_points': total_points,
+                    'total_coefficients': total_coefficients,
                     'rang': rang_formate,
                     'mention': obtenir_mention_intelligente(moyenne_gen, niveau_scolaire),
                     'appreciation': obtenir_appreciation_intelligente(moyenne_gen, eleve.prenom, niveau_scolaire) if moyenne_gen else None,
@@ -1798,11 +1818,14 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 calculateur = CalculateurBulletinIntelligent(eleve, classe_note, periode, systeme)
                 bulletin_data = calculateur.generer_bulletin()
                 
-                # Formater le rang avec accord grammatical
-                rang_brut = rang_map.get(eleve.id, '-')
-                if rang_brut and rang_brut != '-':
-                    sexe = getattr(eleve, 'sexe', 'M')
-                    bulletin_data['rang'] = formater_rang_intelligent(rang_brut, sexe, total_eleves)
+                rang_info = rangs_officiels.get(eleve.id)
+                if rang_info:
+                    moyenne_gen = float(rang_info['moyenne'])
+                    bulletin_data['moyenne_generale'] = moyenne_gen
+                    bulletin_data['rang'] = rang_info['rang']
+                    total_coefficients = bulletin_data.get('total_coefficients')
+                    if total_coefficients:
+                        bulletin_data['total_points'] = round(moyenne_gen * float(total_coefficients), 2)
                 else:
                     bulletin_data['rang'] = '-'
                 

@@ -204,8 +204,10 @@ def _calculer_statistiques_classe(classe_note, periode):
             'nb_tres_faible': len([e for e in eleves_data if e['categorie'] == 'tres_faible']),
         }
         nb_echec = stats_globales['nb_insuffisant'] + stats_globales['nb_faible'] + stats_globales['nb_tres_faible']
+        stats_globales['nb_non_admis'] = nb_echec
+        stats_globales['nb_admis'] = stats_globales['total_eleves'] - nb_echec
         stats_globales['taux_reussite'] = round(
-            (stats_globales['total_eleves'] - nb_echec) / 
+            stats_globales['nb_admis'] /
             stats_globales['total_eleves'] * 100, 1
         )
     else:
