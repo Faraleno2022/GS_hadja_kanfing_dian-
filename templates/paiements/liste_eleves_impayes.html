@@ -157,6 +157,14 @@
                                             title="Envoyer par WhatsApp">
                                         <i class="fab fa-whatsapp"></i>
                                     </button>
+                                    <form method="post" action="{% url 'paiements:relancer_eleve' item.eleve.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="canal" value="WHATSAPP">
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit" class="btn btn-outline-warning" title="Journaliser une relance WhatsApp" onclick="return confirm('Créer une relance WhatsApp dans l’historique pour cet élève ?');">
+                                            <i class="fas fa-bell"></i>
+                                        </button>
+                                    </form>
                                     <a href="{% url 'paiements:ajouter_paiement_eleve' item.eleve.id %}" 
                                        class="btn btn-primary" title="Enregistrer paiement">
                                         <i class="fas fa-plus"></i>
@@ -326,11 +334,23 @@ function afficherApercuWhatsAppNoteRappel(data) {
                         <p><strong>Élève:</strong> ${data.eleve_nom}</p>
                         <p><strong>Classe:</strong> ${data.classe}</p>
                         <hr>
-                        <p><strong>Frais de scolarité:</strong> ${data.montant_total} GNF</p>
-                        <p><strong>Montant payé:</strong> <span class="text-success">${data.montant_paye} GNF</span></p>
+                        <p><strong>Total dû:</strong> ${data.montant_total} GNF</p>
+                        <p><strong>Paiements saisis:</strong> <span class="text-success">${data.montant_paye} GNF</span></p>
+                        <p><strong>Remises/Bourses:</strong> <span class="text-info">${data.remises_total || '0'} GNF</span></p>
+                        <p><strong>Total couvert:</strong> <span class="text-primary">${data.montant_couvert || data.montant_paye} GNF</span></p>
+                        <p><strong>Retard réel:</strong> <span class="badge bg-warning text-dark">${data.retard_reel || '0'} GNF</span></p>
                         <p class="mb-0"><strong>Reste à payer:</strong> <span class="badge bg-danger fs-6">${data.reste_a_payer} GNF</span></p>
                     </div>
                 </div>
+
+                ${data.prochain_libelle ? `
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-calendar-day me-2"></i>
+                    <strong>Prochain paiement:</strong><br>
+                    ${data.prochain_libelle} - ${data.prochain_montant} GNF
+                    ${data.prochaine_echeance ? `<br><small>Échéance: ${data.prochaine_echeance}</small>` : ''}
+                </div>
+                ` : ''}
                 
                 ${data.pdf_url ? `
                 <div class="alert alert-success mt-3">

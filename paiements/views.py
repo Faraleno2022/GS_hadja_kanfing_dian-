@@ -10,6 +10,7 @@ from django.db.models import Q, F, Sum, Count, Value, DecimalField, ExpressionWr
 from django.db.models.functions import Coalesce, Greatest, Least
 from django.http import JsonResponse, HttpResponse, Http404
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from decimal import Decimal
@@ -2120,8 +2121,9 @@ def relancer_eleve(request, eleve_id:int):
     eleve_qs = Eleve.objects.select_related('classe')
     eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
     eleve = get_object_or_404(eleve_qs, pk=eleve_id)
-    canal = (request.GET.get('canal') or 'WHATSAPP').upper()
-    message_txt = (request.GET.get('message') or '').strip()
+    canal = (request.POST.get('canal') or request.GET.get('canal') or 'WHATSAPP').upper()
+    message_txt = (request.POST.get('message') or request.GET.get('message') or '').strip()
+    next_url = (request.POST.get('next') or request.GET.get('next') or '').strip()
 
     # Solde estimé depuis l'échéancier
     try:
@@ -2131,8 +2133,18 @@ def relancer_eleve(request, eleve_id:int):
         solde_estime = 0
 
     if not message_txt:
+        classe_nom = eleve.classe.nom if eleve.classe else ''
+        try:
+            echeancier = getattr(eleve, 'echeancier', None)
+            solde_txt = f"{int(echeancier.solde_restant or 0):,}".replace(",", " ") if echeancier else "0"
+        except Exception:
+            solde_txt = "0"
         message_txt = (
-            f"Merci de régulariser les frais de scolarité. Élève: {eleve.nom_complet} ({eleve.matricule})."
+            f"Bonjour Cher Parent,\n\n"
+            f"Nous vous rappelons que la situation financière de {eleve.nom_complet} "
+            f"({eleve.matricule}) en classe {classe_nom} présente un reste à payer de {solde_txt} GNF.\n"
+            "Merci de bien vouloir régulariser ou contacter l'administration.\n\n"
+            "La Direction"
         )
 
     with transaction.atomic():
@@ -2151,11 +2163,9 @@ def relancer_eleve(request, eleve_id:int):
         logging.getLogger(__name__).exception("Erreur lors de l'envoi de la relance Twilio")
         messages.warning(request, "Relance créée mais l'envoi de la notification a échoué.")
 
-    # Redirection: détail élève si dispo, sinon liste paiements
-    try:
-        return redirect('eleves:detail', eleve_id=eleve.id)
-    except Exception:
-        return redirect('paiements:liste_paiements')
+    if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        return redirect(next_url)
+    return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
 @login_required
 @require_POST

@@ -11,8 +11,9 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.db.models import Sum
+from django.utils import timezone
 
-from .models import Paiement
+from .models import Paiement, PaiementRemise
 from eleves.models import Eleve
 
 logger = logging.getLogger(__name__)
@@ -196,26 +197,72 @@ class WhatsAppNoteRappelSender:
         return clean_number
     
     def _calculer_solde_eleve(self, eleve):
-        """Calcule le solde de l'élève (montant dû - montant payé)"""
-        from .models import Paiement
-        
-        # Récupérer les frais de scolarité de la classe
-        montant_total = Decimal('0')
-        if eleve.classe and hasattr(eleve.classe, 'frais_scolarite'):
-            montant_total = eleve.classe.frais_scolarite or Decimal('0')
-        
-        # Calculer le total payé (paiements validés)
-        montant_paye = Paiement.objects.filter(
-            eleve=eleve,
-            statut='VALIDE'
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
-        
-        reste_a_payer = montant_total - montant_paye
-        
+        """Calcule la situation financière réelle depuis l'échéancier."""
+        today = timezone.localdate()
+
+        try:
+            echeancier = eleve.echeancier
+        except Exception:
+            echeancier = None
+
+        if not echeancier:
+            montant_paye = Paiement.objects.filter(
+                eleve=eleve,
+                statut='VALIDE'
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+            return {
+                'montant_total': Decimal('0'),
+                'montant_paye': montant_paye,
+                'remises_total': Decimal('0'),
+                'montant_couvert': montant_paye,
+                'reste_a_payer': Decimal('0'),
+                'retard_reel': Decimal('0'),
+                'prochain_libelle': '',
+                'prochain_montant': Decimal('0'),
+                'prochaine_echeance': None,
+            }
+
+        postes = [
+            ("Frais d'inscription", echeancier.frais_inscription_du, echeancier.frais_inscription_paye, echeancier.date_echeance_inscription),
+            ("1ère tranche", echeancier.tranche_1_due, echeancier.tranche_1_payee, echeancier.date_echeance_tranche_1),
+            ("2ème tranche", echeancier.tranche_2_due, echeancier.tranche_2_payee, echeancier.date_echeance_tranche_2),
+            ("3ème tranche", echeancier.tranche_3_due, echeancier.tranche_3_payee, echeancier.date_echeance_tranche_3),
+        ]
+        montant_total = sum((du or Decimal('0')) for _libelle, du, _paye, _date in postes)
+        montant_paye = sum((paye or Decimal('0')) for _libelle, _du, paye, _date in postes)
+        remises_total = PaiementRemise.objects.filter(
+            paiement__eleve=eleve,
+            paiement__statut='VALIDE'
+        ).aggregate(total=Sum('montant_remise'))['total'] or Decimal('0')
+
+        montant_couvert = min(montant_total, montant_paye + remises_total)
+        reste_a_payer = max(montant_total - montant_couvert, Decimal('0'))
+        exigible = sum((du or Decimal('0')) for _libelle, du, _paye, echeance in postes if echeance and echeance <= today)
+        retard_reel = max(exigible - montant_couvert, Decimal('0'))
+
+        prochains = []
+        for libelle, du, paye, echeance in postes:
+            reste_poste = max((du or Decimal('0')) - (paye or Decimal('0')), Decimal('0'))
+            if reste_poste > 0:
+                prochains.append({
+                    'libelle': libelle,
+                    'montant': reste_poste,
+                    'echeance': echeance,
+                    'en_retard': bool(echeance and echeance < today),
+                })
+        prochains.sort(key=lambda item: (not item['en_retard'], item['echeance'] or today))
+        prochain = prochains[0] if prochains else None
+
         return {
             'montant_total': montant_total,
             'montant_paye': montant_paye,
-            'reste_a_payer': max(reste_a_payer, Decimal('0'))
+            'remises_total': remises_total,
+            'montant_couvert': montant_couvert,
+            'reste_a_payer': reste_a_payer,
+            'retard_reel': retard_reel,
+            'prochain_libelle': prochain['libelle'] if prochain else '',
+            'prochain_montant': prochain['montant'] if prochain else Decimal('0'),
+            'prochaine_echeance': prochain['echeance'] if prochain else None,
         }
     
     def _generer_message_note_rappel(self, eleve, solde_info, pdf_url=None):
@@ -228,7 +275,12 @@ class WhatsAppNoteRappelSender:
         # Formater les montants
         montant_total = f"{solde_info['montant_total']:,.0f}".replace(",", " ")
         montant_paye = f"{solde_info['montant_paye']:,.0f}".replace(",", " ")
+        remises_total = f"{solde_info.get('remises_total', 0):,.0f}".replace(",", " ")
+        montant_couvert = f"{solde_info.get('montant_couvert', solde_info['montant_paye']):,.0f}".replace(",", " ")
         reste_a_payer = f"{solde_info['reste_a_payer']:,.0f}".replace(",", " ")
+        retard_reel = f"{solde_info.get('retard_reel', 0):,.0f}".replace(",", " ")
+        prochaine_echeance = solde_info.get('prochaine_echeance')
+        prochaine_echeance_txt = prochaine_echeance.strftime('%d/%m/%Y') if prochaine_echeance else 'Non définie'
         
         message = f"""🏫 *{nom_ecole} - Note de Rappel de Paiement*
 
@@ -238,9 +290,23 @@ Nous vous rappelons que le règlement des frais de scolarité de votre enfant *{
 
 📋 *Situation financière:*
 • Classe: {eleve.classe.nom if eleve.classe else 'N/A'}
-• Frais de scolarité: *{montant_total} GNF*
-• Montant payé: *{montant_paye} GNF*
+• Total dû: *{montant_total} GNF*
+• Paiements saisis: *{montant_paye} GNF*
+• Remises/Bourses: *{remises_total} GNF*
+• Total couvert: *{montant_couvert} GNF*
 • ⚠️ Reste à payer: *{reste_a_payer} GNF*"""
+
+        if solde_info.get('retard_reel', Decimal('0')) > 0:
+            message += f"""
+• 🚨 Montant en retard: *{retard_reel} GNF*"""
+
+        if solde_info.get('prochain_libelle'):
+            prochain_montant = f"{solde_info.get('prochain_montant', 0):,.0f}".replace(",", " ")
+            message += f"""
+
+📅 *Prochain paiement attendu:*
+• {solde_info['prochain_libelle']}: *{prochain_montant} GNF*
+• Échéance: {prochaine_echeance_txt}"""
 
         if pdf_url:
             message += f"""
@@ -314,7 +380,12 @@ def apercu_message_whatsapp_note_rappel(request):
         # Formater les montants pour l'affichage
         montant_total = f"{solde_info['montant_total']:,.0f}".replace(",", " ")
         montant_paye = f"{solde_info['montant_paye']:,.0f}".replace(",", " ")
+        remises_total = f"{solde_info.get('remises_total', 0):,.0f}".replace(",", " ")
+        montant_couvert = f"{solde_info.get('montant_couvert', solde_info['montant_paye']):,.0f}".replace(",", " ")
         reste_a_payer = f"{solde_info['reste_a_payer']:,.0f}".replace(",", " ")
+        retard_reel = f"{solde_info.get('retard_reel', 0):,.0f}".replace(",", " ")
+        prochain_montant = f"{solde_info.get('prochain_montant', 0):,.0f}".replace(",", " ")
+        prochaine_echeance = solde_info.get('prochaine_echeance')
         
         return JsonResponse({
             'success': True,
@@ -327,7 +398,13 @@ def apercu_message_whatsapp_note_rappel(request):
             'classe': eleve.classe.nom if eleve.classe else 'N/A',
             'montant_total': montant_total,
             'montant_paye': montant_paye,
-            'reste_a_payer': reste_a_payer
+            'remises_total': remises_total,
+            'montant_couvert': montant_couvert,
+            'reste_a_payer': reste_a_payer,
+            'retard_reel': retard_reel,
+            'prochain_libelle': solde_info.get('prochain_libelle', ''),
+            'prochain_montant': prochain_montant,
+            'prochaine_echeance': prochaine_echeance.strftime('%d/%m/%Y') if prochaine_echeance else '',
         })
         
     except Exception as e:
