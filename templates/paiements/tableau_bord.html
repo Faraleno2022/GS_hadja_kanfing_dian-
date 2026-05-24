@@ -87,6 +87,31 @@
     .payment-item.validated { border-left-color: #28a745; }
     .payment-item.pending { border-left-color: #ffc107; }
     .payment-item.rejected { border-left-color: #dc3545; }
+
+    .director-card {
+        background: #ffffff;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 18px;
+        height: 100%;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .director-label {
+        color: #6c757d;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: .06rem;
+        margin-bottom: 6px;
+    }
+    .director-value {
+        font-size: 1.35rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .risk-table td,
+    .risk-table th {
+        vertical-align: middle;
+    }
 </style>
 {% endblock %}
 
@@ -119,6 +144,124 @@
                 <div class="stat-number">{{ stats.paiements_en_attente|intcomma }}</div>
                 <div class="stat-label">En attente</div>
                 <small class="text-muted">À valider</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vue directeur : recouvrement et prévisions -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-header bg-primary text-white d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+            <div>
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Tableau de bord directeur
+                </h5>
+                <small>Recouvrement global{% if finance_direction.annee_active %} - année {{ finance_direction.annee_active }}{% endif %}</small>
+            </div>
+            <a href="{% url 'paiements:export_recap_par_classe_excel' %}" class="btn btn-light btn-sm mt-2 mt-md-0">
+                <i class="fas fa-file-excel me-1"></i>Exporter par classe
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6 col-xl-3">
+                    <div class="director-card">
+                        <div class="director-label">Total attendu</div>
+                        <div class="director-value text-primary">{{ finance_direction.total_du|floatformat:0|intcomma }} GNF</div>
+                        <small class="text-muted">{{ finance_direction.eleves_suivis|intcomma }} élèves suivis</small>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="director-card">
+                        <div class="director-label">Déjà encaissé</div>
+                        <div class="director-value text-success">{{ finance_direction.total_encaisse|floatformat:0|intcomma }} GNF</div>
+                        <small class="text-muted">{{ finance_direction.taux_recouvrement }}% de recouvrement</small>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="director-card">
+                        <div class="director-label">Reste à encaisser</div>
+                        <div class="director-value text-danger">{{ finance_direction.reste_a_encaisser|floatformat:0|intcomma }} GNF</div>
+                        <small class="text-muted">{{ finance_direction.eleves_non_soldes|intcomma }} élèves non soldés</small>
+                    </div>
+                </div>
+                <div class="col-md-6 col-xl-3">
+                    <div class="director-card">
+                        <div class="director-label">Prévision 30 jours</div>
+                        <div class="director-value text-warning">{{ finance_direction.prevision_30j|floatformat:0|intcomma }} GNF</div>
+                        <small class="text-muted">Échéances proches non réglées</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="fw-semibold">Progression du recouvrement</span>
+                    <span>{{ finance_direction.taux_recouvrement }}%</span>
+                </div>
+                <div class="progress" style="height: 12px;">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ finance_direction.taux_recouvrement_bar }}%;" aria-valuenow="{{ finance_direction.taux_recouvrement_bar }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <h6 class="text-uppercase text-muted mb-3">Classes à surveiller</h6>
+                    {% if classes_a_risque %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover risk-table">
+                                <thead>
+                                    <tr>
+                                        <th>Classe</th>
+                                        <th>Élèves</th>
+                                        <th>Reste</th>
+                                        <th>Retard</th>
+                                        <th>Recouvrement</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for classe in classes_a_risque %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ classe.classe_nom }}</strong>
+                                            {% if classe.ecole_nom %}<br><small class="text-muted">{{ classe.ecole_nom }}</small>{% endif %}
+                                        </td>
+                                        <td>{{ classe.eleves_count|intcomma }}</td>
+                                        <td>{{ classe.reste|floatformat:0|intcomma }} GNF</td>
+                                        <td>
+                                            {% if classe.retard > 0 %}
+                                                <span class="badge bg-danger">{{ classe.retard|floatformat:0|intcomma }} GNF</span>
+                                            {% else %}
+                                                <span class="badge bg-success">À jour</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ classe.taux }}%</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">Aucune classe à risque détectée pour le moment.</p>
+                    {% endif %}
+                </div>
+                <div class="col-lg-4">
+                    <h6 class="text-uppercase text-muted mb-3">Modes d'encaissement du mois</h6>
+                    {% if modes_encaissement %}
+                        <div class="list-group">
+                            {% for mode in modes_encaissement %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ mode.mode_paiement__nom|default:"Non précisé" }}</strong>
+                                    <br><small class="text-muted">{{ mode.nombre|intcomma }} paiement(s)</small>
+                                </div>
+                                <span class="fw-semibold">{{ mode.total|floatformat:0|intcomma }} GNF</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">Aucun encaissement validé ce mois.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

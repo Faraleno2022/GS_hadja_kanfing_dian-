@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from decimal import Decimal
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO
 import os
 import logging
@@ -830,11 +830,156 @@ def tableau_bord_paiements(request):
     )
     eleves_en_retard = filter_by_user_school(eleves_en_retard, request.user, 'eleve__classe__ecole').order_by('-retard_db')[:10]
 
+    ecole_for_annee = user_school(request.user) if not user_is_admin(request.user) else None
+    annee_active = get_annee_active(request, ecole_for_annee) if ecole_for_annee else None
+    echeanciers_direction_qs = (
+        EcheancierPaiement.objects
+        .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+        .annotate(
+            remises_valides=Coalesce(
+                Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            )
+        )
+    )
+    echeanciers_direction_qs = filter_by_user_school(echeanciers_direction_qs, request.user, 'eleve__classe__ecole')
+    if annee_active:
+        echeanciers_direction_qs = echeanciers_direction_qs.filter(eleve__classe__annee_scolaire=annee_active)
+
+    finance_direction = {
+        'annee_active': annee_active or '',
+        'eleves_suivis': 0,
+        'eleves_soldes': 0,
+        'eleves_non_soldes': 0,
+        'total_du': 0,
+        'total_encaisse': 0,
+        'reste_a_encaisser': 0,
+        'retard_total': 0,
+        'prevision_30j': 0,
+        'taux_recouvrement': 0,
+        'taux_recouvrement_bar': 0,
+    }
+    classes_map = {}
+    date_limite_prevision = today + timedelta(days=30)
+
+    def _component_values(echeancier):
+        return [
+            (
+                int(echeancier.frais_inscription_du or 0),
+                int(echeancier.frais_inscription_paye or 0),
+                echeancier.date_echeance_inscription,
+            ),
+            (
+                int(echeancier.tranche_1_due or 0),
+                int(echeancier.tranche_1_payee or 0),
+                echeancier.date_echeance_tranche_1,
+            ),
+            (
+                int(echeancier.tranche_2_due or 0),
+                int(echeancier.tranche_2_payee or 0),
+                echeancier.date_echeance_tranche_2,
+            ),
+            (
+                int(echeancier.tranche_3_due or 0),
+                int(echeancier.tranche_3_payee or 0),
+                echeancier.date_echeance_tranche_3,
+            ),
+        ]
+
+    for echeancier in echeanciers_direction_qs:
+        remises = int(getattr(echeancier, 'remises_valides', 0) or 0)
+        components = _component_values(echeancier)
+        total_du = sum(due for due, _paye, _echeance in components)
+        total_paye_brut = sum(paye for _due, paye, _echeance in components) + remises
+        total_paye = min(total_du, total_paye_brut)
+        reste = max(total_du - total_paye, 0)
+
+        exigible = sum(due for due, _paye, echeance in components if echeance and echeance <= today)
+        retard = max(exigible - total_paye, 0)
+        prevision = sum(
+            max(due - paye, 0)
+            for due, paye, echeance in components
+            if echeance and today < echeance <= date_limite_prevision
+        )
+
+        finance_direction['eleves_suivis'] += 1
+        finance_direction['total_du'] += total_du
+        finance_direction['total_encaisse'] += total_paye
+        finance_direction['reste_a_encaisser'] += reste
+        finance_direction['retard_total'] += retard
+        finance_direction['prevision_30j'] += prevision
+        if total_du > 0 and reste <= 0:
+            finance_direction['eleves_soldes'] += 1
+        elif total_du > 0:
+            finance_direction['eleves_non_soldes'] += 1
+
+        classe = echeancier.eleve.classe
+        classe_id = classe.id if classe else 0
+        classe_nom = classe.nom if classe else 'Sans classe'
+        ecole_nom = classe.ecole.nom if classe and classe.ecole else ''
+        row = classes_map.setdefault(classe_id, {
+            'classe_id': classe_id,
+            'classe_nom': classe_nom,
+            'ecole_nom': ecole_nom,
+            'eleves_count': 0,
+            'total_du': 0,
+            'total_encaisse': 0,
+            'reste': 0,
+            'retard': 0,
+            'taux': 0,
+        })
+        row['eleves_count'] += 1
+        row['total_du'] += total_du
+        row['total_encaisse'] += total_paye
+        row['reste'] += reste
+        row['retard'] += retard
+
+    if finance_direction['total_du'] > 0:
+        finance_direction['taux_recouvrement'] = round(
+            finance_direction['total_encaisse'] / finance_direction['total_du'] * 100,
+            1,
+        )
+        finance_direction['taux_recouvrement_bar'] = min(
+            100,
+            max(0, int(round(finance_direction['taux_recouvrement']))),
+        )
+
+    classes_a_risque = []
+    for row in classes_map.values():
+        if row['total_du'] > 0:
+            row['taux'] = round(row['total_encaisse'] / row['total_du'] * 100, 1)
+        classes_a_risque.append(row)
+    classes_a_risque = sorted(classes_a_risque, key=lambda item: (item['retard'], item['reste']), reverse=True)[:8]
+
+    modes_encaissement_qs = Paiement.objects.filter(
+        statut='VALIDE',
+        date_paiement__gte=today.replace(day=1),
+        date_paiement__lte=today,
+    )
+    modes_encaissement_qs = filter_by_user_school(modes_encaissement_qs, request.user, 'eleve__classe__ecole')
+    modes_encaissement = (
+        modes_encaissement_qs
+        .values('mode_paiement__nom')
+        .annotate(
+            total=Coalesce(
+                Sum('montant'),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+            nombre=Count('id'),
+        )
+        .order_by('-total')[:6]
+    )
+
     context = {
         'titre_page': 'Tableau de bord des paiements',
         'stats': stats,
         'paiements_recents': paiements_recents,
         'eleves_en_retard': eleves_en_retard,
+        'finance_direction': finance_direction,
+        'classes_a_risque': classes_a_risque,
+        'modes_encaissement': modes_encaissement,
     }
     return render(request, 'paiements/tableau_bord.html', context)
 
