@@ -4748,6 +4748,7 @@ def statistiques(request):
         if eleves.exists() and matieres.exists():
             # ── Source unique de calcul : même fonction que le bulletin ──────────
             from .calculs_moyennes import calculer_moyennes_classe_optimise
+            from .utils_rangs import calculer_rangs_classe_periode
 
             if 'TRIMESTRE' in (periode or ''):
                 system_type = 'trimestre'
@@ -4756,6 +4757,7 @@ def statistiques(request):
             else:
                 system_type = 'mensuel'
 
+            rangs_officiels = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
             resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
 
             seuil_suivre   = seuil_reussite + (1 if est_primaire else 2)
@@ -4767,18 +4769,12 @@ def statistiques(request):
                     nb_non_evalues += 1
                     continue
 
-                moyenne_generale = eleve_result.get('moyenne_generale')
-                # Un élève sans aucune note aura moyenne 0.0 (toutes matières = 0)
-                # On considère non-évalué si tous les détails ont moy=0 ET aucune note saisie
-                has_notes = any(
-                    d['moyenne_continue'] is not None or d['note_composition'] is not None
-                    for d in eleve_result.get('details_matieres', [])
-                )
-
-                if not has_notes or moyenne_generale is None:
+                rang_info = rangs_officiels.get(eleve.id)
+                if not rang_info:
                     nb_non_evalues += 1
                     continue
 
+                moyenne_generale = float(rang_info.get('moyenne') or 0)
                 nb_evalues += 1
                 eleve_data = {
                     'eleve': eleve,

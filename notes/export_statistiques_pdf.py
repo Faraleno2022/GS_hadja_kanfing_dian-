@@ -122,10 +122,15 @@ def _calculer_statistiques_classe(classe_note, periode):
         eleve_result = resultats.get(eleve.id, {})
 
         rang_info = rangs_officiels.get(eleve.id)
-        if not rang_info:
-            continue
-
-        moyenne_generale = float(rang_info.get('moyenne') or 0)
+        if rang_info:
+            moyenne_generale = float(rang_info.get('moyenne') or 0)
+            rang = rang_info.get('rang', '-')
+            rang_num = rang_info.get('rang_num', 9999)
+        else:
+            # Meme fallback que l'export "Resultats de classe".
+            moyenne_generale = 0.0
+            rang = '-'
+            rang_num = 9999
 
         # Construire notes_par_matiere et alimenter stats_matieres
         notes_par_matiere = {}
@@ -164,8 +169,8 @@ def _calculer_statistiques_classe(classe_note, periode):
             'moyenne': moyenne_generale,
             'categorie': categorie,
             'mention': mention,
-            'rang': rang_info.get('rang', '-'),
-            'rang_num': rang_info.get('rang_num', 9999),
+            'rang': rang,
+            'rang_num': rang_num,
             'notes_matieres': notes_par_matiere,
             'matieres_sans_notes': matieres_sans_notes,
             'nb_matieres_sans_notes': len(matieres_sans_notes)
