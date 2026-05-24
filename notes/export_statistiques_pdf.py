@@ -63,6 +63,7 @@ def _calculer_statistiques_classe(classe_note, periode):
     Utilise la même source de calcul que le bulletin de notes (calculs_moyennes.py)
     pour garantir l'identité des moyennes sur tous les documents."""
     from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyennes_classe_optimise
+    from .utils_rangs import calculer_rangs_classe_periode
 
     # Récupérer la classe élève correspondante
     classe_eleve = ClasseEleve.objects.filter(
@@ -101,7 +102,9 @@ def _calculer_statistiques_classe(classe_note, periode):
     else:
         system_type = 'mensuel'
 
-    # ── Source unique : même fonction que le bulletin ─────────────────────────
+    # Source officielle: meme moyenne/rang que le tableau des resultats.
+    rangs_officiels = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
+    # Details par matiere uniquement pour les analyses secondaires.
     resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
 
     # Initialiser les stats par matière
@@ -116,13 +119,13 @@ def _calculer_statistiques_classe(classe_note, periode):
     # Construire eleves_data depuis les résultats canoniques
     eleves_data = []
     for eleve in eleves:
-        eleve_result = resultats.get(eleve.id)
-        if not eleve_result:
+        eleve_result = resultats.get(eleve.id, {})
+
+        rang_info = rangs_officiels.get(eleve.id)
+        if not rang_info:
             continue
 
-        moyenne_generale = eleve_result.get('moyenne_generale')
-        if moyenne_generale is None:
-            continue
+        moyenne_generale = float(rang_info.get('moyenne') or 0)
 
         # Construire notes_par_matiere et alimenter stats_matieres
         notes_par_matiere = {}
@@ -161,17 +164,19 @@ def _calculer_statistiques_classe(classe_note, periode):
             'moyenne': moyenne_generale,
             'categorie': categorie,
             'mention': mention,
+            'rang': rang_info.get('rang', '-'),
+            'rang_num': rang_info.get('rang_num', 9999),
             'notes_matieres': notes_par_matiere,
             'matieres_sans_notes': matieres_sans_notes,
             'nb_matieres_sans_notes': len(matieres_sans_notes)
         })
     
-    # Trier par moyenne décroissante
-    eleves_data.sort(key=lambda x: x['moyenne'], reverse=True)
+    # Trier avec les rangs officiels pour garder le meme ordre que le classement.
+    eleves_data.sort(key=lambda x: x.get('rang_num', 9999))
     
-    # Attribuer les rangs
+    # Conserver le rang officiel; fallback numerique uniquement si absent.
     for i, data in enumerate(eleves_data):
-        data['rang'] = i + 1
+        data['rang'] = data.get('rang', i + 1)
     
     # Calculer les statistiques par matière
     stats_matieres_final = []
