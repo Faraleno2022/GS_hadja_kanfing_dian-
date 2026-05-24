@@ -107,7 +107,63 @@
         </div>
     </div>
 
-    <!-- Sélection de classe -->
+    <!-- Filtre rapide -->
+    <div class="selection-card">
+        <h4 class="mb-3"><i class="fas fa-filter me-2"></i>Filtrer les statistiques</h4>
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-lg-5 col-md-6">
+                <label for="classe_id" class="form-label fw-semibold">Classe</label>
+                <select name="classe_id" id="classe_id" class="form-select" required>
+                    <option value="">Selectionner une classe</option>
+                    {% for classe in classes %}
+                    <option value="{{ classe.id }}" {% if classe_selectionnee and classe.id == classe_selectionnee.id %}selected{% endif %}>
+                        {{ classe.nom }} - {{ classe.get_niveau_display }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-lg-4 col-md-6">
+                <label for="periode" class="form-label fw-semibold">Periode</label>
+                <select name="periode" id="periode" class="form-select" required>
+                    <optgroup label="Par trimestre">
+                        {% for code, libelle in periodes %}
+                            {% if 'TRIMESTRE' in code %}
+                            <option value="{{ code }}" {% if periode == code %}selected{% endif %}>{{ libelle }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Par semestre">
+                        {% for code, libelle in periodes %}
+                            {% if 'SEMESTRE' in code %}
+                            <option value="{{ code }}" {% if periode == code %}selected{% endif %}>{{ libelle }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Par mois">
+                        {% for code, libelle in periodes %}
+                            {% if 'TRIMESTRE' not in code and 'SEMESTRE' not in code %}
+                            <option value="{{ code }}" {% if periode == code %}selected{% endif %}>{{ libelle }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+
+            <div class="col-lg-3 col-md-12 d-flex gap-2 flex-wrap">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-2"></i>Afficher
+                </button>
+                {% if classe_selectionnee and periode %}
+                <a href="{% url 'notes:exporter_conseils_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={{ periode }}"
+                   class="btn btn-warning text-dark">
+                    <i class="fas fa-lightbulb me-2"></i>Conseils PDF
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
     <div class="selection-card">
         <h4 class="mb-3"><i class="fas fa-school me-2"></i>1. Sélectionner une classe</h4>
         {% if classes %}
