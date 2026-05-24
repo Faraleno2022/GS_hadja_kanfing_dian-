@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}{% if mode == 'modifier' %}Modifier{% else %}Ajouter{% endif %} une Activité{% endblock %}
+{% block title %}{% if mode == 'modifier' %}Modifier{% else %}Ajouter{% endif %} une observation{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -59,7 +59,7 @@
     <div class="page-header-form">
         <h2 class="mb-0">
             <i class="fas fa-{% if mode == 'modifier' %}edit{% else %}plus-circle{% endif %} me-2"></i>
-            {% if mode == 'modifier' %}Modifier l'activité{% else %}Nouvelle Activité Journalière{% endif %}
+            {% if mode == 'modifier' %}Modifier l'observation{% else %}Nouvelle observation de vie scolaire{% endif %}
         </h2>
     </div>
 
@@ -107,7 +107,7 @@
                 <!-- Type -->
                 <div class="col-md-4">
                     <label for="{{ form.type_activite.id_for_label }}" class="form-label fw-bold">
-                        <i class="fas fa-tag me-1 text-warning"></i> Type d'activité
+                        <i class="fas fa-tag me-1 text-warning"></i> Type d'observation
                     </label>
                     {{ form.type_activite }}
                 </div>
@@ -167,7 +167,7 @@
                         <i class="fas fa-upload me-1 text-secondary"></i> {{ pj_form.fichiers.label }}
                     </label>
                     {{ pj_form.fichiers }}
-                    <div class="form-text">Images, copies d'évaluations, photos sportives... (max 10 Mo par fichier)</div>
+                    <div class="form-text">Justificatif d'absence, convocation, photo ou document utile... (max 10 Mo par fichier)</div>
 
                     <!-- Déclencheur caméra -->
                     <div class="d-flex flex-wrap gap-2 mt-2">
@@ -203,7 +203,7 @@
                 </a>
                 <button type="submit" class="btn btn-primary btn-lg">
                     <i class="fas fa-save me-1"></i>
-                    {% if mode == 'modifier' %}Enregistrer{% else %}Ajouter{% endif %}
+                    {% if mode == 'modifier' %}Enregistrer{% else %}Ajouter l'observation{% endif %}
                 </button>
             </div>
         </form>

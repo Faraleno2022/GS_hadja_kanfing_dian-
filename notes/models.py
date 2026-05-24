@@ -737,8 +737,12 @@ class Classement(models.Model):
 # ============================================================================
 
 class ActiviteJournaliere(models.Model):
-    """Activité journalière d'un élève (évaluation, sportive, culturelle, etc.)"""
+    """Activité ou fait de vie scolaire concernant un élève."""
     TYPE_CHOICES = [
+        ('ABSENCE', 'Absence'),
+        ('RETARD', 'Retard'),
+        ('DISCIPLINE', 'Discipline'),
+        ('CONVOCATION', 'Convocation parent'),
         ('EVALUATION', 'Évaluation'),
         ('SPORTIVE', 'Sportive'),
         ('CULTURELLE', 'Culturelle'),
@@ -750,7 +754,7 @@ class ActiviteJournaliere(models.Model):
     classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='activites_journalieres')
     eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='activites_journalieres')
     date = models.DateField(verbose_name="Date de l'activité")
-    type_activite = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type d'activité")
+    type_activite = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type d'observation")
     titre = models.CharField(max_length=200, verbose_name="Titre de l'activité")
     description = models.TextField(blank=True, verbose_name="Description / Observation")
     appreciation = models.CharField(max_length=100, blank=True, verbose_name="Appréciation")
@@ -759,8 +763,8 @@ class ActiviteJournaliere(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "Activité journalière"
-        verbose_name_plural = "Activités journalières"
+        verbose_name = "Observation de vie scolaire"
+        verbose_name_plural = "Observations de vie scolaire"
         ordering = ['-date', '-date_creation']
         indexes = [
             models.Index(fields=['classe', 'date']),

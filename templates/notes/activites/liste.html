@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Activités Journalières{% endblock %}
+{% block title %}Vie scolaire & activités{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -24,6 +24,10 @@
         color: #fff;
     }
     .badge-evaluation { background: #1976d2; }
+    .badge-absence   { background: #d32f2f; }
+    .badge-retard    { background: #f57c00; }
+    .badge-discipline{ background: #6d4c41; }
+    .badge-convocation{ background: #6f42c1; }
     .badge-sportive  { background: #388e3c; }
     .badge-culturelle{ background: #f57c00; }
     .badge-artistique{ background: #7b1fa2; }
@@ -52,6 +56,10 @@
         top: 0;
     }
     .type-EVALUATION .type-indicator { background: #1976d2; }
+    .type-ABSENCE .type-indicator    { background: #d32f2f; }
+    .type-RETARD .type-indicator     { background: #f57c00; }
+    .type-DISCIPLINE .type-indicator { background: #6d4c41; }
+    .type-CONVOCATION .type-indicator { background: #6f42c1; }
     .type-SPORTIVE .type-indicator   { background: #388e3c; }
     .type-CULTURELLE .type-indicator { background: #f57c00; }
     .type-ARTISTIQUE .type-indicator { background: #7b1fa2; }
@@ -81,12 +89,12 @@
     <div class="page-header-activites">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
-                <h1 class="mb-1"><i class="fas fa-calendar-day me-2"></i>Activités Journalières</h1>
-                <p class="mb-0 opacity-75">Suivi quotidien des activités des élèves</p>
+                <h1 class="mb-1"><i class="fas fa-calendar-day me-2"></i>Vie scolaire & activités</h1>
+                <p class="mb-0 opacity-75">Absences, retards, discipline, convocations et activités des élèves</p>
             </div>
             <div class="d-flex gap-2">
                 <a href="{% url 'notes:ajouter_activite' %}" class="btn btn-light btn-lg">
-                    <i class="fas fa-plus me-1"></i> Nouvelle Activité
+                    <i class="fas fa-plus me-1"></i> Nouvelle observation
                 </a>
                 <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-light">
                     <i class="fas fa-arrow-left me-1"></i> Retour
@@ -97,6 +105,18 @@
 
     <!-- Statistiques rapides -->
     <div class="d-flex flex-wrap gap-2 mb-3">
+        <span class="stat-badge badge-absence">
+            <i class="fas fa-user-times"></i> Absences: {{ stats.par_type.ABSENCE|default:"0" }}
+        </span>
+        <span class="stat-badge badge-retard">
+            <i class="fas fa-clock"></i> Retards: {{ stats.par_type.RETARD|default:"0" }}
+        </span>
+        <span class="stat-badge badge-discipline">
+            <i class="fas fa-triangle-exclamation"></i> Discipline: {{ stats.par_type.DISCIPLINE|default:"0" }}
+        </span>
+        <span class="stat-badge badge-convocation">
+            <i class="fas fa-people-arrows"></i> Convocations: {{ stats.par_type.CONVOCATION|default:"0" }}
+        </span>
         <span class="stat-badge badge-evaluation">
             <i class="fas fa-file-alt"></i> Évaluation: {{ stats.par_type.EVALUATION|default:"0" }}
         </span>
@@ -116,6 +136,16 @@
             <i class="fas fa-ellipsis-h"></i> Autre: {{ stats.par_type.AUTRE|default:"0" }}
         </span>
     </div>
+
+    {% if stats.vie_scolaire_total %}
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="fas fa-user-shield fs-4"></i>
+        <div>
+            <strong>{{ stats.vie_scolaire_total }} fait{{ stats.vie_scolaire_total|pluralize }} de vie scolaire</strong>
+            sur la période affichée. Utilisez les filtres pour suivre une classe ou un élève précis.
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Filtres -->
     <div class="filter-bar">
@@ -148,7 +178,7 @@
             </div>
             <div class="col-md-2">
                 <label class="form-label small fw-bold">Recherche</label>
-                <input type="text" name="q" class="form-control form-control-sm" placeholder="Nom, titre..." value="{{ filtre_search|default:'' }}">
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="Nom, matricule, observation..." value="{{ filtre_search|default:'' }}">
             </div>
             <div class="col-md-2 d-flex gap-1">
                 <button type="submit" class="btn btn-primary btn-sm flex-grow-1"><i class="fas fa-search"></i> Filtrer</button>
@@ -200,7 +230,7 @@
                             <i class="fas fa-edit"></i>
                         </a>
                         <form method="post" action="{% url 'notes:supprimer_activite' activite.pk %}"
-                              class="d-inline" onsubmit="return confirm('Supprimer cette activité ?')">
+                              class="d-inline" onsubmit="return confirm('Supprimer cette observation ?')">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-outline-danger">
                                 <i class="fas fa-trash"></i>
@@ -237,10 +267,10 @@
     {% else %}
     <div class="text-center py-5">
         <i class="fas fa-calendar-day fa-4x text-muted mb-3"></i>
-        <h4 class="text-muted">Aucune activité enregistrée</h4>
-        <p class="text-muted">Commencez par ajouter une activité journalière pour vos élèves.</p>
+        <h4 class="text-muted">Aucune observation enregistrée</h4>
+        <p class="text-muted">Commencez par ajouter une absence, un retard, une convocation ou une activité.</p>
         <a href="{% url 'notes:ajouter_activite' %}" class="btn btn-primary btn-lg mt-2">
-            <i class="fas fa-plus me-1"></i> Ajouter une activité
+            <i class="fas fa-plus me-1"></i> Ajouter une observation
         </a>
     </div>
     {% endif %}

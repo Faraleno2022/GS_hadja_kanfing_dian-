@@ -14,7 +14,7 @@ from .forms import ActiviteJournaliereForm, PieceJointeActiviteForm
 
 @login_required
 def liste_activites(request):
-    """Liste des activités journalières avec filtres."""
+    """Liste des observations de vie scolaire avec filtres."""
     from eleves.utils_annee import get_annee_active
 
     ecole = user_school(request.user)
@@ -52,15 +52,23 @@ def liste_activites(request):
         activites = activites.filter(date__lte=date_fin)
     if search:
         activites = activites.filter(
-            Q(titre__icontains=search) | Q(eleve__nom__icontains=search) | Q(eleve__prenom__icontains=search)
+            Q(titre__icontains=search)
+            | Q(description__icontains=search)
+            | Q(appreciation__icontains=search)
+            | Q(eleve__nom__icontains=search)
+            | Q(eleve__prenom__icontains=search)
+            | Q(eleve__matricule__icontains=search)
         )
 
     # Stats
+    vie_scolaire_types = ['ABSENCE', 'RETARD', 'DISCIPLINE', 'CONVOCATION']
+    stats_par_type = dict(
+        activites.values_list('type_activite').annotate(c=Count('id')).order_by()
+    )
     stats = {
         'total': activites.count(),
-        'par_type': dict(
-            activites.values_list('type_activite').annotate(c=Count('id')).order_by()
-        ),
+        'par_type': stats_par_type,
+        'vie_scolaire_total': sum(int(stats_par_type.get(code, 0) or 0) for code in vie_scolaire_types),
     }
 
     paginator = Paginator(activites, 20)
@@ -82,7 +90,7 @@ def liste_activites(request):
 
 @login_required
 def ajouter_activite(request):
-    """Ajouter une activité journalière avec pièces jointes."""
+    """Ajouter une observation de vie scolaire avec pièces jointes."""
     from eleves.utils_annee import get_annee_active
 
     ecole = user_school(request.user)
@@ -105,7 +113,7 @@ def ajouter_activite(request):
                     legende=f.name,
                 )
 
-            messages.success(request, f"Activité « {activite.titre} » ajoutée avec succès.")
+            messages.success(request, f"Observation « {activite.titre} » ajoutée avec succès.")
             return redirect('notes:liste_activites')
     else:
         form = ActiviteJournaliereForm(initial={'date': date.today()})
@@ -144,7 +152,7 @@ def ajouter_activite(request):
 
 @login_required
 def modifier_activite(request, activite_id):
-    """Modifier une activité existante."""
+    """Modifier une observation existante."""
     activite = get_object_or_404(ActiviteJournaliere, pk=activite_id)
 
     if request.method == 'POST':
@@ -161,7 +169,7 @@ def modifier_activite(request, activite_id):
                     legende=f.name,
                 )
 
-            messages.success(request, "Activité modifiée avec succès.")
+            messages.success(request, "Observation modifiée avec succès.")
             return redirect('notes:detail_activite', activite_id=activite.pk)
     else:
         form = ActiviteJournaliereForm(instance=activite)
@@ -192,7 +200,7 @@ def modifier_activite(request, activite_id):
 
 @login_required
 def detail_activite(request, activite_id):
-    """Détail d'une activité avec ses pièces jointes."""
+    """Détail d'une observation avec ses pièces jointes."""
     activite = get_object_or_404(
         ActiviteJournaliere.objects.select_related('eleve', 'classe', 'cree_par').prefetch_related('pieces_jointes'),
         pk=activite_id
@@ -203,11 +211,11 @@ def detail_activite(request, activite_id):
 
 @login_required
 def supprimer_activite(request, activite_id):
-    """Supprimer une activité."""
+    """Supprimer une observation."""
     activite = get_object_or_404(ActiviteJournaliere, pk=activite_id)
     if request.method == 'POST':
         activite.delete()
-        messages.success(request, "Activité supprimée.")
+        messages.success(request, "Observation supprimée.")
         return redirect('notes:liste_activites')
     return render(request, 'notes/activites/confirmer_suppression.html', {'activite': activite})
 

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}{{ activite.titre }} - Activité{% endblock %}
+{% block title %}{{ activite.titre }} - Vie scolaire{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -118,7 +118,11 @@
         <div class="info-row">
             <span class="info-label"><i class="fas fa-tag me-2"></i>Type</span>
             <span class="badge badge-type
-                {% if activite.type_activite == 'EVALUATION' %}bg-primary
+                {% if activite.type_activite == 'ABSENCE' %}bg-danger
+                {% elif activite.type_activite == 'RETARD' %}bg-warning text-dark
+                {% elif activite.type_activite == 'DISCIPLINE' %}bg-dark
+                {% elif activite.type_activite == 'CONVOCATION' %}bg-info text-dark
+                {% elif activite.type_activite == 'EVALUATION' %}bg-primary
                 {% elif activite.type_activite == 'SPORTIVE' %}bg-success
                 {% elif activite.type_activite == 'CULTURELLE' %}bg-warning text-dark
                 {% elif activite.type_activite == 'ARTISTIQUE' %}bg-purple
@@ -210,7 +214,7 @@
             <i class="fas fa-arrow-left me-1"></i> Retour à la liste
         </a>
         <form method="post" action="{% url 'notes:supprimer_activite' activite.pk %}"
-              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette activité ?')">
+              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette observation ?')">
             {% csrf_token %}
             <button type="submit" class="btn btn-outline-danger">
                 <i class="fas fa-trash me-1"></i> Supprimer
