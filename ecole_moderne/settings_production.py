@@ -102,7 +102,7 @@ EMAIL_HOST_USER = os.getenv('DJANGO_EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('DJANGO_EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.getenv('DJANGO_EMAIL_USE_TLS', 'false').lower() in ('1', 'true', 'yes')
 EMAIL_USE_SSL = os.getenv('DJANGO_EMAIL_USE_SSL', 'false').lower() in ('1', 'true', 'yes')
-DEFAULT_FROM_EMAIL = os.getenv('DJANGO_DEFAULT_FROM_EMAIL', 'faraleno16@gmail.com')
+DEFAULT_FROM_EMAIL = os.getenv('DJANGO_DEFAULT_FROM_EMAIL', 'contact@myschoolgn.space')
 
 # ===== URL du site pour les emails =====
 SITE_BASE_URL = 'https://www.myschoolgn.space'

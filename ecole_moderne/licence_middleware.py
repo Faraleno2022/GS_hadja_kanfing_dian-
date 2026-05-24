@@ -148,9 +148,20 @@ class LicenceMiddleware:
 
     EXEMPT_PREFIXES = (
         '/static/', '/media/', '/favicon', '/utilisateurs/login/',
-        '/activer/', '/admin/', '/api/v1/license/',
+        '/activer/', '/admin/', '/api/v1/license/', '/rapport-scolaire/',
     )
-    EXEMPT_EXACT    = {'/', '/utilisateurs/login/', '/activer/'}
+    EXEMPT_EXACT = {
+        '/',
+        '/index/',
+        '/robots.txt',
+        '/sitemap.xml',
+        '/fonctionnalites/',
+        '/tarifs/',
+        '/contact/',
+        '/demo/',
+        '/utilisateurs/login/',
+        '/activer/',
+    }
 
     def __init__(self, get_response):
         self.get_response = get_response

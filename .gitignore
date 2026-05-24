@@ -69,3 +69,24 @@ __pycache__/
 
 # Bases de données temporaires
 *.db.bak
+
+# Build Windows / installateurs locaux
+build/
+dist/
+dist_nuitka/
+Output/
+MySchoolGN_Output/
+*.exe
+*.rar
+*.spec
+
+# Licences générées localement
+license.dat
+license_*.lic
+licence_*.lic
+licenses_emises.json
+
+# Fichiers temporaires locaux
+.trial_start
+~WRL*.tmp
+.claude/worktrees/

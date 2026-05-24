@@ -5,7 +5,7 @@ Auteur  : GS Hadja Kanfing Dian
 Version : 1.0.0
 
 Ce module gère la validation des licences d'utilisation de MySchoolGN.
-Chaque licence est liée à l'identifiant unique de la machine.
+Les licences peuvent être liées à une machine ou distribuables (mid="*").
 """
 
 import os
@@ -107,6 +107,11 @@ def _is_authorized_machine() -> bool:
         return False
 
 
+def _is_distributable_mid(machine_id: str) -> bool:
+    """Retourne True pour une licence utilisable sur plusieurs machines."""
+    return str(machine_id or '').strip().upper() in {'*', 'ANY', 'ALL', 'DISTRIBUTABLE'}
+
+
 # ─── Génération de clé de licence ─────────────────────────────────────────────
 def generate_license_key(machine_id: str, expiry_days: int = 365,
                           school_name: str = '', edition: str = 'Standard') -> str:
@@ -179,6 +184,13 @@ def generate_activation_file(machine_id: str, expiry_days: int = 365,
     }
 
 
+def generate_distributable_activation_file(expiry_days: int = 365,
+                                           school_name: str = '',
+                                           edition: str = 'Standard') -> dict:
+    """Génère une licence .lic non liée à une machine précise."""
+    return generate_activation_file('*', expiry_days, school_name, edition)
+
+
 # ─── Validation de licence ─────────────────────────────────────────────────────
 def _validate_license_data(license_dict: dict) -> dict:
     """
@@ -205,8 +217,10 @@ def _validate_license_data(license_dict: dict) -> dict:
         payload = json.loads(base64.b64decode(payload_b64).decode())
         machine_id = get_machine_id()
 
-        # Vérifier la machine (tolérance : vérifier les 16 premiers chars)
-        if payload.get('mid', '')[:16] != machine_id[:16]:
+        # Vérifier la machine sauf pour les licences distribuables.
+        payload_mid = payload.get('mid', '')
+        distributable = _is_distributable_mid(payload_mid)
+        if not distributable and payload_mid[:16] != machine_id[:16]:
             return {'valid': False, 'reason': 'Cette licence appartient à une autre machine.'}
 
         # Vérifier l'expiration
@@ -229,6 +243,7 @@ def _validate_license_data(license_dict: dict) -> dict:
             'days_left': days_left,
             'school': payload.get('school', ''),
             'edition': payload.get('edition', 'Standard'),
+            'distributable': distributable,
         }
 
     except Exception as e:
@@ -694,6 +709,7 @@ if __name__ == '__main__':
         print("\nUsages :")
         print("  python license_manager.py info")
         print("  python license_manager.py generate <machine_id> <jours> <ecole> <edition>")
+        print("  python license_manager.py generate-distributable <jours> <ecole> <edition>")
         print("  python license_manager.py activate <fichier.lic>")
         print("  python license_manager.py activate-online <CLE-LICENCE>")
         print("  python license_manager.py check")
@@ -730,6 +746,25 @@ if __name__ == '__main__':
         print(f"  Édition  : {edition}")
         print(f"  Durée    : {days} jours")
         print(f"\nEnvoyez le fichier '{output_file}' au client.")
+
+    elif cmd == 'generate-distributable':
+        if len(sys.argv) < 3:
+            print("Usage: python license_manager.py generate-distributable <jours> [ecole] [edition]")
+            sys.exit(1)
+        days = int(sys.argv[2])
+        school = sys.argv[3] if len(sys.argv) > 3 else ''
+        edition = sys.argv[4] if len(sys.argv) > 4 else 'Standard'
+
+        lic_data = generate_distributable_activation_file(days, school, edition)
+        output_file = 'license_DISTRIBUTABLE.lic'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(lic_data, f, indent=2)
+        print(f"\nLicence distribuable générée : {output_file}")
+        print("  Machine  : toutes les machines")
+        print(f"  École    : {school}")
+        print(f"  Édition  : {edition}")
+        print(f"  Durée    : {days} jours")
+        print(f"\nEnvoyez le fichier '{output_file}' aux clients.")
 
     elif cmd == 'activate':
         if len(sys.argv) < 3:

@@ -2,7 +2,12 @@
 {% load static %}
 {% load static_versioned %}
 
-{% block title %}Accueil{% endblock %}
+{% block title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
+{% block meta_description %}Myschool GN est un logiciel de gestion scolaire pour les écoles en Guinée : inscriptions, paiements, notes, bulletins, rapports parents et suivi administratif.{% endblock %}
+{% block og_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
+{% block og_description %}Une plateforme claire pour piloter les élèves, paiements, notes, salaires, transport et rapports scolaires.{% endblock %}
+{% block twitter_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
+{% block twitter_description %}Gestion scolaire moderne pour les établissements en Guinée.{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -71,6 +76,22 @@
     opacity: 0.9;
   }
 
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+
+  .hero-actions .btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    text-shadow: none;
+    font-weight: 600;
+  }
+
   /* Bouton de défilement */
   .scroll-indicator {
     position: absolute;
@@ -128,6 +149,35 @@
     font-size: 1.1rem;
     line-height: 1.7;
     color: #555;
+  }
+
+  .audience-card,
+  .trust-item {
+    height: 100%;
+    border: 1px solid #e9ecef;
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+
+  .audience-card {
+    padding: 1.5rem;
+  }
+
+  .audience-card i {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #eef5ff;
+    color: #0d6efd;
+    margin-bottom: 1rem;
+  }
+
+  .trust-item {
+    padding: 1.25rem;
+    text-align: center;
   }
 
   /* Images des cartes avec lazy loading */
@@ -191,6 +241,11 @@
     .hero-image {
       height: 60vh;
     }
+
+    .hero-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
   }
 
   /* Placeholder de chargement (neutre, sans shimmer pour ne pas ralentir) */
@@ -232,6 +287,17 @@
     <p class="mt-3" style="font-size: 1.1rem; max-width: 600px;">
       Gestion scolaire moderne • Automatisation • Décisions éclairées
     </p>
+    <div class="hero-actions" aria-label="Actions principales">
+      <a href="{% url 'contact' %}" class="btn btn-light btn-lg">
+        <i class="fas fa-calendar-check"></i>Demander une démonstration
+      </a>
+      <a href="{% url 'utilisateurs:login' %}" class="btn btn-primary btn-lg">
+        <i class="fas fa-lock"></i>Accéder à mon école
+      </a>
+      <a href="{% url 'rapport_scolaire' %}" class="btn btn-outline-light btn-lg">
+        <i class="fas fa-file-alt"></i>Voir le rapport scolaire
+      </a>
+    </div>
   </div>
 
   <!-- Indicateur de défilement -->
@@ -286,6 +352,45 @@
       </div>
     </div>
   </div>
+
+  <section class="mb-4" id="fonctionnalites">
+    <div class="mb-3">
+      <h2 class="presentation-title mb-2">
+        <i class="fas fa-users me-2"></i>Pour qui ?
+      </h2>
+      <p class="text-muted mb-0">Myschool GN accompagne les équipes qui gèrent l'école au quotidien, du bureau administratif jusqu'au suivi des familles.</p>
+    </div>
+    <div class="row g-3">
+      <div class="col-md-6 col-lg-3">
+        <div class="audience-card shadow-sm">
+          <i class="fas fa-school"></i>
+          <h5>Fondateurs d'école</h5>
+          <p class="text-muted mb-0">Vue claire sur l'activité, les effectifs, les finances et les décisions importantes.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="audience-card shadow-sm">
+          <i class="fas fa-calculator"></i>
+          <h5>Comptables</h5>
+          <p class="text-muted mb-0">Paiements, relances, dépenses et états financiers regroupés dans un espace fiable.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="audience-card shadow-sm">
+          <i class="fas fa-user-shield"></i>
+          <h5>Surveillants</h5>
+          <p class="text-muted mb-0">Suivi des élèves, classes, activités journalières et informations utiles à la vie scolaire.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="audience-card shadow-sm">
+          <i class="fas fa-people-roof"></i>
+          <h5>Parents</h5>
+          <p class="text-muted mb-0">Accès au rapport scolaire pour consulter les notes, classements et paiements disponibles.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- Carte rapport scolaire pour les parents -->
   <div class="card mb-4 border-0 shadow-sm" style="border-left: 5px solid #0d6efd !important;">
@@ -365,52 +470,44 @@
     </div>
   </div>
 
-  <!-- Section statistiques rapides -->
-  <div class="row mt-5">
+  <!-- Engagements publics -->
+  <div class="row mt-5 g-3">
     <div class="col-md-3 col-sm-6 mb-3">
-      <div class="text-center">
+      <div class="trust-item shadow-sm">
         <div class="display-4 text-primary mb-2">
-          <i class="fas fa-graduation-cap"></i>
+          <i class="fas fa-shield-alt"></i>
         </div>
-        <h4 class="text-primary">500+</h4>
-        <p class="text-muted">Élèves</p>
+        <h4 class="text-primary">Sécurité</h4>
+        <p class="text-muted mb-0">Accès contrôlé et séparation entre vitrine publique et espace de gestion.</p>
       </div>
     </div>
     <div class="col-md-3 col-sm-6 mb-3">
-      <div class="text-center">
+      <div class="trust-item shadow-sm">
         <div class="display-4 text-success mb-2">
-          <i class="fas fa-chalkboard-teacher"></i>
+          <i class="fas fa-file-invoice"></i>
         </div>
-        <h4 class="text-success">30+</h4>
-        <p class="text-muted">Enseignants</p>
+        <h4 class="text-success">Rapports</h4>
+        <p class="text-muted mb-0">Documents scolaires accessibles et prêts à imprimer selon les besoins.</p>
       </div>
     </div>
     <div class="col-md-3 col-sm-6 mb-3">
-      <div class="text-center">
+      <div class="trust-item shadow-sm">
         <div class="display-4 text-warning mb-2">
-          <i class="fas fa-trophy"></i>
+          <i class="fas fa-chart-line"></i>
         </div>
-        <h4 class="text-warning">95%</h4>
-        <p class="text-muted">Taux de réussite</p>
+        <h4 class="text-warning">Pilotage</h4>
+        <p class="text-muted mb-0">Tableaux de bord pour suivre paiements, notes, salaires et transport.</p>
       </div>
     </div>
     <div class="col-md-3 col-sm-6 mb-3">
-      <div class="text-center">
+      <div class="trust-item shadow-sm">
         <div class="display-4 text-info mb-2">
-          <i class="fas fa-calendar-alt"></i>
+          <i class="fas fa-headset"></i>
         </div>
-        <h4 class="text-info">15+</h4>
-        <p class="text-muted">Années d'expérience</p>
+        <h4 class="text-info">Support</h4>
+        <p class="text-muted mb-0">Contact direct avec l'administrateur pour l'activation et l'assistance.</p>
       </div>
     </div>
-  </div>
-
-  <!-- Note technique -->
-  <div class="text-center mt-4">
-    <small class="text-muted">
-      <i class="fas fa-sync-alt me-1"></i>
-      Les images se rechargent automatiquement lors des modifications
-    </small>
   </div>
 </div>
 {% endblock %}

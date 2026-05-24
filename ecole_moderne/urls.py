@@ -33,6 +33,45 @@ def google_site_verification(request):
     )
 
 
+def robots_txt(request):
+    content = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin/",
+        "Disallow: /utilisateurs/",
+        "Disallow: /eleves/",
+        "Disallow: /paiements/",
+        "Disallow: /depenses/",
+        "Disallow: /salaires/",
+        "Disallow: /notes/",
+        "Disallow: /chatbot/",
+        "Sitemap: https://www.myschoolgn.space/sitemap.xml",
+        "",
+    ])
+    return HttpResponse(content, content_type="text/plain")
+
+
+def sitemap_xml(request):
+    urls = [
+        ("https://www.myschoolgn.space/", "1.0"),
+        ("https://www.myschoolgn.space/fonctionnalites/", "0.9"),
+        ("https://www.myschoolgn.space/rapport-scolaire/", "0.8"),
+        ("https://www.myschoolgn.space/contact/", "0.8"),
+        ("https://www.myschoolgn.space/demo/", "0.8"),
+        ("https://www.myschoolgn.space/tarifs/", "0.6"),
+    ]
+    items = "\n".join(
+        f"  <url><loc>{loc}</loc><changefreq>weekly</changefreq><priority>{priority}</priority></url>"
+        for loc, priority in urls
+    )
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{items}
+</urlset>
+"""
+    return HttpResponse(xml, content_type="application/xml")
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('activer/', activer_licence, name='activer_licence'),
@@ -42,6 +81,12 @@ urlpatterns = [
     path('api/v1/license/verify/', verify_license, name='license_api_verify_slash'),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
+    path('robots.txt', robots_txt, name='robots_txt'),
+    path('sitemap.xml', sitemap_xml, name='sitemap_xml'),
+    path('fonctionnalites/', TemplateView.as_view(template_name='public/fonctionnalites.html'), name='fonctionnalites'),
+    path('tarifs/', TemplateView.as_view(template_name='public/tarifs.html'), name='tarifs'),
+    path('contact/', TemplateView.as_view(template_name='public/contact.html'), name='contact'),
+    path('demo/', TemplateView.as_view(template_name='public/demo.html'), name='demo'),
     path('google10babad53f3eade7.html', google_site_verification, name='google_site_verification'),
     # Rapport scolaire public (espace parent, pas de login)
     path('rapport-scolaire/', rapport_scolaire_recherche, name='rapport_scolaire'),

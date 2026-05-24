@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Tarifs - Myschool GN{% endblock %}
+{% block meta_description %}Tarifs Myschool GN : contactez l'administrateur pour obtenir une offre adaptée à votre établissement scolaire.{% endblock %}
+
+{% block content %}
+<section class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <h1 class="text-primary fw-bold">Tarifs</h1>
+      <p class="lead text-muted">Les conditions dépendent de l'établissement, du nombre d'utilisateurs et du mode de déploiement souhaité.</p>
+      <div class="card shadow-sm">
+        <div class="card-body p-4">
+          <h2 class="h4">Offre sur demande</h2>
+          <p class="text-muted">Pour recevoir une proposition adaptée, contactez l'administrateur FARA LENO au +224 622 61 35 59.</p>
+          <a href="{% url 'contact' %}" class="btn btn-primary">
+            <i class="fas fa-envelope me-2"></i>Demander les tarifs
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

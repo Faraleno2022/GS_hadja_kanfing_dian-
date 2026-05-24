@@ -287,6 +287,8 @@ def generate_integrity_manifest():
     try:
         env = os.environ.copy()
         env['PYTHONPATH'] = OUTPUT_DIR
+        env['PYTHONIOENCODING'] = 'utf-8'
+        env['PYTHONUTF8'] = '1'
         subprocess.check_call(
             [sys.executable, ic_dst, '--generate'],
             cwd=OUTPUT_DIR,

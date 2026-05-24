@@ -28,6 +28,26 @@
     <meta name="twitter:description" content="{% block twitter_description %}Gestion scolaire moderne, automatisée et fiable pour les établissements scolaires.{% endblock %}">
     <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}">
 
+    {% block structured_data %}
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Myschool GN",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "Web",
+      "url": "https://www.myschoolgn.space/",
+      "description": "Logiciel de gestion scolaire pour les etablissements en Guinee : eleves, paiements, salaires, transport, notes et rapports scolaires.",
+      "publisher": {
+        "@type": "EducationalOrganization",
+        "name": "Myschool GN",
+        "email": "contact@myschoolgn.space",
+        "telephone": "+224622613559"
+      }
+    }
+    </script>
+    {% endblock %}
+
     {% if is_offline %}
     <!-- Mode offline : fichiers locaux -->
     <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
@@ -195,7 +215,28 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     {% with allowed=user_profil.allowed_menus %}
-                    {% if user.is_authenticated and user_role == 'COMPTABLE' and not user.is_superuser and not user.is_staff and allowed %}
+                    {% if not user.is_authenticated %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'home' %}">
+                                <i class="fas fa-home me-1"></i>Accueil
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'fonctionnalites' %}">
+                                <i class="fas fa-list-check me-1"></i>Fonctionnalités
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'rapport_scolaire' %}">
+                                <i class="fas fa-file-alt me-1"></i>Rapport scolaire
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'contact' %}">
+                                <i class="fas fa-envelope me-1"></i>Contact
+                            </a>
+                        </li>
+                    {% elif user_role == 'COMPTABLE' and not user.is_superuser and not user.is_staff and allowed %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'home' %}">
                                 <i class="fas fa-home me-1"></i>Accueil
@@ -597,8 +638,8 @@
                         <i class="fas fa-home me-1"></i>Accueil
                     </a>
                     <span class="me-3"><i class="fas fa-phone me-1"></i> +224 622613559</span>
-                    <a href="mailto:faraleno16@gmail.com" class="text-light text-decoration-none">
-                        <i class="fas fa-envelope me-1"></i> faraleno16@gmail.com
+                    <a href="mailto:contact@myschoolgn.space" class="text-light text-decoration-none">
+                        <i class="fas fa-envelope me-1"></i> contact@myschoolgn.space
                     </a>
                 </div>
             </div>
