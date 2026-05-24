@@ -15,6 +15,63 @@ from django.utils import timezone
 from datetime import timedelta
 
 
+def _safe_text(value, default=""):
+    """Return a printable one-line string."""
+    if value is None:
+        return default
+    return " ".join(str(value).strip().split()) or default
+
+
+def _fit_font_size(text, font_name, max_size, min_size, max_width):
+    """Pick the largest font size that fits in max_width."""
+    text = _safe_text(text)
+    size = max_size
+    while size > min_size and pdfmetrics.stringWidth(text, font_name, size) > max_width:
+        size -= 0.5
+    return max(size, min_size)
+
+
+def _draw_fit_text(c, text, x, y, max_width, font_name, max_size, min_size, color):
+    """Draw text fitted to a fixed width, truncating only as a last resort."""
+    original_text = _safe_text(text)
+    text = original_text
+    size = _fit_font_size(text, font_name, max_size, min_size, max_width)
+    while text and pdfmetrics.stringWidth(text, font_name, size) > max_width:
+        text = text[:-1].rstrip()
+    if len(text) < len(original_text):
+        suffix = "..."
+        while text and pdfmetrics.stringWidth(text.rstrip(". ") + suffix, font_name, size) > max_width:
+            text = text[:-1].rstrip()
+        text = (text.rstrip(". ") + suffix) if text else suffix
+    c.setFillColor(colors.HexColor(color))
+    c.setFont(font_name, size)
+    c.drawString(x, y, text)
+    return size
+
+
+def _draw_value_row(c, label, value, x, y, label_width, value_width, main_font, bold_font):
+    label = _safe_text(label)
+    value = _safe_text(value, "-")
+    c.setFillColor(colors.HexColor("#64748b"))
+    c.setFont(bold_font, 5.6)
+    c.drawString(x, y, label.upper())
+    _draw_fit_text(c, value, x + label_width, y, value_width, main_font, 6.6, 4.7, "#111827")
+
+
+def _draw_cover_image(c, image_path, x, y, width, height, radius=0):
+    """Draw an image cropped to fill the requested box."""
+    img = Image.open(image_path)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    target_size = (max(1, int(width * 3)), max(1, int(height * 3)))
+    img = ImageOps.fit(img, target_size, method=Image.Resampling.LANCZOS)
+    temp_buffer = io.BytesIO()
+    img.save(temp_buffer, format="JPEG", quality=94)
+    temp_buffer.seek(0)
+    from reportlab.lib.utils import ImageReader
+    c.drawImage(ImageReader(temp_buffer), x, y, width=width, height=height, mask="auto")
+
+
 def generer_carte_scolaire_moderne(eleve, response, custom_canvas=None, 
                                   offset_x=0, offset_y=0, 
                                   custom_width=None, custom_height=None):
@@ -606,6 +663,171 @@ def generer_cartes_classe_moderne(classe, eleves, response):
 
 
 def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
+    """Draw one print-ready CR80 student card for batch PDFs."""
+    primary = "#1746a2"
+    accent = "#0f766e"
+    dark = "#0f172a"
+    muted = "#64748b"
+    line = "#dbe3ef"
+    paper = "#ffffff"
+    soft = "#f5f8fc"
+
+    margin = 2.2 * mm
+    header_h = 10.5 * mm
+    footer_h = 6.2 * mm
+    radius = 4.5
+
+    school = eleve.classe.ecole
+    school_name = _safe_text(getattr(school, "nom", "")).upper()
+    student_name = _safe_text(f"{getattr(eleve, 'prenom', '')} {getattr(eleve, 'nom', '')}").upper()
+    matricule = _safe_text(getattr(eleve, "matricule", ""))
+    classe_nom = _safe_text(getattr(eleve.classe, "nom", ""))
+    annee = _safe_text(getattr(eleve.classe, "annee_scolaire", ""))
+
+    c.saveState()
+
+    c.setFillColor(colors.HexColor(paper))
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.7)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=1)
+
+    c.setFillColor(colors.HexColor(primary))
+    c.roundRect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h, radius, stroke=0, fill=1)
+    c.rect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h / 2, stroke=0, fill=1)
+
+    logo_size = 7.2 * mm
+    logo_x = x + margin
+    logo_y = y + height - header_h + 1.1 * mm
+    c.setFillColor(colors.white)
+    c.circle(logo_x + logo_size / 2, logo_y + logo_size / 2, logo_size / 2, stroke=0, fill=1)
+    try:
+        if school.logo and hasattr(school.logo, "path") and os.path.exists(school.logo.path):
+            c.drawImage(
+                school.logo.path,
+                logo_x + 0.6,
+                logo_y + 0.6,
+                width=logo_size - 1.2,
+                height=logo_size - 1.2,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        else:
+            raise ValueError("No logo")
+    except Exception:
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(bold_font, 7)
+        c.drawCentredString(logo_x + logo_size / 2, logo_y + logo_size / 2 - 2, school_name[:2] or "EC")
+
+    title_x = logo_x + logo_size + 2 * mm
+    title_w = width - (title_x - x) - margin
+    _draw_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, bold_font, 7.6, 4.8, "#ffffff")
+    _draw_fit_text(c, "CARTE SCOLAIRE", title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, "#dbeafe")
+
+    try:
+        c.saveState()
+        c.setFillAlpha(0.06)
+        if school.logo and hasattr(school.logo, "path") and os.path.exists(school.logo.path):
+            mark = 30 * mm
+            c.drawImage(
+                school.logo.path,
+                x + width - mark - 4 * mm,
+                y + footer_h + 5 * mm,
+                width=mark,
+                height=mark,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        else:
+            c.setFillColor(colors.HexColor(primary))
+            c.setFont(bold_font, 28)
+            c.drawCentredString(x + width * 0.70, y + height * 0.46, school_name[:3])
+        c.restoreState()
+    except Exception:
+        try:
+            c.restoreState()
+        except Exception:
+            pass
+
+    photo_w = 22.5 * mm
+    photo_h = 27.5 * mm
+    photo_x = x + margin
+    photo_y = y + footer_h + 3.2 * mm
+    c.setFillColor(colors.HexColor(soft))
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.7)
+    c.roundRect(photo_x, photo_y, photo_w, photo_h, 3.2, stroke=1, fill=1)
+
+    photo_drawn = False
+    try:
+        if eleve.photo and hasattr(eleve.photo, "path") and eleve.photo.name and os.path.exists(eleve.photo.path):
+            _draw_cover_image(c, eleve.photo.path, photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2)
+            photo_drawn = True
+    except Exception:
+        photo_drawn = False
+
+    if not photo_drawn:
+        initials = (_safe_text(getattr(eleve, "prenom", "E"))[:1] + _safe_text(getattr(eleve, "nom", "L"))[:1]).upper()
+        c.setFillColor(colors.HexColor("#e8eef8"))
+        c.roundRect(photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, 2.5, stroke=0, fill=1)
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(bold_font, 17)
+        c.drawCentredString(photo_x + photo_w / 2, photo_y + photo_h / 2 - 4, initials or "EL")
+
+    info_x = photo_x + photo_w + 3 * mm
+    info_w = x + width - margin - info_x
+    name_y = y + height - header_h - 4.4 * mm
+    _draw_fit_text(c, student_name, info_x, name_y, info_w, bold_font, 8.7, 5.8, dark)
+
+    c.setStrokeColor(colors.HexColor(accent))
+    c.setLineWidth(1.0)
+    c.line(info_x, name_y - 1.7 * mm, info_x + info_w, name_y - 1.7 * mm)
+
+    row_y = name_y - 5.3 * mm
+    label_w = 14 * mm
+    value_w = info_w - label_w
+    _draw_value_row(c, "Mat.", matricule, info_x, row_y, label_w, value_w, main_font, bold_font)
+    row_y -= 4.2 * mm
+    _draw_value_row(c, "Classe", classe_nom, info_x, row_y, label_w, value_w, main_font, bold_font)
+
+    try:
+        niveau = eleve.classe.get_niveau_display()
+    except Exception:
+        niveau = getattr(eleve.classe, "niveau", "")
+    row_y -= 4.2 * mm
+    _draw_value_row(c, "Niveau", niveau, info_x, row_y, label_w, value_w, main_font, bold_font)
+
+    if getattr(eleve, "date_naissance", None):
+        row_y -= 4.2 * mm
+        _draw_value_row(c, "Ne(e)", eleve.date_naissance.strftime("%d/%m/%Y"), info_x, row_y, label_w, value_w, main_font, bold_font)
+
+    if getattr(eleve, "lieu_naissance", None):
+        row_y -= 4.2 * mm
+        _draw_value_row(c, "Lieu", eleve.lieu_naissance, info_x, row_y, label_w, value_w, main_font, bold_font)
+
+    resp = getattr(eleve, "responsable_principal", None)
+    if resp:
+        contact = _safe_text(getattr(resp, "telephone", "")) or _safe_text(getattr(resp, "nom_complet", ""))
+        if contact:
+            row_y -= 4.2 * mm
+            _draw_value_row(c, "Contact", contact, info_x, row_y, label_w, value_w, main_font, bold_font)
+
+    c.setFillColor(colors.HexColor("#eef4fb"))
+    c.rect(x + 0.8, y + 0.8, width - 1.6, footer_h, stroke=0, fill=1)
+    c.setStrokeColor(colors.HexColor(line))
+    c.setLineWidth(0.5)
+    c.line(x + 0.8, y + footer_h + 0.8, x + width - 0.8, y + footer_h + 0.8)
+
+    _draw_fit_text(c, f"ANNEE SCOLAIRE {annee}", x + margin, y + 2.4 * mm, width * 0.55, bold_font, 5.8, 4.2, primary)
+    c.setFillColor(colors.HexColor(muted))
+    c.setFont(main_font, 4.6)
+    c.drawRightString(x + width - margin, y + 2.4 * mm, f"ID #{getattr(eleve, 'id', 0):06d}")
+
+    c.setStrokeColor(colors.HexColor(primary))
+    c.setLineWidth(0.9)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=0)
+    c.restoreState()
+    return
+
     """
     Dessine une carte simplifiée pour l'impression en masse
     """
