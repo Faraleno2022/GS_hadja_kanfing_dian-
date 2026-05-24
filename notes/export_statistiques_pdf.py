@@ -1265,6 +1265,73 @@ def exporter_conseils_pdf(request):
             y -= size + 2
         
         return y
+
+    def decision_conseil(moyenne):
+        """Retourne la decision du conseil pour une moyenne donnee."""
+        if est_primaire:
+            if moyenne >= 8:
+                return "Felicitations du conseil"
+            if moyenne >= 7:
+                return "Tableau d'honneur"
+            if moyenne >= 6:
+                return "Encouragements"
+            if moyenne >= seuil_reussite:
+                return "Admis(e) - Passable"
+            if moyenne >= 4:
+                return "Accompagnement renforce"
+            return "Soutien scolaire urgent"
+
+        if moyenne >= 16:
+            return "Felicitations du conseil"
+        if moyenne >= 14:
+            return "Tableau d'honneur"
+        if moyenne >= 12:
+            return "Encouragements"
+        if moyenne >= seuil_reussite:
+            return "Admis(e) - Passable"
+        if moyenne >= 8:
+            return "Accompagnement renforce"
+        return "Soutien scolaire urgent"
+
+    def dessiner_table_decisions(eleves_lignes, y_pos):
+        """Dessine le tableau complet des decisions, decoupe sur plusieurs pages."""
+        lignes_par_page = 24
+        for index in range(0, len(eleves_lignes), lignes_par_page):
+            if index > 0 or y_pos < 8*cm:
+                y_pos = nouvelle_page("DECISIONS DU CONSEIL")
+
+            data = [['Rang', 'Nom & Prenom', 'Moyenne', 'Decision proposee']]
+            for eleve_data in eleves_lignes[index:index + lignes_par_page]:
+                eleve = eleve_data['eleve']
+                moy = eleve_data['moyenne']
+                data.append([
+                    str(eleve_data.get('rang', '')),
+                    f"{eleve.prenom} {eleve.nom}",
+                    f"{moy:.2f}/{note_max}",
+                    decision_conseil(moy),
+                ])
+
+            table = Table(data, colWidths=[1.4*cm, 6.4*cm, 2.6*cm, 5.6*cm])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), BLEU_FONCE),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.gray),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F4F8FB')]),
+            ]))
+
+            table_w, table_h = table.wrap(width - 2*margin, height)
+            if y_pos - table_h < 2*cm:
+                y_pos = nouvelle_page("DECISIONS DU CONSEIL")
+            table.drawOn(c, margin, y_pos - table_h)
+            y_pos -= table_h + 0.5*cm
+
+        return y_pos
     
     y = height - margin
     y = dessiner_entete(y)
@@ -1382,7 +1449,25 @@ def exporter_conseils_pdf(request):
         
         y -= 0.3*cm
     
-    # ===== SECTION 3: ÉLÈVES NÉCESSITANT UNE ATTENTION PARTICULIÈRE =====
+    # ===== SECTION 3: DECISIONS DU CONSEIL POUR TOUS LES ELEVES =====
+    if y < 6*cm:
+        y = nouvelle_page("DECISIONS DU CONSEIL")
+
+    c.setFont("Helvetica-Bold", 14)
+    c.setFillColor(BLEU_FONCE)
+    c.drawString(margin, y, "3. DECISIONS DU CONSEIL POUR TOUS LES ELEVES")
+    y -= 0.7*cm
+
+    eleves_decisions = stats.get('eleves_data', [])
+    if eleves_decisions:
+        y = dessiner_table_decisions(eleves_decisions, y)
+    else:
+        c.setFont("Helvetica-Oblique", 9)
+        c.setFillColor(GRIS)
+        c.drawString(margin + 0.3*cm, y, "Aucune decision disponible pour cette periode.")
+        y -= 0.5*cm
+
+    # ===== SECTION 4: ELEVES NECESSITANT UNE ATTENTION PARTICULIERE =====
     if y < 5*cm:
         c.showPage()
         y = height - margin
@@ -1390,7 +1475,7 @@ def exporter_conseils_pdf(request):
     
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(BLEU_FONCE)
-    c.drawString(margin, y, "3. ÉLÈVES NÉCESSITANT UNE ATTENTION PARTICULIÈRE")
+    c.drawString(margin, y, "4. ELEVES NECESSITANT UNE ATTENTION PARTICULIERE")
     y -= 0.7*cm
     
     # Élèves en difficulté
@@ -1461,12 +1546,12 @@ def exporter_conseils_pdf(request):
         
         y -= 0.3*cm
     
-    # ===== SECTION 4: ANALYSE APPROFONDIE =====
+    # ===== SECTION 5: ANALYSE APPROFONDIE =====
     y = nouvelle_page("ANALYSE APPROFONDIE")
     
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(BLEU_FONCE)
-    c.drawString(margin, y, "4. ANALYSE APPROFONDIE DE LA SITUATION")
+    c.drawString(margin, y, "5. ANALYSE APPROFONDIE DE LA SITUATION")
     y -= 0.7*cm
     
     analyses = _generer_analyse_approfondie(stats)
@@ -1508,13 +1593,13 @@ def exporter_conseils_pdf(request):
             y -= 0.3*cm
         y -= 0.4*cm
     
-    # ===== SECTION 5: MÉTHODES DE SUIVI DÉTAILLÉES =====
+    # ===== SECTION 6: MÉTHODES DE SUIVI DÉTAILLÉES =====
     if y < 6*cm:
         y = nouvelle_page("MÉTHODES DE SUIVI")
     
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(BLEU_FONCE)
-    c.drawString(margin, y, "5. PROTOCOLE DE SUIVI PÉDAGOGIQUE")
+    c.drawString(margin, y, "6. PROTOCOLE DE SUIVI PÉDAGOGIQUE")
     y -= 0.7*cm
     
     methodes = _generer_methodes_suivi()
@@ -1545,13 +1630,13 @@ def exporter_conseils_pdf(request):
             y -= 0.3*cm
         y -= 0.3*cm
     
-    # ===== SECTION 6: ASTUCES POUR AMÉLIORER LES RÉSULTATS =====
+    # ===== SECTION 7: ASTUCES POUR AMÉLIORER LES RÉSULTATS =====
     if y < 5*cm:
         y = nouvelle_page("ASTUCES PÉDAGOGIQUES")
     
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(BLEU_FONCE)
-    c.drawString(margin, y, "6. ASTUCES POUR AMÉLIORER LES RÉSULTATS")
+    c.drawString(margin, y, "7. ASTUCES POUR AMÉLIORER LES RÉSULTATS")
     y -= 0.7*cm
     
     astuces = _generer_astuces_rehaussement()
@@ -1572,7 +1657,7 @@ def exporter_conseils_pdf(request):
             y -= 0.35*cm
         y -= 0.2*cm
     
-    # ===== SECTION 7: LETTRES DE RECOMMANDATION AUX PARENTS =====
+    # ===== SECTION 8: LETTRES DE RECOMMANDATION AUX PARENTS =====
     eleves_diff = stats.get('eleves_en_difficulte', [])
     
     if eleves_diff:
@@ -1681,7 +1766,7 @@ def exporter_conseils_pdf(request):
             y -= 0.6*cm
             c.drawString(margin, y, "Date: ___/___/______          Signature: _________________________")
     
-    # ===== SECTION 8: LETTRES DE RECOMMANDATION AUX ÉLÈVES =====
+    # ===== SECTION 9: LETTRES DE RECOMMANDATION AUX ÉLÈVES =====
     if eleves_diff:
         for eleve_data in eleves_diff:
             y = nouvelle_page("MESSAGE À L'ÉLÈVE")
@@ -1765,12 +1850,12 @@ def exporter_conseils_pdf(request):
             c.drawString(margin + 0.6*cm, y - 1.7*cm, "_______________________________________________________________")
             c.drawString(margin + 0.6*cm, y - 2.1*cm, f"Date: ___/___/______     Signature de l'élève: _______________")
     
-    # ===== SECTION 9: ESPACE POUR DÉCISIONS DU CONSEIL =====
+    # ===== SECTION 10: ESPACE POUR DÉCISIONS DU CONSEIL =====
     y = nouvelle_page("DÉCISIONS DU CONSEIL")
     
     c.setFont("Helvetica-Bold", 14)
     c.setFillColor(BLEU_FONCE)
-    c.drawString(margin, y, "9. DÉCISIONS DU CONSEIL DE CLASSE")
+    c.drawString(margin, y, "10. DÉCISIONS DU CONSEIL DE CLASSE")
     y -= 0.7*cm
     
     # Encadré pour les notes manuscrites
