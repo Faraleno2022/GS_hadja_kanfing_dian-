@@ -445,6 +445,28 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
     except Exception:
         logging.getLogger(__name__).exception("Erreur allocation paiement -> échéancier")
 
+def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaiement" = None) -> None:
+    """CompatibilitÃ© avec les anciens tests et appels internes."""
+    _allocate_payment_to_echeancier(paiement)
+
+
+def _sum_validated_payments_and_remises(eleve):
+    """Retourne (paiements_valides, remises_valides) sans double comptage SQL."""
+    paiement_total = (
+        Paiement.objects
+        .filter(eleve=eleve, statut='VALIDE')
+        .aggregate(total=Sum('montant'))
+        .get('total') or 0
+    )
+    remise_total = (
+        PaiementRemise.objects
+        .filter(paiement__eleve=eleve, paiement__statut='VALIDE')
+        .aggregate(total=Sum('montant_remise'))
+        .get('total') or 0
+    )
+    return int(paiement_total or 0), int(remise_total or 0)
+
+
 def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
     """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
 
@@ -471,13 +493,7 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
                        + (echeancier.tranche_3_due or 0))
 
         # Paiements validés et remises appliquées sur des paiements
-        aggs = (
-            Paiement.objects
-            .filter(eleve=eleve, statut='VALIDE')
-            .aggregate(sum_montant=Sum('montant'), sum_remises=Sum('remises__montant_remise'))
-        )
-        sum_montant = int(aggs.get('sum_montant') or 0)
-        sum_remises = int(aggs.get('sum_remises') or 0)
+        sum_montant, sum_remises = _sum_validated_payments_and_remises(eleve)
 
         couverture = max(0, sum_montant + sum_remises)
 
@@ -3055,13 +3071,7 @@ def generer_recu_pdf(request, paiement_id:int):
                 total_du = 0
 
             try:
-                aggs = (
-                    Paiement.objects
-                    .filter(eleve=paiement.eleve, statut='VALIDE')
-                    .aggregate(sum_montant=Sum('montant'), sum_remises=Sum('remises__montant_remise'))
-                )
-                sum_montant = int(aggs.get('sum_montant') or 0)
-                sum_remises = int(aggs.get('sum_remises') or 0)
+                sum_montant, sum_remises = _sum_validated_payments_and_remises(paiement.eleve)
             except Exception:
                 sum_montant = 0
                 sum_remises = 0
