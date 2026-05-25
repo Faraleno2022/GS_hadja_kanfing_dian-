@@ -39,6 +39,21 @@
         </div>
     </div>
 
+    {% if nouvelle_annee_status.due %}
+    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4">
+        <div>
+            <i class="fas fa-calendar-plus me-2"></i>
+            <strong>Nouvelle année à créer :</strong>
+            l'année {{ nouvelle_annee_status.annee_courante }} est terminée depuis le
+            {{ nouvelle_annee_status.date_fin|date:"d/m/Y" }}.
+            La prochaine année attendue est {{ nouvelle_annee_status.annee_nouvelle }}.
+        </div>
+        <a href="{% url 'eleves:nouvelle_annee_apercu' %}" class="btn btn-warning fw-bold">
+            Créer {{ nouvelle_annee_status.annee_nouvelle }}
+        </a>
+    </div>
+    {% endif %}
+
     <!-- Tableau des années -->
     <div class="card shadow-sm">
         <div class="card-header bg-white d-flex align-items-center justify-content-between">

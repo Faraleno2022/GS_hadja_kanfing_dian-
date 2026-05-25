@@ -22,7 +22,7 @@ from datetime import date as _date_type
 
 from .models import Ecole, Classe, Eleve, HistoriqueEleve
 from utilisateurs.utils import user_school, user_is_admin
-from .utils_annee import get_annee_active, SESSION_ANNEE_ACTIVE
+from .utils_annee import get_annee_active, get_statut_creation_nouvelle_annee, SESSION_ANNEE_ACTIVE
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +134,7 @@ def gestion_annees(request):
         'ecole': ecole,
         'annees': annees,
         'annee_active': annee_active,
+        'nouvelle_annee_status': get_statut_creation_nouvelle_annee(ecole),
         'titre_page': 'Gestion des années scolaires',
     }
     return render(request, 'eleves/gestion_annees.html', context)

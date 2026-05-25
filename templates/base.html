@@ -592,6 +592,22 @@
         </div>
     {% endif %}
 
+    {% if nouvelle_annee_status.due and request.resolver_match.url_name != 'nouvelle_annee_apercu' %}
+        <div class="container-fluid mt-3">
+            <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2" role="alert">
+                <div>
+                    <i class="fas fa-calendar-plus me-2"></i>
+                    L'année scolaire <strong>{{ nouvelle_annee_status.annee_courante }}</strong>
+                    est terminée depuis le {{ nouvelle_annee_status.date_fin|date:"d/m/Y" }}.
+                    Préparez la nouvelle année <strong>{{ nouvelle_annee_status.annee_nouvelle }}</strong>.
+                </div>
+                <a href="{% url 'eleves:nouvelle_annee_apercu' %}" class="btn btn-sm btn-warning fw-bold">
+                    Créer la nouvelle année
+                </a>
+            </div>
+        </div>
+    {% endif %}
+
     <!-- Main Content -->
     <div class="container-fluid">
         <div class="row">

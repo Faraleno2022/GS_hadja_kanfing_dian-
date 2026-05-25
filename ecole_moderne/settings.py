@@ -168,6 +168,12 @@ AXES_URL_REGEX = _re.compile(r'^/utilisateurs/login/$')
 
 ROOT_URLCONF = 'ecole_moderne.urls'
 
+# =================== Annee scolaire ===================
+# La nouvelle annee est proposee automatiquement apres cette date.
+# Par defaut : 30 juin de l'annee de fin (ex: 2025-2026 -> 30/06/2026).
+ANNEE_SCOLAIRE_FIN_MOIS = int(os.environ.get('ANNEE_SCOLAIRE_FIN_MOIS', '6'))
+ANNEE_SCOLAIRE_FIN_JOUR = int(os.environ.get('ANNEE_SCOLAIRE_FIN_JOUR', '30'))
+
 # =================== Templates ===================
 TEMPLATES = [
     {
