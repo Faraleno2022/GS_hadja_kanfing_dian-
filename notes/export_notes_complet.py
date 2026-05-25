@@ -416,20 +416,20 @@ def exporter_notes_complet_pdf(request):
         # Calculer les largeurs de colonnes dynamiquement
         page_width = page_size[0] - 1*cm  # Largeur disponible
         
-        # Colonnes fixes: N°, Matricule, Prénom, Nom, Moyenne, Rang
-        fixed_cols_width = 1.0*cm + 2.0*cm + 6.2*cm + 1.4*cm + 1.4*cm
+        # Colonnes fixes: N°, Matricule, Élève, Moyenne, Rang
+        fixed_cols_width = 1.0*cm + 2.0*cm + 7.0*cm + 1.5*cm + 1.5*cm
         remaining_width = page_width - fixed_cols_width
         matiere_col_width = remaining_width / nb_matieres if nb_matieres > 0 else 2*cm
         
         # Limiter la largeur des colonnes matières
         matiere_col_width = min(matiere_col_width, 2.8*cm)
-        matiere_col_width = max(matiere_col_width, 1.35*cm)
+        matiere_col_width = max(matiere_col_width, 1.4*cm)
         
         header_cell_style = ParagraphStyle(
             'TableHeaderCell',
             parent=styles['Normal'],
-            fontSize=6.5,
-            leading=7,
+            fontSize=7.2,
+            leading=7.8,
             alignment=TA_CENTER,
             textColor=colors.whitesmoke,
             wordWrap='CJK'
@@ -445,20 +445,21 @@ def exporter_notes_complet_pdf(request):
         name_style = ParagraphStyle(
             'StudentName',
             parent=styles['Normal'],
-            fontSize=6.5,
-            leading=7.5,
+            fontSize=7.2,
+            leading=8.0,
             alignment=TA_LEFT,
-            wordWrap='CJK'
+            splitLongWords=0
         )
 
         data = [headers]
         
         for idx, r in enumerate(resultats, 1):
             eleve = r['eleve']
+            nom_complet = f"{eleve.prenom or ''} {eleve.nom or ''}".strip()
             row = [
                 str(idx),
                 eleve.matricule or '',
-                Paragraph(f"{eleve.prenom or ''} {eleve.nom or ''}".strip(), name_style)
+                nom_complet if len(nom_complet) <= 18 else Paragraph(nom_complet, name_style)
             ]
             
             # Notes par matière
@@ -490,7 +491,7 @@ def exporter_notes_complet_pdf(request):
             data.append(row)
         
         # Construire les largeurs de colonnes
-        col_widths = [1.0*cm, 2.0*cm, 6.2*cm]
+        col_widths = [1.0*cm, 2.0*cm, 7.0*cm]
         col_widths.extend([matiere_col_width] * nb_matieres)
         col_widths.extend([1.5*cm, 1.5*cm])
         
@@ -503,8 +504,8 @@ def exporter_notes_complet_pdf(request):
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 7),
-            ('FONTSIZE', (0, 1), (-1, -1), 6.5),
+            ('FONTSIZE', (0, 0), (-1, 0), 7.4),
+            ('FONTSIZE', (0, 1), (-1, -1), 7.2),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
