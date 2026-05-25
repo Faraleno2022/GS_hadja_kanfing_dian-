@@ -332,7 +332,7 @@ def exporter_notes_complet_excel(request):
 @login_required
 def exporter_notes_complet_pdf(request):
     """Exporter toutes les notes par matière en PDF"""
-    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.pagesizes import A3, A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm, mm
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -368,11 +368,14 @@ def exporter_notes_complet_pdf(request):
         # Récupérer les notes (avec appréciations pour maternelle)
         resultats = get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternelle=est_maternelle)
         
+        nb_matieres = len(matieres)
+        page_size = landscape(A3 if nb_matieres >= 8 else A4)
+
         # Créer le PDF en paysage
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer, 
-            pagesize=landscape(A4), 
+            pagesize=page_size,
             topMargin=0.5*cm, 
             bottomMargin=0.5*cm,
             leftMargin=0.5*cm,
@@ -411,24 +414,31 @@ def exporter_notes_complet_pdf(request):
         ))
         
         # Calculer les largeurs de colonnes dynamiquement
-        page_width = landscape(A4)[0] - 1*cm  # Largeur disponible
-        nb_matieres = len(matieres)
+        page_width = page_size[0] - 1*cm  # Largeur disponible
         
         # Colonnes fixes: N°, Matricule, Prénom, Nom, Moyenne, Rang
-        fixed_cols_width = 1.0*cm + 2.0*cm + 3.2*cm + 3.4*cm + 1.4*cm + 1.4*cm
+        fixed_cols_width = 1.0*cm + 2.0*cm + 6.2*cm + 1.4*cm + 1.4*cm
         remaining_width = page_width - fixed_cols_width
         matiere_col_width = remaining_width / nb_matieres if nb_matieres > 0 else 2*cm
         
         # Limiter la largeur des colonnes matières
-        matiere_col_width = min(matiere_col_width, 2.5*cm)
-        matiere_col_width = max(matiere_col_width, 1.2*cm)
+        matiere_col_width = min(matiere_col_width, 2.8*cm)
+        matiere_col_width = max(matiere_col_width, 1.35*cm)
         
+        header_cell_style = ParagraphStyle(
+            'TableHeaderCell',
+            parent=styles['Normal'],
+            fontSize=6.5,
+            leading=7,
+            alignment=TA_CENTER,
+            textColor=colors.whitesmoke,
+            wordWrap='CJK'
+        )
+
         # Construire les en-têtes
-        headers = ['N°', 'Matricule', 'Prénom', 'Nom']
+        headers = ['N°', 'Matricule', 'Élève']
         for matiere in matieres:
-            # Abréger le nom si trop long
-            nom_mat = matiere.nom[:8] + '.' if len(matiere.nom) > 8 else matiere.nom
-            headers.append(nom_mat)
+            headers.append(Paragraph(matiere.nom, header_cell_style))
         headers.extend(['Moy.', 'Rang'])
         
         # Construire les données
@@ -448,8 +458,7 @@ def exporter_notes_complet_pdf(request):
             row = [
                 str(idx),
                 eleve.matricule or '',
-                Paragraph(eleve.prenom or '', name_style),
-                Paragraph(eleve.nom or '', name_style)
+                Paragraph(f"{eleve.prenom or ''} {eleve.nom or ''}".strip(), name_style)
             ]
             
             # Notes par matière
@@ -481,7 +490,7 @@ def exporter_notes_complet_pdf(request):
             data.append(row)
         
         # Construire les largeurs de colonnes
-        col_widths = [1.0*cm, 2.0*cm, 3.2*cm, 3.4*cm]
+        col_widths = [1.0*cm, 2.0*cm, 6.2*cm]
         col_widths.extend([matiere_col_width] * nb_matieres)
         col_widths.extend([1.5*cm, 1.5*cm])
         
@@ -501,7 +510,7 @@ def exporter_notes_complet_pdf(request):
             ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-            ('ALIGN', (2, 1), (3, -1), 'LEFT'),  # Prénom et Nom alignés à gauche
+            ('ALIGN', (2, 1), (2, -1), 'LEFT'),  # Nom complet aligné à gauche
         ]
         
         # Colorer les notes insuffisantes en rouge
@@ -512,13 +521,13 @@ def exporter_notes_complet_pdf(request):
                 note_info = r['notes_par_matiere'].get(matiere.id, {})
                 note = note_info.get('note')
                 if note is not None and note < seuil:
-                    col_idx = 4 + mat_idx
+                    col_idx = 3 + mat_idx
                     style_commands.append(('TEXTCOLOR', (col_idx, row_idx), (col_idx, row_idx), colors.red))
             
             # Moyenne générale
             moy = r.get('moyenne_generale')
             if moy is not None and moy < seuil:
-                moy_col = 4 + len(matieres)
+                moy_col = 3 + len(matieres)
                 style_commands.append(('TEXTCOLOR', (moy_col, row_idx), (moy_col, row_idx), colors.red))
         
         table.setStyle(TableStyle(style_commands))
