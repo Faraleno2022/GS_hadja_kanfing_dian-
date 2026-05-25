@@ -163,7 +163,7 @@ class CalculateurBulletinIntelligent:
         est_maternelle = (niveau_detecte == 'MATERNELLE')
         
         # Récupérer toutes les matières
-        matieres = MatiereNote.objects.filter(classe=self.classe_note, actif=True)
+        matieres = MatiereNote.objects.filter(classe=self.classe_note)
         
         # Pour la maternelle : utiliser les appréciations
         if est_maternelle:
@@ -212,7 +212,7 @@ class CalculateurBulletinIntelligent:
             'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
             'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom, self.niveau) if moyenne_generale else None,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count()
+            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count()
         }
     
     def _generer_bulletin_maternelle(self, matieres):
@@ -288,7 +288,7 @@ class CalculateurBulletinIntelligent:
             'mention': mention,
             'appreciation': appreciation,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe).count(),
+            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count(),
             'est_maternelle': True
         }
     

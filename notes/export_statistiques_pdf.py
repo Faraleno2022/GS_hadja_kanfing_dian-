@@ -586,6 +586,8 @@ def exporter_statistiques_pdf(request):
         [f'Élèves excellents (≥{seuil_reussite + (2 if est_primaire else 4)})', str(sg['nb_excellent'] + sg['nb_tres_bien'])],
     ]
     
+    stats_data[-2][1] = str(sg['nb_non_admis'])
+
     table = Table(stats_data, colWidths=[8*cm, 4*cm])
     table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),

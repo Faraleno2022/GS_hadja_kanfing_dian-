@@ -415,7 +415,7 @@ def exporter_notes_complet_pdf(request):
         nb_matieres = len(matieres)
         
         # Colonnes fixes: N°, Matricule, Prénom, Nom, Moyenne, Rang
-        fixed_cols_width = 1.2*cm + 2.2*cm + 2.5*cm + 2.5*cm + 1.5*cm + 1.5*cm
+        fixed_cols_width = 1.0*cm + 2.0*cm + 3.2*cm + 3.4*cm + 1.4*cm + 1.4*cm
         remaining_width = page_width - fixed_cols_width
         matiere_col_width = remaining_width / nb_matieres if nb_matieres > 0 else 2*cm
         
@@ -432,6 +432,15 @@ def exporter_notes_complet_pdf(request):
         headers.extend(['Moy.', 'Rang'])
         
         # Construire les données
+        name_style = ParagraphStyle(
+            'StudentName',
+            parent=styles['Normal'],
+            fontSize=6.5,
+            leading=7.5,
+            alignment=TA_LEFT,
+            wordWrap='CJK'
+        )
+
         data = [headers]
         
         for idx, r in enumerate(resultats, 1):
@@ -439,8 +448,8 @@ def exporter_notes_complet_pdf(request):
             row = [
                 str(idx),
                 eleve.matricule or '',
-                eleve.prenom[:12] if eleve.prenom and len(eleve.prenom) > 12 else (eleve.prenom or ''),
-                eleve.nom[:12] if eleve.nom and len(eleve.nom) > 12 else (eleve.nom or '')
+                Paragraph(eleve.prenom or '', name_style),
+                Paragraph(eleve.nom or '', name_style)
             ]
             
             # Notes par matière
@@ -472,7 +481,7 @@ def exporter_notes_complet_pdf(request):
             data.append(row)
         
         # Construire les largeurs de colonnes
-        col_widths = [1.2*cm, 2.2*cm, 2.5*cm, 2.5*cm]
+        col_widths = [1.0*cm, 2.0*cm, 3.2*cm, 3.4*cm]
         col_widths.extend([matiere_col_width] * nb_matieres)
         col_widths.extend([1.5*cm, 1.5*cm])
         
@@ -486,7 +495,7 @@ def exporter_notes_complet_pdf(request):
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 7),
-            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('FONTSIZE', (0, 1), (-1, -1), 6.5),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
