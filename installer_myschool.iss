@@ -145,6 +145,8 @@ FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%
 var
   IsUpdate: Boolean;
   BackupTempDir: String;
+  LicenseQuestionAsked: Boolean;
+  SelectedLicenseFile: String;
 
 // ── Détection si c'est une mise à jour ───────────────────────────────────────
 function IsUpgradeInstall(): Boolean;
@@ -342,17 +344,19 @@ begin
 end;
 
 // ── Question licence pendant l'installation fraîche ─────────────────────────
-procedure ConfigureLicenseAfterInstall();
+procedure AskLicenseBeforeInstall();
 var
   LicenseFile: String;
-  DestFile: String;
 begin
+  LicenseQuestionAsked := True;
+  SelectedLicenseFile := '';
+
   if WizardSilent() then
     Exit;
 
   if MsgBox(
     'Avez-vous déjà une licence annuelle MySchoolGN ?' + #13#10 + #13#10 +
-    'Oui : sélectionnez votre fichier .lic pour l''ajouter maintenant.' + #13#10 +
+    'Oui : sélectionnez votre fichier .lic pour l''ajouter pendant l''installation.' + #13#10 +
     'Non : MySchoolGN continuera avec la version d''essai gratuite de 30 jours.',
     mbConfirmation, MB_YESNO
   ) = IDYES then
@@ -362,28 +366,16 @@ begin
       'Sélectionner le fichier de licence annuelle',
       LicenseFile,
       '',
-      'Fichiers de licence (*.lic)|*.lic|Tous les fichiers (*.*)|*.*',
+      'Fichiers de licence (*.lic;*.dat)|*.lic;*.dat|Tous les fichiers (*.*)|*.*',
       'lic'
     ) then
     begin
-      DestFile := ExpandConstant('{app}\license.dat');
-      if CopyFile(LicenseFile, DestFile, False) then
-      begin
-        CopyFile(LicenseFile, ExpandConstant('{app}\') + ExtractFileName(LicenseFile), False);
-        MsgBox(
-          'Licence ajoutée avec succès.' + #13#10 + #13#10 +
-          'MySchoolGN démarrera en version activée.',
-          mbInformation, MB_OK
-        );
-      end
-      else
-      begin
-        MsgBox(
-          'Impossible de copier la licence dans le dossier d''installation.' + #13#10 +
-          'Vous pourrez l''activer plus tard depuis MySchoolGN.',
-          mbError, MB_OK
-        );
-      end;
+      SelectedLicenseFile := LicenseFile;
+      MsgBox(
+        'Licence sélectionnée.' + #13#10 + #13#10 +
+        'Elle sera ajoutée automatiquement pendant l''installation.',
+        mbInformation, MB_OK
+      );
     end
     else
     begin
@@ -394,6 +386,45 @@ begin
       );
     end;
   end;
+end;
+
+procedure InstallSelectedLicense();
+var
+  DestFile: String;
+begin
+  if SelectedLicenseFile = '' then
+  begin
+    Log('Aucune licence fournie : essai gratuit de 30 jours au premier lancement.');
+    Exit;
+  end;
+
+  DestFile := ExpandConstant('{app}\license.dat');
+  if CopyFile(SelectedLicenseFile, DestFile, False) then
+  begin
+    CopyFile(SelectedLicenseFile, ExpandConstant('{app}\') + ExtractFileName(SelectedLicenseFile), False);
+    Log('Licence installée : ' + ExtractFileName(SelectedLicenseFile));
+    MsgBox(
+      'Licence ajoutée avec succès.' + #13#10 + #13#10 +
+      'MySchoolGN démarrera en version activée.',
+      mbInformation, MB_OK
+    );
+  end
+  else
+  begin
+    Log('Licence non installée : impossible de copier le fichier sélectionné.');
+    MsgBox(
+      'Impossible de copier la licence dans le dossier d''installation.' + #13#10 +
+      'Vous pourrez l''activer plus tard depuis MySchoolGN.',
+      mbError, MB_OK
+    );
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpReady) and (not IsUpdate) and (not LicenseQuestionAsked) then
+    AskLicenseBeforeInstall();
 end;
 
 // ── Adapter les messages selon le mode (installation / mise à jour) ──────────
@@ -462,7 +493,7 @@ begin
     end;
     if not IsUpdate then
     begin
-      ConfigureLicenseAfterInstall();
+      InstallSelectedLicense();
     end;
   end;
 end;
