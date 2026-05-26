@@ -148,7 +148,7 @@ class LicenceMiddleware:
 
     EXEMPT_PREFIXES = (
         '/static/', '/media/', '/favicon', '/utilisateurs/login/',
-        '/activer/', '/admin/', '/api/v1/license/', '/rapport-scolaire/',
+        '/activer/', '/admin/', '/api/v1/license/', '/api/v1/sync/', '/rapport-scolaire/',
     )
     EXEMPT_EXACT = {
         '/',

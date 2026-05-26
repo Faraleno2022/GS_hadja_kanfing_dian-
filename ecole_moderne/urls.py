@@ -109,6 +109,7 @@ urlpatterns = [
     path('notes/', include('notes.urls')),
     path('abonnements/', include('abonnements.urls')),
     path('chatbot/', include('chatbot.urls')),
+    path('api/v1/sync/', include('synchronisation.urls')),
 ]
 
 # Servir les fichiers STATIC et MEDIA en développement

@@ -14,6 +14,7 @@ ALLOWED_HOSTS = [
     'gshadjakanfingdiane.pythonanywhere.com',
     'myschoolgn.space',
     'www.myschoolgn.space',
+    'myschool-rn3d.onrender.com',
 ]
 
 # ===== Origines CSRF de confiance =====
@@ -21,6 +22,7 @@ CSRF_TRUSTED_ORIGINS = [
     'https://gshadjakanfingdiane.pythonanywhere.com',
     'https://myschoolgn.space',
     'https://www.myschoolgn.space',
+    'https://myschool-rn3d.onrender.com',
 ]
 
 # ===== Proxy headers (PythonAnywhere) =====

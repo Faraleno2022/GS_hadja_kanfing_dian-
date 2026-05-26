@@ -43,12 +43,14 @@ else:
         'myschoolgn.pythonanywhere.com',
         'myschoolgn.space',
         'www.myschoolgn.space',
+        'myschool-rn3d.onrender.com',
     ]
     CSRF_TRUSTED_ORIGINS = [
         'https://gshadjakanfingdiane.pythonanywhere.com',
         'https://myschoolgn.pythonanywhere.com',
         'https://myschoolgn.space',
         'https://www.myschoolgn.space',
+        'https://myschool-rn3d.onrender.com',
     ]
 
 # =================== Sécurité ===================
@@ -116,6 +118,7 @@ INSTALLED_APPS = [
     'notes',
     'abonnements',
     'chatbot',
+    'synchronisation',
     'axes',
 ]
 
