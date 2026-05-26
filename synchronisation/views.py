@@ -2,8 +2,9 @@ import json
 import secrets
 from uuid import UUID
 
-from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.http import JsonResponse
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -24,9 +25,22 @@ def _json_body(request):
 
 
 def _current_school(user, data=None):
-    if user.is_superuser and data and data.get('ecole_id'):
+    if user and user.is_authenticated and user.is_superuser and data and data.get('ecole_id'):
         return Ecole.objects.filter(pk=data['ecole_id']).first()
-    return user_school(user)
+    if user and user.is_authenticated:
+        return user_school(user)
+    if data and data.get('ecole_id'):
+        return Ecole.objects.filter(pk=data['ecole_id']).first()
+    return None
+
+
+def _has_sync_admin_access(request):
+    token = request.headers.get('X-Sync-Admin-Token', '')
+    expected = getattr(settings, 'MYSCHOOL_SYNC_ADMIN_TOKEN', '')
+    if expected and token and secrets.compare_digest(token, expected):
+        return True
+    user = getattr(request, 'user', None)
+    return bool(user and user.is_authenticated and user_is_admin(user))
 
 
 def _device_from_headers(request):
@@ -57,10 +71,9 @@ def health(request):
 
 
 @csrf_exempt
-@login_required
 @require_POST
 def register_device(request):
-    if not user_is_admin(request.user):
+    if not _has_sync_admin_access(request):
         return JsonResponse({'ok': False, 'error': 'Permission refusee.'}, status=403)
 
     data = _json_body(request)
@@ -161,18 +174,51 @@ def pull(request):
         return error_response
 
     since = request.GET.get('since')
+    since_id = request.GET.get('since_id')
     if request.method == 'POST':
         data = _json_body(request)
         if data is None:
             return JsonResponse({'ok': False, 'error': 'JSON invalide.'}, status=400)
         since = data.get('since') or since
+        since_id = data.get('since_id') or since_id
+
+    changes = SyncChange.objects.filter(ecole=device.ecole).exclude(device=device)
+    if since_id:
+        try:
+            changes = changes.filter(id__gt=int(since_id))
+        except (TypeError, ValueError):
+            return JsonResponse({'ok': False, 'error': 'since_id invalide.'}, status=400)
+    elif since:
+        parsed_since = parse_datetime(str(since))
+        if not parsed_since:
+            return JsonResponse({'ok': False, 'error': 'since invalide. Utilisez une date ISO ou since_id.'}, status=400)
+        if timezone.is_naive(parsed_since):
+            parsed_since = timezone.make_aware(parsed_since, timezone.get_current_timezone())
+        changes = changes.filter(date_creation__gt=parsed_since)
+
+    changes = changes.order_by('id')[:200]
+    serialized_changes = [
+        {
+            'id': change.id,
+            'model': change.model_label,
+            'model_label': change.model_label,
+            'object_uuid': str(change.object_uuid) if change.object_uuid else None,
+            'operation': change.operation,
+            'payload': change.payload,
+            'device_id': str(change.device.device_id) if change.device else None,
+            'device_name': change.device.nom if change.device else None,
+            'date_creation': change.date_creation.isoformat(),
+        }
+        for change in changes
+    ]
 
     return JsonResponse({
         'ok': True,
         'device_id': str(device.device_id),
         'ecole_id': device.ecole_id,
         'since': since,
-        'changes': [],
+        'since_id': since_id,
+        'changes': serialized_changes,
+        'latest_change_id': serialized_changes[-1]['id'] if serialized_changes else since_id,
         'server_time': timezone.now().isoformat(),
-        'message': 'Endpoint pret. Les exports par modele seront ajoutes progressivement.',
     })

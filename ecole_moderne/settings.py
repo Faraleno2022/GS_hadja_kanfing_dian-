@@ -325,6 +325,13 @@ TWILIO_ENABLED = os.getenv("TWILIO_ENABLED", "false").lower() in {"1", "true", "
 TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN', '')
 PHONE_VERIFY_TTL_SECONDS = int(os.environ.get('PHONE_VERIFY_TTL_SECONDS', 4 * 3600))
 
+# =================== Synchronisation offline/online ===================
+MYSCHOOL_SYNC_SERVER_URL = os.environ.get('MYSCHOOL_SYNC_SERVER_URL', '').rstrip('/')
+MYSCHOOL_SYNC_DEVICE_ID = os.environ.get('MYSCHOOL_SYNC_DEVICE_ID', '')
+MYSCHOOL_SYNC_TOKEN = os.environ.get('MYSCHOOL_SYNC_TOKEN', '')
+MYSCHOOL_SYNC_ADMIN_TOKEN = os.environ.get('MYSCHOOL_SYNC_ADMIN_TOKEN', '')
+MYSCHOOL_SYNC_ECOLE_ID = os.environ.get('MYSCHOOL_SYNC_ECOLE_ID', '')
+
 # =================== Configuration IA Chatbot ===================
 # Token HuggingFace pour l'API IA (obtenir sur https://huggingface.co/settings/tokens)
 HF_TOKEN = os.environ.get('HF_TOKEN', '')

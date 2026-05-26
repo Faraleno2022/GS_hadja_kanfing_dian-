@@ -56,3 +56,51 @@ class SynchronisationApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['accepted_count'], 1)
+
+    def test_register_device_with_admin_token_and_pull_other_device_changes(self):
+        from django.test import override_settings
+
+        with override_settings(MYSCHOOL_SYNC_ADMIN_TOKEN='bootstrap-secret'):
+            response = self.client.post(
+                reverse('synchronisation:register_device'),
+                data=json.dumps({'nom': 'Poste 1', 'ecole_id': self.ecole.id}),
+                content_type='application/json',
+                HTTP_X_SYNC_ADMIN_TOKEN='bootstrap-secret',
+            )
+        self.assertEqual(response.status_code, 201)
+        device_one = response.json()
+
+        with override_settings(MYSCHOOL_SYNC_ADMIN_TOKEN='bootstrap-secret'):
+            response = self.client.post(
+                reverse('synchronisation:register_device'),
+                data=json.dumps({'nom': 'Poste 2', 'ecole_id': self.ecole.id}),
+                content_type='application/json',
+                HTTP_X_SYNC_ADMIN_TOKEN='bootstrap-secret',
+            )
+        self.assertEqual(response.status_code, 201)
+        device_two = response.json()
+
+        response = self.client.post(
+            reverse('synchronisation:push'),
+            data=json.dumps({
+                'changes': [
+                    {
+                        'model': 'eleves.Eleve',
+                        'operation': 'UPDATE',
+                        'payload': {'nom': 'Bah'},
+                    }
+                ]
+            }),
+            content_type='application/json',
+            HTTP_X_SYNC_DEVICE=device_one['device_id'],
+            HTTP_X_SYNC_TOKEN=device_one['sync_token'],
+        )
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get(
+            reverse('synchronisation:pull'),
+            HTTP_X_SYNC_DEVICE=device_two['device_id'],
+            HTTP_X_SYNC_TOKEN=device_two['sync_token'],
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['changes']), 1)
