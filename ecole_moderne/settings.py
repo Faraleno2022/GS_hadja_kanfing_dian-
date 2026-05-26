@@ -12,21 +12,23 @@ except ImportError:
 # =================== Base ===================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Charger .env si disponible
-if load_dotenv:
-    load_dotenv(BASE_DIR / ".env")
 
-# =================== Clés et debug ===================
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
-DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
-
-# =================== Hôtes et CSRF ===================
 def _env_list(name):
     return [value.strip() for value in os.environ.get(name, '').split(',') if value.strip()]
 
 
 RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
 
+# Charger .env si disponible
+if load_dotenv:
+    load_dotenv(BASE_DIR / ".env")
+
+# =================== Clés et debug ===================
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
+DEBUG_DEFAULT = 'false' if RENDER_EXTERNAL_HOSTNAME else 'true'
+DEBUG = os.environ.get('DJANGO_DEBUG', DEBUG_DEFAULT).lower() == 'true'
+
+# =================== Hôtes et CSRF ===================
 if DEBUG:
     ALLOWED_HOSTS = ['*']  # Accepter tous les hôtes en développement
     CSRF_TRUSTED_ORIGINS = [
@@ -210,7 +212,7 @@ WSGI_APPLICATION = 'ecole_moderne.wsgi.application'
 
 # =================== Base de données ===================
 
-if DEBUG:
+if DEBUG or not os.environ.get('DJANGO_DB_NAME'):
     # Utiliser SQLite en développement local
     DATABASES = {
         "default": {

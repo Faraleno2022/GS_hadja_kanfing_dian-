@@ -1,5 +1,9 @@
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # Charger les variables d'environnement depuis .env
-load_dotenv()
+if load_dotenv:
+    load_dotenv()
