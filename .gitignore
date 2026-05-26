@@ -79,6 +79,7 @@ MySchoolGN_Output/
 *.exe
 *.rar
 *.spec
+.codex-tools/
 
 # Licences générées localement
 license.dat
