@@ -21,6 +21,12 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
 # =================== Hôtes et CSRF ===================
+def _env_list(name):
+    return [value.strip() for value in os.environ.get(name, '').split(',') if value.strip()]
+
+
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
+
 if DEBUG:
     ALLOWED_HOSTS = ['*']  # Accepter tous les hôtes en développement
     CSRF_TRUSTED_ORIGINS = [
@@ -44,14 +50,19 @@ else:
         'myschoolgn.space',
         'www.myschoolgn.space',
         'myschool-rn3d.onrender.com',
-    ]
+    ] + _env_list('DJANGO_ALLOWED_HOSTS')
+    if RENDER_EXTERNAL_HOSTNAME:
+        ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
     CSRF_TRUSTED_ORIGINS = [
         'https://gshadjakanfingdiane.pythonanywhere.com',
         'https://myschoolgn.pythonanywhere.com',
         'https://myschoolgn.space',
         'https://www.myschoolgn.space',
         'https://myschool-rn3d.onrender.com',
-    ]
+    ] + _env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
+    if RENDER_EXTERNAL_HOSTNAME:
+        CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
 
 # =================== Sécurité ===================
 # Désactivé pour développement local
@@ -125,6 +136,7 @@ INSTALLED_APPS = [
 # =================== Middleware ===================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
