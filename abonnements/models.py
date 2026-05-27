@@ -2,11 +2,12 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from eleves.models import Eleve
 from decimal import Decimal
+from synchronisation.mixins import SyncTrackedModel
 
 User = get_user_model()
 
 
-class TypeAbonnement(models.Model):
+class TypeAbonnement(SyncTrackedModel):
     """Types d'abonnements (Bus, Cantine, etc.)"""
     NOM_CHOICES = [
         ('BUS', 'Transport Scolaire'),
@@ -42,7 +43,7 @@ class TypeAbonnement(models.Model):
         return self.get_nom_display()
 
 
-class Itineraire(models.Model):
+class Itineraire(SyncTrackedModel):
     """Itinéraires de bus"""
     nom = models.CharField(max_length=100, verbose_name="Nom de l'itinéraire")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
@@ -72,7 +73,7 @@ class Itineraire(models.Model):
         return self.abonnementbus_set.filter(statut='ACTIF').count()
 
 
-class MenuCantine(models.Model):
+class MenuCantine(SyncTrackedModel):
     """Menus de la cantine"""
     JOUR_CHOICES = [
         ('LUNDI', 'Lundi'),
@@ -103,7 +104,7 @@ class MenuCantine(models.Model):
         return f"{self.get_jour_display()} - Semaine {self.semaine}"
 
 
-class Abonnement(models.Model):
+class Abonnement(SyncTrackedModel):
     """Modèle de base pour les abonnements"""
     DUREE_CHOICES = [
         ('MENSUEL', 'Mensuel'),
@@ -156,7 +157,7 @@ class Abonnement(models.Model):
         )
 
 
-class AbonnementBus(models.Model):
+class AbonnementBus(SyncTrackedModel):
     """Abonnement spécifique au transport scolaire"""
     STATUT_CHOICES = [
         ('ACTIF', 'Actif'),
@@ -214,7 +215,7 @@ class AbonnementBus(models.Model):
         )
 
 
-class AbonnementCantine(models.Model):
+class AbonnementCantine(SyncTrackedModel):
     """Abonnement spécifique à la cantine"""
     STATUT_CHOICES = [
         ('ACTIF', 'Actif'),
@@ -281,7 +282,7 @@ class AbonnementCantine(models.Model):
         )
 
 
-class PresenceCantine(models.Model):
+class PresenceCantine(SyncTrackedModel):
     """Suivi des présences à la cantine"""
     abonnement = models.ForeignKey(
         AbonnementCantine, on_delete=models.CASCADE, verbose_name="Abonnement"

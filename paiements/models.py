@@ -347,7 +347,7 @@ class Relance(SyncTrackedModel):
     def __str__(self):
         return f"Relance {self.eleve.nom_complet} - {self.canal} - {self.statut}"
 
-class TwilioInboundMessage(models.Model):
+class TwilioInboundMessage(SyncTrackedModel):
     """Journalise les messages entrants Twilio (SMS/WhatsApp) et leurs statuts.
     Utilisé pour audit et debugging.
     """
@@ -390,7 +390,7 @@ class TwilioInboundMessage(models.Model):
         return f"{self.channel} {self.from_number} -> {self.to_number}: {self.body[:30] if self.body else ''}"
 
 
-class ConfigurationPaiement(models.Model):
+class ConfigurationPaiement(SyncTrackedModel):
     """Configuration des frais de scolarité par classe"""
     from eleves.models import Classe
     

@@ -2,9 +2,10 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from decimal import Decimal
+from synchronisation.mixins import SyncTrackedModel
 
 
-class CategorieArticle(models.Model):
+class CategorieArticle(SyncTrackedModel):
     """Catégories d'articles logistiques"""
     TYPE_CHOICES = [
         ('FOURNITURE', 'Fournitures scolaires'),
@@ -31,7 +32,7 @@ class CategorieArticle(models.Model):
         return f"{self.code} - {self.nom}"
 
 
-class Article(models.Model):
+class Article(SyncTrackedModel):
     """Articles en stock"""
     UNITE_CHOICES = [
         ('PIECE', 'Pièce'),
@@ -111,7 +112,7 @@ class Article(models.Model):
         return 0
 
 
-class BienEtablissement(models.Model):
+class BienEtablissement(SyncTrackedModel):
     """Biens et infrastructures de l'établissement"""
     TYPE_CHOICES = [
         # Infrastructures
@@ -201,7 +202,7 @@ class BienEtablissement(models.Model):
         return False
 
 
-class MouvementStock(models.Model):
+class MouvementStock(SyncTrackedModel):
     """Mouvements d'entrée et sortie de stock"""
     TYPE_CHOICES = [
         ('ENTREE', 'Entrée'),
@@ -280,7 +281,7 @@ class MouvementStock(models.Model):
         super().save(*args, **kwargs)
 
 
-class Inventaire(models.Model):
+class Inventaire(SyncTrackedModel):
     """Inventaires périodiques"""
     STATUT_CHOICES = [
         ('EN_COURS', 'En cours'),
@@ -319,7 +320,7 @@ class Inventaire(models.Model):
         return f"{self.numero_inventaire} - {self.date_inventaire.strftime('%d/%m/%Y')}"
 
 
-class LigneInventaire(models.Model):
+class LigneInventaire(SyncTrackedModel):
     """Lignes de détail d'un inventaire"""
     inventaire = models.ForeignKey(Inventaire, on_delete=models.CASCADE, related_name='lignes')
     article = models.ForeignKey(Article, on_delete=models.CASCADE)

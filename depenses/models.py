@@ -146,7 +146,7 @@ class Depense(SyncTrackedModel):
         from datetime import date
         return self.date_echeance < date.today() and self.statut not in ['PAYEE', 'ANNULEE']
 
-class PieceJustificative(models.Model):
+class PieceJustificative(SyncTrackedModel):
     """Modèle pour les pièces justificatives des dépenses"""
     TYPE_CHOICES = [
         ('FACTURE', 'Facture'),
@@ -222,7 +222,7 @@ class BudgetAnnuel(SyncTrackedModel):
             return (self.budget_engage / self.budget_prevu) * 100
         return 0
 
-class HistoriqueDepense(models.Model):
+class HistoriqueDepense(SyncTrackedModel):
     """Modèle pour l'historique des modifications des dépenses"""
     ACTION_CHOICES = [
         ('CREATION', 'Création'),

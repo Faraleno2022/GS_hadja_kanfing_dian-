@@ -1,9 +1,10 @@
 from django.db import models
 from django.utils import timezone
 from eleves.models import Eleve
+from synchronisation.mixins import SyncTrackedModel
 
 
-class AbonnementBus(models.Model):
+class AbonnementBus(SyncTrackedModel):
     class Statut(models.TextChoices):
         ACTIF = 'ACTIF', 'Actif'
         EXPIRE = 'EXPIRE', 'Expiré'
@@ -68,7 +69,7 @@ class AbonnementBus(models.Model):
         return timezone.localdate() > self.date_expiration
 
 
-class AbonnementCantine(models.Model):
+class AbonnementCantine(SyncTrackedModel):
     """Modèle pour gérer les abonnements à la cantine scolaire"""
     
     class Statut(models.TextChoices):

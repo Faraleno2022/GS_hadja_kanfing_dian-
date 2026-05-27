@@ -896,7 +896,7 @@ class Eleve(SyncTrackedModel):
 
         return {'transferees': notes_transferees, 'ignorees': notes_ignorees}
 
-class HistoriqueEleve(models.Model):
+class HistoriqueEleve(SyncTrackedModel):
     """Modèle pour l'historique des modifications d'un élève"""
     ACTION_CHOICES = [
         ('CREATION', 'Création'),

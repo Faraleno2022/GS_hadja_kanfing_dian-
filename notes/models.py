@@ -384,7 +384,7 @@ class BulletinMaternelle(SyncTrackedModel):
         return [recommandations_dict.get(r, r) for r in self.recommandations if r in recommandations_dict]
 
 
-class ThemeBulletin(models.Model):
+class ThemeBulletin(SyncTrackedModel):
     """Personnalisation des couleurs du bulletin"""
     
     nom = models.CharField(max_length=100, verbose_name="Nom du thème")
@@ -593,7 +593,7 @@ class NoteMaternelle(SyncTrackedModel):
         return f"{self.matiere.nom} - {self.lettre} ({self.note}/10)"
 
 
-class AnalyseTravailMaternelle(models.Model):
+class AnalyseTravailMaternelle(SyncTrackedModel):
     """Analyse du travail de l'enfant pour une évaluation maternelle"""
     
     evaluation = models.OneToOneField(EvaluationMaternelle, on_delete=models.CASCADE, related_name='analyse_travail')
@@ -643,7 +643,7 @@ class AnalyseTravailMaternelle(models.Model):
         return analyses
 
 
-class RecommandationMaternelle(models.Model):
+class RecommandationMaternelle(SyncTrackedModel):
     """Recommandations de la monitrice pour une évaluation maternelle"""
     
     evaluation = models.OneToOneField(EvaluationMaternelle, on_delete=models.CASCADE, related_name='recommandations')
@@ -786,7 +786,7 @@ class ActiviteJournaliere(SyncTrackedModel):
         return f"{self.eleve} - {self.titre} ({self.date})"
 
 
-class PieceJointeActivite(models.Model):
+class PieceJointeActivite(SyncTrackedModel):
     """Fichier joint à une activité (copie d'évaluation, photo sportive, etc.)"""
     activite = models.ForeignKey(ActiviteJournaliere, on_delete=models.CASCADE, related_name='pieces_jointes')
     fichier = models.FileField(upload_to='activites_journalieres/%Y/%m/', verbose_name="Fichier")

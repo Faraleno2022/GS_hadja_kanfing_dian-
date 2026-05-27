@@ -3,9 +3,10 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from eleves.models import Eleve
 from datetime import timedelta
+from synchronisation.mixins import SyncTrackedModel
 
 
-class CategorieLivre(models.Model):
+class CategorieLivre(SyncTrackedModel):
     """Catégories de livres"""
     nom = models.CharField(max_length=100, verbose_name="Nom de la catégorie")
     code = models.CharField(max_length=20, unique=True, verbose_name="Code")
@@ -21,7 +22,7 @@ class CategorieLivre(models.Model):
         return f"{self.code} - {self.nom}"
 
 
-class Livre(models.Model):
+class Livre(SyncTrackedModel):
     """Livres de la bibliothèque"""
     ETAT_CHOICES = [
         ('NEUF', 'Neuf'),
@@ -100,7 +101,7 @@ class Livre(models.Model):
         return 0
 
 
-class Emprunt(models.Model):
+class Emprunt(SyncTrackedModel):
     """Emprunts de livres"""
     STATUT_CHOICES = [
         ('EN_COURS', 'En cours'),
@@ -186,7 +187,7 @@ class Emprunt(models.Model):
         super().save(*args, **kwargs)
 
 
-class Reservation(models.Model):
+class Reservation(SyncTrackedModel):
     """Réservations de livres"""
     STATUT_CHOICES = [
         ('EN_ATTENTE', 'En attente'),
@@ -241,7 +242,7 @@ class Reservation(models.Model):
         super().save(*args, **kwargs)
 
 
-class HistoriqueLivre(models.Model):
+class HistoriqueLivre(SyncTrackedModel):
     """Historique des actions sur les livres"""
     ACTION_CHOICES = [
         ('ACQUISITION', 'Acquisition'),
@@ -270,7 +271,7 @@ class HistoriqueLivre(models.Model):
         return f"{self.livre.titre} - {self.get_action_display()} ({self.date_action.strftime('%d/%m/%Y')})"
 
 
-class ParametreBibliotheque(models.Model):
+class ParametreBibliotheque(SyncTrackedModel):
     """Paramètres de la bibliothèque"""
     # Durées
     duree_emprunt_defaut = models.PositiveIntegerField(default=14, verbose_name="Durée d'emprunt par défaut (jours)")

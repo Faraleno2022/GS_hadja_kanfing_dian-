@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from decimal import Decimal
 from datetime import datetime
 from eleves.models import Classe, Ecole
+from synchronisation.mixins import SyncTrackedModel
 
 
 class TypeEnseignant(models.TextChoices):
@@ -22,7 +23,7 @@ class StatutEnseignant(models.TextChoices):
     DEMISSIONNAIRE = 'DEMISSIONNAIRE', 'Démissionnaire'
 
 
-class Enseignant(models.Model):
+class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
     
     # Informations personnelles
@@ -167,7 +168,7 @@ class Enseignant(models.Model):
         return self.heures_mensuelles or self.get_heures_mensuelles_defaut()
 
 
-class AffectationClasse(models.Model):
+class AffectationClasse(SyncTrackedModel):
     """Affectation d'un enseignant à une classe"""
     
     enseignant = models.ForeignKey(
@@ -233,7 +234,7 @@ class AffectationClasse(models.Model):
             })
 
 
-class PeriodeSalaire(models.Model):
+class PeriodeSalaire(SyncTrackedModel):
     """Période de calcul des salaires (mois)"""
     
     mois = models.IntegerField(
@@ -299,7 +300,7 @@ class PeriodeSalaire(models.Model):
         return f"{mois_noms[self.mois]} {self.annee}"
 
 
-class EtatSalaire(models.Model):
+class EtatSalaire(SyncTrackedModel):
     """État de salaire d'un enseignant pour une période donnée"""
     
     enseignant = models.ForeignKey(
@@ -411,7 +412,7 @@ class EtatSalaire(models.Model):
         return self.valide and not self.paye
 
 
-class PresenceEnseignant(models.Model):
+class PresenceEnseignant(SyncTrackedModel):
     """Pointage de présence quotidienne des enseignants"""
     
     STATUT_CHOICES = [
@@ -529,7 +530,7 @@ class PresenceEnseignant(models.Model):
         return self.statut == 'ABSENT' and not self.justifie
 
 
-class DetailHeuresClasse(models.Model):
+class DetailHeuresClasse(SyncTrackedModel):
     """Détail des heures par classe pour un état de salaire"""
     
     etat_salaire = models.ForeignKey(

@@ -174,10 +174,19 @@ def queryset_for_ecole(model, ecole):
     label = model_label_for(model)
     if label == 'eleves.Ecole':
         return model.objects.filter(pk=ecole.pk)
-    if label in {'eleves.Classe', 'eleves.GrilleTarifaire', 'notes.ClasseNote', 'notes.ThemeBulletin'}:
+    if label in {
+        'eleves.Classe',
+        'eleves.GrilleTarifaire',
+        'notes.ClasseNote',
+        'notes.ThemeBulletin',
+        'salaires.Enseignant',
+        'salaires.PeriodeSalaire',
+    }:
         return model.objects.filter(ecole=ecole)
     if label == 'eleves.Eleve':
         return model.objects.filter(classe__ecole=ecole)
+    if label == 'eleves.HistoriqueEleve':
+        return model.objects.filter(eleve__classe__ecole=ecole)
     if label == 'eleves.Responsable':
         return model.objects.all()
     if label.startswith('paiements.'):
@@ -191,15 +200,39 @@ def queryset_for_ecole(model, ecole):
             return model.objects.filter(classe__ecole=ecole)
     if label.startswith('depenses.'):
         return model.objects.all()
+    if label.startswith('bus.'):
+        return model.objects.filter(eleve__classe__ecole=ecole)
+    if label.startswith('salaires.'):
+        if hasattr(model, 'enseignant'):
+            return model.objects.filter(enseignant__ecole=ecole)
+        if hasattr(model, 'periode'):
+            return model.objects.filter(periode__ecole=ecole)
+        if hasattr(model, 'etat_salaire'):
+            return model.objects.filter(etat_salaire__periode__ecole=ecole)
+        if hasattr(model, 'classe'):
+            return model.objects.filter(classe__ecole=ecole)
+    if label.startswith('abonnements.'):
+        if label in {'abonnements.TypeAbonnement', 'abonnements.Itineraire', 'abonnements.MenuCantine'}:
+            return model.objects.all()
+        if hasattr(model, 'eleve'):
+            return model.objects.filter(eleve__classe__ecole=ecole)
+        if hasattr(model, 'abonnement'):
+            return model.objects.filter(abonnement__eleve__classe__ecole=ecole)
+    if label.startswith('rapports.'):
+        return model.objects.all()
     if label.startswith('notes.'):
         if hasattr(model, 'classe'):
             return model.objects.filter(classe__ecole=ecole)
         if hasattr(model, 'matiere'):
             return model.objects.filter(matiere__classe__ecole=ecole)
         if hasattr(model, 'evaluation'):
+            if label in {'notes.AnalyseTravailMaternelle', 'notes.RecommandationMaternelle'}:
+                return model.objects.filter(evaluation__classe__ecole=ecole)
             return model.objects.filter(evaluation__matiere__classe__ecole=ecole)
         if hasattr(model, 'eleve'):
             return model.objects.filter(eleve__classe__ecole=ecole)
+        if hasattr(model, 'activite'):
+            return model.objects.filter(activite__eleve__classe__ecole=ecole)
     return model.objects.none()
 
 

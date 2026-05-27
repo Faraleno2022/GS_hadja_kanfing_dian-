@@ -1,8 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
+from synchronisation.mixins import SyncTrackedModel
 
-class TypeRapport(models.Model):
+class TypeRapport(SyncTrackedModel):
     """Modèle pour les types de rapports"""
     CATEGORIE_CHOICES = [
         ('FINANCIER', 'Financier'),
@@ -35,7 +36,7 @@ class TypeRapport(models.Model):
     def __str__(self):
         return f"{self.nom} ({self.get_categorie_display()})"
 
-class Rapport(models.Model):
+class Rapport(SyncTrackedModel):
     """Modèle pour les rapports générés"""
     STATUT_CHOICES = [
         ('EN_COURS', 'En cours de génération'),
@@ -94,7 +95,7 @@ class Rapport(models.Model):
         else:
             return f"{self.taille_fichier / (1024 * 1024):.1f} MB"
 
-class TableauBord(models.Model):
+class TableauBord(SyncTrackedModel):
     """Modèle pour les tableaux de bord personnalisés"""
     nom = models.CharField(max_length=100, verbose_name="Nom du tableau de bord")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
@@ -121,7 +122,7 @@ class TableauBord(models.Model):
     def __str__(self):
         return self.nom
 
-class Widget(models.Model):
+class Widget(SyncTrackedModel):
     """Modèle pour les widgets des tableaux de bord"""
     TYPE_CHOICES = [
         ('GRAPHIQUE_LIGNE', 'Graphique en ligne'),
@@ -162,7 +163,7 @@ class Widget(models.Model):
     def __str__(self):
         return f"{self.tableau_bord.nom} - {self.nom}"
 
-class ExportProgramme(models.Model):
+class ExportProgramme(SyncTrackedModel):
     """Modèle pour les exports programmés"""
     FREQUENCE_CHOICES = [
         ('QUOTIDIEN', 'Quotidien'),
@@ -220,4 +221,3 @@ class ExportProgramme(models.Model):
     
     def __str__(self):
         return f"{self.nom} - {self.get_frequence_display()}"
-
