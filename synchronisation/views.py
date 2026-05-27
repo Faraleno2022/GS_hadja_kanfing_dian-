@@ -3,7 +3,10 @@ import secrets
 from uuid import UUID
 
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -60,6 +63,15 @@ def _device_from_headers(request):
     return device, None
 
 
+def _schools_for_user(user):
+    if user.is_superuser:
+        return Ecole.objects.all().order_by('nom')
+    ecole = user_school(user)
+    if ecole:
+        return Ecole.objects.filter(pk=ecole.pk)
+    return Ecole.objects.none()
+
+
 @require_GET
 def health(request):
     return JsonResponse({
@@ -67,6 +79,48 @@ def health(request):
         'service': 'myschoolgn-sync',
         'version': 1,
         'server_time': timezone.now().isoformat(),
+    })
+
+
+@login_required
+def device_setup(request):
+    if not user_is_admin(request.user):
+        return render(request, 'utilisateurs/permission_denied.html', status=403)
+
+    ecoles = _schools_for_user(request.user)
+    generated = None
+
+    if request.method == 'POST':
+        ecole_id = request.POST.get('ecole_id')
+        nom = (request.POST.get('nom') or 'Poste local').strip()[:120]
+        ecole = ecoles.filter(pk=ecole_id).first()
+
+        if not ecole:
+            messages.error(request, "Ecole introuvable ou non autorisee.")
+        else:
+            token = secrets.token_urlsafe(32)
+            device = SyncDevice(ecole=ecole, nom=nom or 'Poste local')
+            device.definir_token(token)
+            device.save()
+
+            server_url = request.build_absolute_uri('/').rstrip('/')
+            generated = {
+                'device': device,
+                'token': token,
+                'server_url': server_url,
+                'env_block': "\n".join([
+                    f"MYSCHOOL_SYNC_SERVER_URL={server_url}",
+                    f"MYSCHOOL_SYNC_DEVICE_ID={device.device_id}",
+                    f"MYSCHOOL_SYNC_TOKEN={token}",
+                    f"MYSCHOOL_SYNC_ECOLE_ID={ecole.id}",
+                ]),
+            }
+            messages.success(request, "Identifiants de synchronisation generes. Copiez-les maintenant.")
+
+    return render(request, 'synchronisation/device_setup.html', {
+        'titre_page': 'Connexion offline',
+        'ecoles': ecoles,
+        'generated': generated,
     })
 
 
