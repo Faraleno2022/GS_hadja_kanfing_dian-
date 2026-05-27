@@ -44,9 +44,17 @@ class SynchronisationApiTests(TestCase):
             data=json.dumps({
                 'changes': [
                     {
-                        'model': 'eleves.Eleve',
-                        'operation': 'CREATE',
-                        'payload': {'nom': 'Diallo'},
+                        'model': 'eleves.Ecole',
+                        'object_uuid': str(self.ecole.sync_uuid),
+                        'operation': 'UPDATE',
+                        'payload': {
+                            'sync_uuid': str(self.ecole.sync_uuid),
+                            'nom': 'Ecole Test Sync',
+                            'adresse': 'Conakry',
+                            'telephone': '+224600000000',
+                            'directeur': 'Direction',
+                            'etat': 'VALIDE',
+                        },
                     }
                 ]
             }),
@@ -85,9 +93,17 @@ class SynchronisationApiTests(TestCase):
             data=json.dumps({
                 'changes': [
                     {
-                        'model': 'eleves.Eleve',
+                        'model': 'eleves.Ecole',
+                        'object_uuid': str(self.ecole.sync_uuid),
                         'operation': 'UPDATE',
-                        'payload': {'nom': 'Bah'},
+                        'payload': {
+                            'sync_uuid': str(self.ecole.sync_uuid),
+                            'nom': 'Ecole Test Poste 1',
+                            'adresse': 'Conakry',
+                            'telephone': '+224600000000',
+                            'directeur': 'Direction',
+                            'etat': 'VALIDE',
+                        },
                     }
                 ]
             }),

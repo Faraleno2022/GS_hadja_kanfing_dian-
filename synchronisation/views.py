@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from eleves.models import Ecole
 from utilisateurs.utils import user_is_admin, user_school
 
+from .engine import apply_sync_change, snapshot_changes_for_ecole
 from .models import SyncChange, SyncDevice
 
 
@@ -200,6 +201,9 @@ def push(request):
                 rejected.append({'index': index, 'error': 'UUID objet invalide.'})
                 continue
 
+        if object_uuid and 'sync_uuid' not in payload:
+            payload = {**payload, 'sync_uuid': str(object_uuid)}
+
         sync_change = SyncChange.objects.create(
             ecole=device.ecole,
             device=device,
@@ -208,7 +212,14 @@ def push(request):
             operation=operation,
             payload=payload,
         )
-        accepted.append({'index': index, 'change_id': sync_change.id})
+        try:
+            apply_sync_change(sync_change)
+            accepted.append({'index': index, 'change_id': sync_change.id})
+        except Exception as exc:
+            sync_change.statut = SyncChange.STATUT_FAILED
+            sync_change.erreur = str(exc)
+            sync_change.save(update_fields=['statut', 'erreur'])
+            rejected.append({'index': index, 'change_id': sync_change.id, 'error': str(exc)})
 
     return JsonResponse({
         'ok': True,
@@ -229,14 +240,30 @@ def pull(request):
 
     since = request.GET.get('since')
     since_id = request.GET.get('since_id')
+    initial = request.GET.get('initial') in {'1', 'true', 'yes'}
     if request.method == 'POST':
         data = _json_body(request)
         if data is None:
             return JsonResponse({'ok': False, 'error': 'JSON invalide.'}, status=400)
         since = data.get('since') or since
         since_id = data.get('since_id') or since_id
+        initial = data.get('initial') in {True, '1', 'true', 'yes'}
 
-    changes = SyncChange.objects.filter(ecole=device.ecole).exclude(device=device)
+    if initial:
+        serialized_changes = snapshot_changes_for_ecole(device.ecole)
+        return JsonResponse({
+            'ok': True,
+            'device_id': str(device.device_id),
+            'ecole_id': device.ecole_id,
+            'since': since,
+            'since_id': since_id,
+            'initial': True,
+            'changes': serialized_changes,
+            'latest_change_id': since_id,
+            'server_time': timezone.now().isoformat(),
+        })
+
+    changes = SyncChange.objects.filter(ecole=device.ecole, statut=SyncChange.STATUT_APPLIED).exclude(device=device)
     if since_id:
         try:
             changes = changes.filter(id__gt=int(since_id))

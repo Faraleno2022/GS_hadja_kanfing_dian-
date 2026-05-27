@@ -1,8 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
+from synchronisation.mixins import SyncTrackedModel
 
-class CategorieDepense(models.Model):
+class CategorieDepense(SyncTrackedModel):
     """Modèle pour les catégories de dépenses"""
     nom = models.CharField(max_length=100, unique=True, verbose_name="Nom de la catégorie")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
@@ -16,7 +17,7 @@ class CategorieDepense(models.Model):
     def __str__(self):
         return f"{self.code} - {self.nom}"
 
-class Fournisseur(models.Model):
+class Fournisseur(SyncTrackedModel):
     """Modèle pour les fournisseurs"""
     TYPE_CHOICES = [
         ('ENTREPRISE', 'Entreprise'),
@@ -49,7 +50,7 @@ class Fournisseur(models.Model):
     def __str__(self):
         return self.nom
 
-class Depense(models.Model):
+class Depense(SyncTrackedModel):
     """Modèle principal pour les dépenses"""
     STATUT_CHOICES = [
         ('BROUILLON', 'Brouillon'),
@@ -172,7 +173,7 @@ class PieceJustificative(models.Model):
     def __str__(self):
         return f"{self.depense.numero_facture} - {self.get_type_piece_display()}"
 
-class BudgetAnnuel(models.Model):
+class BudgetAnnuel(SyncTrackedModel):
     """Modèle pour la gestion du budget annuel par catégorie"""
     annee = models.PositiveIntegerField(verbose_name="Année")
     categorie = models.ForeignKey(CategorieDepense, on_delete=models.CASCADE, related_name='budgets')

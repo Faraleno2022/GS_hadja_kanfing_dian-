@@ -48,6 +48,12 @@ Sur le poste offline :
 python manage.py sync_offline
 ```
 
+Pour la premiere synchronisation d'un poste nouvellement installe :
+
+```bash
+python manage.py sync_offline --initial
+```
+
 Pour recevoir seulement les changements :
 
 ```bash

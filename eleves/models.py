@@ -3,8 +3,9 @@ from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from decimal import Decimal
 import unicodedata
+from synchronisation.mixins import SyncTrackedModel
 
-class Ecole(models.Model):
+class Ecole(SyncTrackedModel):
     """Modèle pour représenter une école"""
     ETAT_CHOICES = [
         ("BROUILLON", "Brouillon"),
@@ -78,7 +79,7 @@ class Ecole(models.Model):
     def __str__(self):
         return self.nom
 
-class Classe(models.Model):
+class Classe(SyncTrackedModel):
     """Modèle pour représenter une classe"""
     NIVEAUX_CHOICES = [
         ('GARDERIE', 'Garderie'),
@@ -278,7 +279,7 @@ def _normalize_code_prefixe(value: str) -> str:
     # Dernier recours: vide → le save() appliquera le fallback CL{id}
     return ""
 
-class Responsable(models.Model):
+class Responsable(SyncTrackedModel):
     """Modèle pour représenter un responsable d'élève"""
     RELATION_CHOICES = [
         ('PERE', 'Père'),
@@ -316,7 +317,7 @@ class Responsable(models.Model):
         """Retourne le nom complet du responsable (Prénom Nom)."""
         return f"{self.prenom} {self.nom}"
 
-class GrilleTarifaire(models.Model):
+class GrilleTarifaire(SyncTrackedModel):
     """Modèle pour les grilles tarifaires par école et niveau"""
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='grilles_tarifaires')
     niveau = models.CharField(max_length=20, choices=Classe.NIVEAUX_CHOICES, verbose_name="Niveau")
@@ -384,7 +385,7 @@ class GrilleTarifaire(models.Model):
     def total_avec_inscription(self):
         return self.frais_inscription + self.total_scolarite
 
-class Eleve(models.Model):
+class Eleve(SyncTrackedModel):
     """Modèle principal pour représenter un élève"""
     SEXE_CHOICES = [
         ('M', 'Masculin'),

@@ -1,0 +1,33 @@
+SYNC_MODEL_LABELS = [
+    'eleves.Ecole',
+    'eleves.Classe',
+    'eleves.Responsable',
+    'eleves.GrilleTarifaire',
+    'eleves.Eleve',
+    'paiements.TypePaiement',
+    'paiements.ModePaiement',
+    'paiements.Paiement',
+    'paiements.EcheancierPaiement',
+    'paiements.RemiseReduction',
+    'paiements.PaiementRemise',
+    'paiements.Relance',
+    'depenses.CategorieDepense',
+    'depenses.Fournisseur',
+    'depenses.Depense',
+    'depenses.BudgetAnnuel',
+    'notes.ClasseNote',
+    'notes.MatiereNote',
+    'notes.Evaluation',
+    'notes.NoteEleve',
+    'notes.NoteMensuelle',
+    'notes.CompositionNote',
+    'notes.AppreciationMaternelle',
+    'notes.BulletinMaternelle',
+    'notes.EvaluationMaternelle',
+    'notes.NoteMaternelle',
+    'notes.Classement',
+    'notes.ActiviteJournaliere',
+]
+
+
+SYNC_MODEL_SET = set(SYNC_MODEL_LABELS)

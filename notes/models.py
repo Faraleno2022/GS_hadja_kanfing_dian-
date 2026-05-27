@@ -2,8 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 from eleves.models import Ecole
 from decimal import Decimal
+from synchronisation.mixins import SyncTrackedModel
 
-class ClasseNote(models.Model):
+class ClasseNote(SyncTrackedModel):
     """Classe pour la gestion des notes"""
     NIVEAUX_CHOICES = [
         ('GARDERIE', 'Garderie'),
@@ -51,7 +52,7 @@ class ClasseNote(models.Model):
     def __str__(self):
         return f"{self.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
 
-class MatiereNote(models.Model):
+class MatiereNote(SyncTrackedModel):
     """Matière avec coefficient pour une classe"""
     classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='matieres')
     nom = models.CharField(max_length=100, verbose_name="Nom de la matière")
@@ -73,7 +74,7 @@ class MatiereNote(models.Model):
     def __str__(self):
         return f"{self.nom} ({self.code}) - Coef: {self.coefficient}"
 
-class Evaluation(models.Model):
+class Evaluation(SyncTrackedModel):
     """Évaluation pour une matière"""
     TYPE_CHOICES = [
         ('DEVOIR', 'Devoir'),
@@ -128,7 +129,7 @@ class Evaluation(models.Model):
     def __str__(self):
         return f"{self.titre} - {self.matiere.nom} ({self.get_periode_display()})"
 
-class NoteEleve(models.Model):
+class NoteEleve(SyncTrackedModel):
     """Note d'un élève pour une évaluation"""
     from eleves.models import Eleve
     
@@ -168,7 +169,7 @@ class NoteEleve(models.Model):
         return (self.note / self.evaluation.note_sur) * 20
 
 
-class NoteMensuelle(models.Model):
+class NoteMensuelle(SyncTrackedModel):
     """Notes mensuelles pour le système guinéen (Octobre à Mai)"""
     from eleves.models import Eleve
     
@@ -213,7 +214,7 @@ class NoteMensuelle(models.Model):
         return f"{self.eleve} - {self.matiere.nom} - {self.get_mois_display()} - {self.note}/20"
 
 
-class CompositionNote(models.Model):
+class CompositionNote(SyncTrackedModel):
     """Notes de composition pour le système guinéen"""
     from eleves.models import Eleve
     
@@ -254,7 +255,7 @@ class CompositionNote(models.Model):
         return f"{self.eleve} - {self.matiere.nom} - {self.get_periode_display()} - {self.note}/20"
 
 
-class AppreciationMaternelle(models.Model):
+class AppreciationMaternelle(SyncTrackedModel):
     """Appréciations qualitatives pour la maternelle"""
     from eleves.models import Eleve
     
@@ -302,7 +303,7 @@ class AppreciationMaternelle(models.Model):
         return f"{self.eleve} - {self.matiere.nom} - {self.get_trimestre_display()} - {self.get_appreciation_display()}"
 
 
-class BulletinMaternelle(models.Model):
+class BulletinMaternelle(SyncTrackedModel):
     """Bulletin maternelle avec analyses et recommandations"""
     from eleves.models import Eleve
     
@@ -476,7 +477,7 @@ def invalider_cache_note_eleve(sender, instance, **kwargs):
 # MODÈLES POUR L'ÉVALUATION MATERNELLE
 # ============================================================================
 
-class EvaluationMaternelle(models.Model):
+class EvaluationMaternelle(SyncTrackedModel):
     """Évaluation complète pour un élève de maternelle"""
     from eleves.models import Eleve
     
@@ -564,7 +565,7 @@ class EvaluationMaternelle(models.Model):
         return mentions.get(lettre, '')
 
 
-class NoteMaternelle(models.Model):
+class NoteMaternelle(SyncTrackedModel):
     """Note pour une matière dans une évaluation maternelle"""
     
     evaluation = models.ForeignKey(EvaluationMaternelle, on_delete=models.CASCADE, related_name='notes_matieres')
@@ -701,7 +702,7 @@ class RecommandationMaternelle(models.Model):
         return recommandations
 
 
-class Classement(models.Model):
+class Classement(SyncTrackedModel):
     """Stocke les moyennes et rangs calculés pour garantir la cohérence"""
     eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='classements')
     classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='classements')
@@ -746,7 +747,7 @@ class Classement(models.Model):
 # ACTIVITÉS JOURNALIÈRES
 # ============================================================================
 
-class ActiviteJournaliere(models.Model):
+class ActiviteJournaliere(SyncTrackedModel):
     """Activité ou fait de vie scolaire concernant un élève."""
     TYPE_CHOICES = [
         ('ABSENCE', 'Absence'),

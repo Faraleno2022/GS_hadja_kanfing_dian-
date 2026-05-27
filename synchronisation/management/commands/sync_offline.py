@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from eleves.models import Ecole
+from synchronisation.engine import apply_sync_change
 from synchronisation.models import SyncChange
 
 
@@ -19,6 +20,7 @@ class Command(BaseCommand):
         parser.add_argument('--token', default=getattr(settings, 'MYSCHOOL_SYNC_TOKEN', ''))
         parser.add_argument('--ecole-id', default=getattr(settings, 'MYSCHOOL_SYNC_ECOLE_ID', ''))
         parser.add_argument('--since-id', default='')
+        parser.add_argument('--initial', action='store_true')
         parser.add_argument('--pull-only', action='store_true')
         parser.add_argument('--push-only', action='store_true')
 
@@ -43,7 +45,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'{pushed} changement(s) envoye(s).'))
 
         if not options['push_only']:
-            pulled = self._pull_changes(server_url, device_id, token, ecole, options['since_id'])
+            pulled = self._pull_changes(server_url, device_id, token, ecole, options['since_id'], options['initial'])
             self.stdout.write(self.style.SUCCESS(f'{pulled} changement(s) recu(s).'))
 
     def _request_json(self, url, device_id, token, payload=None, method='POST'):
@@ -106,10 +108,12 @@ class Command(BaseCommand):
                 updated += 1
         return updated
 
-    def _pull_changes(self, server_url, device_id, token, ecole, since_id):
+    def _pull_changes(self, server_url, device_id, token, ecole, since_id, initial=False):
         query = {}
         if since_id:
             query['since_id'] = since_id
+        if initial:
+            query['initial'] = '1'
         suffix = f"?{parse.urlencode(query)}" if query else ''
         response = self._request_json(
             f'{server_url}/api/v1/sync/pull/{suffix}',
@@ -134,16 +138,21 @@ class Command(BaseCommand):
             if server_change_id:
                 payload = {**payload, 'server_change_id': server_change_id}
 
-            SyncChange.objects.create(
+            change = SyncChange.objects.create(
                 ecole=ecole,
                 model_label=item['model_label'],
                 object_uuid=item.get('object_uuid') or None,
                 operation=item['operation'],
                 payload=payload,
-                statut=SyncChange.STATUT_APPLIED,
-                date_application=timezone.now(),
             )
-            created += 1
+            try:
+                apply_sync_change(change)
+                created += 1
+            except Exception as exc:
+                change.statut = SyncChange.STATUT_FAILED
+                change.erreur = str(exc)
+                change.save(update_fields=['statut', 'erreur'])
+                self.stderr.write(f"Changement {server_change_id} non applique: {exc}")
 
         latest_id = response.get('latest_change_id')
         if latest_id:

@@ -2,8 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
 from eleves.models import Eleve
+from synchronisation.mixins import SyncTrackedModel
 
-class TypePaiement(models.Model):
+class TypePaiement(SyncTrackedModel):
     """Modèle pour les types de paiements"""
     nom = models.CharField(max_length=100, unique=True, verbose_name="Nom du type")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
@@ -16,7 +17,7 @@ class TypePaiement(models.Model):
     def __str__(self):
         return self.nom
 
-class ModePaiement(models.Model):
+class ModePaiement(SyncTrackedModel):
     """Modèle pour les modes de paiements"""
     nom = models.CharField(max_length=100, unique=True, verbose_name="Nom du mode")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
@@ -33,7 +34,7 @@ class ModePaiement(models.Model):
     def __str__(self):
         return self.nom
 
-class Paiement(models.Model):
+class Paiement(SyncTrackedModel):
     """Modèle principal pour les paiements"""
     STATUT_CHOICES = [
         ('EN_ATTENTE', 'En attente'),
@@ -135,7 +136,7 @@ class Paiement(models.Model):
     def montant_avec_frais(self):
         return self.montant + self.mode_paiement.frais_supplementaires
 
-class EcheancierPaiement(models.Model):
+class EcheancierPaiement(SyncTrackedModel):
     """Modèle pour l'échéancier des paiements d'un élève"""
     STATUT_CHOICES = [
         ('A_PAYER', 'À payer'),
@@ -229,7 +230,7 @@ class EcheancierPaiement(models.Model):
             return min(pct, Decimal('100'))
         return Decimal('0')
 
-class RemiseReduction(models.Model):
+class RemiseReduction(SyncTrackedModel):
     """Modèle pour les remises et réductions"""
     TYPE_CHOICES = [
         ('POURCENTAGE', 'Pourcentage'),
@@ -290,7 +291,7 @@ class RemiseReduction(models.Model):
         # La remise ne peut pas dépasser le montant de base ni être négative
         return max(Decimal('0'), min(remise, montant_base))
 
-class PaiementRemise(models.Model):
+class PaiementRemise(SyncTrackedModel):
     """Modèle pour associer des remises aux paiements"""
     paiement = models.ForeignKey(Paiement, on_delete=models.CASCADE, related_name='remises')
     remise = models.ForeignKey(RemiseReduction, on_delete=models.CASCADE)
@@ -308,7 +309,7 @@ class PaiementRemise(models.Model):
         return f"{self.paiement.numero_recu} - {self.remise.nom} - {self.montant_remise:,.0f} GNF"
 
 
-class Relance(models.Model):
+class Relance(SyncTrackedModel):
     """Journal des relances envoyées aux responsables/élèves en retard."""
     CANAL_CHOICES = [
         ('SMS', 'SMS'),

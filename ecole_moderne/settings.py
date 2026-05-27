@@ -131,7 +131,7 @@ INSTALLED_APPS = [
     'notes',
     'abonnements',
     'chatbot',
-    'synchronisation',
+    'synchronisation.apps.SynchronisationConfig',
     'axes',
 ]
 
