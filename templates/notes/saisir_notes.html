@@ -350,22 +350,25 @@
                         </button>
                     </div>
                     {% endif %}
-                    
-                    {% if classe_selectionnee and matiere_selectionnee and periode and not est_maternelle %}
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold">&nbsp;</label>
-                        <button type="button" class="btn btn-warning w-100" onclick="telechargerFicheNotes('trimestrielle')" title="Télécharger la fiche de notes trimestrielle">
-                            <i class="fas fa-file-download me-2"></i>Fiche Trimestrielle
-                        </button>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold">&nbsp;</label>
-                        <button type="button" class="btn btn-info w-100" onclick="telechargerFicheNotes('semestrielle')" title="Télécharger la fiche de notes semestrielle">
-                            <i class="fas fa-file-download me-2"></i>Fiche Semestrielle
-                        </button>
-                    </div>
-                    {% endif %}
                 </div>
+
+                {% if classe_selectionnee %}
+                <!-- Bouton pour imprimer la fiche de saisie des notes -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=trimestre"
+                               class="btn btn-outline-primary" target="_blank" title="Fiche avec colonnes trimestrielles">
+                                <i class="fas fa-print me-2"></i>Fiche Saisie (Trimestre)
+                            </a>
+                            <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=semestre"
+                               class="btn btn-outline-success" target="_blank" title="Fiche avec colonnes semestrielles">
+                                <i class="fas fa-print me-2"></i>Fiche Saisie (Semestre)
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
                 
             </form>
         </div>
@@ -568,67 +571,6 @@ function imprimerListePDF() {
     // Télécharger directement via un lien
     const link = document.createElement('a');
     link.href = url;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-function getPeriodeFiche(typeFiche) {
-    const periodeCourante = '{{ periode|default:""|escapejs }}';
-    const correspondances = {
-        trimestrielle: {
-            OCTOBRE: 'TRIMESTRE_1',
-            NOVEMBRE: 'TRIMESTRE_1',
-            DECEMBRE: 'TRIMESTRE_1',
-            JANVIER: 'TRIMESTRE_2',
-            FEVRIER: 'TRIMESTRE_2',
-            MARS: 'TRIMESTRE_2',
-            AVRIL: 'TRIMESTRE_3',
-            MAI: 'TRIMESTRE_3',
-            JUIN: 'TRIMESTRE_3'
-        },
-        semestrielle: {
-            OCTOBRE: 'SEMESTRE_1',
-            NOVEMBRE: 'SEMESTRE_1',
-            DECEMBRE: 'SEMESTRE_1',
-            JANVIER: 'SEMESTRE_1',
-            FEVRIER: 'SEMESTRE_1',
-            MARS: 'SEMESTRE_1',
-            AVRIL: 'SEMESTRE_2',
-            MAI: 'SEMESTRE_2',
-            JUIN: 'SEMESTRE_2'
-        }
-    };
-
-    if (typeFiche === 'trimestrielle' && periodeCourante.startsWith('TRIMESTRE')) {
-        return periodeCourante;
-    }
-    if (typeFiche === 'semestrielle' && periodeCourante.startsWith('SEMESTRE')) {
-        return periodeCourante;
-    }
-
-    return correspondances[typeFiche][periodeCourante] || (typeFiche === 'semestrielle' ? 'SEMESTRE_1' : 'TRIMESTRE_1');
-}
-
-function telechargerFicheNotes(typeFiche) {
-    const classeIdPDF = '{{ classe_selectionnee.id|stringformat:"d"|default:"" }}';
-    const matiereIdPDF = '{{ matiere_selectionnee.id|stringformat:"d"|default:"" }}';
-    const periodePDF = getPeriodeFiche(typeFiche);
-    
-    if (!classeIdPDF || !matiereIdPDF || !periodePDF) {
-        alert('Veuillez sélectionner une classe, une matière et une période.');
-        return;
-    }
-    
-    const params = new URLSearchParams({
-        classe_id: classeIdPDF,
-        matiere_id: matiereIdPDF,
-        periode: periodePDF,
-        type_note: typeFiche
-    });
-    const link = document.createElement('a');
-    link.href = `/notes/liste-saisie-pdf/?${params.toString()}`;
     link.target = '_blank';
     document.body.appendChild(link);
     link.click();

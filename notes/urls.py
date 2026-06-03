@@ -141,6 +141,9 @@ urlpatterns = [
          views.saisie_bulletin_maternelle, name='saisie_bulletin_maternelle'),
     path('maternelle/fiches-recommandations-pdf/', 
          views.fiches_recommandations_pdf, name='fiches_recommandations_pdf'),
+
+    # Fiche de saisie des notes a imprimer pour les professeurs
+    path('fiche-saisie-notes-pdf/', views.fiche_saisie_notes_pdf, name='fiche_saisie_notes_pdf'),
     
     # Importation intelligente - Template avec toutes les matières en colonnes
     path('import-intelligent/', import_intelligent, name='import_intelligent'),

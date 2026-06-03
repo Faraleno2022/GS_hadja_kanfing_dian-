@@ -5904,7 +5904,7 @@ def liste_saisie_pdf(request):
         ).first()
     
     if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom', 'matricule')
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
     else:
         eleves = []
     
@@ -5961,98 +5961,6 @@ def liste_saisie_pdf(request):
                 ''   # Observations
             ])
     
-    periode_labels = {
-        'OCTOBRE': 'Octobre',
-        'NOVEMBRE': 'Novembre',
-        'DECEMBRE': 'Decembre',
-        'JANVIER': 'Janvier',
-        'FEVRIER': 'Fevrier',
-        'MARS': 'Mars',
-        'AVRIL': 'Avril',
-        'MAI': 'Mai',
-        'JUIN': 'Juin',
-        'TRIMESTRE_1': 'Trimestre 1',
-        'TRIMESTRE_2': 'Trimestre 2',
-        'TRIMESTRE_3': 'Trimestre 3',
-        'SEMESTRE_1': 'Semestre 1',
-        'SEMESTRE_2': 'Semestre 2',
-    }
-    mois_par_trimestre = {
-        'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
-        'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
-        'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
-    }
-    mois_par_semestre = {
-        'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS'],
-        'SEMESTRE_2': ['AVRIL', 'MAI', 'JUIN'],
-    }
-    periode_upper = (periode or '').upper()
-    type_note_lower = (type_note or '').lower()
-
-    if not is_appreciation:
-        if type_note_lower == 'trimestrielle':
-            periode_fiche = mois_par_trimestre.get(periode_upper, mois_par_trimestre['TRIMESTRE_1']) + [
-                periode_upper if periode_upper in mois_par_trimestre else 'TRIMESTRE_1'
-            ]
-        elif type_note_lower == 'semestrielle':
-            periode_fiche = mois_par_semestre.get(periode_upper, mois_par_semestre['SEMESTRE_1']) + [
-                periode_upper if periode_upper in mois_par_semestre else 'SEMESTRE_1'
-            ]
-        elif periode_upper in mois_par_trimestre:
-            periode_fiche = mois_par_trimestre[periode_upper] + [periode_upper]
-        elif periode_upper in mois_par_semestre:
-            periode_fiche = mois_par_semestre[periode_upper] + [periode_upper]
-        else:
-            periode_fiche = [periode_upper] if periode_upper else []
-
-        entetes_periodes = [periode_labels.get(code, code) for code in periode_fiche]
-        data = [['N°', 'Matricule', 'Prenom', 'Nom'] + entetes_periodes]
-        page_width = landscape(A4)[0] - (2 * cm)
-        fixed_widths = [1*cm, 3*cm, 3.6*cm, 3.6*cm]
-        remaining_width = page_width - sum(fixed_widths)
-        periode_width = max(1.7*cm, remaining_width / max(len(entetes_periodes), 1))
-        col_widths = fixed_widths + [periode_width] * len(entetes_periodes)
-
-        eleves_list = list(eleves)
-        eleves_ids = [eleve.id for eleve in eleves_list]
-        notes_mensuelles_map = {}
-        compositions_map = {}
-        composition_codes = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3', 'SEMESTRE_1', 'SEMESTRE_2']
-        mois_codes = [code for code in periode_fiche if code not in composition_codes]
-        fiche_composition_codes = [code for code in periode_fiche if code in composition_codes]
-
-        if eleves_ids and mois_codes:
-            for note in NoteMensuelle.objects.filter(
-                eleve_id__in=eleves_ids,
-                matiere=matiere,
-                mois__in=mois_codes,
-                annee_scolaire=classe.annee_scolaire,
-            ):
-                notes_mensuelles_map[(note.eleve_id, note.mois)] = 'ABS' if note.absent else (str(note.note).rstrip('0').rstrip('.') if note.note is not None else '')
-
-        if eleves_ids and fiche_composition_codes:
-            for note in CompositionNote.objects.filter(
-                eleve_id__in=eleves_ids,
-                matiere=matiere,
-                periode__in=fiche_composition_codes,
-                annee_scolaire=classe.annee_scolaire,
-            ):
-                compositions_map[(note.eleve_id, note.periode)] = 'ABS' if note.absent else (str(note.note).rstrip('0').rstrip('.') if note.note is not None else '')
-
-        for idx, eleve in enumerate(eleves_list, 1):
-            notes_periodes = []
-            for periode_code in periode_fiche:
-                if periode_code in composition_codes:
-                    notes_periodes.append(compositions_map.get((eleve.id, periode_code), ''))
-                else:
-                    notes_periodes.append(notes_mensuelles_map.get((eleve.id, periode_code), ''))
-            data.append([
-                str(idx),
-                eleve.matricule or '',
-                eleve.prenom or '',
-                eleve.nom or '',
-            ] + notes_periodes)
-
     # Style du tableau
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
@@ -6080,12 +5988,124 @@ def liste_saisie_pdf(request):
     # Nettoyer le nom de fichier (supprimer les caractères spéciaux)
     nom_classe_clean = re.sub(r'[^\w\s-]', '', classe.nom).replace(' ', '_')
     code_matiere_clean = re.sub(r'[^\w\s-]', '', matiere.code).replace(' ', '_')
-    periode_clean = re.sub(r'[^\w\s-]', '', periode).replace(' ', '_')
-    filename = f"liste_saisie_{nom_classe_clean}_{code_matiere_clean}_{periode_clean}.pdf"
+    filename = f"liste_saisie_{nom_classe_clean}_{code_matiere_clean}.pdf"
     
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
+    return response
+
+
+@login_required
+def fiche_saisie_notes_pdf(request):
+    """Generer l'ancienne fiche PDF de saisie des notes pour les professeurs."""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    import base64
+
+    classe_id = request.GET.get('classe_id')
+    matiere_id = request.GET.get('matiere_id')
+    system_type = request.GET.get('system_type', 'trimestre')
+
+    if not classe_id:
+        return HttpResponse("Parametre classe_id requis", status=400)
+
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+    except Exception as e:
+        return HttpResponse(f"Erreur: {str(e)}", status=400)
+
+    matiere = None
+    if matiere_id:
+        try:
+            matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        except Exception:
+            pass
+
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+
+    if classe.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
+
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe.nom,
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+
+    eleves = []
+    if classe_eleve:
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+
+    if system_type == 'semestre':
+        colonnes_periode1 = ['Octobre', 'Novembre', 'Decembre', 'Janvier', 'Moy. Cours', 'Composition']
+        colonnes_periode2 = ['Fevrier', 'Mars', 'Avril', 'Mai', 'Moy. Cours', 'Composition']
+        periode1_nom = '1er Semestre'
+        periode2_nom = '2eme Semestre'
+    else:
+        colonnes_periode1 = ['Octobre', 'Novembre', 'Decembre', 'Moy. Cours', 'Composition']
+        colonnes_periode2 = ['Janvier', 'Fevrier', 'Mars', 'Moy. Cours', 'Composition']
+        colonnes_periode3 = ['Avril', 'Mai', 'Juin', 'Moy. Cours', 'Composition']
+        periode1_nom = '1er Trimestre'
+        periode2_nom = '2eme Trimestre'
+        periode3_nom = '3eme Trimestre'
+
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else classe.ecole
+
+    logo_base64 = None
+    if ecole and ecole.logo:
+        try:
+            with ecole.logo.open('rb') as logo_file:
+                logo_base64 = base64.b64encode(logo_file.read()).decode('utf-8')
+        except Exception:
+            pass
+
+    context = {
+        'classe': classe,
+        'matiere': matiere,
+        'eleves': eleves,
+        'system_type': system_type,
+        'ecole': ecole,
+        'annee_scolaire': classe.annee_scolaire,
+        'date_impression': timezone.now(),
+        'logo_base64': logo_base64,
+    }
+
+    if system_type == 'semestre':
+        context.update({
+            'colonnes_periode1': colonnes_periode1,
+            'colonnes_periode2': colonnes_periode2,
+            'periode1_nom': periode1_nom,
+            'periode2_nom': periode2_nom,
+        })
+    else:
+        context.update({
+            'colonnes_periode1': colonnes_periode1,
+            'colonnes_periode2': colonnes_periode2,
+            'colonnes_periode3': colonnes_periode3,
+            'periode1_nom': periode1_nom,
+            'periode2_nom': periode2_nom,
+            'periode3_nom': periode3_nom,
+        })
+
+    html_content = render_to_string('notes/fiche_saisie_notes_pdf.html', context)
+    pdf_file = HTML(string=html_content).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
+    filename = f"fiche_saisie_{nom_classe_clean}_{system_type}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
     return response
 
 
