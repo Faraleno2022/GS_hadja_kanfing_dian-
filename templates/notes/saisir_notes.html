@@ -366,6 +366,13 @@
                             <i class="fas fa-print me-2"></i>Fiche Semestre
                         </a>
                     </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <a href="{% url 'notes:fiche_report_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}&periode={% if type_note == 'mensuelle' and periode %}{{ periode }}{% else %}OCTOBRE{% endif %}"
+                           class="btn btn-primary text-white fw-bold w-100" target="_blank" title="Fiche mensuelle avec toutes les matières de la classe en colonnes">
+                            <i class="fas fa-table me-2"></i>Fiche Mensuelle
+                        </a>
+                    </div>
                     {% endif %}
                 </div>
                 

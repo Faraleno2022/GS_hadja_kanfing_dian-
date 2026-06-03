@@ -144,6 +144,9 @@ urlpatterns = [
 
     # Fiche de saisie des notes a imprimer pour les professeurs
     path('fiche-saisie-notes-pdf/', views.fiche_saisie_notes_pdf, name='fiche_saisie_notes_pdf'),
+
+    # Fiche mensuelle avec toutes les matieres en colonnes
+    path('fiche-report-notes-pdf/', views.fiche_report_notes_pdf, name='fiche_report_notes_pdf'),
     
     # Importation intelligente - Template avec toutes les matières en colonnes
     path('import-intelligent/', import_intelligent, name='import_intelligent'),

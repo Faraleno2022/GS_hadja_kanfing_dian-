@@ -6110,6 +6110,101 @@ def fiche_saisie_notes_pdf(request):
 
 
 @login_required
+def fiche_report_notes_pdf(request):
+    """Generer une fiche PDF mensuelle avec toutes les matieres en colonnes."""
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+    import base64
+
+    classe_id = request.GET.get('classe_id')
+    periode = request.GET.get('periode', 'OCTOBRE')
+
+    if not classe_id:
+        return HttpResponse("Parametre classe_id requis", status=400)
+
+    try:
+        classe = get_object_or_404(ClasseNote, pk=classe_id)
+    except Exception as e:
+        return HttpResponse(f"Erreur: {str(e)}", status=400)
+
+    matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
+
+    mapping_classes = {
+        61: 56,
+        59: 8,
+    }
+
+    if classe.id in mapping_classes:
+        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
+    else:
+        classe_eleve = ClasseEleve.objects.filter(
+            nom=classe.nom,
+            annee_scolaire=classe.annee_scolaire,
+            ecole=classe.ecole
+        ).first()
+
+        if not classe_eleve:
+            classe_eleve = ClasseEleve.objects.filter(
+                nom__iexact=classe.nom,
+                annee_scolaire=classe.annee_scolaire
+            ).first()
+
+    eleves = []
+    if classe_eleve:
+        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+
+    user_profil = getattr(request.user, 'profil', None)
+    ecole = user_profil.ecole if user_profil else classe.ecole
+
+    logo_base64 = None
+    if ecole and ecole.logo:
+        try:
+            with ecole.logo.open('rb') as logo_file:
+                logo_base64 = base64.b64encode(logo_file.read()).decode('utf-8')
+        except Exception:
+            pass
+
+    periode_display = {
+        'OCTOBRE': 'Octobre',
+        'NOVEMBRE': 'Novembre',
+        'DECEMBRE': 'Decembre',
+        'JANVIER': 'Janvier',
+        'FEVRIER': 'Fevrier',
+        'MARS': 'Mars',
+        'AVRIL': 'Avril',
+        'MAI': 'Mai',
+        'JUIN': 'Juin',
+        'TRIMESTRE_1': '1er Trimestre',
+        'TRIMESTRE_2': '2eme Trimestre',
+        'TRIMESTRE_3': '3eme Trimestre',
+        'SEMESTRE_1': '1er Semestre',
+        'SEMESTRE_2': '2eme Semestre',
+    }.get(periode, periode)
+
+    context = {
+        'classe': classe,
+        'matieres': matieres,
+        'eleves': eleves,
+        'ecole': ecole,
+        'annee_scolaire': classe.annee_scolaire,
+        'date_impression': timezone.now(),
+        'logo_base64': logo_base64,
+        'periode': periode,
+        'periode_display': periode_display,
+    }
+
+    html_content = render_to_string('notes/fiche_report_notes_pdf.html', context)
+    pdf_file = HTML(string=html_content).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    nom_classe_clean = classe.nom.replace(' ', '_').replace('/', '-')
+    filename = f"fiche_mensuelle_{nom_classe_clean}_{periode}.pdf"
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
+
+@login_required
 def imprimer_tableau_notes_pdf(request):
     """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape"""
     from django.template.loader import render_to_string
