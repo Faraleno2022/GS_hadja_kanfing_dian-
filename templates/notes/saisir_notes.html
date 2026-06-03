@@ -567,11 +567,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const systemTypeSelect = document.getElementById('systemTypeSelect');
     const periodeSelect = document.getElementById('periodeSelect');
     
-    // Auto-submit quand on change de classe
+    // Recharger les matières quand on change de classe
     if (classeSelect) {
         classeSelect.addEventListener('change', function() {
             if (this.value) {
-                document.getElementById('selectionForm').submit();
+                const params = new URLSearchParams(new FormData(document.getElementById('selectionForm')));
+                params.set('classe_id', this.value);
+                params.delete('matiere_id');
+                params.delete('periode');
+                window.location.href = `?${params.toString()}`;
             }
         });
     }
@@ -1014,16 +1018,6 @@ const systemTypeSelect = document.getElementById('systemTypeSelect');
 if (systemTypeSelect) {
     systemTypeSelect.addEventListener('change', function() {
         document.getElementById('selectionForm').submit();
-    });
-}
-
-// Recharger les matières quand on change de classe
-const _classeEl = document.getElementById('classeSelect');
-if (_classeEl) {
-    _classeEl.addEventListener('change', function() {
-        if (this.value) {
-            window.location.href = `?classe_id=${this.value}`;
-        }
     });
 }
 

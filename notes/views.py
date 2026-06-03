@@ -5543,6 +5543,14 @@ def saisir_notes(request):
                 type_note = 'appreciation'
         
         # Déterminer les périodes disponibles selon le type de note
+        if not est_maternelle and not type_note:
+            if periode.startswith('SEMESTRE'):
+                type_note = 'semestrielle'
+            elif periode.startswith('TRIMESTRE'):
+                type_note = 'trimestrielle'
+            else:
+                type_note = 'trimestrielle'
+
         if type_note == 'appreciation':
             # Pour les appréciations : trimestres
             periodes_disponibles = [
@@ -5598,7 +5606,12 @@ def saisir_notes(request):
             ]
         
         if matiere_id:
-            matiere_selectionnee = get_object_or_404(MatiereNote, pk=matiere_id)
+            matiere_selectionnee = get_object_or_404(
+                MatiereNote,
+                pk=matiere_id,
+                classe=classe_selectionnee,
+                actif=True,
+            )
             if periode:
                 evaluations = Evaluation.objects.filter(
                     matiere=matiere_selectionnee, periode=periode
