@@ -4,6 +4,7 @@ Django settings for ecole_moderne project.
 
 from pathlib import Path
 import os
+
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -11,6 +12,17 @@ except ImportError:
 
 # =================== Base ===================
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_plain_env(path):
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        os.environ.setdefault(key.strip(), value.strip())
 
 
 def _env_list(name):
@@ -22,6 +34,8 @@ RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip(
 # Charger .env si disponible
 if load_dotenv:
     load_dotenv(BASE_DIR / ".env")
+else:
+    _load_plain_env(BASE_DIR / ".env")
 
 # =================== Clés et debug ===================
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
