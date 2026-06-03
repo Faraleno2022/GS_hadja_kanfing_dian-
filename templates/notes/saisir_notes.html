@@ -350,25 +350,24 @@
                         </button>
                     </div>
                     {% endif %}
-                </div>
 
-                {% if classe_selectionnee %}
-                <!-- Bouton pour imprimer la fiche de saisie des notes -->
-                <div class="row mt-3">
-                    <div class="col-12">
-                        <div class="d-flex gap-2 flex-wrap">
-                            <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=trimestre"
-                               class="btn btn-outline-primary" target="_blank" title="Fiche avec colonnes trimestrielles">
-                                <i class="fas fa-print me-2"></i>Fiche Saisie (Trimestre)
-                            </a>
-                            <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=semestre"
-                               class="btn btn-outline-success" target="_blank" title="Fiche avec colonnes semestrielles">
-                                <i class="fas fa-print me-2"></i>Fiche Saisie (Semestre)
-                            </a>
-                        </div>
+                    {% if classe_selectionnee %}
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=trimestre"
+                           class="btn btn-warning text-dark fw-bold w-100" target="_blank" title="Fiche avec colonnes trimestrielles">
+                            <i class="fas fa-print me-2"></i>Fiche Trimestre
+                        </a>
                     </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold">&nbsp;</label>
+                        <a href="{% url 'notes:fiche_saisie_notes_pdf' %}?classe_id={{ classe_selectionnee.id }}{% if matiere_selectionnee %}&matiere_id={{ matiere_selectionnee.id }}{% endif %}&system_type=semestre"
+                           class="btn btn-success text-white fw-bold w-100" target="_blank" title="Fiche avec colonnes semestrielles">
+                            <i class="fas fa-print me-2"></i>Fiche Semestre
+                        </a>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
                 
             </form>
         </div>
