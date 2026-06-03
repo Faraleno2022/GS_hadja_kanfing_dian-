@@ -5904,7 +5904,7 @@ def liste_saisie_pdf(request):
         ).first()
     
     if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom', 'matricule')
     else:
         eleves = []
     
@@ -5961,6 +5961,98 @@ def liste_saisie_pdf(request):
                 ''   # Observations
             ])
     
+    periode_labels = {
+        'OCTOBRE': 'Octobre',
+        'NOVEMBRE': 'Novembre',
+        'DECEMBRE': 'Decembre',
+        'JANVIER': 'Janvier',
+        'FEVRIER': 'Fevrier',
+        'MARS': 'Mars',
+        'AVRIL': 'Avril',
+        'MAI': 'Mai',
+        'JUIN': 'Juin',
+        'TRIMESTRE_1': 'Trimestre 1',
+        'TRIMESTRE_2': 'Trimestre 2',
+        'TRIMESTRE_3': 'Trimestre 3',
+        'SEMESTRE_1': 'Semestre 1',
+        'SEMESTRE_2': 'Semestre 2',
+    }
+    mois_par_trimestre = {
+        'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE'],
+        'TRIMESTRE_2': ['JANVIER', 'FEVRIER', 'MARS'],
+        'TRIMESTRE_3': ['AVRIL', 'MAI', 'JUIN'],
+    }
+    mois_par_semestre = {
+        'SEMESTRE_1': ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS'],
+        'SEMESTRE_2': ['AVRIL', 'MAI', 'JUIN'],
+    }
+    periode_upper = (periode or '').upper()
+    type_note_lower = (type_note or '').lower()
+
+    if not is_appreciation:
+        if type_note_lower == 'trimestrielle':
+            periode_fiche = mois_par_trimestre.get(periode_upper, mois_par_trimestre['TRIMESTRE_1']) + [
+                periode_upper if periode_upper in mois_par_trimestre else 'TRIMESTRE_1'
+            ]
+        elif type_note_lower == 'semestrielle':
+            periode_fiche = mois_par_semestre.get(periode_upper, mois_par_semestre['SEMESTRE_1']) + [
+                periode_upper if periode_upper in mois_par_semestre else 'SEMESTRE_1'
+            ]
+        elif periode_upper in mois_par_trimestre:
+            periode_fiche = mois_par_trimestre[periode_upper] + [periode_upper]
+        elif periode_upper in mois_par_semestre:
+            periode_fiche = mois_par_semestre[periode_upper] + [periode_upper]
+        else:
+            periode_fiche = [periode_upper] if periode_upper else []
+
+        entetes_periodes = [periode_labels.get(code, code) for code in periode_fiche]
+        data = [['N°', 'Matricule', 'Prenom', 'Nom'] + entetes_periodes]
+        page_width = landscape(A4)[0] - (2 * cm)
+        fixed_widths = [1*cm, 3*cm, 3.6*cm, 3.6*cm]
+        remaining_width = page_width - sum(fixed_widths)
+        periode_width = max(1.7*cm, remaining_width / max(len(entetes_periodes), 1))
+        col_widths = fixed_widths + [periode_width] * len(entetes_periodes)
+
+        eleves_list = list(eleves)
+        eleves_ids = [eleve.id for eleve in eleves_list]
+        notes_mensuelles_map = {}
+        compositions_map = {}
+        composition_codes = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3', 'SEMESTRE_1', 'SEMESTRE_2']
+        mois_codes = [code for code in periode_fiche if code not in composition_codes]
+        fiche_composition_codes = [code for code in periode_fiche if code in composition_codes]
+
+        if eleves_ids and mois_codes:
+            for note in NoteMensuelle.objects.filter(
+                eleve_id__in=eleves_ids,
+                matiere=matiere,
+                mois__in=mois_codes,
+                annee_scolaire=classe.annee_scolaire,
+            ):
+                notes_mensuelles_map[(note.eleve_id, note.mois)] = 'ABS' if note.absent else (str(note.note).rstrip('0').rstrip('.') if note.note is not None else '')
+
+        if eleves_ids and fiche_composition_codes:
+            for note in CompositionNote.objects.filter(
+                eleve_id__in=eleves_ids,
+                matiere=matiere,
+                periode__in=fiche_composition_codes,
+                annee_scolaire=classe.annee_scolaire,
+            ):
+                compositions_map[(note.eleve_id, note.periode)] = 'ABS' if note.absent else (str(note.note).rstrip('0').rstrip('.') if note.note is not None else '')
+
+        for idx, eleve in enumerate(eleves_list, 1):
+            notes_periodes = []
+            for periode_code in periode_fiche:
+                if periode_code in composition_codes:
+                    notes_periodes.append(compositions_map.get((eleve.id, periode_code), ''))
+                else:
+                    notes_periodes.append(notes_mensuelles_map.get((eleve.id, periode_code), ''))
+            data.append([
+                str(idx),
+                eleve.matricule or '',
+                eleve.prenom or '',
+                eleve.nom or '',
+            ] + notes_periodes)
+
     # Style du tableau
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
