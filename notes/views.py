@@ -5988,7 +5988,8 @@ def liste_saisie_pdf(request):
     # Nettoyer le nom de fichier (supprimer les caractères spéciaux)
     nom_classe_clean = re.sub(r'[^\w\s-]', '', classe.nom).replace(' ', '_')
     code_matiere_clean = re.sub(r'[^\w\s-]', '', matiere.code).replace(' ', '_')
-    filename = f"liste_saisie_{nom_classe_clean}_{code_matiere_clean}.pdf"
+    periode_clean = re.sub(r'[^\w\s-]', '', periode).replace(' ', '_')
+    filename = f"liste_saisie_{nom_classe_clean}_{code_matiere_clean}_{periode_clean}.pdf"
     
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
