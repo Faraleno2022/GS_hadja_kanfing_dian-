@@ -17,8 +17,14 @@
                     <a href="{% url 'depenses:dashboard_logistique' %}" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> Dashboard
                     </a>
+                    <a href="{% url 'depenses:gestion_categories_articles' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-tags"></i> Catégories
+                    </a>
                     <a href="{% url 'depenses:export_stock_excel' %}" class="btn btn-success">
                         <i class="fas fa-file-excel"></i> Export Excel
+                    </a>
+                    <a href="{% url 'depenses:creer_article' %}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Nouvel article
                     </a>
                 </div>
             </div>
@@ -86,6 +92,7 @@
                             <th>Valeur</th>
                             <th>État</th>
                             <th>Emplacement</th>
+                            <th class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -120,10 +127,24 @@
                                 </span>
                             </td>
                             <td>{{ article.emplacement|default:"-" }}</td>
+                            <td class="text-end text-nowrap">
+                                <a href="{% url 'depenses:detail_article' article.id %}"
+                                   class="btn btn-sm btn-outline-info" title="Détail">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{% url 'depenses:modifier_article' article.id %}"
+                                   class="btn btn-sm btn-outline-primary" title="Modifier">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="{% url 'depenses:supprimer_article' article.id %}"
+                                   class="btn btn-sm btn-outline-danger" title="Archiver">
+                                    <i class="fas fa-archive"></i>
+                                </a>
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="9" class="text-center py-4">
+                            <td colspan="10" class="text-center py-4">
                                 <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
                                 <p class="text-muted">Aucun article trouvé</p>
                             </td>

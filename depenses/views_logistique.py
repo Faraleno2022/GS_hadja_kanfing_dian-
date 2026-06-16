@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.db.models import Q, Sum, Count, F
 from django.db import models
 from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
 from datetime import datetime, date
 from decimal import Decimal
 import openpyxl
@@ -14,7 +15,7 @@ from .models_logistique import (
     MouvementStock, Inventaire, LigneInventaire
 )
 from .forms import (
-    ArticleForm, BienEtablissementForm, MouvementStockForm,
+    CategorieArticleForm, ArticleForm, BienEtablissementForm, MouvementStockForm,
     InventaireForm, LigneInventaireForm
 )
 
@@ -327,6 +328,261 @@ def creer_mouvement(request):
     }
     
     return render(request, 'depenses/logistique/form_mouvement.html', context)
+
+
+def _generer_code(modele, champ, prefixe):
+    """Génère un code séquentiel du type PREFIXE-YYYYMMDD-0001."""
+    today = date.today()
+    base = f"{prefixe}-{today.strftime('%Y%m%d')}"
+    dernier = modele.objects.filter(
+        **{f"{champ}__startswith": base}
+    ).order_by(f"-{champ}").first()
+    if dernier:
+        try:
+            num = int(getattr(dernier, champ).split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            num = 1
+    else:
+        num = 1
+    return f"{base}-{num:04d}"
+
+
+# ===== CRUD ARTICLES =====
+
+@login_required
+def detail_article(request, article_id):
+    """Détail d'un article avec historique des mouvements"""
+    article = get_object_or_404(Article, pk=article_id)
+    mouvements = article.mouvements.select_related('cree_par').order_by('-date_mouvement')[:50]
+
+    context = {
+        'titre_page': f"Article : {article.nom}",
+        'article': article,
+        'mouvements': mouvements,
+    }
+    return render(request, 'depenses/logistique/detail_article.html', context)
+
+
+@login_required
+def creer_article(request):
+    """Créer un article en stock"""
+    if request.method == 'POST':
+        form = ArticleForm(request.POST, request.FILES)
+        if form.is_valid():
+            article = form.save(commit=False)
+            article.cree_par = request.user
+            if not article.code_article:
+                article.code_article = _generer_code(Article, 'code_article', 'ART')
+            article.save()
+            messages.success(request, f'Article "{article.nom}" créé avec succès.')
+            return redirect('depenses:detail_article', article_id=article.pk)
+    else:
+        form = ArticleForm()
+
+    context = {
+        'titre_page': 'Nouvel Article',
+        'form': form,
+    }
+    return render(request, 'depenses/logistique/form_article.html', context)
+
+
+@login_required
+def modifier_article(request, article_id):
+    """Modifier un article en stock"""
+    article = get_object_or_404(Article, pk=article_id)
+
+    if request.method == 'POST':
+        form = ArticleForm(request.POST, request.FILES, instance=article)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Article "{article.nom}" modifié avec succès.')
+            return redirect('depenses:detail_article', article_id=article.pk)
+    else:
+        form = ArticleForm(instance=article)
+
+    context = {
+        'titre_page': f"Modifier : {article.nom}",
+        'form': form,
+        'article': article,
+    }
+    return render(request, 'depenses/logistique/form_article.html', context)
+
+
+@login_required
+def supprimer_article(request, article_id):
+    """Désactiver (suppression logique) un article"""
+    article = get_object_or_404(Article, pk=article_id)
+    if request.method == 'POST':
+        article.actif = False
+        article.save(update_fields=['actif'])
+        messages.success(request, f'Article "{article.nom}" archivé.')
+        return redirect('depenses:liste_articles')
+
+    context = {
+        'titre_page': 'Archiver un article',
+        'article': article,
+    }
+    return render(request, 'depenses/logistique/confirmer_suppression_article.html', context)
+
+
+# ===== CATÉGORIES D'ARTICLES =====
+
+@login_required
+def gestion_categories_articles(request):
+    """Liste et création des catégories d'articles"""
+    if request.method == 'POST':
+        form = CategorieArticleForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Catégorie créée avec succès.')
+            return redirect('depenses:gestion_categories_articles')
+    else:
+        form = CategorieArticleForm()
+
+    categories = CategorieArticle.objects.annotate(
+        nb_articles=Count('articles')
+    ).order_by('type_categorie', 'nom')
+
+    context = {
+        'titre_page': "Catégories d'articles",
+        'form': form,
+        'categories': categories,
+    }
+    return render(request, 'depenses/logistique/categories_articles.html', context)
+
+
+@login_required
+def modifier_categorie_article(request, categorie_id):
+    """Modifier une catégorie d'article"""
+    categorie = get_object_or_404(CategorieArticle, pk=categorie_id)
+    if request.method == 'POST':
+        form = CategorieArticleForm(request.POST, instance=categorie)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Catégorie modifiée avec succès.')
+            return redirect('depenses:gestion_categories_articles')
+    else:
+        form = CategorieArticleForm(instance=categorie)
+
+    categories = CategorieArticle.objects.annotate(
+        nb_articles=Count('articles')
+    ).order_by('type_categorie', 'nom')
+
+    context = {
+        'titre_page': "Modifier la catégorie",
+        'form': form,
+        'categories': categories,
+        'categorie_edition': categorie,
+    }
+    return render(request, 'depenses/logistique/categories_articles.html', context)
+
+
+# ===== INVENTAIRES =====
+
+@login_required
+def creer_inventaire(request):
+    """Démarrer un inventaire : crée l'inventaire et une ligne par article actif"""
+    if request.method == 'POST':
+        form = InventaireForm(request.POST)
+        if form.is_valid():
+            inventaire = form.save(commit=False)
+            inventaire.cree_par = request.user
+            inventaire.numero_inventaire = _generer_code(Inventaire, 'numero_inventaire', 'INV')
+            inventaire.save()
+
+            # Générer les lignes pour tous les articles actifs
+            articles = Article.objects.filter(actif=True)
+            for article in articles:
+                LigneInventaire.objects.create(
+                    inventaire=inventaire,
+                    article=article,
+                    stock_theorique=article.stock_actuel,
+                    stock_physique=article.stock_actuel,
+                    prix_unitaire=article.prix_unitaire,
+                    valeur_theorique=article.stock_actuel * article.prix_unitaire,
+                    valeur_physique=article.stock_actuel * article.prix_unitaire,
+                )
+            inventaire.nombre_articles = articles.count()
+            inventaire.save(update_fields=['nombre_articles'])
+
+            messages.success(request, f'Inventaire {inventaire.numero_inventaire} démarré.')
+            return redirect('depenses:detail_inventaire', inventaire_id=inventaire.pk)
+    else:
+        form = InventaireForm(initial={'date_inventaire': date.today()})
+
+    context = {
+        'titre_page': 'Nouvel Inventaire',
+        'form': form,
+    }
+    return render(request, 'depenses/logistique/form_inventaire.html', context)
+
+
+@login_required
+def detail_inventaire(request, inventaire_id):
+    """Saisie du stock physique et synthèse d'un inventaire"""
+    inventaire = get_object_or_404(Inventaire, pk=inventaire_id)
+    lignes = inventaire.lignes.select_related('article').order_by('article__nom')
+
+    if request.method == 'POST' and inventaire.statut == 'EN_COURS':
+        for ligne in lignes:
+            valeur = request.POST.get(f'stock_physique_{ligne.pk}')
+            if valeur is not None and valeur != '':
+                try:
+                    ligne.stock_physique = int(valeur)
+                    ligne.save()  # recalcule écart et valeurs (cf. LigneInventaire.save)
+                except (ValueError, TypeError):
+                    continue
+        # Recalcul de la synthèse
+        agg = lignes.aggregate(valeur=Sum('valeur_physique'))
+        inventaire.valeur_totale = agg['valeur'] or 0
+        inventaire.ecarts_detectes = lignes.exclude(ecart=0).count()
+        inventaire.statut = 'TERMINE'
+        inventaire.save(update_fields=['valeur_totale', 'ecarts_detectes', 'statut'])
+        messages.success(request, 'Saisie enregistrée. Inventaire prêt à être validé.')
+        return redirect('depenses:detail_inventaire', inventaire_id=inventaire.pk)
+
+    context = {
+        'titre_page': f"Inventaire {inventaire.numero_inventaire}",
+        'inventaire': inventaire,
+        'lignes': lignes,
+    }
+    return render(request, 'depenses/logistique/detail_inventaire.html', context)
+
+
+@login_required
+def valider_inventaire(request, inventaire_id):
+    """Valider l'inventaire et ajuster le stock réel via des mouvements"""
+    inventaire = get_object_or_404(Inventaire, pk=inventaire_id)
+
+    if request.method == 'POST':
+        if inventaire.statut in ('VALIDE', 'ANNULE'):
+            messages.warning(request, 'Cet inventaire est déjà clôturé.')
+            return redirect('depenses:detail_inventaire', inventaire_id=inventaire.pk)
+
+        lignes_ecart = inventaire.lignes.exclude(ecart=0).select_related('article')
+        for ligne in lignes_ecart:
+            # Ajuster le stock de l'article à la valeur physique constatée
+            mvt = MouvementStock(
+                article=ligne.article,
+                type_mouvement='AJUSTEMENT',
+                motif='INVENTAIRE',
+                quantite=ligne.stock_physique,
+                prix_unitaire=ligne.prix_unitaire,
+                destinataire='',
+                document_reference=inventaire.numero_inventaire,
+                observations=f"Ajustement inventaire (écart {ligne.ecart})",
+                cree_par=request.user,
+            )
+            mvt.numero_mouvement = _generer_code(MouvementStock, 'numero_mouvement', 'MVT')
+            mvt.save()  # met à jour le stock de l'article (type AJUSTEMENT)
+
+        inventaire.statut = 'VALIDE'
+        inventaire.valide_par = request.user
+        inventaire.date_validation = timezone.now()
+        inventaire.save(update_fields=['statut', 'valide_par', 'date_validation'])
+        messages.success(request, f'Inventaire {inventaire.numero_inventaire} validé. Stock ajusté.')
+
+    return redirect('depenses:detail_inventaire', inventaire_id=inventaire.pk)
 
 
 @login_required

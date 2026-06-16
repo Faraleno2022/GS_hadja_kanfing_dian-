@@ -6,7 +6,7 @@ from .models import (
     PieceJustificative, BudgetAnnuel
 )
 from .models_logistique import (
-    Article, BienEtablissement, MouvementStock, 
+    CategorieArticle, Article, BienEtablissement, MouvementStock,
     Inventaire, LigneInventaire
 )
 from .models_bibliotheque import Livre, Emprunt, Reservation
@@ -344,6 +344,32 @@ class RechercheDepenseForm(forms.Form):
 
 # ===== FORMULAIRES LOGISTIQUE =====
 
+class CategorieArticleForm(forms.ModelForm):
+    """Formulaire pour les catégories d'articles (stock)"""
+
+    class Meta:
+        model = CategorieArticle
+        fields = ['nom', 'code', 'type_categorie', 'description', 'actif']
+        widgets = {
+            'nom': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom de la catégorie'}),
+            'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Code (ex: FOURN, MOBIL)'}),
+            'type_categorie': forms.Select(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'actif': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def clean_code(self):
+        code = self.cleaned_data.get('code')
+        if code:
+            code = code.strip().upper()
+            qs = CategorieArticle.objects.filter(code=code)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise ValidationError("Ce code existe déjà.")
+        return code
+
+
 class ArticleForm(forms.ModelForm):
     class Meta:
         model = Article
@@ -367,6 +393,25 @@ class ArticleForm(forms.ModelForm):
             'emplacement': forms.TextInput(attrs={'class': 'form-control'}),
             'photo': forms.FileInput(attrs={'class': 'form-control'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Le code est généré automatiquement si laissé vide
+        self.fields['code_article'].required = False
+        self.fields['code_article'].widget.attrs['placeholder'] = 'Laissez vide pour génération automatique'
+        # Limiter aux catégories actives
+        self.fields['categorie'].queryset = CategorieArticle.objects.filter(actif=True)
+
+    def clean_code_article(self):
+        code = self.cleaned_data.get('code_article')
+        if code:
+            code = code.strip().upper()
+            qs = Article.objects.filter(code_article=code)
+            if self.instance.pk:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise ValidationError("Ce code article existe déjà.")
+        return code
 
 
 class BienEtablissementForm(forms.ModelForm):
