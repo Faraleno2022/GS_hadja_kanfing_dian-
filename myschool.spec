@@ -34,7 +34,7 @@ hiddenimports += collect_submodules('django.db.backends.sqlite3')
 # Applications du projet
 for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
              'rapports', 'administration', 'bus', 'notes', 'abonnements',
-             'chatbot', 'ecole_moderne']:
+             'chatbot', 'ecole_moderne', 'synchronisation']:
     try:
         hiddenimports += collect_submodules(_app)
     except Exception:
@@ -44,6 +44,19 @@ for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
 hiddenimports += collect_submodules('reportlab')
 hiddenimports += collect_submodules('openpyxl')
 hiddenimports += collect_submodules('PIL')
+
+# django-axes (protection brute-force, present dans INSTALLED_APPS)
+try:
+    hiddenimports += collect_submodules('axes')
+except Exception:
+    pass
+
+# whitenoise (WhiteNoiseMiddleware reference par chaine dans MIDDLEWARE
+# -> non detectable statiquement par PyInstaller, charge a l'init WSGI)
+try:
+    hiddenimports += collect_submodules('whitenoise')
+except Exception:
+    pass
 
 # Pandas (import/export eleves)
 try:
@@ -166,7 +179,8 @@ _add_if_exists('.env', '.')
 
 # Templates et templatetags + migrations de chaque app
 for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
-             'rapports', 'administration', 'bus', 'notes', 'abonnements', 'chatbot']:
+             'rapports', 'administration', 'bus', 'notes', 'abonnements', 'chatbot',
+             'synchronisation']:
     _add_if_exists(os.path.join(_app, 'templates'), os.path.join(_app, 'templates'))
     _add_if_exists(os.path.join(_app, 'templatetags'), os.path.join(_app, 'templatetags'))
     _add_if_exists(os.path.join(_app, 'fixtures'), os.path.join(_app, 'fixtures'))
@@ -179,6 +193,12 @@ _add_if_exists('ecole_moderne/migrations', 'ecole_moderne/migrations')
 datas += collect_data_files('django.contrib.admin')
 datas += collect_data_files('django.contrib.auth')
 datas += collect_data_files('django')
+
+# django-axes : migrations, templates, locale
+try:
+    datas += collect_data_files('axes')
+except Exception:
+    pass
 
 # ReportLab (polices)
 try:
@@ -328,7 +348,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

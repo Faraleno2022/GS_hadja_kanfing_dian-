@@ -441,10 +441,33 @@ class ConfigurationPaiement(SyncTrackedModel):
     
     @property
     def montant_par_tranche(self):
-        """Calcule le montant par tranche de scolarité (arrondi à l'entier GNF)"""
+        """Montant standard d'une tranche de scolarité (arrondi au GNF).
+
+        NB : c'est la valeur représentative d'une tranche « normale ». La dernière
+        tranche peut différer de quelques GNF pour que la somme tombe juste —
+        voir repartition_tranches() pour la répartition exacte.
+        """
         from decimal import ROUND_HALF_UP
         if self.nombre_tranches > 0:
             return (self.montant_scolarite / Decimal(str(self.nombre_tranches))).quantize(
                 Decimal('1'), rounding=ROUND_HALF_UP
             )
         return self.montant_scolarite
+
+    def repartition_tranches(self):
+        """Répartit la scolarité en tranches dont la SOMME = scolarité exacte (au GNF).
+
+        Les tranches sont égales (arrondies à l'entier GNF) ; la dernière absorbe
+        le reste pour éviter toute perte d'arrondi. Exemple : 1 000 000 / 3
+        -> [333 333, 333 333, 333 334] (somme = 1 000 000).
+        """
+        from decimal import ROUND_DOWN
+        n = int(self.nombre_tranches or 0)
+        total = Decimal(str(self.montant_scolarite or 0))
+        if n <= 0:
+            return [total] if total else []
+        # Floor pour les n-1 premières -> la dernière est toujours >= 0 et absorbe le reste
+        base = (total / Decimal(n)).quantize(Decimal('1'), rounding=ROUND_DOWN)
+        tranches = [base] * (n - 1)
+        tranches.append(total - base * (n - 1))
+        return tranches

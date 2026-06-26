@@ -135,7 +135,7 @@ Type: files;          Name: "{app}\install_path.txt"
 WelcomeLabel1=Bienvenue dans l'assistant d'installation de MySchoolGN
 WelcomeLabel2=Ce programme va installer MySchoolGN - Système de Gestion Scolaire sur votre ordinateur.%n%nMySchoolGN est une solution complète de gestion scolaire développée par GS Hadja Kanfing Dian. Elle fonctionne entièrement hors ligne.%n%nFermez toutes les autres applications avant de continuer.
 FinishedHeadingLabel=Installation de MySchoolGN terminée !
-FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans votre navigateur sur http://127.0.0.1:8000%n%nNOTE : Si aucune licence annuelle n'a été ajoutée pendant l'installation, une période d'essai de 30 jours démarre automatiquement.
+FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans sa propre fenêtre.%n%nNOTE : Si aucune licence annuelle n'a été ajoutée pendant l'installation, une période d'essai de 30 jours démarre automatiquement.
 
 [Code]
 

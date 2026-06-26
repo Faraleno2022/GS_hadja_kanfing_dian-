@@ -42,6 +42,37 @@ else:
 
 sys.path.insert(0, BASE_DIR)
 
+# ─── Mode sans console (windowed) : rediriger stdout/stderr vers un log ────────
+# En build PyInstaller avec console=False, sys.stdout / sys.stderr / sys.stdin
+# valent None. Tout print() ou input() lèverait alors une exception.
+# On redirige donc les sorties vers un fichier log et on neutralise stdin.
+if sys.stdout is None or sys.stderr is None:
+    try:
+        # buffering=1 : line-buffered → le log est écrit immédiatement (diagnostic fiable)
+        _log_file = open(os.path.join(BASE_DIR, 'myschool.log'), 'a', encoding='utf-8', errors='replace', buffering=1)
+        if sys.stdout is None:
+            sys.stdout = _log_file
+        if sys.stderr is None:
+            sys.stderr = _log_file
+    except Exception:
+        class _NullWriter:
+            def write(self, *_a, **_k):
+                return 0
+            def flush(self):
+                pass
+        if sys.stdout is None:
+            sys.stdout = _NullWriter()
+        if sys.stderr is None:
+            sys.stderr = _NullWriter()
+
+if sys.stdin is None:
+    class _NullReader:
+        def readline(self, *_a, **_k):
+            return ''
+        def read(self, *_a, **_k):
+            return ''
+    sys.stdin = _NullReader()
+
 # ─── DLLs GTK pour WeasyPrint (Windows) ───────────────────────────────────────
 # Doit être fait AVANT tout import de Django / WeasyPrint
 if os.name == 'nt':
@@ -582,12 +613,63 @@ def _find_modern_browser():
     return None
 
 
+def _wait_server_ready(port, timeout=30.0):
+    """Attend que le serveur Django réponde sur le port avant d'ouvrir la fenêtre."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                if s.connect_ex(('127.0.0.1', port)) == 0:
+                    return True
+        except OSError:
+            pass
+        time.sleep(0.3)
+    return False
+
+
 def open_browser(port):
-    """Ouvre le navigateur après un délai. Préfère un navigateur moderne sous Windows 10."""
-    time.sleep(2.5)
+    """Ouvre l'application dans sa PROPRE fenêtre (mode application).
+
+    Utilise Edge/Chrome en mode --app= : une fenêtre dédiée sans barre
+    d'adresse ni onglets, comme une application native (pas le navigateur).
+    """
+    # Attendre que le serveur réponde plutôt qu'un simple sleep fixe
+    if not _wait_server_ready(port, timeout=30.0):
+        time.sleep(2.5)
     url = f'http://127.0.0.1:{port}'
-    print(f"[MySchoolGN] Navigateur → {url}")
+    print(f"[MySchoolGN] Ouverture de la fenêtre → {url}")
+
+    # Profil dédié pour garantir une fenêtre isolée (ne se fond pas dans
+    # une fenêtre Edge/Chrome déjà ouverte avec des onglets)
+    profile_dir = os.path.join(BASE_DIR, '.appwindow')
+    try:
+        os.makedirs(profile_dir, exist_ok=True)
+    except Exception:
+        profile_dir = None
+
     browser_path = _find_modern_browser()
+    # Edge et Chrome (Chromium) supportent --app= ; Firefox non.
+    if browser_path and os.path.basename(browser_path).lower() in (
+            'msedge.exe', 'chrome.exe', 'msedge', 'chrome'):
+        try:
+            import subprocess
+            args = [
+                browser_path,
+                f'--app={url}',
+                '--window-size=1280,820',
+                '--no-first-run',
+                '--no-default-browser-check',
+            ]
+            if profile_dir:
+                args.append(f'--user-data-dir={profile_dir}')
+            subprocess.Popen(args)
+            print(f"[MySchoolGN] Fenêtre ouverte avec : {os.path.basename(browser_path)} (mode application)")
+            return
+        except Exception as e:
+            print(f"[MySchoolGN] Erreur ouverture fenêtre application ({e}), repli navigateur")
+
+    # Repli : ouvrir dans le navigateur par défaut
     if browser_path:
         try:
             import subprocess
@@ -633,6 +715,20 @@ def show_banner(port, license_status=None):
     print("")
 
 
+# ─── Affichage d'erreur fatale (mode sans console) ─────────────────────────────
+def _show_fatal_error(message):
+    """Affiche une erreur dans une fenêtre (pas de console en mode windowed)."""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("MySchoolGN — Erreur", message)
+        root.destroy()
+    except Exception:
+        pass
+
+
 # ─── Point d'entrée principal ──────────────────────────────────────────────────
 def main():
     """Point d'entrée principal."""
@@ -672,6 +768,7 @@ def main():
         setup_database()
     except Exception as e:
         print(f"[MySchoolGN] Erreur initialisation : {e}")
+        traceback.print_exc()  # Traceback complète (la vraie cause) dans myschool.log
         print("[MySchoolGN] Tentative de démarrage sans migration...")
 
     # Afficher la bannière
@@ -686,7 +783,12 @@ def main():
     # Lancer le serveur Django
     try:
         import django
-        django.setup()
+        from django.apps import apps as _apps
+        # django.setup() a déjà été appelé dans setup_database().
+        # On ne le rappelle QUE si le registre n'est pas prêt, pour éviter
+        # l'erreur "populate() isn't reentrant" qui masquerait la vraie cause.
+        if not _apps.ready:
+            django.setup()
         from django.core.management import call_command
         call_command('runserver', f'127.0.0.1:{port}', '--noreload')
     except KeyboardInterrupt:
@@ -694,7 +796,8 @@ def main():
         print("[MySchoolGN] Au revoir !")
     except Exception as e:
         print(f"\n[MySchoolGN] Erreur : {e}")
-        input("Appuyez sur Entrée pour fermer...")
+        traceback.print_exc()  # Traceback complète dans myschool.log (diagnostic)
+        _show_fatal_error(f"Erreur au démarrage du serveur :\n\n{e}")
 
 
 if __name__ == '__main__':
@@ -715,4 +818,8 @@ if __name__ == '__main__':
         except Exception:
             pass
         print(_msg)
-        input("ERREUR — Appuyez sur Entrée pour fermer...")
+        _show_fatal_error(
+            "MySchoolGN n'a pas pu démarrer.\n\n"
+            f"Détail technique :\n{_crash}\n\n"
+            f"Un rapport a été enregistré dans :\n{_log_path}"
+        )

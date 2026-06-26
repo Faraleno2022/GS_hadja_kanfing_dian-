@@ -50,4 +50,15 @@ class ConfigurationPaiementAdmin(admin.ModelAdmin):
     list_display = ("classe", "montant_inscription", "montant_scolarite", "nombre_tranches", "montant_total")
     search_fields = ("classe__nom", "classe__ecole__nom")
     list_filter = ("nombre_tranches", "classe__niveau")
-    readonly_fields = ("montant_total", "montant_par_tranche", "date_creation", "date_modification")
+    readonly_fields = ("montant_total", "montant_par_tranche", "repartition_tranches_affichage",
+                       "date_creation", "date_modification")
+
+    @admin.display(description="Répartition exacte des tranches (somme = scolarité)")
+    def repartition_tranches_affichage(self, obj):
+        if not obj or not obj.pk:
+            return "-"
+        tranches = obj.repartition_tranches()
+        if not tranches:
+            return "-"
+        details = " + ".join(f"{t:,.0f}" for t in tranches)
+        return f"{details} = {sum(tranches):,.0f} GNF"
