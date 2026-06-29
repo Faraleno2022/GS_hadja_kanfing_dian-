@@ -1,42 +1,54 @@
 from django.core.management.base import BaseCommand, CommandError
 from django.core.cache import cache
 
+
 class Command(BaseCommand):
-    help = "Clear login lock and failed attempts counters for a given IP and/or username."
+    help = (
+        "Deverrouille un compte: efface les verrous custom (cache) ET django-axes "
+        "(base de donnees) pour une IP et/ou un username. "
+        "Exemple: python manage.py clear_login_lock --username admin"
+    )
 
     def add_arguments(self, parser):
-        parser.add_argument('--ip', type=str, help='Client IP address to clear (e.g., 127.0.0.1)')
-        parser.add_argument('--username', type=str, help='Username to clear (case-insensitive)')
+        parser.add_argument('--ip', type=str, help='Adresse IP a deverrouiller (ex: 127.0.0.1)')
+        parser.add_argument('--username', type=str, help='Nom d utilisateur (insensible a la casse)')
+        parser.add_argument('--all', action='store_true', help='Tout deverrouiller (custom + axes)')
 
     def handle(self, *args, **options):
         ip = options.get('ip')
         username = (options.get('username') or '')
-        if not ip and not username:
-            raise CommandError('Provide at least --ip or --username')
+        clear_all = options.get('all')
 
+        if not ip and not username and not clear_all:
+            raise CommandError('Fournir au moins --ip, --username ou --all')
+
+        # ---- 1) Verrou custom (cache) ----
         keys = []
-        if ip and username:
+        if clear_all:
+            try:
+                for k in list(getattr(cache, '_cache', {}).keys()):
+                    if isinstance(k, str) and (k.startswith('failed_login_') or k.startswith('blocked_login_')):
+                        keys.append(k)
+            except Exception:
+                pass
+        elif ip and username:
             uname = username.lower()
             keys += [
-                f'failed_login_{ip}',
-                f'failed_login_{ip}_{uname}',
-                f'blocked_login_{ip}',
-                f'blocked_login_{ip}_{uname}',
+                f'failed_login_{ip}', f'failed_login_{ip}_{uname}',
+                f'blocked_login_{ip}', f'blocked_login_{ip}_{uname}',
             ]
         elif ip:
-            keys += [
-                f'failed_login_{ip}',
-                f'blocked_login_{ip}',
-            ]
-        else:  # username only: clear all IP-specific keys is not possible without IP; clear generic patterns is backend-dependent
+            keys += [f'failed_login_{ip}', f'blocked_login_{ip}']
+        else:  # username seul
             uname = username.lower()
-            # Attempt to clear known keys if cache backend exposes keys (may not always be available)
             try:
                 for k in list(getattr(cache, '_cache', {}).keys()):
                     if isinstance(k, str) and (k.endswith(f'_{uname}') or k.startswith('failed_login_') or k.startswith('blocked_login_')):
                         keys.append(k)
             except Exception:
-                self.stdout.write(self.style.WARNING('Cache backend does not expose keys; provide --ip for precise clearing.'))
+                self.stdout.write(self.style.WARNING(
+                    "Cache sans introspection; le verrou axes (ci-dessous) reste efface."
+                ))
 
         cleared = 0
         for k in set(keys):
@@ -46,4 +58,21 @@ class Command(BaseCommand):
                     cleared += 1
             except Exception:
                 pass
-        self.stdout.write(self.style.SUCCESS(f'Cleared {cleared} cache entrie(s).'))
+
+        # ---- 2) Verrou django-axes (base de donnees) = le verrou REEL en prod ----
+        axes_cleared = 0
+        try:
+            from axes.utils import reset as axes_reset
+            if clear_all:
+                axes_cleared = axes_reset() or 0
+            else:
+                if username:
+                    axes_cleared += axes_reset(username=username) or 0
+                if ip:
+                    axes_cleared += axes_reset(ip=ip) or 0
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f'Reset axes impossible: {e}'))
+
+        self.stdout.write(self.style.SUCCESS(
+            f'Deverrouille: {cleared} cle(s) cache + {axes_cleared} verrou(x) axes.'
+        ))

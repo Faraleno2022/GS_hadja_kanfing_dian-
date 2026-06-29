@@ -186,12 +186,18 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # =================== Django-Axes (anti brute-force) ===================
-AXES_FAILURE_LIMIT = 5              # Bloquer après 5 tentatives échouées
-AXES_COOLOFF_TIME = 1               # Débloquer après 1 heure
+from datetime import timedelta as _timedelta
+AXES_FAILURE_LIMIT = 10             # Bloquer après 10 tentatives échouées (tolérant aux fautes de frappe)
+# Déblocage AUTOMATIQUE après 30 min : un verrou n'est JAMAIS permanent.
+# (timedelta explicite = auto-recovery garanti via le handler base de données)
+AXES_COOLOFF_TIME = _timedelta(minutes=30)
 AXES_LOCKOUT_PARAMETERS = ['username', 'ip_address']  # Bloquer par utilisateur + IP
 AXES_RESET_ON_SUCCESS = True        # Réinitialiser le compteur après un login réussi
 AXES_ENABLE_ADMIN = True            # Voir les tentatives dans l'admin Django
 AXES_LOCKOUT_URL = '/utilisateurs/login/'  # Rediriger vers le login après blocage
+# Afficher la page de blocage conviviale (message + numéro admin + lien déverrouillage)
+# au lieu du message générique anglais d'axes.
+AXES_LOCKOUT_TEMPLATE = 'utilisateurs/locked_out.html'
 AXES_SENSITIVE_PARAMETERS = ['password']
 # Ne surveiller QUE la page de login (ne pas bloquer les autres POST publics)
 import re as _re

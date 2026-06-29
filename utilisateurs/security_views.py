@@ -23,9 +23,9 @@ from django.urls import reverse
 logger = logging.getLogger(__name__)
 
 # ====== Paramètres de sécurité login ======
-# Nombre max de tentatives avant blocage
-MAX_LOGIN_ATTEMPTS = 3
-# Durée de blocage en secondes (30 minutes)
+# Nombre max de tentatives avant blocage (tolérant aux fautes de frappe)
+MAX_LOGIN_ATTEMPTS = 8
+# Durée de blocage en secondes (30 minutes) — déblocage AUTOMATIQUE ensuite
 BLOCK_DURATION_SECONDS = 1800
 # Message personnalisé demandé par le client
 LOCKOUT_MESSAGE = (
@@ -88,6 +88,31 @@ def reset_failed_attempts(ip, username=None):
     if username:
         cache.delete(f"failed_login_{ip}_{username.lower()}")
     cache.delete(f"failed_login_{ip}")
+
+
+def reset_axes_lockout(ip=None, username=None):
+    """Réinitialise AUSSI le verrou django-axes (persistant en base de données).
+
+    Indispensable : le cache (LocMemCache) est par worker et peu fiable, c'est
+    axes qui verrouille réellement. Sans ce reset, l'utilisateur reste bloqué par
+    axes même après nettoyage du verrou custom. Retourne le nombre d'entrées axes
+    supprimées (0 si axes indisponible).
+    """
+    try:
+        from axes.utils import reset as _axes_reset
+    except Exception:
+        return 0
+    total = 0
+    try:
+        if username:
+            total += _axes_reset(username=username) or 0
+        if ip:
+            total += _axes_reset(ip=ip) or 0
+        if not ip and not username:
+            total += _axes_reset() or 0
+    except Exception:
+        logger.exception("Echec de la reinitialisation du verrou django-axes")
+    return total
 
 @ensure_csrf_cookie
 @csrf_protect
@@ -292,6 +317,9 @@ def admin_verify(request):
             except Exception:
                 pass
 
+            # IMPORTANT : réinitialiser aussi django-axes (verrou réel, en base)
+            reset_axes_lockout(ip_val or None, username_val or None)
+
             # Marquer la session comme vérifiée et retourner au login
             request.session['admin_verified'] = True
             messages.success(request, "Vérification administrateur réussie. Vous pouvez vous connecter.")
@@ -492,8 +520,14 @@ def security_clear_login_lock(request):
         messages.error(request, f"Erreur lors du nettoyage: {e}")
         return redirect('utilisateurs:security_dashboard')
 
-    if cleared:
-        messages.success(request, f"Blocage(s) nettoyé(s): {cleared} clé(s) supprimée(s).")
+    # IMPORTANT : réinitialiser aussi django-axes (verrou réel, en base de données)
+    axes_cleared = reset_axes_lockout(ip or None, username or None)
+
+    if cleared or axes_cleared:
+        messages.success(
+            request,
+            f"Blocage(s) nettoyé(s): {cleared} clé(s) cache + {axes_cleared} verrou(x) axes."
+        )
     else:
         messages.info(request, "Aucune entrée de blocage trouvée pour ces critères.")
     return redirect('utilisateurs:security_dashboard')
