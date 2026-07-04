@@ -559,6 +559,18 @@
                                         </button>
                                     </form>
                                 </li>
+                                {% if is_offline %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form method="post" action="{% url 'arreter_application' %}" class="px-3 py-1"
+                                          onsubmit="return confirm('Fermer complètement MySchoolGN ? Le serveur va s\'arrêter pour libérer les ressources et vous pourrez lancer une autre application.');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item px-0 text-danger">
+                                            <i class="fas fa-power-off me-1"></i>Quitter l'application
+                                        </button>
+                                    </form>
+                                </li>
+                                {% endif %}
                             </ul>
                         </li>
                     {% else %}
