@@ -563,27 +563,18 @@ def calculer_rangs_maternelle(classe_note, periode: str, eleves) -> Dict[int, di
                 nb_appreciations += 1
         
         # Calculer la moyenne en pourcentage (sur 100)
-        if nb_appreciations > 0:
-            moyenne_points = total_points / nb_appreciations
-            moyenne_pourcentage = (moyenne_points / MAX_POINTS) * 100
-            moyenne_pourcentage = round(moyenne_pourcentage, 2)
-            
-            moyennes_pour_rang.append({
-                'eleve_id': eleve.id,
-                'prenom': eleve.prenom,
-                'nom': eleve.nom,
-                'sexe': getattr(eleve, 'sexe', None) or 'M',
-                'moyenne': Decimal(str(moyenne_pourcentage))
-            })
-        else:
-            # Inclure l'élève même sans appréciations (moyenne 0)
-            moyennes_pour_rang.append({
-                'eleve_id': eleve.id,
-                'prenom': eleve.prenom,
-                'nom': eleve.nom,
-                'sexe': getattr(eleve, 'sexe', None) or 'M',
-                'moyenne': Decimal('0')
-            })
+        # RÈGLE: une activité NON SAISIE (ou absent) compte 0. On divise donc par
+        # le nombre TOTAL d'activités (nb_matieres), et non par les seules saisies,
+        # pour ne pas favoriser les élèves partiellement évalués/absents.
+        moyenne_points = total_points / nb_matieres
+        moyenne_pourcentage = round((moyenne_points / MAX_POINTS) * 100, 2)
+        moyennes_pour_rang.append({
+            'eleve_id': eleve.id,
+            'prenom': eleve.prenom,
+            'nom': eleve.nom,
+            'sexe': getattr(eleve, 'sexe', None) or 'M',
+            'moyenne': Decimal(str(moyenne_pourcentage))
+        })
     
     # Calculer les rangs avec la fonction centralisée
     resultats_rangs = calculer_rang_intelligent(moyennes_pour_rang)
