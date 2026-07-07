@@ -238,7 +238,7 @@
         <form method="get" class="row g-3 align-items-end">
             <div class="col-md-5">
                 <label class="form-label fw-bold">Période</label>
-                <select name="periode" class="form-select">
+                <select name="periode" class="form-select" onchange="this.form.submit()">
                     <option value="">-- Sélectionner une période --</option>
                     {% for code, label in periodes %}
                     <option value="{{ code }}" {% if code == periode %}selected{% endif %}>{{ label }}</option>
@@ -247,7 +247,7 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label fw-bold">Niveau</label>
-                <select name="niveau" class="form-select">
+                <select name="niveau" class="form-select" onchange="this.form.submit()">
                     {% for code, label in niveaux %}
                     <option value="{{ code }}" {% if code == niveau_filtre %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
