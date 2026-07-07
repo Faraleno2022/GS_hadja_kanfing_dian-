@@ -8758,10 +8758,13 @@ def bulletins_classe_maternelle_v2_pdf(request):
     
     # Calculer les rangs pour toute la classe
     rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
-    
+
+    # ORDRE DE MÉRITE: trier les bulletins par rang (du 1er au dernier)
+    eleves.sort(key=lambda e: (rangs_dict.get(e.id, {}).get('rang_num') or 9999))
+
     # Récupérer les matières de la classe
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
-    
+
     # OPTIMISATION: Précharger TOUS les bulletins et appréciations en une seule requête
     eleves_ids = [e.id for e in eleves]
     
@@ -9176,6 +9179,10 @@ def bulletins_classe_maternelle_modele2_pdf(request):
     
     # Récupérer les rangs
     rangs_dict = calculer_rangs_classe_periode(classe_note, trimestre, use_cache=True)
+
+    # ORDRE DE MÉRITE: trier les bulletins par rang (du 1er au dernier)
+    eleves.sort(key=lambda e: (rangs_dict.get(e.id, {}).get('rang_num') or 9999))
+
     effectif = len(eleves)
     
     # Récupérer les matières

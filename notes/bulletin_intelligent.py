@@ -1721,6 +1721,12 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     # C'est la même source que les exports notes_completes et resultats.
     rangs_officiels = calculer_rangs_classe_periode(classe_note, periode, use_cache=False)
 
+    # ORDRE DE MÉRITE: trier les bulletins par rang (du 1er au dernier).
+    def _rang_key(e):
+        r = rangs_officiels.get(e.id, {}).get('rang_num')
+        return r if r is not None else 9999
+    eleves.sort(key=_rang_key)
+
     # Garder ce calcul pour obtenir les détails par matière du bulletin.
     classement_result = calculer_classement_classe(eleves, matieres, periode, system_type)
     
