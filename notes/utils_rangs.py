@@ -208,32 +208,25 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
                 })
     elif periode in ['ANNUEL_TRIM', 'ANNUEL_SEM']:
         # BULLETIN ANNUEL - Calculer la moyenne des périodes (T1+T2+T3)/3 ou (S1+S2)/2
-        from .calculs_moyennes import calculer_moyenne_generale_annuelle
-        
+        # OPTIMISATION: calcul batché (une passe par période) au lieu de N*M*P requêtes.
+        from .calculs_moyennes import calculer_moyennes_classe_annuelle_optimise
+
         system_type = 'annuel_trimestriel' if periode == 'ANNUEL_TRIM' else 'annuel_semestriel'
-        
+        res_ann = calculer_moyennes_classe_annuelle_optimise(
+            list(eleves), matieres, system_type, use_cache=use_cache
+        )
+
         for eleve in eleves:
-            result = calculer_moyenne_generale_annuelle(eleve, matieres, system_type)
-            moyenne_generale = result.get('moyenne_generale')
-            
-            if moyenne_generale is not None:
-                moyennes_pour_rang.append({
-                    'eleve_id': eleve.id,
-                    'prenom': eleve.prenom,
-                    'nom': eleve.nom,
-                    'sexe': getattr(eleve, 'sexe', None) or 'M',
-                    'moyenne': Decimal(str(moyenne_generale))
-                })
-            else:
-                # Pas de notes = moyenne 0
-                moyennes_pour_rang.append({
-                    'eleve_id': eleve.id,
-                    'prenom': eleve.prenom,
-                    'nom': eleve.nom,
-                    'sexe': getattr(eleve, 'sexe', None) or 'M',
-                    'moyenne': Decimal('0')
-                })
-    
+            r = res_ann.get(eleve.id, {})
+            mg = r.get('moyenne_generale')
+            moyennes_pour_rang.append({
+                'eleve_id': eleve.id,
+                'prenom': eleve.prenom,
+                'nom': eleve.nom,
+                'sexe': getattr(eleve, 'sexe', None) or 'M',
+                'moyenne': Decimal(str(mg if mg is not None else 0)),
+            })
+
     else:
         # Système trimestriel/semestriel - utiliser NoteMensuelle + CompositionNote
         from .models import NoteMensuelle, CompositionNote

@@ -4750,7 +4750,11 @@ def statistiques(request):
             from .calculs_moyennes import calculer_moyennes_classe_optimise
             from .utils_rangs import calculer_rangs_classe_periode
 
-            if 'TRIMESTRE' in (periode or ''):
+            if 'ANNUEL_TRIM' in (periode or ''):
+                system_type = 'annuel_trimestriel'
+            elif 'ANNUEL_SEM' in (periode or ''):
+                system_type = 'annuel_semestriel'
+            elif 'TRIMESTRE' in (periode or ''):
                 system_type = 'trimestre'
             elif 'SEMESTRE' in (periode or ''):
                 system_type = 'semestre'
@@ -4758,7 +4762,11 @@ def statistiques(request):
                 system_type = 'mensuel'
 
             rangs_officiels = calculer_rangs_classe_periode(classe_selectionnee, periode, use_cache=False)
-            resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
+            if system_type in ('annuel_trimestriel', 'annuel_semestriel'):
+                from .calculs_moyennes import calculer_moyennes_classe_annuelle_optimise
+                resultats = calculer_moyennes_classe_annuelle_optimise(eleves, matieres, system_type)
+            else:
+                resultats = calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type)
 
             seuil_suivre   = seuil_reussite + (1 if est_primaire else 2)
             seuil_precaution = seuil_reussite + (2 if est_primaire else 4)
@@ -4991,9 +4999,12 @@ def statistiques(request):
             # Semestres
             ('SEMESTRE_1', '1er Semestre'),
             ('SEMESTRE_2', '2ème Semestre'),
+            # Résultat annuel
+            ('ANNUEL_TRIM', 'Annuel (Trimestres)'),
+            ('ANNUEL_SEM', 'Annuel (Semestres)'),
         ]
     }
-    
+
     return render(request, 'notes/statistiques.html', context)
 
 @login_required

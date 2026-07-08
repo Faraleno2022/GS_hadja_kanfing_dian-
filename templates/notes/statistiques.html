@@ -157,6 +157,13 @@
                     <i class="fas fa-calendar-day me-1"></i>Par Mois
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if periode == 'ANNUEL_TRIM' or periode == 'ANNUEL_SEM' %}active{% endif %}"
+                        id="tab-annuel" data-bs-toggle="tab" data-bs-target="#pane-annuel"
+                        type="button" role="tab">
+                    <i class="fas fa-award me-1"></i>Annuel
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="periodeTabContent">
@@ -199,11 +206,28 @@
                  id="pane-mois" role="tabpanel">
                 <div class="row g-2">
                     {% for code, libelle in periodes %}
-                        {% if 'TRIMESTRE' not in code and 'SEMESTRE' not in code %}
+                        {% if 'TRIMESTRE' not in code and 'SEMESTRE' not in code and 'ANNUEL' not in code %}
                         <div class="col-md-2 col-sm-4">
                             <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}"
                                class="btn {% if periode == code %}btn-warning{% else %}btn-outline-warning{% endif %} w-100 btn-sm">
                                 {{ libelle }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Annuel -->
+            <div class="tab-pane fade {% if periode == 'ANNUEL_TRIM' or periode == 'ANNUEL_SEM' %}show active{% endif %}"
+                 id="pane-annuel" role="tabpanel">
+                <div class="row g-2">
+                    {% for code, libelle in periodes %}
+                        {% if 'ANNUEL' in code %}
+                        <div class="col-md-4 col-sm-6">
+                            <a href="?classe_id={{ classe_selectionnee.id }}&periode={{ code }}"
+                               class="btn {% if periode == code %}btn-dark{% else %}btn-outline-dark{% endif %} w-100">
+                                <i class="fas fa-award me-1"></i>{{ libelle }}
                             </a>
                         </div>
                         {% endif %}
