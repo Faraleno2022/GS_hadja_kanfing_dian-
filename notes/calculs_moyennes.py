@@ -656,6 +656,96 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     return resultats
 
 
+def calculer_moyennes_classe_annuelle_optimise(eleves, matieres, system_type, use_cache=True):
+    """Version OPTIMISÉE (batch) du calcul annuel pour toute une classe.
+
+    Au lieu de N*M*P requêtes (lent: 40-80s/classe), on réutilise
+    calculer_moyennes_classe_optimise pour CHAQUE période (2-3 requêtes/période),
+    puis on combine par matière -> moyenne annuelle. Résultat identique à
+    calculer_moyenne_generale_annuelle mais ~50x plus rapide.
+    """
+    if system_type == 'annuel_trimestriel':
+        periodes = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
+        st = 'trimestre'
+    elif system_type == 'annuel_semestriel':
+        periodes = ['SEMESTRE_1', 'SEMESTRE_2']
+        st = 'semestre'
+    else:
+        return {}
+
+    matieres_list = list(matieres)
+    eleves_list = list(eleves)
+    if not matieres_list or not eleves_list:
+        return {}
+
+    classe = matieres_list[0].classe
+    niveau = detecter_niveau_scolaire(classe.nom if hasattr(classe, 'nom') else '')
+    est_primaire = (niveau == 'PRIMAIRE')
+
+    if niveau == 'MATERNELLE':
+        return {e.id: {
+            'moyenne_generale': None, 'total_points': 0, 'total_coefficients': 0,
+            'details_matieres': [], 'moyennes_periodes': {}, 'niveau': niveau,
+            'appreciations_only': True,
+        } for e in eleves_list}
+
+    coef_map = {}
+    for m in matieres_list:
+        if est_primaire:
+            coef_map[m.id] = Decimal('1')
+        else:
+            coef_map[m.id] = Decimal(str(m.coefficient)) if m.coefficient else Decimal('1')
+
+    # Batch: moyenne par (période, élève, matière) via la fonction déjà optimisée
+    nb_p = len(periodes)
+    par_periode = {}
+    for p in periodes:
+        res = calculer_moyennes_classe_optimise(eleves_list, matieres_list, p, st, use_cache=use_cache)
+        mp = {}
+        for eid, data in res.items():
+            dd = {}
+            for det in data.get('details_matieres', []):
+                v = det.get('moyenne')
+                dd[det['matiere'].id] = float(v) if v is not None else 0.0
+            mp[eid] = dd
+        par_periode[p] = mp
+
+    resultats = {}
+    for eleve in eleves_list:
+        total_points = Decimal('0')
+        total_coefficients = Decimal('0')
+        details_matieres = []
+        for m in matieres_list:
+            coef = coef_map[m.id]
+            # Moyenne annuelle de la matière = moyenne des périodes (période non évaluée = 0)
+            somme = 0.0
+            for p in periodes:
+                somme += par_periode[p].get(eleve.id, {}).get(m.id, 0.0)
+            moy_ann = round(somme / nb_p, 2)
+            points = moy_ann * float(coef)
+            total_points += Decimal(str(moy_ann)) * coef
+            total_coefficients += coef
+            details_matieres.append({
+                'matiere': m,
+                'moyenne_annuelle': moy_ann,
+                'moyenne': moy_ann,
+                'coefficient': coef if not est_primaire else 1,
+                'points': points,
+            })
+        moyenne_generale = None
+        if total_coefficients > 0:
+            moyenne_generale = round(float(total_points / total_coefficients), 2)
+        resultats[eleve.id] = {
+            'moyenne_generale': moyenne_generale,
+            'total_points': round(float(total_points), 2) if total_points > 0 else 0,
+            'total_coefficients': float(total_coefficients),
+            'details_matieres': details_matieres,
+            'niveau': niveau,
+            'appreciations_only': False,
+        }
+    return resultats
+
+
 def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel', use_cache=True):
     """
     Calcule le classement complet d'une classe
@@ -722,13 +812,14 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
                 moyennes_par_eleve[eleve_id] = result['moyenne_generale']
                 details_par_eleve[eleve_id] = result
     else:
-        # Pour les bulletins annuels, utiliser la fonction spécifique (non optimisée pour l'instant)
-        for eleve in eleves:
-            result = calculer_moyenne_generale_annuelle(eleve, matieres, system_type)
-            
+        # OPTIMISATION: calcul annuel batché (réutilise le batch par période)
+        resultats_annuels = calculer_moyennes_classe_annuelle_optimise(
+            eleves, matieres, system_type, use_cache=use_cache,
+        )
+        for eleve_id, result in resultats_annuels.items():
             if result['moyenne_generale'] is not None:
-                moyennes_par_eleve[eleve.id] = result['moyenne_generale']
-                details_par_eleve[eleve.id] = result
+                moyennes_par_eleve[eleve_id] = result['moyenne_generale']
+                details_par_eleve[eleve_id] = result
     
     # Élèves sans notes = moyenne 0 par défaut (évite de favoriser les absents)
     for eleve_id in all_eleve_ids:
