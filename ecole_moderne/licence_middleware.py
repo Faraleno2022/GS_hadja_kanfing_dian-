@@ -170,6 +170,10 @@ class LicenceMiddleware:
         path = request.path
 
         # Ressources statiques et login toujours accessibles
+        from django.conf import settings as _settings
+        _admin_path = '/' + getattr(_settings, 'ADMIN_URL', 'admin/')
+        if path.startswith(_admin_path):
+            return self.get_response(request)
         if any(path.startswith(p) for p in self.EXEMPT_PREFIXES):
             return self.get_response(request)
         if path in self.EXEMPT_EXACT:

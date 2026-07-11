@@ -132,11 +132,13 @@ def secure_login(request):
             'unlock_path': reverse('utilisateurs:admin_verify') + unlock_qs,
         })
     
-    # Ne jamais utiliser un next qui pointe vers /admin/* pour des utilisateurs publics
+    # Ne jamais utiliser un next qui pointe vers l'admin pour des utilisateurs publics
+    from django.conf import settings as _settings
+    _admin_prefix = '/' + getattr(_settings, 'ADMIN_URL', 'admin/')
     unsafe_next = request.GET.get('next') or ''
-    if unsafe_next.startswith('/admin/'):
+    if unsafe_next.startswith('/admin/') or unsafe_next.startswith(_admin_prefix):
         # Cas spécifique demandé: /login/?next=/admin/password_reset/
-        if unsafe_next.startswith('/admin/password_reset'):
+        if unsafe_next.startswith('/admin/password_reset') or unsafe_next.startswith(_admin_prefix + 'password_reset'):
             return render(request, 'utilisateurs/login.html', {
                 'error': "Contactez l'administrateur FARA LENO AU +224622613559.",
                 'blocked': True,
@@ -212,8 +214,10 @@ def secure_login(request):
                 
                 # Redirection sécurisée
                 next_url = request.GET.get('next')
-                # Ignorer toute redirection vers /admin/*
-                if next_url and next_url.startswith('/') and not next_url.startswith('/admin/'):
+                # Ignorer toute redirection vers l'admin
+                from django.conf import settings as _settings2
+                _admin_pfx = '/' + getattr(_settings2, 'ADMIN_URL', 'admin/')
+                if next_url and next_url.startswith('/') and not next_url.startswith('/admin/') and not next_url.startswith(_admin_pfx):
                     return redirect(next_url)
                 return redirect('eleves:liste_eleves')
             else:

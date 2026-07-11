@@ -64,8 +64,9 @@ class EcoleIsolationMiddleware:
         """
         Détermine si la vue est une vue système qui ne nécessite pas de vérification d'école.
         """
+        from django.conf import settings
         system_paths = [
-            '/admin/',
+            '/' + getattr(settings, 'ADMIN_URL', 'admin/'),
             '/utilisateurs/login/',
             '/utilisateurs/logout/',
             '/utilisateurs/password/',

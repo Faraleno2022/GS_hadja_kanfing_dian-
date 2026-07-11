@@ -117,7 +117,7 @@ class SecurityMiddleware(MiddlewareMixin):
         
         # 0. Bypass sécurisé pour l'admin avec utilisateur staff authentifié
         try:
-            if request.path.startswith('/admin/') and hasattr(request, 'user') and request.user.is_authenticated and request.user.is_staff:
+            if request.path.startswith('/' + getattr(settings, 'ADMIN_URL', 'admin/')) and hasattr(request, 'user') and request.user.is_authenticated and request.user.is_staff:
                 # On applique seulement rate limiting et blocage IP existant, pas de détection agressive
                 if self.is_ip_blocked(client_ip):
                     logger.info(f"Accès admin refusé pour IP bloquée: {client_ip}")
@@ -294,7 +294,7 @@ class SessionSecurityMiddleware(MiddlewareMixin):
                     path.startswith('/utilisateurs/login/') or
                     path.startswith('/utilisateurs/logout/') or
                     path.startswith('/utilisateurs/verify-phone/') or
-                    path.startswith('/admin/') or
+                    path.startswith('/' + getattr(settings, 'ADMIN_URL', 'admin/')) or
                     path.startswith('/static/') or
                     path.startswith('/media/')
                 )

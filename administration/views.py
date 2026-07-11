@@ -116,7 +116,7 @@ def log_admin_action(action, description, user=None, ip_address=None, details=No
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def dashboard(request):
     """Tableau de bord d'administration optimisé avec cache intelligent"""
     from ecole_moderne.performance_config import get_cached_or_set, CACHE_TTL, CACHE_KEYS
@@ -176,7 +176,7 @@ def dashboard(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def users_management(request):
     """Gestion des utilisateurs"""
     
@@ -235,7 +235,7 @@ def users_management(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def system_stats(request):
     """Statistiques système détaillées"""
     
@@ -274,7 +274,7 @@ def system_stats(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def system_logs(request):
     """Consultation des logs système"""
     
@@ -318,7 +318,7 @@ def system_logs(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def toggle_maintenance(request):
@@ -365,7 +365,7 @@ def toggle_maintenance(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def clear_old_logs(request):
@@ -388,7 +388,7 @@ def clear_old_logs(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def user_detail(request, user_id):
     """Détail d'un utilisateur"""
     
@@ -421,7 +421,7 @@ def user_detail(request, user_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 def corbeille_list(request):
     """Affiche la corbeille avec les éléments supprimés définitivement"""
     
@@ -456,7 +456,7 @@ def corbeille_list(request):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def restaurer_element(request, log_id):
@@ -557,7 +557,7 @@ def restaurer_element(request, log_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def valider_ecole(request, ecole_id):
@@ -584,7 +584,7 @@ def valider_ecole(request, ecole_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def rejeter_ecole(request, ecole_id):
@@ -606,7 +606,7 @@ def rejeter_ecole(request, ecole_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def user_toggle_active(request, user_id):
@@ -627,7 +627,7 @@ def user_toggle_active(request, user_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def user_toggle_staff(request, user_id):
@@ -653,7 +653,7 @@ def _generate_temp_password(length: int = 12) -> str:
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def user_reset_password(request, user_id):
@@ -674,7 +674,7 @@ def user_reset_password(request, user_id):
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='/admin/')
+@user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST
 @csrf_protect
 def user_activate_and_validate(request, user_id):

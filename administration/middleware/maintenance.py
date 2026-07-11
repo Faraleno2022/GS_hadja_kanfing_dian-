@@ -19,8 +19,9 @@ class MaintenanceMiddleware(MiddlewareMixin):
             return None
         
         # Chemins toujours autorisés
+        from django.conf import settings
         allowed_paths = [
-            '/admin/',
+            '/' + getattr(settings, 'ADMIN_URL', 'admin/'),
             '/static/',
             '/media/',
             reverse('administration:dashboard'),
@@ -83,8 +84,8 @@ class MaintenanceMiddleware(MiddlewareMixin):
                 </p>
                 <hr>
                 <small class="text-muted">
-                    Si vous êtes administrateur, 
-                    <a href="/admin/" class="text-decoration-none">connectez-vous ici</a>
+                    Si vous êtes administrateur,
+                    <a href="/utilisateurs/login/" class="text-decoration-none">connectez-vous ici</a>
                 </small>
             </div>
         </body>

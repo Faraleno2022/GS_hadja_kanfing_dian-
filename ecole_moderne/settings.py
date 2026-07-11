@@ -39,6 +39,11 @@ else:
 
 # =================== Clés et debug ===================
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
+
+# URL secrète de l'admin Django (anti-scan des robots pirates sur /admin/)
+# Personnalisable via DJANGO_ADMIN_URL dans le .env du serveur
+ADMIN_URL = os.environ.get('DJANGO_ADMIN_URL', 'gestion-secrete-2026').strip('/') + '/'
+
 DEBUG_DEFAULT = 'false' if RENDER_EXTERNAL_HOSTNAME else 'true'
 DEBUG = os.environ.get('DJANGO_DEBUG', DEBUG_DEFAULT).lower() == 'true'
 
