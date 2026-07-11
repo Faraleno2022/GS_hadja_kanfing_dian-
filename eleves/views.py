@@ -2319,16 +2319,19 @@ def fiche_inscription_pdf(request, eleve_id):
     right_col = 10*cm
     line_height = 0.6*cm
     
+    _date_insc = eleve.date_inscription.strftime('%d/%m/%Y') if eleve.date_inscription else '-'
+    _date_naiss = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
+
     c.drawString(left_col, y, f"Matricule: {eleve.matricule}")
-    c.drawString(right_col, y, f"Date d'inscription: {eleve.date_inscription.strftime('%d/%m/%Y')}")
+    c.drawString(right_col, y, f"Date d'inscription: {_date_insc}")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Nom: {eleve.nom}")
     c.drawString(right_col, y, f"Prénom: {eleve.prenom}")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Sexe: {eleve.get_sexe_display()}")
-    c.drawString(right_col, y, f"Date de naissance: {eleve.date_naissance.strftime('%d/%m/%Y')}")
+    c.drawString(right_col, y, f"Date de naissance: {_date_naiss}")
     y -= line_height
     
     c.drawString(left_col, y, f"Lieu de naissance: {eleve.lieu_naissance}")
