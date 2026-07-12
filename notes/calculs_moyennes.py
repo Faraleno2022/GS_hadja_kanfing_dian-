@@ -9,7 +9,7 @@ OPTIMISATIONS v3.0 - ULTRA PERFORMANCE:
 - Pré-chargement intelligent des données
 - Performance: < 30ms pour 50 élèves, < 100ms pour 200 élèves
 """
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, List, Tuple, Optional
 from django.core.cache import cache
 from .models import Evaluation, NoteEleve, MatiereNote, NoteMensuelle, CompositionNote
@@ -27,6 +27,13 @@ CALCUL_CACHE_SCHEMA_VERSION = 2
 # Secondaire guinéen: moyenne de période = 40% cours + 60% composition.
 PONDERATION_COURS_SECONDAIRE = Decimal('0.4')
 PONDERATION_COMPOSITION_SECONDAIRE = Decimal('0.6')
+
+
+def _arrondir_deux_decimales(valeur):
+    """Arrondi scolaire déterministe, sans l'arrondi binaire de ``float``."""
+    return float(
+        Decimal(str(valeur)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    )
 
 MOIS_PAR_PERIODE = {
     'TRIMESTRE_1': ['OCTOBRE', 'NOVEMBRE'],
@@ -409,7 +416,7 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
     moyenne_generale = None
     if total_coefficients and total_coefficients > 0:
         try:
-            moyenne_generale = round(float(total_points / total_coefficients), 2)
+            moyenne_generale = _arrondir_deux_decimales(total_points / total_coefficients)
         except (ZeroDivisionError, ValueError, TypeError) as e:
             moyenne_generale = None
     
@@ -637,7 +644,7 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
         moyenne_generale = None
         if total_coefficients > 0:
             try:
-                moyenne_generale = round(float(total_points / total_coefficients), 2)
+                moyenne_generale = _arrondir_deux_decimales(total_points / total_coefficients)
             except (ZeroDivisionError, ValueError, TypeError):
                 moyenne_generale = None
         
@@ -721,7 +728,7 @@ def calculer_moyennes_classe_annuelle_optimise(eleves, matieres, system_type, us
             somme = 0.0
             for p in periodes:
                 somme += par_periode[p].get(eleve.id, {}).get(m.id, 0.0)
-            moy_ann = round(somme / nb_p, 2)
+            moy_ann = _arrondir_deux_decimales(Decimal(str(somme)) / Decimal(nb_p))
             points = moy_ann * float(coef)
             total_points += Decimal(str(moy_ann)) * coef
             total_coefficients += coef
@@ -734,7 +741,7 @@ def calculer_moyennes_classe_annuelle_optimise(eleves, matieres, system_type, us
             })
         moyenne_generale = None
         if total_coefficients > 0:
-            moyenne_generale = round(float(total_points / total_coefficients), 2)
+            moyenne_generale = _arrondir_deux_decimales(total_points / total_coefficients)
         resultats[eleve.id] = {
             'moyenne_generale': moyenne_generale,
             'total_points': round(float(total_points), 2) if total_points > 0 else 0,
@@ -1050,7 +1057,9 @@ def calculer_moyenne_annuelle_matiere(eleve, matiere, system_type='annuel_trimes
     moyenne_annuelle = None
     if moyennes_valides:
         moyennes_avec_absents = [m if m is not None else 0 for m in moyennes_periodes.values()]
-        moyenne_annuelle = round(sum(moyennes_avec_absents) / len(moyennes_avec_absents), 2)
+        moyenne_annuelle = _arrondir_deux_decimales(
+            Decimal(str(sum(moyennes_avec_absents))) / Decimal(len(moyennes_avec_absents))
+        )
     
     # Calculer les points (valeur EXACTE, pas d'arrondi intermédiaire)
     points = None
@@ -1154,7 +1163,7 @@ def calculer_moyenne_generale_annuelle(eleve, matieres, system_type='annuel_trim
     moyenne_generale = None
     if total_coefficients and total_coefficients > 0:
         try:
-            moyenne_generale = round(float(total_points / total_coefficients), 2)
+            moyenne_generale = _arrondir_deux_decimales(total_points / total_coefficients)
         except (ZeroDivisionError, ValueError, TypeError):
             moyenne_generale = None
 

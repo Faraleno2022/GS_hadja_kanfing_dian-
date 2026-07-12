@@ -48,7 +48,7 @@ def calculer_moyenne_periode(moyenne_cours: Optional[Decimal],
     """
     # Primaire : composition uniquement
     if niveau == 'PRIMAIRE':
-        return composition
+        return composition if composition is not None else moyenne_cours
     
     # Secondaire : formule 40/60
     # Si les deux sont None, pas de moyenne

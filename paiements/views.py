@@ -471,8 +471,8 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
     """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
 
     Règles conservatrices:
-    - Si la somme des paiements validés + remises couvre le total dû -> statut = PAYE_COMPLET
-      et on aligne les champs *_payee sur les *_due pour cohérence d'affichage.
+    - Si la somme des paiements validés + remises couvre le total dû -> statut = PAYE_COMPLET.
+    - Les champs *_paye restent limités aux encaissements; les remises restent séparées.
     - Si couverture = 0 -> statut = A_PAYER (pas d'allocation détaillée effectuée ici)
     - Sinon -> statut = PAYE_PARTIEL (sans répartir finement par tranche)
 
@@ -519,8 +519,10 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
         old_t3 = int(echeancier.tranche_3_payee or 0)
         current_total_paid = max(0, old_insc + old_t1 + old_t2 + old_t3)
 
-        # 2) Incrément à répartir basé sur la couverture réelle
-        increment = max(0, couverture - current_total_paid)
+        # 2) Les champs *_paye représentent uniquement les encaissements réels.
+        # Les remises participent à la couverture et au statut, mais ne doivent
+        # pas être enregistrées une seconde fois comme des montants encaissés.
+        increment = max(0, sum_montant - current_total_paid)
         remaining = increment
 
         def _alloc(due: int, paid: int, remaining_local: int):
@@ -565,26 +567,11 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
         else:
             new_statut = 'PAYE_PARTIEL'
 
-        # Appliquer le statut et éventuellement aligner les montants payés si totalement soldé
+        # Appliquer le statut sans transformer une remise en encaissement.
         # 'changed' peut déjà être True si allocation ci-dessus a modifié des champs
         if echeancier.statut != new_statut:
             echeancier.statut = new_statut
             changed = True
-        if new_statut == 'PAYE_COMPLET':
-            # Aligner les montants payés pour refléter le soldé complet
-            if echeancier.frais_inscription_paye != echeancier.frais_inscription_du:
-                echeancier.frais_inscription_paye = echeancier.frais_inscription_du
-                changed = True
-            if echeancier.tranche_1_payee != echeancier.tranche_1_due:
-                echeancier.tranche_1_payee = echeancier.tranche_1_due
-                changed = True
-            if echeancier.tranche_2_payee != echeancier.tranche_2_due:
-                echeancier.tranche_2_payee = echeancier.tranche_2_due
-                changed = True
-            if echeancier.tranche_3_payee != echeancier.tranche_3_due:
-                echeancier.tranche_3_payee = echeancier.tranche_3_due
-                changed = True
-
         if changed:
             echeancier.save()
     except Exception:
@@ -3488,20 +3475,16 @@ def liste_eleves_soldes(request):
         + remises_total,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    net_sco_du = Greatest(
-        Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-        ExpressionWrapper(dues_sco - remises_total, output_field=DecimalField(max_digits=12, decimal_places=0))
-    )
     net_du = ExpressionWrapper(
         Coalesce(
             F('frais_inscription_du'),
             Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
             output_field=DecimalField(max_digits=12, decimal_places=0),
         )
-        + net_sco_du,
+        + dues_sco,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    # Solde calculé: net dû (inscription + scolarité nette des remises) - payé effectif cumulé
+    # Une remise est comptée une seule fois, dans paye_effectif.
     solde_calc = ExpressionWrapper(net_du - paye_effectif, output_field=DecimalField(max_digits=12, decimal_places=0))
 
     qs = qs.annotate(
@@ -3749,15 +3732,10 @@ def eleves_soldes_simple(request):
         + remises_total,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    net_sco_du = Greatest(
-        Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-        ExpressionWrapper(dues_sco - remises_total, output_field=DecimalField(max_digits=12, decimal_places=0))
-    )
-    
-    # Total dû incluant inscription/réinscription + scolarité nette
+    # Total brut dû. La remise est déjà incluse une fois dans paye_effectif.
     net_du = ExpressionWrapper(
         Coalesce(F('frais_inscription_du'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)))
-        + net_sco_du,
+        + dues_sco,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
     solde_calc = ExpressionWrapper(net_du - paye_effectif, output_field=DecimalField(max_digits=12, decimal_places=0))
