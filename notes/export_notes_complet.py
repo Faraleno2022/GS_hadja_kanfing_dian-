@@ -28,9 +28,23 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternel
     periodes_mensuelles = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
     periodes_trimestrielles = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
     periodes_semestrielles = ['SEMESTRE_1', 'SEMESTRE_2']
-    
+    periodes_annuelles = {'ANNUEL_TRIM': 'annuel_trimestriel', 'ANNUEL_SEM': 'annuel_semestriel'}
+
     # Récupérer les rangs centralisés
     rangs_dict = calculer_rangs_classe_periode(classe, periode, use_cache=False)
+
+    # Résultat annuel : moyennes annuelles par matière calculées en batch (rapide)
+    annuel_map = {}
+    if periode in periodes_annuelles and not est_maternelle:
+        from .calculs_moyennes import calculer_moyennes_classe_annuelle_optimise
+        res_annuel = calculer_moyennes_classe_annuelle_optimise(
+            eleves, matieres, periodes_annuelles[periode]
+        )
+        for eid, data in res_annuel.items():
+            annuel_map[eid] = {
+                det['matiere'].id: det.get('moyenne_annuelle')
+                for det in data.get('details_matieres', [])
+            }
     
     resultats = []
     
@@ -96,7 +110,11 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternel
                     absent = note_obj.absent
                 except CompositionNote.DoesNotExist:
                     pass
-            
+            elif periode in periodes_annuelles:
+                # Moyenne annuelle de la matière (calculée en batch plus haut)
+                moy_ann = annuel_map.get(eleve.id, {}).get(matiere.id)
+                note_value = float(moy_ann) if moy_ann is not None else None
+
             notes_eleve['notes_par_matiere'][matiere.id] = {
                 'note': note_value,
                 'absent': absent,
@@ -179,8 +197,9 @@ def exporter_notes_complet_excel(request):
         ws['A1'].alignment = center_align
         
         # Titre
+        periode_label = {'ANNUEL_TRIM': 'RÉSULTAT ANNUEL (Trimestres)', 'ANNUEL_SEM': 'RÉSULTAT ANNUEL (Semestres)'}.get(periode, periode)
         ws.merge_cells('A2:' + get_column_letter(5 + len(matieres)) + '2')
-        ws['A2'] = f"TABLEAU DES NOTES - {classe.nom} - {periode}"
+        ws['A2'] = f"TABLEAU DES NOTES - {classe.nom} - {periode_label}"
         ws['A2'].font = Font(bold=True, size=12)
         ws['A2'].alignment = center_align
         
@@ -407,9 +426,10 @@ def exporter_notes_complet_pdf(request):
         
         # En-tête
         nom_ecole = ecole.nom.upper() if ecole else "ÉCOLE"
+        periode_label = {'ANNUEL_TRIM': 'RÉSULTAT ANNUEL (Trimestres)', 'ANNUEL_SEM': 'RÉSULTAT ANNUEL (Semestres)'}.get(periode, periode)
         elements.append(Paragraph(f"<b>{nom_ecole}</b>", title_style))
         elements.append(Paragraph(
-            f"TABLEAU DES NOTES - {classe.nom} - {periode} | Année: {classe.annee_scolaire}",
+            f"TABLEAU DES NOTES - {classe.nom} - {periode_label} | Année: {classe.annee_scolaire}",
             subtitle_style
         ))
         
