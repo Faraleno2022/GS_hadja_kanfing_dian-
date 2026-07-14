@@ -6878,6 +6878,21 @@ def consulter_notes(request):
                 ).values('eleve_id', 'matiere_id', 'note', 'absent')
                 for c in compositions_qs:
                     compositions_dict[(c['eleve_id'], c['matiere_id'])] = c
+
+                # Repli: compositions saisies en trimestres mais consultation
+                # semestrielle (S1 = moyenne T1+T2, S2 = T3)
+                if periode_classement in periodes_semestrielles:
+                    from .calculs_moyennes import _compositions_semestre_depuis_trimestres
+                    fallback_sem = _compositions_semestre_depuis_trimestres(
+                        eleves_ids, matieres_ids, periode_classement,
+                        classe_selectionnee.annee_scolaire
+                    )
+                    for key, note_val in fallback_sem.items():
+                        if key not in compositions_dict:
+                            compositions_dict[key] = {
+                                'eleve_id': key[0], 'matiere_id': key[1],
+                                'note': round(note_val, 2), 'absent': False,
+                            }
             
             # Pré-charger les appréciations maternelle (même logique que calculer_rangs_maternelle)
             appreciations_dict = {}
