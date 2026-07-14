@@ -96,6 +96,32 @@ def _compositions_semestre_depuis_trimestres(eleves_ids, matieres_ids, periode, 
     return {k: sum(v) / len(v) for k, v in groupes.items()}
 
 
+def _periodes_composition_equivalentes(periode, system_type):
+    """Périodes de composition à considérer pour une période donnée
+    (inclut le repli trimestres -> semestres)."""
+    p = periode or ''
+    if system_type in ['semestriel', 'semestre']:
+        if 'SEMESTRE_1' in p or p == '1er Semestre':
+            return ['SEMESTRE_1'] + _SEMESTRE_FALLBACK_TRIMESTRES['SEMESTRE_1']
+        if 'SEMESTRE_2' in p or p == '2ème Semestre':
+            return ['SEMESTRE_2'] + _SEMESTRE_FALLBACK_TRIMESTRES['SEMESTRE_2']
+    return [p]
+
+
+def _matiere_a_compositions(matiere, periode, system_type):
+    """True si au moins une composition est saisie dans la matière pour la période.
+
+    RÈGLE STRICTE: quand la classe a composé dans une matière, un élève sans
+    composition prend 0 (ne pas favoriser les absents). Ce test évite de
+    pénaliser les écoles qui ne saisissent pas de compositions du tout.
+    """
+    return CompositionNote.objects.filter(
+        matiere=matiere,
+        periode__in=_periodes_composition_equivalentes(periode, system_type),
+        annee_scolaire=matiere.classe.annee_scolaire,
+    ).exists()
+
+
 def calculer_moyenne_periode_guineenne(moyenne_continue, note_composition, niveau='SECONDAIRE'):
     """
     Calcule la moyenne de période selon le niveau.
@@ -346,6 +372,11 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                 [eleve.id], [matiere.id], periode, matiere.classe.annee_scolaire
             )
             note_composition = fb.get((eleve.id, matiere.id), note_composition)
+
+        # RÈGLE STRICTE: la classe a composé dans cette matière mais pas cet
+        # élève -> composition comptée 0 (ne pas favoriser les absents)
+        if note_composition is None and _matiere_a_compositions(matiere, periode, system_type):
+            note_composition = 0.0
 
     # Calculer la moyenne de la matière selon le système
     # LOGIQUE ADAPTATIVE: Si pas de notes mensuelles, utiliser uniquement la composition
@@ -621,6 +652,10 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                         'note': note_val, 'absent': False,
                     }
 
+    # RÈGLE STRICTE: matières où la classe a composé — un élève sans
+    # composition y prend 0 (ne pas favoriser les absents)
+    matieres_avec_compo = {mid for (_eid, mid) in compositions_dict.keys()}
+
     # Calculer les moyennes pour chaque élève (sans requêtes supplémentaires)
     resultats = {}
     for eleve in eleves:
@@ -660,6 +695,10 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                 compo_data = compositions_dict.get(compo_key)
                 if compo_data and not compo_data['absent'] and compo_data['note'] is not None:
                     note_composition = float(compo_data['note'])
+                elif matiere_id in matieres_avec_compo:
+                    # RÈGLE STRICTE: la classe a composé dans cette matière
+                    # mais pas cet élève -> composition comptée 0
+                    note_composition = 0.0
             
             # Calculer la moyenne de la matière
             # LOGIQUE ADAPTATIVE: Gère les écoles sans notes mensuelles
@@ -1358,7 +1397,11 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         ).first()
         if compo and not compo.absent and compo.note is not None:
             result['note_composition'] = float(compo.note)
-        
+
+        # RÈGLE STRICTE: la classe a composé mais pas cet élève -> 0
+        if result['note_composition'] is None and _matiere_a_compositions(matiere, periode, 'trimestre'):
+            result['note_composition'] = 0.0
+
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
         # CAS 1: Les deux existent -> formule guineenne par niveau
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
@@ -1433,6 +1476,10 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             val_fb = fb.get((eleve.id, matiere.id))
             if val_fb is not None:
                 result['note_composition'] = val_fb
+
+        # RÈGLE STRICTE: la classe a composé mais pas cet élève -> 0
+        if result['note_composition'] is None and _matiere_a_compositions(matiere, periode, 'semestre'):
+            result['note_composition'] = 0.0
 
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
         # CAS 1: Les deux existent -> formule guineenne par niveau
