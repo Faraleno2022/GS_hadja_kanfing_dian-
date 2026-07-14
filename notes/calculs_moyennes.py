@@ -56,6 +56,46 @@ def obtenir_mois_periode(periode):
     return MOIS_PAR_PERIODE.get(mapping_alias.get(periode, periode), [])
 
 
+# Répartition trimestres -> semestres pour les écoles ayant saisi leurs
+# compositions en trimestres mais consultées en système semestriel:
+# S1 = moyenne(compo T1, compo T2) ; S2 = compo T3
+_SEMESTRE_FALLBACK_TRIMESTRES = {
+    'SEMESTRE_1': ['TRIMESTRE_1', 'TRIMESTRE_2'],
+    'SEMESTRE_2': ['TRIMESTRE_3'],
+}
+
+
+def _compositions_semestre_depuis_trimestres(eleves_ids, matieres_ids, periode, annee_scolaire):
+    """Dérive les compositions semestrielles depuis les compositions trimestrielles.
+
+    Utilisé UNIQUEMENT en repli, quand la composition semestrielle n'a pas été
+    saisie (école en mode trimestre consultée en mode semestre).
+    Retourne {(eleve_id, matiere_id): note}.
+    """
+    p = periode or ''
+    if 'SEMESTRE_1' in p or p == '1er Semestre':
+        code = 'SEMESTRE_1'
+    elif 'SEMESTRE_2' in p or p == '2ème Semestre':
+        code = 'SEMESTRE_2'
+    else:
+        return {}
+
+    rows = CompositionNote.objects.filter(
+        eleve_id__in=eleves_ids,
+        matiere_id__in=matieres_ids,
+        periode__in=_SEMESTRE_FALLBACK_TRIMESTRES[code],
+        annee_scolaire=annee_scolaire,
+    ).values('eleve_id', 'matiere_id', 'note', 'absent')
+
+    groupes = {}
+    for r in rows:
+        if r['absent'] or r['note'] is None:
+            continue
+        groupes.setdefault((r['eleve_id'], r['matiere_id']), []).append(float(r['note']))
+
+    return {k: sum(v) / len(v) for k, v in groupes.items()}
+
+
 def calculer_moyenne_periode_guineenne(moyenne_continue, note_composition, niveau='SECONDAIRE'):
     """
     Calcule la moyenne de période selon le niveau.
@@ -130,16 +170,18 @@ def detecter_notes_mensuelles_classe(classe_note, periode=None):
             periodes_compo = ['TRIMESTRE_3']
         elif periode == 'SEMESTRE_1':
             mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER']
-            periodes_compo = ['SEMESTRE_1']
+            # Inclure T1/T2: repli des compositions trimestrielles vers le semestre 1
+            periodes_compo = ['SEMESTRE_1', 'TRIMESTRE_1', 'TRIMESTRE_2']
         elif periode == 'SEMESTRE_2':
             mois_a_verifier = ['MARS', 'AVRIL', 'MAI']
-            periodes_compo = ['SEMESTRE_2']
+            # Inclure T3: repli des compositions trimestrielles vers le semestre 2
+            periodes_compo = ['SEMESTRE_2', 'TRIMESTRE_3']
         elif periode == 'ANNUEL_TRIM':
             mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'JANVIER', 'FEVRIER', 'AVRIL', 'MAI']
             periodes_compo = ['TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
         elif periode == 'ANNUEL_SEM':
             mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'MARS', 'AVRIL', 'MAI']
-            periodes_compo = ['SEMESTRE_1', 'SEMESTRE_2']
+            periodes_compo = ['SEMESTRE_1', 'SEMESTRE_2', 'TRIMESTRE_1', 'TRIMESTRE_2', 'TRIMESTRE_3']
     else:
         # Vérifier tous les mois
         mois_a_verifier = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
@@ -297,7 +339,14 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                 note_composition = float(compo.note)
         except CompositionNote.DoesNotExist:
             pass
-    
+
+        # Repli: compositions saisies en trimestres mais consultation semestrielle
+        if note_composition is None and system_type in ['semestriel', 'semestre']:
+            fb = _compositions_semestre_depuis_trimestres(
+                [eleve.id], [matiere.id], periode, matiere.classe.annee_scolaire
+            )
+            note_composition = fb.get((eleve.id, matiere.id), note_composition)
+
     # Calculer la moyenne de la matière selon le système
     # LOGIQUE ADAPTATIVE: Si pas de notes mensuelles, utiliser uniquement la composition
     moyenne_matiere = None
@@ -558,7 +607,20 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
         for compo in compositions:
             key = (compo['eleve_id'], compo['matiere_id'])
             compositions_dict[key] = compo
-    
+
+        # Repli: compositions saisies en trimestres mais consultation semestrielle
+        # (ne complète que les cases sans composition semestrielle saisie)
+        if system_type in ['semestriel', 'semestre']:
+            fallback = _compositions_semestre_depuis_trimestres(
+                eleves_ids, matieres_ids, periode, annee_scolaire
+            )
+            for key, note_val in fallback.items():
+                if key not in compositions_dict:
+                    compositions_dict[key] = {
+                        'eleve_id': key[0], 'matiere_id': key[1],
+                        'note': note_val, 'absent': False,
+                    }
+
     # Calculer les moyennes pour chaque élève (sans requêtes supplémentaires)
     resultats = {}
     for eleve in eleves:
@@ -1362,7 +1424,16 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         ).first()
         if compo and not compo.absent and compo.note is not None:
             result['note_composition'] = float(compo.note)
-        
+
+        # Repli: compositions saisies en trimestres mais consultation semestrielle
+        if result['note_composition'] is None:
+            fb = _compositions_semestre_depuis_trimestres(
+                [eleve.id], [matiere.id], periode, matiere.classe.annee_scolaire
+            )
+            val_fb = fb.get((eleve.id, matiere.id))
+            if val_fb is not None:
+                result['note_composition'] = val_fb
+
         # Calculer la moyenne finale - LOGIQUE ADAPTATIVE
         # CAS 1: Les deux existent -> formule guineenne par niveau
         # CAS 2: Seulement composition (école sans notes mensuelles) → Utiliser directement
@@ -1374,7 +1445,7 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
         )
         if moyenne_calculee is not None:
             result['moyenne'] = round(moyenne_calculee, 2)
-    
+
     # ============================================================
     # SYSTÈME ANNUEL TRIMESTRIEL: (T1 + T2 + T3) / 3
     # ============================================================

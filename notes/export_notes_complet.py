@@ -45,6 +45,15 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternel
                 det['matiere'].id: det.get('moyenne_annuelle')
                 for det in data.get('details_matieres', [])
             }
+
+    # Repli semestre: compositions saisies en trimestres (S1=T1+T2, S2=T3)
+    sem_fallback = {}
+    if periode in periodes_semestrielles and not est_maternelle:
+        from .calculs_moyennes import _compositions_semestre_depuis_trimestres
+        sem_fallback = _compositions_semestre_depuis_trimestres(
+            [e.id for e in eleves], [m.id for m in matieres],
+            periode, classe.annee_scolaire
+        )
     
     resultats = []
     
@@ -110,6 +119,11 @@ def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternel
                     absent = note_obj.absent
                 except CompositionNote.DoesNotExist:
                     pass
+                # Repli: composition semestrielle absente -> dérivée des trimestres
+                if note_value is None and not absent:
+                    fb = sem_fallback.get((eleve.id, matiere.id))
+                    if fb is not None:
+                        note_value = fb
             elif periode in periodes_annuelles:
                 # Moyenne annuelle de la matière (calculée en batch plus haut)
                 moy_ann = annuel_map.get(eleve.id, {}).get(matiere.id)
