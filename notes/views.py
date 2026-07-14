@@ -7242,7 +7242,14 @@ def bulletin_dynamique(request):
         }
         if system_type in periodes_valides and periode not in periodes_valides.get(system_type, []):
             periode = ''  # Réinitialiser la période si elle ne correspond pas au system_type
-    
+
+    # Les systèmes annuels n'ont qu'une seule période: la sélectionner d'office
+    if not periode:
+        if system_type in ('annuel_trimestriel', 'annuel'):
+            periode = 'ANNUEL_TRIM'
+        elif system_type == 'annuel_semestriel':
+            periode = 'ANNUEL_SEM'
+
     classe_selectionnee = None
     eleves = []
     eleve_selectionne = None
