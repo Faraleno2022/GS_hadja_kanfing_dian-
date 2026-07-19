@@ -614,7 +614,7 @@ def generer_template_excel(classe_id, matiere_id, type_import='MENSUELLE'):
         # Récupérer les élèves triés par ordre alphabétique (prénom puis nom)
         eleves = []
         if classe_eleve:
-            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
         if eleves:
             # Créer le template avec les élèves
