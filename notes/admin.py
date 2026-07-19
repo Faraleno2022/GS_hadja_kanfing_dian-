@@ -1,4 +1,5 @@
 from django.contrib import admin
+from .models import NoteSuivi
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote, AppreciationMaternelle, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
 
 @admin.register(ClasseNote)
@@ -209,3 +210,11 @@ class ActiviteJournaliereAdmin(admin.ModelAdmin):
     search_fields = ['titre', 'eleve__nom', 'eleve__prenom']
     date_hierarchy = 'date'
     inlines = [PieceJointeInline]
+
+
+@admin.register(NoteSuivi)
+class NoteSuiviAdmin(admin.ModelAdmin):
+    list_display = ('eleve', 'matiere', 'mois', 'type_note', 'note', 'annee_scolaire')
+    list_filter = ('type_note', 'mois', 'annee_scolaire')
+    search_fields = ('eleve__nom', 'eleve__prenom', 'eleve__matricule', 'matiere__nom')
+    raw_id_fields = ('eleve', 'matiere')

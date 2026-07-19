@@ -214,6 +214,53 @@ class NoteMensuelle(SyncTrackedModel):
         return f"{self.eleve} - {self.matiere.nom} - {self.get_mois_display()} - {self.note}/20"
 
 
+class NoteSuivi(SyncTrackedModel):
+    """Notes de suivi continu saisies AVANT l'évaluation mensuelle.
+
+    Notes de cours/interrogations, orales, écrites, devoirs maison et
+    participation. Elles n'écrasent pas la note mensuelle : elles produisent
+    un BONUS plafonné (voir calculs_moyennes.bonus_suivi) qui s'ajoute à la
+    note du mois pour valoriser l'élève assidu. Aucun suivi = aucun bonus
+    (rétrocompatible, activable par école).
+    """
+    MOIS_CHOICES = NoteMensuelle.MOIS_CHOICES
+
+    TYPE_CHOICES = [
+        ('COURS', 'Note de cours / interrogation'),
+        ('ORALE', 'Évaluation orale'),
+        ('ECRITE', 'Évaluation écrite'),
+        ('DEVOIR', 'Devoir maison'),
+        ('PARTICIPATION', 'Participation en classe'),
+    ]
+
+    eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='notes_suivi')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='notes_suivi')
+    mois = models.CharField(max_length=20, choices=MOIS_CHOICES, verbose_name="Mois")
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    type_note = models.CharField(max_length=15, choices=TYPE_CHOICES, verbose_name="Type de note")
+    note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
+    date = models.DateField(verbose_name="Date", null=True, blank=True)
+    observation = models.CharField(max_length=200, blank=True, verbose_name="Observation")
+
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='notes_suivi_creees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Note de suivi"
+        verbose_name_plural = "Notes de suivi"
+        ordering = ['-date', 'eleve__prenom', 'eleve__nom']
+        indexes = [
+            models.Index(fields=['matiere', 'mois', 'annee_scolaire']),
+            models.Index(fields=['eleve', 'matiere', 'mois']),
+            models.Index(fields=['type_note']),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve} - {self.matiere.nom} - {self.get_type_note_display()} - {self.note}/20"
+
+
 class CompositionNote(SyncTrackedModel):
     """Notes de composition pour le système guinéen"""
     from eleves.models import Eleve

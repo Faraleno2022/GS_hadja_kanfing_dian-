@@ -28,6 +28,49 @@ CALCUL_CACHE_SCHEMA_VERSION = 2
 PONDERATION_COURS_SECONDAIRE = Decimal('0.4')
 PONDERATION_COMPOSITION_SECONDAIRE = Decimal('0.6')
 
+# Bonus de suivi continu (notes de cours/orales/écrites/devoirs/participation).
+# Ajouté à la note MENSUELLE, plafonné, sans jamais dépasser 20.
+# Un élève sans note de suivi a un bonus de 0 (comportement inchangé).
+BONUS_SUIVI_MAX = Decimal('2')
+
+
+def bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire):
+    """Bonus de suivi par (eleve, matiere, mois).
+
+    Bonus = (moyenne des notes de suivi / 20) * BONUS_SUIVI_MAX.
+    Retourne {(eleve_id, matiere_id, mois): bonus_float}. Vide si aucun suivi.
+    """
+    if not eleve_ids or not matiere_ids or not mois_list:
+        return {}
+    from .models import NoteSuivi
+    rows = (NoteSuivi.objects
+            .filter(eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
+                    mois__in=mois_list, annee_scolaire=annee_scolaire)
+            .values('eleve_id', 'matiere_id', 'mois', 'note'))
+    groupes = {}
+    for r in rows:
+        if r['note'] is None:
+            continue
+        groupes.setdefault((r['eleve_id'], r['matiere_id'], r['mois']), []).append(float(r['note']))
+    resultat = {}
+    for cle, notes in groupes.items():
+        moy = sum(notes) / len(notes)
+        resultat[cle] = float((Decimal(str(moy)) / Decimal('20')) * BONUS_SUIVI_MAX)
+    return resultat
+
+
+def bonus_suivi(eleve_id, matiere_id, mois, annee_scolaire):
+    """Bonus de suivi pour un seul (eleve, matiere, mois)."""
+    return bonus_suivi_batch([eleve_id], [matiere_id], [mois], annee_scolaire).get(
+        (eleve_id, matiere_id, mois), 0.0)
+
+
+def _appliquer_bonus(note_value, bonus):
+    """Ajoute le bonus à une note mensuelle, plafonné à 20."""
+    if note_value is None:
+        return None
+    return min(20.0, float(note_value) + float(bonus or 0.0))
+
 
 def _arrondir_deux_decimales(valeur):
     """Arrondi scolaire déterministe, sans l'arrondi binaire de ``float``."""
@@ -308,7 +351,8 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                 annee_scolaire=matiere.classe.annee_scolaire
             )
             if not note_mensuelle.absent and note_mensuelle.note is not None:
-                moyenne_continue = float(note_mensuelle.note)
+                _b = bonus_suivi(eleve.id, matiere.id, periode, matiere.classe.annee_scolaire)
+                moyenne_continue = _appliquer_bonus(float(note_mensuelle.note), _b)
         except NoteMensuelle.DoesNotExist:
             pass
     else:
@@ -344,11 +388,13 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                         annee_scolaire=matiere.classe.annee_scolaire
                     )
                     if not note_mensuelle.absent and note_mensuelle.note is not None:
-                        total_notes += Decimal(str(note_mensuelle.note))
+                        _b = bonus_suivi(eleve.id, matiere.id, mois, matiere.classe.annee_scolaire)
+                        _val = _appliquer_bonus(float(note_mensuelle.note), _b)
+                        total_notes += Decimal(str(_val))
                         count_notes += 1
                 except NoteMensuelle.DoesNotExist:
                     continue
-            
+
             if count_notes > 0:
                 # Garder la précision complète (arrondi à l'affichage seulement)
                 moyenne_continue = float(total_notes / count_notes)
@@ -624,7 +670,11 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
         else:
             key = (note['eleve_id'], note['matiere_id'], note['mois'])
         notes_dict[key] = note
-    
+
+    # Bonus de suivi continu par (eleve, matiere, mois) — 0 si aucun suivi
+    _mois_bonus = [periode] if system_type == 'mensuel' else mois_periode
+    bonus_map = bonus_suivi_batch(eleves_ids, matieres_ids, _mois_bonus, annee_scolaire)
+
     # OPTIMISATION: Charger les compositions si nécessaire
     compositions_dict = {}
     if system_type not in ['mensuel']:
@@ -670,13 +720,14 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
             note_composition = None
             
             if system_type == 'mensuel':
-                # Note mensuelle directe
+                # Note mensuelle directe (+ bonus de suivi éventuel)
                 key = (eleve.id, matiere_id)
                 note_data = notes_dict.get(key)
                 if note_data and not note_data['absent'] and note_data['note'] is not None:
-                    moyenne_continue = float(note_data['note'])
+                    _b = bonus_map.get((eleve.id, matiere_id, periode), 0.0)
+                    moyenne_continue = _appliquer_bonus(float(note_data['note']), _b)
             else:
-                # Moyenne des mois de la période
+                # Moyenne des mois de la période (chaque mois + bonus de suivi)
                 if mois_periode:
                     total_notes = Decimal('0')
                     count_notes = 0
@@ -684,7 +735,9 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
                         key = (eleve.id, matiere_id, mois)
                         note_data = notes_dict.get(key)
                         if note_data and not note_data['absent'] and note_data['note'] is not None:
-                            total_notes += Decimal(str(note_data['note']))
+                            _b = bonus_map.get((eleve.id, matiere_id, mois), 0.0)
+                            _val = _appliquer_bonus(float(note_data['note']), _b)
+                            total_notes += Decimal(str(_val))
                             count_notes += 1
                     if count_notes > 0:
                         # Garder la précision complète (arrondi à l'affichage seulement)
@@ -1340,8 +1393,10 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
             annee_scolaire=matiere.classe.annee_scolaire
         ).first()
         if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
-            result['moyenne_continue'] = float(note_mensuelle.note)
-            result['moyenne'] = float(note_mensuelle.note)
+            _b = bonus_suivi(eleve.id, matiere.id, periode, matiere.classe.annee_scolaire)
+            _val = _appliquer_bonus(float(note_mensuelle.note), _b)
+            result['moyenne_continue'] = _val
+            result['moyenne'] = _val
     
     # ============================================================
     # SYSTÈME TRIMESTRIEL: Moyenne des mois + Composition
@@ -1369,11 +1424,13 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
                     annee_scolaire=matiere.classe.annee_scolaire
                 ).first()
                 if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
-                    total_notes += Decimal(str(note_mensuelle.note))
+                    _b = bonus_suivi(eleve.id, matiere.id, mois, matiere.classe.annee_scolaire)
+                    _val = _appliquer_bonus(float(note_mensuelle.note), _b)
+                    total_notes += Decimal(str(_val))
                     count_notes += 1
                     moyennes_detail.append({
                         'libelle': mois[:3] + '.',
-                        'moyenne': float(note_mensuelle.note),
+                        'moyenne': _val,
                         'absent': False
                     })
                 else:
@@ -1439,11 +1496,13 @@ def calculer_bulletin_intelligent(eleve, matiere, periode, system_type):
                     annee_scolaire=matiere.classe.annee_scolaire
                 ).first()
                 if note_mensuelle and not note_mensuelle.absent and note_mensuelle.note is not None:
-                    total_notes += Decimal(str(note_mensuelle.note))
+                    _b = bonus_suivi(eleve.id, matiere.id, mois, matiere.classe.annee_scolaire)
+                    _val = _appliquer_bonus(float(note_mensuelle.note), _b)
+                    total_notes += Decimal(str(_val))
                     count_notes += 1
                     moyennes_detail.append({
                         'libelle': mois[:3] + '.',
-                        'moyenne': float(note_mensuelle.note),
+                        'moyenne': _val,
                         'absent': False
                     })
                 else:
