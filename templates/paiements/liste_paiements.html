@@ -39,7 +39,58 @@
                         <i class="fas fa-file-pdf me-2"></i>Tranches par classe (PDF)
                     </a>
                 </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
+                        <i class="fas fa-book me-2"></i>Rapport comptable complet…
+                    </a>
+                </li>
             </ul>
+        </div>
+
+        <!-- Modal Rapport comptable complet -->
+        <div class="modal fade" id="rapportComptableModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-book me-2"></i>Rapport comptable complet</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Paiements, retards et relances par classe, avec statistiques de
+                            rapprochement par mode (Espèces, Chèque, Virement…).
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Classe (vide = tout l'établissement)</label>
+                            <select id="rcClasse" class="form-select">
+                                <option value="">— Tout l'établissement —</option>
+                                {% for classe in classes_rapport %}
+                                <option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.annee_scolaire }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Du (optionnel)</label>
+                                <input type="date" id="rcDu" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Au (optionnel)</label>
+                                <input type="date" id="rcAu" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" onclick="ouvrirRapportComptable('pdf')">
+                            <i class="fas fa-file-pdf me-1"></i>PDF
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="ouvrirRapportComptable('excel')">
+                            <i class="fas fa-file-excel me-1"></i>Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="vr mx-2 d-none d-md-block"></div>
@@ -353,6 +404,21 @@ function exportTranchesParClassePdf() {
     if (classe) out.searchParams.set('classe', classe);
     if (ecole) out.searchParams.set('ecole', ecole);
 
+    window.open(out.toString(), '_blank');
+}
+
+// Rapport comptable complet (paiements + retards + relances + rapprochement par mode)
+function ouvrirRapportComptable(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_comptabilite_pdf" %}'
+        : '{% url "paiements:export_comptabilite_excel" %}';
+    const out = new URL(base, window.location.origin);
+    const classe = document.getElementById('rcClasse').value;
+    const du = document.getElementById('rcDu').value;
+    const au = document.getElementById('rcAu').value;
+    if (classe) out.searchParams.set('classe_id', classe);
+    if (du) out.searchParams.set('du', du);
+    if (au) out.searchParams.set('au', au);
     window.open(out.toString(), '_blank');
 }
 

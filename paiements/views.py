@@ -1301,6 +1301,10 @@ def liste_paiements(request):
         'totaux_du_detail_classes': totaux_du_detail_classes,
         # Alerte relance: compte global des élèves en retard (filtré par école)
         'eleves_en_retard': _compute_stats(request.user).get('eleves_en_retard', 0),
+        # Classes pour le modal "Rapport comptable complet"
+        'classes_rapport': filter_by_user_school(
+            Classe.objects.order_by('nom'), request.user, 'ecole'
+        ),
     }
 
     # Réponse partielle pour les requêtes AJAX (utilisé par la recherche/pagination dynamique)
