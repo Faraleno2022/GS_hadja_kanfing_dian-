@@ -64,7 +64,7 @@
                         <tr>
                             <td>{{ forloop.counter }}</td>
                             <td>{{ l.eleve.matricule }}</td>
-                            <td><strong>{{ l.eleve.nom }}</strong> {{ l.eleve.prenom }}</td>
+                            <td>{{ l.eleve.prenom }} <strong>{{ l.eleve.nom }}</strong></td>
                             <td>
                                 <select name="statut_{{ l.eleve.id }}" class="form-select form-select-sm statut-select">
                                     {% for val, lib in statut_choices %}

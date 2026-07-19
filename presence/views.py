@@ -47,7 +47,7 @@ def pointage(request):
 
     if classe:
         eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF')
-                      .order_by('nom', 'prenom'))
+                      .order_by('prenom', 'nom'))
         presences_existantes = {
             p.eleve_id: p for p in PresenceJournaliere.objects.filter(classe=classe, date=jour)
         }
@@ -125,7 +125,7 @@ def _collecter_rapport(request):
 
     lignes = []
     if classe:
-        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('prenom', 'nom'))
         # Agrégats par élève sur la période
         agg = (PresenceJournaliere.objects
                .filter(classe=classe, date__gte=du, date__lte=au)
@@ -247,7 +247,7 @@ def rapport_presence_excel(request):
     for i, l in enumerate(d['lignes'], 1):
         ligne += 1
         e = l['eleve']
-        valeurs = [i, e.matricule or '', f"{e.nom} {e.prenom}",
+        valeurs = [i, e.matricule or '', f"{e.prenom} {e.nom}",
                    l['present'], l['absent'], l['retard'], l['justifie'],
                    l['taux_absence'], l['consecutives']]
         for col, val in enumerate(valeurs, 1):
@@ -300,7 +300,7 @@ def rapport_presence_pdf(request):
     data = [['N°', 'Matricule', 'Élève', 'Prés.', 'Abs.', 'Ret.', 'Just.', 'Taux abs.', 'Abs. conséc.']]
     for i, l in enumerate(d['lignes'], 1):
         e = l['eleve']
-        data.append([str(i), e.matricule or '', f"{e.nom} {e.prenom}",
+        data.append([str(i), e.matricule or '', f"{e.prenom} {e.nom}",
                      str(l['present']), str(l['absent']), str(l['retard']), str(l['justifie']),
                      f"{l['taux_absence']}%",
                      f"⚠ {l['consecutives']}" if l['alerte'] else str(l['consecutives'])])

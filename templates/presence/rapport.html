@@ -66,7 +66,7 @@
                     <tr {% if l.alerte %}class="table-danger"{% endif %}>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ l.eleve.matricule }}</td>
-                        <td><strong>{{ l.eleve.nom }}</strong> {{ l.eleve.prenom }}</td>
+                        <td>{{ l.eleve.prenom }} <strong>{{ l.eleve.nom }}</strong></td>
                         <td class="text-center">{{ l.present }}</td>
                         <td class="text-center fw-bold">{{ l.absent }}</td>
                         <td class="text-center">{{ l.retard }}</td>
