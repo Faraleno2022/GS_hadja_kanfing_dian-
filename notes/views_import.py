@@ -7,17 +7,9 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.db.models import Q
-import pandas as pd
 from io import BytesIO
 
 from .models import ClasseNote, MatiereNote, Evaluation
-from .import_notes import (
-    ImportNotesValidator,
-    ImportNotesProcessor,
-    ImportNotesError,
-    lire_fichier_import,
-    generer_template_excel
-)
 from utilisateurs.permissions import can_manage_notes
 from eleves.utils_annee import get_annee_active
 
@@ -79,6 +71,13 @@ def importer_notes(request):
 
 
 def _traiter_import(request):
+    from .import_notes import (
+        ImportNotesValidator,
+        ImportNotesProcessor,
+        ImportNotesError,
+        lire_fichier_import,
+    )
+
     """Traite l'importation du fichier"""
     # Récupérer les paramètres
     classe_id = request.POST.get('classe')
@@ -165,6 +164,9 @@ def _traiter_import(request):
 
 @login_required
 def telecharger_template_import(request):
+    import pandas as pd
+    from .import_notes import generer_template_excel
+
     """
     Télécharge un fichier template Excel pour l'importation
     """

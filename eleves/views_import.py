@@ -10,17 +10,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.db import transaction
-import pandas as pd
 
 from eleves.models import Classe, Eleve
-from eleves.import_eleves import (
-    ImportElevesError,
-    ImportElevesValidator,
-    ImportElevesProcessor,
-    lire_fichier_eleves,
-    generer_template_eleves,
-    exporter_liste_eleves
-)
 
 
 @login_required
@@ -73,6 +64,13 @@ def _traiter_import_eleves(request):
     """
     Traite l'importation d'élèves
     """
+    from eleves.import_eleves import (
+        ImportElevesError,
+        ImportElevesValidator,
+        ImportElevesProcessor,
+        lire_fichier_eleves,
+    )
+
     try:
         # Récupérer les paramètres
         classe_id = request.POST.get('classe_id')
@@ -179,6 +177,9 @@ def _traiter_import_eleves(request):
 
 @login_required
 def telecharger_template_eleves(request):
+    import pandas as pd
+    from eleves.import_eleves import generer_template_eleves
+
     """
     Télécharge un template Excel pour l'importation d'élèves
     """
@@ -296,6 +297,9 @@ def telecharger_template_eleves(request):
 
 @login_required
 def exporter_eleves_classe(request, classe_id):
+    import pandas as pd
+    from eleves.import_eleves import exporter_liste_eleves
+
     """
     Exporte la liste des élèves d'une classe
     """
