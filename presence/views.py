@@ -247,7 +247,7 @@ def rapport_presence_excel(request):
     for i, l in enumerate(d['lignes'], 1):
         ligne += 1
         e = l['eleve']
-        valeurs = [i, e.matricule or '', f"{e.prenom} {e.nom}",
+        valeurs = [i, e.matricule or '', f"{e.nom} {e.prenom}",
                    l['present'], l['absent'], l['retard'], l['justifie'],
                    l['taux_absence'], l['consecutives']]
         for col, val in enumerate(valeurs, 1):
@@ -300,7 +300,7 @@ def rapport_presence_pdf(request):
     data = [['N°', 'Matricule', 'Élève', 'Prés.', 'Abs.', 'Ret.', 'Just.', 'Taux abs.', 'Abs. conséc.']]
     for i, l in enumerate(d['lignes'], 1):
         e = l['eleve']
-        data.append([str(i), e.matricule or '', f"{e.prenom} {e.nom}",
+        data.append([str(i), e.matricule or '', f"{e.nom} {e.prenom}",
                      str(l['present']), str(l['absent']), str(l['retard']), str(l['justifie']),
                      f"{l['taux_absence']}%",
                      f"⚠ {l['consecutives']}" if l['alerte'] else str(l['consecutives'])])

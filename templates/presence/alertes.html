@@ -31,7 +31,7 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td>{{ a.eleve.matricule }}</td>
-                        <td>{{ a.eleve.prenom }} {{ a.eleve.nom }}</td>
+                        <td><strong>{{ a.eleve.nom }}</strong> {{ a.eleve.prenom }}</td>
                         <td>{{ a.eleve.classe.nom }}</td>
                         <td><span class="badge bg-danger fs-6">{{ a.consecutives }} jours</span></td>
                         <td><a href="{% url 'presence:rapport' %}?classe_id={{ a.eleve.classe_id }}" class="btn btn-sm btn-outline-info">Voir la classe</a></td>
