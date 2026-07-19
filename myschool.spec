@@ -33,7 +33,7 @@ hiddenimports += collect_submodules('django.db.backends.sqlite3')
 
 # Applications du projet
 for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
-             'rapports', 'administration', 'bus', 'notes', 'abonnements',
+             'rapports', 'administration', 'bus', 'notes', 'presence', 'abonnements',
              'chatbot', 'ecole_moderne', 'synchronisation']:
     try:
         hiddenimports += collect_submodules(_app)

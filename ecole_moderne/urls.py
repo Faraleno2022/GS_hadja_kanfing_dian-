@@ -109,6 +109,7 @@ urlpatterns = [
     path('rapports/', include('rapports.urls')),
     path('bus/', include('bus.urls')),
     path('notes/', include('notes.urls')),
+    path('notes/presence/', include('presence.urls')),
     path('abonnements/', include('abonnements.urls')),
     path('chatbot/', include('chatbot.urls')),
     path('api/v1/sync/', include('synchronisation.urls')),
