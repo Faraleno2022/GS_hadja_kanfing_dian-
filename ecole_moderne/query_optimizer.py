@@ -1,7 +1,7 @@
 """
 Optimiseur de requêtes pour améliorer les performances
 """
-from django.db.models import Prefetch, Q, Count, Sum, Case, When, IntegerField, DecimalField
+from django.db.models import Prefetch, Q, Count, Sum, Case, When, IntegerField, DecimalField, Value
 from django.core.cache import cache
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -105,12 +105,19 @@ class QueryOptimizer:
         paiements_stats = paiements_qs.aggregate(
             total=Count('id'),
             valides=Count(Case(When(statut='VALIDE', then=1))),
-            montant_total=Sum(Case(When(statut='VALIDE', then='montant'), default=0)),
+            montant_total=Sum(Case(
+                When(statut='VALIDE', then='montant'),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField(),
+            )),
             mois_count=Count(Case(When(date_paiement__gte=month_start, then=1))),
             mois_montant=Sum(Case(When(
                 Q(date_paiement__gte=month_start) & Q(statut='VALIDE'), 
                 then='montant'
-            ), default=0))
+            ),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField(),
+            ))
         )
         
         stats = {
@@ -137,7 +144,7 @@ class QueryOptimizer:
                 return summary
         
         from paiements.models import Paiement, EcheancierPaiement
-        from django.db.models import F, Value, DecimalField
+        from django.db.models import F
         from django.db.models.functions import Coalesce
         
         # Requête optimisée pour les paiements
@@ -146,9 +153,17 @@ class QueryOptimizer:
         # Agrégations complexes
         summary = paiements_qs.aggregate(
             total_paiements=Count('id'),
-            montant_total=Sum(Case(When(statut='VALIDE', then='montant'), default=0)),
+            montant_total=Sum(Case(
+                When(statut='VALIDE', then='montant'),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField(),
+            )),
             en_attente_count=Count(Case(When(statut='EN_ATTENTE', then=1))),
-            en_attente_montant=Sum(Case(When(statut='EN_ATTENTE', then='montant'), default=0)),
+            en_attente_montant=Sum(Case(
+                When(statut='EN_ATTENTE', then='montant'),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField(),
+            )),
             rejetes_count=Count(Case(When(statut='REJETE', then=1))),
         )
         
@@ -160,9 +175,22 @@ class QueryOptimizer:
         
         echeancier_stats = echeancier_qs.aggregate(
             du_total=Sum(
-                Coalesce(F('tranche_1_due'), Value(0)) +
-                Coalesce(F('tranche_2_due'), Value(0)) +
-                Coalesce(F('tranche_3_due'), Value(0))
+                Coalesce(
+                    F('tranche_1_due'),
+                    Value(0, output_field=DecimalField()),
+                    output_field=DecimalField(),
+                ) +
+                Coalesce(
+                    F('tranche_2_due'),
+                    Value(0, output_field=DecimalField()),
+                    output_field=DecimalField(),
+                ) +
+                Coalesce(
+                    F('tranche_3_due'),
+                    Value(0, output_field=DecimalField()),
+                    output_field=DecimalField(),
+                ),
+                output_field=DecimalField(),
             )
         )
         
