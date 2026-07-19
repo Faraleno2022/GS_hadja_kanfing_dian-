@@ -23,6 +23,17 @@
             </button>
             <ul class="dropdown-menu">
                 <li>
+                    <a class="dropdown-item fw-bold" href="#" onclick="exportFiltresExcel(); return false;">
+                        <i class="fas fa-file-excel text-success me-2"></i>Excel (résultats filtrés)
+                    </a>
+                </li>
+                <li>
+                    <a class="dropdown-item fw-bold" href="#" onclick="exportFiltresPdf(); return false;">
+                        <i class="fas fa-file-pdf text-danger me-2"></i>PDF (résultats filtrés)
+                    </a>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
                     <a class="dropdown-item" href="#" onclick="exportListeExcel(); return false;">
                         <i class="fas fa-file-excel me-2"></i>Excel (liste affichée)
                     </a>
@@ -454,6 +465,26 @@ function exportTranchesParClassePdf() {
     if (ecole) out.searchParams.set('ecole', ecole);
 
     window.open(out.toString(), '_blank');
+}
+
+// Export des résultats filtrés (reprend tous les filtres actifs du formulaire)
+function _urlExportFiltres(base) {
+    const out = new URL(base, window.location.origin);
+    const form = document.getElementById('filtresForm');
+    if (form) {
+        const data = new FormData(form);
+        for (const [key, val] of data.entries()) {
+            const v = (val || '').toString().trim();
+            if (v) out.searchParams.set(key, v);
+        }
+    }
+    return out.toString();
+}
+function exportFiltresExcel() {
+    window.open(_urlExportFiltres('{% url "paiements:export_paiements_filtres_excel" %}'), '_blank');
+}
+function exportFiltresPdf() {
+    window.open(_urlExportFiltres('{% url "paiements:export_paiements_filtres_pdf" %}'), '_blank');
 }
 
 // Rapport comptable complet (paiements + retards + relances + rapprochement par mode)

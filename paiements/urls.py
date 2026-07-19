@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
 from .export_comptabilite import export_comptabilite_pdf, export_comptabilite_excel
+from .export_paiements_filtres import export_paiements_filtres_pdf, export_paiements_filtres_excel
 from . import views_rappels
 from .whatsapp_recu import apercu_message_whatsapp_recu, apercu_message_whatsapp_note_rappel
 from .recu_public import recu_public_pdf, note_rappel_public_pdf
@@ -34,6 +35,8 @@ urlpatterns = [
     path('notes-rappel/classe/<int:classe_id>/pdf/', views.generer_notes_rappel_classe_pdf, name='generer_notes_rappel_classe_pdf'),
     path('eleves-impayes/', views.liste_eleves_impayes, name='liste_eleves_impayes'),
     path('notes-rappel/tous/pdf/', views.generer_toutes_notes_rappel_pdf, name='generer_toutes_notes_rappel_pdf'),
+    path('export/paiements-filtres/pdf/', export_paiements_filtres_pdf, name='export_paiements_filtres_pdf'),
+    path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
     path('export/comptabilite/pdf/', export_comptabilite_pdf, name='export_comptabilite_pdf'),
     path('export/comptabilite/excel/', export_comptabilite_excel, name='export_comptabilite_excel'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
