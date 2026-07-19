@@ -1041,6 +1041,50 @@ def liste_paiements(request):
     if statut:
         qs = qs.filter(statut=statut)
 
+    # ── Filtres structurés supplémentaires ────────────────────────────
+    classe_filtre = (request.GET.get('classe_id') or '').strip()
+    mode_filtre = (request.GET.get('mode_id') or '').strip()
+    type_filtre = (request.GET.get('type_id') or '').strip()
+    situation = (request.GET.get('situation') or '').strip()  # retard / reste / solde
+
+    if classe_filtre.isdigit():
+        qs = qs.filter(eleve__classe_id=int(classe_filtre))
+    if mode_filtre.isdigit():
+        qs = qs.filter(mode_paiement_id=int(mode_filtre))
+    if type_filtre.isdigit():
+        qs = qs.filter(type_paiement_id=int(type_filtre))
+
+    # Situation de paiement de l'élève (basée sur l'échéancier)
+    if situation in ('retard', 'reste', 'solde'):
+        from django.utils import timezone as _tz2
+        _today = _tz2.localdate() if hasattr(_tz2, 'localdate') else date.today()
+        exig = (
+            Case(When(date_echeance_inscription__lte=_today, then=F('frais_inscription_du')),
+                 default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+            + Case(When(date_echeance_tranche_1__lte=_today, then=F('tranche_1_due')),
+                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+            + Case(When(date_echeance_tranche_2__lte=_today, then=F('tranche_2_due')),
+                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+            + Case(When(date_echeance_tranche_3__lte=_today, then=F('tranche_3_due')),
+                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+        )
+        paye_eche = (F('frais_inscription_paye') + F('tranche_1_payee')
+                     + F('tranche_2_payee') + F('tranche_3_payee'))
+        du_total = (F('frais_inscription_du') + F('tranche_1_due')
+                    + F('tranche_2_due') + F('tranche_3_due'))
+        eche_qs = EcheancierPaiement.objects.annotate(
+            _retard=ExpressionWrapper(exig - paye_eche, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            _reste=ExpressionWrapper(du_total - paye_eche, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        )
+        if situation == 'retard':          # en retard (échéance dépassée non soldée)
+            eche_qs = eche_qs.filter(_retard__gt=0)
+        elif situation == 'reste':         # reste à payer (à tout payer)
+            eche_qs = eche_qs.filter(_reste__gt=0)
+        elif situation == 'solde':         # entièrement soldé
+            eche_qs = eche_qs.filter(_reste__lte=0)
+        eleve_ids_situation = list(eche_qs.values_list('eleve_id', flat=True))
+        qs = qs.filter(eleve_id__in=eleve_ids_situation)
+
     # Calcul des totaux dynamiques (adaptés aux filtres en place)
     try:
         from django.utils import timezone as _tz
@@ -1305,6 +1349,16 @@ def liste_paiements(request):
         'classes_rapport': filter_by_user_school(
             Classe.objects.order_by('nom'), request.user, 'ecole'
         ),
+        # Options + valeurs courantes pour la barre de filtres
+        'classes_filtre': filter_by_user_school(
+            Classe.objects.order_by('nom'), request.user, 'ecole'
+        ),
+        'modes_filtre': ModePaiement.objects.filter(actif=True).order_by('nom'),
+        'types_filtre': TypePaiement.objects.filter(actif=True).order_by('nom'),
+        'filtre_classe_id': classe_filtre,
+        'filtre_mode_id': mode_filtre,
+        'filtre_type_id': type_filtre,
+        'filtre_situation': situation,
     }
 
     # Réponse partielle pour les requêtes AJAX (utilisé par la recherche/pagination dynamique)

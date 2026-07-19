@@ -281,27 +281,71 @@
 
     <!-- Recherche (une seule zone multi-critères) -->
     <div class="search-card">
-        <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-9">
+        <form method="get" class="row g-3 align-items-end" id="filtresForm">
+            <div class="col-md-12">
                 <label for="q" class="form-label">Recherche</label>
                 <input type="text" class="form-control search-input" id="q" name="q"
                        value="{{ q }}"
-                       placeholder="Classe, École, Nom, Prénoms, Type, Mode, N° Reçu, Matricule, Statut (ex: validé, en attente)...">
+                       placeholder="Nom, Prénoms, N° Reçu, Matricule, Référence...">
             </div>
+
             <div class="col-md-3">
-                <button type="submit" class="btn btn-primary w-100">
+                <label for="f_classe" class="form-label">Classe</label>
+                <select class="form-select" id="f_classe" name="classe_id" onchange="this.form.submit()">
+                    <option value="">Toutes les classes</option>
+                    {% for classe in classes_filtre %}
+                    <option value="{{ classe.id }}" {% if filtre_classe_id == classe.id|stringformat:"s" %}selected{% endif %}>{{ classe.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="f_situation" class="form-label">Niveau de paiement</label>
+                <select class="form-select" id="f_situation" name="situation" onchange="this.form.submit()">
+                    <option value="">Tous</option>
+                    <option value="retard" {% if filtre_situation == 'retard' %}selected{% endif %}>En retard</option>
+                    <option value="reste" {% if filtre_situation == 'reste' %}selected{% endif %}>Reste à payer (à tout payer)</option>
+                    <option value="solde" {% if filtre_situation == 'solde' %}selected{% endif %}>Soldé (à jour)</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="f_mode" class="form-label">Type de paiement (mode)</label>
+                <select class="form-select" id="f_mode" name="mode_id" onchange="this.form.submit()">
+                    <option value="">Tous les modes</option>
+                    {% for mode in modes_filtre %}
+                    <option value="{{ mode.id }}" {% if filtre_mode_id == mode.id|stringformat:"s" %}selected{% endif %}>{{ mode.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="f_type" class="form-label">Nature (type)</label>
+                <select class="form-select" id="f_type" name="type_id" onchange="this.form.submit()">
+                    <option value="">Toutes les natures</option>
+                    {% for type in types_filtre %}
+                    <option value="{{ type.id }}" {% if filtre_type_id == type.id|stringformat:"s" %}selected{% endif %}>{{ type.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-primary">
                     <i class="fas fa-search me-1"></i>Rechercher
                 </button>
+                <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i>Réinitialiser
+                </a>
             </div>
         </form>
 
-        {% if q %}
+        {% if q or filtre_classe_id or filtre_situation or filtre_mode_id or filtre_type_id %}
         <div class="mt-3">
-            <strong>Filtre actif :</strong>
-            <span class="filter-badge">Recherche: "{{ q }}"</span>
-            <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-sm btn-outline-secondary ms-2">
-                <i class="fas fa-times me-1"></i>Effacer
-            </a>
+            <strong>Filtres actifs :</strong>
+            {% if q %}<span class="filter-badge">Recherche: "{{ q }}"</span>{% endif %}
+            {% if filtre_situation == 'retard' %}<span class="filter-badge bg-danger text-white">En retard</span>{% endif %}
+            {% if filtre_situation == 'reste' %}<span class="filter-badge bg-warning">Reste à payer</span>{% endif %}
+            {% if filtre_situation == 'solde' %}<span class="filter-badge bg-success text-white">Soldé</span>{% endif %}
         </div>
         {% endif %}
     </div>
@@ -334,10 +378,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function buildUrl(page) {
-        const u = new URL(window.location.href);
-        const q = searchInput.value.trim();
-        if (q) u.searchParams.set('q', q); else u.searchParams.delete('q');
-        if (page) u.searchParams.set('page', page); else u.searchParams.delete('page');
+        const u = new URL(window.location.origin + window.location.pathname);
+        // Sérialiser tous les champs du formulaire de filtres (q + listes déroulantes)
+        if (form) {
+            const data = new FormData(form);
+            for (const [key, val] of data.entries()) {
+                const v = (val || '').toString().trim();
+                if (v) u.searchParams.set(key, v);
+            }
+        }
+        if (page) u.searchParams.set('page', page);
         return u.toString();
     }
 
@@ -346,12 +396,11 @@ document.addEventListener('DOMContentLoaded', function() {
         results.querySelectorAll('.pagination a.page-link').forEach(a => {
             a.addEventListener('click', function(ev) {
                 ev.preventDefault();
-                const url = new URL(a.href, window.location.origin);
-                // Conserver la valeur courante de q
-                const q = searchInput.value.trim();
-                if (q) url.searchParams.set('q', q); else url.searchParams.delete('q');
-                history.replaceState({}, '', url.toString());
-                loadResults(url.toString());
+                const target = new URL(a.href, window.location.origin);
+                const page = target.searchParams.get('page');
+                const url = buildUrl(page);
+                history.replaceState({}, '', url);
+                loadResults(url);
             });
         });
     }
