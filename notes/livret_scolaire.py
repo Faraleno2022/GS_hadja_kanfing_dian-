@@ -1071,7 +1071,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
 
     c.setFillColor(colors.HexColor('#222222'))
     # Adapter la taille du nom si trop long
-    nom_complet = f"{_s(eleve.nom)} {_s(eleve.prenom)}"
+    nom_complet = f"{_s(eleve.prenom)} {_s(eleve.nom)}"
     from reportlab.pdfbase.pdfmetrics import stringWidth
     nom_fs = 13
     while nom_fs > 9 and stringWidth(nom_complet, 'Helvetica-Bold', nom_fs) > box_w - 20:
@@ -1142,7 +1142,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
-    c.drawString(lx, cy, f"Nom et Prenom : {_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.drawString(lx, cy, f"Nom et Prenom : {_s(eleve.prenom)} {_s(eleve.nom)}")
 
     cy -= 14
     dn = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else ''
@@ -1259,14 +1259,14 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.black)
-    c.drawString(lx, cy, f"Eleve : {_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.drawString(lx, cy, f"Eleve : {_s(eleve.prenom)} {_s(eleve.nom)}")
     c.drawString(lx + w * 0.5, cy, f"Matricule : {eleve.matricule}")
 
     # ------- PERE / Responsable principal -------
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.HexColor('#003d82'))
-    c.drawString(lx, cy, "PERE / RESPONSABLE PRINCIPAL")
+    c.drawString(lx, cy, "RESPONSABLE PRINCIPAL")
     cy -= 3
     c.setLineWidth(0.3)
     c.line(lx, cy, rx, cy)
@@ -1274,7 +1274,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     resp1 = getattr(eleve, 'responsable_principal', None)
 
     pere_fields = [
-        ("Nom et Prenom", f"{_s(resp1.nom)} {_s(resp1.prenom)}" if resp1 else "............................................"),
+        ("Nom et Prenom", f"{_s(resp1.prenom)} {_s(resp1.nom)}" if resp1 else "............................................"),
         ("Lien de parente", _s(resp1.get_relation_display()) if resp1 else "............................................"),
         ("Profession", _s(resp1.profession) if resp1 and resp1.profession else "............................................"),
         ("Telephone", _s(resp1.telephone) if resp1 else "............................................"),
@@ -1303,7 +1303,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     if cy > y + 15:
         c.setFont('Helvetica-Bold', 9)
         c.setFillColor(colors.HexColor('#003d82'))
-        c.drawString(lx, cy, "MERE / RESPONSABLE SECONDAIRE")
+        c.drawString(lx, cy, "RESPONSABLE SECONDAIRE")
         cy -= 3
         c.setLineWidth(0.3)
         c.setStrokeColor(colors.HexColor('#003d82'))
@@ -1312,7 +1312,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     resp2 = getattr(eleve, 'responsable_secondaire', None)
 
     mere_fields = [
-        ("Nom et Prenom", f"{_s(resp2.nom)} {_s(resp2.prenom)}" if resp2 else "............................................"),
+        ("Nom et Prenom", f"{_s(resp2.prenom)} {_s(resp2.nom)}" if resp2 else "............................................"),
         ("Lien de parente", _s(resp2.get_relation_display()) if resp2 else "............................................"),
         ("Profession", _s(resp2.profession) if resp2 and resp2.profession else "............................................"),
         ("Telephone", _s(resp2.telephone) if resp2 else "............................................"),
@@ -1867,7 +1867,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     c.setFont('Helvetica', 8)
     c.setFillColor(colors.black)
     c.drawCentredString(cx, cy,
-                        f"Eleve : {_s(eleve.nom)} {_s(eleve.prenom)}"
+                        f"Eleve : {_s(eleve.prenom)} {_s(eleve.nom)}"
                         f"  -  Matricule : {eleve.matricule}")
 
     # Synthese par cycle
@@ -2415,10 +2415,11 @@ def _calculer_score_serie(matieres_globales, serie_config, poids_recent=1.5):
             coef = 3.0 if is_cle else 1.0
             score_total += avg_pond * coef
             nb_matieres += coef
-            details.append((nom_orig, round(avg_pond, 2)))
+            details.append((nom_orig, round(avg_pond, 2), bool(is_cle)))
 
     score_final = round(score_total / nb_matieres, 2) if nb_matieres > 0 else 0.0
-    details.sort(key=lambda x: x[1], reverse=True)
+    # Matières clés d'abord (elles caractérisent la série), puis par moyenne
+    details.sort(key=lambda x: (x[2], x[1]), reverse=True)
     return score_final, details
 
 
@@ -2622,12 +2623,19 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
         detail_y = cy - 10
         c.setFont('Helvetica', 6.5)
         c.setFillColor(colors.black)
-        for nom, avg in details[:6]:
+        for det in details[:6]:
+            nom, avg = det[0], det[1]
+            is_cle = det[2] if len(det) > 2 else False
             if detail_y < y + 160:
                 break
-            # Tronquer le nom si trop long
-            nom_court = nom[:18] + '..' if len(nom) > 20 else nom
-            c.drawString(col_x + 2, detail_y, f"{nom_court}: {avg:.1f}")
+            # Matière clé de la série marquée d'une puce
+            marqueur = '• ' if is_cle else '  '
+            nom_court = nom[:16] + '..' if len(nom) > 18 else nom
+            if is_cle:
+                c.setFont('Helvetica-Bold', 6.5)
+            else:
+                c.setFont('Helvetica', 6.5)
+            c.drawString(col_x + 2, detail_y, f"{marqueur}{nom_court}: {avg:.1f}")
             detail_y -= 8
 
     cy = cy - 10 - min(6, max(len(d['details']) for d in resultats.values())) * 8 - 5
@@ -2781,7 +2789,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     c.setFont('Helvetica', 7)
     c.setFillColor(colors.black)
     c.drawCentredString(cx, cy,
-                        f"{_s(eleve.nom)} {_s(eleve.prenom)}  -  "
+                        f"{_s(eleve.prenom)} {_s(eleve.nom)}  -  "
                         f"Classe: {_s(entry['classe_nom'])}  -  {entry['annee_scolaire']}")
 
     # === SECTION 1 : STATISTIQUES GENERALES ===
@@ -3143,7 +3151,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     buffer = io.BytesIO()
     width, height = landscape(A4)  # 842 x 595
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
-    c.setTitle(f"Livret Scolaire - {_s(eleve.nom)} {_s(eleve.prenom)}")
+    c.setTitle(f"Livret Scolaire - {_s(eleve.prenom)} {_s(eleve.nom)}")
 
     margin = 10
     gap = 6
@@ -3235,7 +3243,7 @@ def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
     buffer = io.BytesIO()
     width, height = landscape(A4)
     c = canvas.Canvas(buffer, pagesize=landscape(A4))
-    c.setTitle(f"Livret Annuel - {_s(eleve.nom)} {_s(eleve.prenom)} - {annee_scolaire}")
+    c.setTitle(f"Livret Annuel - {_s(eleve.prenom)} {_s(eleve.nom)} - {annee_scolaire}")
 
     margin = 10
     gap = 6
@@ -3670,7 +3678,7 @@ def livret_scolaire_pdf(request, eleve_id):
         parcours = _collecter_parcours_eleve(eleve, ecole)
         if not parcours:
             messages.warning(request,
-                             f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}.")
+                             f"Aucune donnee de parcours trouvee pour {eleve.prenom} {eleve.nom}.")
             return redirect('notes:livret_scolaire')
 
         pdf_buffer = _generer_livret_pdf(eleve, ecole, parcours)
@@ -3709,7 +3717,7 @@ def livret_scolaire_annuel_pdf(request, eleve_id):
         parcours = _collecter_parcours_eleve(eleve, ecole)
         if not parcours:
             messages.warning(request,
-                             f"Aucune donnee de parcours trouvee pour {eleve.nom} {eleve.prenom}.")
+                             f"Aucune donnee de parcours trouvee pour {eleve.prenom} {eleve.nom}.")
             return redirect('notes:livret_scolaire')
 
         pdf_buffer = _generer_livret_annuel_pdf(eleve, ecole, parcours, annee)
