@@ -7,6 +7,7 @@ Primaire : Matieres | 1er Trim | 2eme Trim | 3eme Trim | Moy Annuelle | Observat
 """
 
 import io
+import os
 import re
 import logging
 from decimal import Decimal
@@ -70,23 +71,47 @@ def _fmt(v):
         return ''
 
 
-def _get_logo_reader(ecole):
+def _image_reader_from_field(field):
+    """ImageReader robuste pour un ImageField/FileField.
+
+    1) essaie le fichier local (.path) s'il existe sur le disque;
+    2) sinon ouvre le fichier via le stockage Django (fonctionne aussi
+       si .path n'est pas disponible ou si le fichier est ailleurs).
+    Retourne None si aucun fichier ou en cas d'erreur.
+    """
+    if not field:
+        return None
+    # 1) Chemin local
     try:
-        if ecole.logo and hasattr(ecole.logo, 'path'):
-            return ImageReader(ecole.logo.path)
+        path = getattr(field, 'path', None)
+        if path and os.path.exists(path):
+            return ImageReader(path)
+    except Exception:
+        pass
+    # 2) Ouverture via le stockage (BytesIO)
+    try:
+        field.open('rb')
+        try:
+            data = field.read()
+        finally:
+            try:
+                field.close()
+            except Exception:
+                pass
+        if data:
+            return ImageReader(io.BytesIO(data))
     except Exception:
         pass
     return None
+
+
+def _get_logo_reader(ecole):
+    return _image_reader_from_field(getattr(ecole, 'logo', None))
 
 
 def _get_image_reader(ecole):
-    """Retourne un ImageReader pour la photo de l'ecole."""
-    try:
-        if ecole.image and hasattr(ecole.image, 'path'):
-            return ImageReader(ecole.image.path)
-    except Exception:
-        pass
-    return None
+    """Retourne un ImageReader pour la photo (image) de l'ecole."""
+    return _image_reader_from_field(getattr(ecole, 'image', None))
 
 
 def _appreciation_generale(moy_ann, sur):
@@ -978,8 +1003,8 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     photo_y = img_row_y - photo_h
     photo_drawn = False
     try:
-        if eleve.photo and hasattr(eleve.photo, 'path'):
-            photo_reader = ImageReader(eleve.photo.path)
+        photo_reader = _image_reader_from_field(getattr(eleve, 'photo', None))
+        if photo_reader:
             c.drawImage(photo_reader, photo_x, photo_y, photo_w, photo_h,
                         preserveAspectRatio=True, mask='auto')
             photo_drawn = True
