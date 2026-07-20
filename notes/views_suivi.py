@@ -41,6 +41,11 @@ def saisie_suivi(request):
     matiere_id = (request.GET.get('matiere_id') or request.POST.get('matiere_id') or '').strip()
     mois = (request.GET.get('mois') or request.POST.get('mois') or '').strip()
     type_note = (request.GET.get('type_note') or request.POST.get('type_note') or 'COURS').strip()
+    numero_raw = (request.GET.get('numero') or request.POST.get('numero') or '1').strip()
+    try:
+        numero = max(1, min(20, int(numero_raw)))
+    except (ValueError, TypeError):
+        numero = 1
 
     classe = None
     matiere = None
@@ -61,10 +66,10 @@ def saisie_suivi(request):
         for eleve in eleves:
             brut = (request.POST.get(f'note_{eleve.id}') or '').strip().replace(',', '.')
             if brut == '':
-                # champ vide -> supprimer la note existante de ce type/mois
+                # champ vide -> supprimer la note existante de ce type/mois/numero
                 supprimes += NoteSuivi.objects.filter(
                     eleve=eleve, matiere=matiere, mois=mois,
-                    type_note=type_note, annee_scolaire=annee).delete()[0]
+                    type_note=type_note, numero=numero, annee_scolaire=annee).delete()[0]
                 continue
             try:
                 valeur = Decimal(brut)
@@ -74,7 +79,7 @@ def saisie_suivi(request):
                 continue
             NoteSuivi.objects.update_or_create(
                 eleve=eleve, matiere=matiere, mois=mois,
-                type_note=type_note, annee_scolaire=annee,
+                type_note=type_note, numero=numero, annee_scolaire=annee,
                 defaults={'note': valeur, 'cree_par': request.user},
             )
             enregistres += 1
@@ -85,13 +90,13 @@ def saisie_suivi(request):
             f"Suivi enregistré : {enregistres} note(s), {supprimes} supprimée(s) — "
             f"{matiere.nom} / {mois} / {dict(NoteSuivi.TYPE_CHOICES).get(type_note, type_note)}.")
         return redirect(f"{request.path}?classe_id={classe.id}&matiere_id={matiere.id}"
-                        f"&mois={mois}&type_note={type_note}")
+                        f"&mois={mois}&type_note={type_note}&numero={numero}")
 
     # Pré-remplissage : notes existantes de ce type + aperçu du bonus global
     apercu_bonus = {}
     if classe and matiere and mois:
         for ns in NoteSuivi.objects.filter(matiere=matiere, mois=mois, type_note=type_note,
-                                           annee_scolaire=classe.annee_scolaire):
+                                           numero=numero, annee_scolaire=classe.annee_scolaire):
             notes_existantes[ns.eleve_id] = ns.note
         # Bonus courant (toutes composantes confondues) pour ce mois
         bmap = bonus_suivi_batch([e.id for e in eleves], [matiere.id], [mois], classe.annee_scolaire)
@@ -116,6 +121,8 @@ def saisie_suivi(request):
         'mois_choices': NoteSuivi.MOIS_CHOICES,
         'type_note': type_note,
         'type_choices': NoteSuivi.TYPE_CHOICES,
+        'numero': numero,
+        'numeros': range(1, 11),
         'lignes': lignes,
         'bonus_max': 2,
     }

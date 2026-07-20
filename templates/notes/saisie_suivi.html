@@ -46,11 +46,19 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label">Type de note</label>
                     <select name="type_note" class="form-select" onchange="this.form.submit()">
                         {% for val, lib in type_choices %}
                         <option value="{{ val }}" {% if type_note == val %}selected{% endif %}>{{ lib }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label" title="Numéro d'interrogation/devoir dans le mois">N°</label>
+                    <select name="numero" class="form-select" onchange="this.form.submit()">
+                        {% for n in numeros %}
+                        <option value="{{ n }}" {% if numero == n %}selected{% endif %}>{{ n }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -68,7 +76,7 @@
         <div class="card">
             <div class="card-header">
                 <strong>{{ classe.nom }} — {{ matiere.nom }} — {{ mois }}</strong> —
-                type : {% for v,l in type_choices %}{% if v == type_note %}{{ l }}{% endif %}{% endfor %}
+                {% for v,l in type_choices %}{% if v == type_note %}{{ l }}{% endif %}{% endfor %} n°{{ numero }}
                 — {{ lignes|length }} élève(s)
             </div>
             <div class="table-responsive">

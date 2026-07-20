@@ -238,6 +238,7 @@ class NoteSuivi(SyncTrackedModel):
     mois = models.CharField(max_length=20, choices=MOIS_CHOICES, verbose_name="Mois")
     annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
     type_note = models.CharField(max_length=15, choices=TYPE_CHOICES, verbose_name="Type de note")
+    numero = models.PositiveSmallIntegerField(default=1, verbose_name="N° (ex: interrogation 1, 2, 3)")
     note = models.DecimalField(max_digits=5, decimal_places=2, verbose_name="Note sur 20")
     date = models.DateField(verbose_name="Date", null=True, blank=True)
     observation = models.CharField(max_length=200, blank=True, verbose_name="Observation")
@@ -851,3 +852,62 @@ class PieceJointeActivite(SyncTrackedModel):
     def is_image(self):
         ext = self.fichier.name.lower().split('.')[-1] if self.fichier else ''
         return ext in ('jpg', 'jpeg', 'png', 'gif', 'webp')
+
+
+class Devoir(SyncTrackedModel):
+    """Un devoir donné à une classe pour une matière (suivi des rendus)."""
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='devoirs')
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.CASCADE, related_name='devoirs')
+    titre = models.CharField(max_length=200, verbose_name="Titre du devoir")
+    description = models.TextField(blank=True, verbose_name="Consigne / description")
+    date_donne = models.DateField(verbose_name="Date où le devoir est donné")
+    date_remise = models.DateField(verbose_name="Date de remise (échéance)")
+
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='devoirs_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Devoir"
+        verbose_name_plural = "Devoirs"
+        ordering = ['-date_remise', '-date_donne']
+        indexes = [
+            models.Index(fields=['classe', 'date_remise']),
+            models.Index(fields=['matiere']),
+        ]
+
+    def __str__(self):
+        return f"{self.titre} - {self.matiere.nom} ({self.classe.nom})"
+
+
+class RemiseDevoir(SyncTrackedModel):
+    """Statut de remise d'un devoir pour un élève."""
+    STATUT_CHOICES = [
+        ('NON_RENDU', 'Non rendu'),
+        ('RENDU', 'Rendu'),
+        ('EN_RETARD', 'Rendu en retard'),
+        ('EXCUSE', 'Excusé'),
+    ]
+
+    devoir = models.ForeignKey(Devoir, on_delete=models.CASCADE, related_name='remises')
+    eleve = models.ForeignKey('eleves.Eleve', on_delete=models.CASCADE, related_name='remises_devoirs')
+    statut = models.CharField(max_length=12, choices=STATUT_CHOICES, default='NON_RENDU')
+    note = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                               verbose_name="Note du devoir (optionnel)")
+    observation = models.CharField(max_length=200, blank=True)
+
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Remise de devoir"
+        verbose_name_plural = "Remises de devoirs"
+        constraints = [
+            models.UniqueConstraint(fields=['devoir', 'eleve'], name='unique_remise_devoir_eleve'),
+        ]
+        indexes = [
+            models.Index(fields=['devoir', 'statut']),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve} - {self.devoir.titre} - {self.get_statut_display()}"

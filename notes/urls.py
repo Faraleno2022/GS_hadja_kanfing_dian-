@@ -43,6 +43,7 @@ from .certificats import certificats_appreciation_pdf
 from .tableau_honneur import tableau_honneur, tableau_honneur_pdf
 from .livret_scolaire import livret_scolaire_selection, livret_scolaire_pdf, livret_scolaire_annuel_pdf, livret_scolaire_classe_pdf
 from .views_suivi import saisie_suivi
+from .views_devoirs import liste_devoirs, creer_devoir, suivi_devoir, supprimer_devoir
 
 app_name = 'notes'
 
@@ -167,6 +168,10 @@ urlpatterns = [
     # ACTIVITÉS JOURNALIÈRES
     # ============================================================================
     path('suivi/', saisie_suivi, name='saisie_suivi'),
+    path('devoirs/', liste_devoirs, name='liste_devoirs'),
+    path('devoirs/nouveau/', creer_devoir, name='creer_devoir'),
+    path('devoirs/<int:devoir_id>/suivi/', suivi_devoir, name='suivi_devoir'),
+    path('devoirs/<int:devoir_id>/supprimer/', supprimer_devoir, name='supprimer_devoir'),
     path('activites/', liste_activites, name='liste_activites'),
     path('activites/ajouter/', ajouter_activite, name='ajouter_activite'),
     path('activites/<int:activite_id>/', detail_activite, name='detail_activite'),
