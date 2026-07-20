@@ -58,7 +58,15 @@ def bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire):
     """
     if not eleve_ids or not matiere_ids or not mois_list:
         return {}
-    from .models import NoteSuivi, RemiseDevoir
+    from .models import NoteSuivi, RemiseDevoir, MatiereNote
+
+    # Le bonus n'est calculé que si l'école l'a explicitement activé.
+    _actif = MatiereNote.objects.filter(
+        id__in=matiere_ids, classe__ecole__bonus_suivi_actif=True
+    ).exists()
+    if not _actif:
+        return {}
+
     groupes = {}
 
     # 1) Notes de suivi manuelles

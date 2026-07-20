@@ -28,6 +28,32 @@ def _eleves_de_classe_note(classe_note):
 
 
 @login_required
+def toggle_bonus_suivi(request):
+    """Active/désactive le bonus de suivi pour l'école de l'utilisateur."""
+    profil = getattr(request.user, 'profil', None)
+    ecole = profil.ecole if profil else None
+    retour = request.POST.get('next') or request.GET.get('next') or 'notes:saisie_suivi'
+    if not ecole:
+        messages.error(request, "Aucune école associée à votre compte.")
+        return redirect('notes:saisie_suivi')
+    if request.method == 'POST':
+        ecole.bonus_suivi_actif = not ecole.bonus_suivi_actif
+        ecole.save(update_fields=['bonus_suivi_actif'])
+        # Recalcul nécessaire: vider le cache des moyennes/rangs
+        from .utils_rangs import invalider_cache_rangs
+        for cn in ClasseNote.objects.filter(ecole=ecole, actif=True):
+            invalider_cache_rangs(cn)
+        if ecole.bonus_suivi_actif:
+            messages.success(request, "✅ Bonus de suivi ACTIVÉ pour votre école.")
+        else:
+            messages.info(request, "⛔ Bonus de suivi DÉSACTIVÉ pour votre école.")
+    try:
+        return redirect(retour)
+    except Exception:
+        return redirect('notes:saisie_suivi')
+
+
+@login_required
 def saisie_suivi(request):
     """Saisie d'une colonne de notes de suivi (classe + matière + mois + type)."""
     user_profil = getattr(request.user, 'profil', None)
@@ -125,5 +151,6 @@ def saisie_suivi(request):
         'numeros': range(1, 11),
         'lignes': lignes,
         'bonus_max': 2,
+        'bonus_actif': bool(getattr(ecole, 'bonus_suivi_actif', False)),
     }
     return render(request, 'notes/saisie_suivi.html', context)

@@ -5,16 +5,35 @@
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="mb-0"><i class="fas fa-star text-warning me-2"></i>Notes de suivi (bonus)</h2>
-        <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour Notes</a>
+        <div class="d-flex align-items-center gap-2">
+            <form method="post" action="{% url 'notes:toggle_bonus_suivi' %}" class="d-inline">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                {% if bonus_actif %}
+                <button type="submit" class="btn btn-success"><i class="fas fa-toggle-on me-1"></i>Bonus ACTIVÉ — cliquer pour désactiver</button>
+                {% else %}
+                <button type="submit" class="btn btn-outline-danger"><i class="fas fa-toggle-off me-1"></i>Bonus DÉSACTIVÉ — cliquer pour activer</button>
+                {% endif %}
+            </form>
+            <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour Notes</a>
+        </div>
     </div>
 
+    {% if bonus_actif %}
     <div class="alert alert-info py-2 small">
         <i class="fas fa-info-circle me-1"></i>
-        Les notes de suivi (cours, orale, écrite, devoirs, participation) ajoutent un
+        Le bonus est <strong>activé</strong> pour votre école. Les notes de suivi (cours, orale, écrite, devoirs, participation) ajoutent un
         <strong>bonus plafonné à +{{ bonus_max }} points</strong> sur la note mensuelle de la matière.
         Un élève sans note de suivi n'est pas pénalisé (bonus 0). Le bonus =
         moyenne des notes de suivi ÷ 20 × {{ bonus_max }}.
     </div>
+    {% else %}
+    <div class="alert alert-warning py-2 small">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        Le bonus est <strong>désactivé</strong> : vous pouvez saisir les notes de suivi, mais elles n'affecteront
+        les moyennes qu'une fois le bonus activé (bouton vert ci-dessus).
+    </div>
+    {% endif %}
 
     <div class="card mb-3">
         <div class="card-body">

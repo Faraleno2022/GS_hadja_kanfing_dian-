@@ -33,6 +33,10 @@ class Ecole(SyncTrackedModel):
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     directeur = models.CharField(max_length=100, verbose_name="Directeur")
     censeur = models.CharField(max_length=100, blank=True, null=True, verbose_name="Censeur de l'établissement")
+    bonus_suivi_actif = models.BooleanField(
+        default=False,
+        verbose_name="Activer le bonus de suivi",
+        help_text="Si activé, les notes de suivi (cours, oral, écrit, devoirs, participation) ajoutent un bonus plafonné à la note mensuelle.")
     logo = models.ImageField(upload_to='ecoles/logos/', blank=True, null=True)
     image = models.ImageField(upload_to='ecoles/images/', blank=True, null=True,
                               verbose_name="Photo de l'ecole",

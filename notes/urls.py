@@ -42,7 +42,7 @@ from .export_statistiques_pdf import exporter_statistiques_pdf, exporter_conseil
 from .certificats import certificats_appreciation_pdf
 from .tableau_honneur import tableau_honneur, tableau_honneur_pdf
 from .livret_scolaire import livret_scolaire_selection, livret_scolaire_pdf, livret_scolaire_annuel_pdf, livret_scolaire_classe_pdf
-from .views_suivi import saisie_suivi
+from .views_suivi import saisie_suivi, toggle_bonus_suivi
 from .views_devoirs import liste_devoirs, creer_devoir, suivi_devoir, supprimer_devoir
 
 app_name = 'notes'
@@ -168,6 +168,7 @@ urlpatterns = [
     # ACTIVITÉS JOURNALIÈRES
     # ============================================================================
     path('suivi/', saisie_suivi, name='saisie_suivi'),
+    path('suivi/toggle-bonus/', toggle_bonus_suivi, name='toggle_bonus_suivi'),
     path('devoirs/', liste_devoirs, name='liste_devoirs'),
     path('devoirs/nouveau/', creer_devoir, name='creer_devoir'),
     path('devoirs/<int:devoir_id>/suivi/', suivi_devoir, name='suivi_devoir'),
