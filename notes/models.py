@@ -862,6 +862,10 @@ class Devoir(SyncTrackedModel):
     description = models.TextField(blank=True, verbose_name="Consigne / description")
     date_donne = models.DateField(verbose_name="Date où le devoir est donné")
     date_remise = models.DateField(verbose_name="Date de remise (échéance)")
+    compte_bonus = models.BooleanField(
+        default=False,
+        verbose_name="Compter les notes de ce devoir dans le bonus mensuel",
+        help_text="Si activé, les notes saisies pour ce devoir alimentent le bonus de suivi du mois de la date de remise.")
 
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='devoirs_crees')

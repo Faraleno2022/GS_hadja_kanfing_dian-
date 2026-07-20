@@ -45,6 +45,15 @@
                         <label class="form-label">Consigne / description (optionnel)</label>
                         <textarea name="description" class="form-control" rows="3"></textarea>
                     </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="compte_bonus" name="compte_bonus" value="1">
+                            <label class="form-check-label" for="compte_bonus">
+                                <i class="fas fa-star text-warning me-1"></i>Compter les notes de ce devoir dans le <strong>bonus mensuel</strong>
+                                <small class="text-muted d-block">Les notes saisies alimenteront le bonus de suivi du mois de la date de remise (plafonné à +2).</small>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 <div class="mt-3 text-end">
                     <a href="{% url 'notes:liste_devoirs' %}?classe_id={{ classe.id }}" class="btn btn-outline-secondary">Annuler</a>

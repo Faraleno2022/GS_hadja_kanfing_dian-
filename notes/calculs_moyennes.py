@@ -33,25 +33,58 @@ PONDERATION_COMPOSITION_SECONDAIRE = Decimal('0.6')
 # Un élève sans note de suivi a un bonus de 0 (comportement inchangé).
 BONUS_SUIVI_MAX = Decimal('2')
 
+# Mois calendaire -> mois scolaire (année scolaire Octobre→Juin)
+_MOIS_SCOLAIRE_PAR_NUMERO = {
+    9: 'OCTOBRE', 10: 'OCTOBRE', 11: 'NOVEMBRE', 12: 'DECEMBRE',
+    1: 'JANVIER', 2: 'FEVRIER', 3: 'MARS', 4: 'AVRIL', 5: 'MAI',
+    6: 'JUIN', 7: 'JUIN', 8: 'JUIN',
+}
+
+
+def mois_scolaire_depuis_date(d):
+    """Retourne le libellé du mois scolaire (OCTOBRE..JUIN) pour une date."""
+    if not d:
+        return None
+    return _MOIS_SCOLAIRE_PAR_NUMERO.get(d.month)
+
 
 def bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire):
     """Bonus de suivi par (eleve, matiere, mois).
 
     Bonus = (moyenne des notes de suivi / 20) * BONUS_SUIVI_MAX.
+    Prend en compte les notes de suivi (NoteSuivi) ET les notes des devoirs
+    marqués « compte_bonus » (mois déduit de la date de remise).
     Retourne {(eleve_id, matiere_id, mois): bonus_float}. Vide si aucun suivi.
     """
     if not eleve_ids or not matiere_ids or not mois_list:
         return {}
-    from .models import NoteSuivi
+    from .models import NoteSuivi, RemiseDevoir
+    groupes = {}
+
+    # 1) Notes de suivi manuelles
     rows = (NoteSuivi.objects
             .filter(eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
                     mois__in=mois_list, annee_scolaire=annee_scolaire)
             .values('eleve_id', 'matiere_id', 'mois', 'note'))
-    groupes = {}
     for r in rows:
         if r['note'] is None:
             continue
         groupes.setdefault((r['eleve_id'], r['matiere_id'], r['mois']), []).append(float(r['note']))
+
+    # 2) Notes des devoirs activés (compte_bonus) -> mois de la date de remise
+    drows = (RemiseDevoir.objects
+             .filter(eleve_id__in=eleve_ids,
+                     devoir__matiere_id__in=matiere_ids,
+                     devoir__compte_bonus=True,
+                     devoir__classe__annee_scolaire=annee_scolaire,
+                     note__isnull=False)
+             .values('eleve_id', 'devoir__matiere_id', 'devoir__date_remise', 'note'))
+    for r in drows:
+        mois = mois_scolaire_depuis_date(r['devoir__date_remise'])
+        if mois not in mois_list:
+            continue
+        groupes.setdefault((r['eleve_id'], r['devoir__matiere_id'], mois), []).append(float(r['note']))
+
     resultat = {}
     for cle, notes in groupes.items():
         moy = sum(notes) / len(notes)

@@ -10,6 +10,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 
 from eleves.models import Classe as ClasseEleve, Eleve
 from .models import ClasseNote, MatiereNote, Devoir, RemiseDevoir
+from .calculs_moyennes import mois_scolaire_depuis_date
+from .utils_rangs import invalider_cache_rangs
 
 
 def _eleves_de_classe_note(classe_note):
@@ -79,13 +81,15 @@ def creer_devoir(request):
         description = (request.POST.get('description') or '').strip()
         date_donne = request.POST.get('date_donne') or date.today().isoformat()
         date_remise = request.POST.get('date_remise') or date.today().isoformat()
+        compte_bonus = request.POST.get('compte_bonus') == '1'
         matiere = next((m for m in matieres if str(m.id) == matiere_id), None)
         if not (matiere and titre):
             messages.error(request, "Matière et titre sont obligatoires.")
         else:
             devoir = Devoir.objects.create(
                 classe=classe, matiere=matiere, titre=titre, description=description,
-                date_donne=date_donne, date_remise=date_remise, cree_par=request.user)
+                date_donne=date_donne, date_remise=date_remise,
+                compte_bonus=compte_bonus, cree_par=request.user)
             # Créer les remises (statut NON_RENDU) pour tous les élèves actifs
             eleves = _eleves_de_classe_note(classe)
             RemiseDevoir.objects.bulk_create([
@@ -120,6 +124,11 @@ def suivi_devoir(request, devoir_id):
         remises = {r.eleve_id: r for r in RemiseDevoir.objects.filter(devoir=devoir)}
 
     if request.method == 'POST':
+        # Activation/désactivation du bonus depuis la page de suivi
+        nouveau_compte_bonus = request.POST.get('compte_bonus') == '1'
+        if nouveau_compte_bonus != devoir.compte_bonus:
+            devoir.compte_bonus = nouveau_compte_bonus
+            devoir.save(update_fields=['compte_bonus'])
         maj = 0
         statuts_valides = dict(RemiseDevoir.STATUT_CHOICES)
         for eleve in eleves:
@@ -142,6 +151,11 @@ def suivi_devoir(request, devoir_id):
             r.note = note_val
             r.save(update_fields=['statut', 'note', 'date_modification'])
             maj += 1
+        # Si le devoir compte dans le bonus, invalider les moyennes/rangs du mois
+        if devoir.compte_bonus:
+            mois = mois_scolaire_depuis_date(devoir.date_remise)
+            if mois:
+                invalider_cache_rangs(devoir.classe, mois)
         messages.success(request, f"Suivi mis à jour pour {maj} élève(s).")
         return redirect('notes:suivi_devoir', devoir_id=devoir.id)
 

@@ -222,8 +222,8 @@ class NoteSuiviAdmin(admin.ModelAdmin):
 
 @admin.register(Devoir)
 class DevoirAdmin(admin.ModelAdmin):
-    list_display = ('titre', 'classe', 'matiere', 'date_donne', 'date_remise')
-    list_filter = ('classe', 'matiere', 'date_remise')
+    list_display = ('titre', 'classe', 'matiere', 'date_donne', 'date_remise', 'compte_bonus')
+    list_filter = ('classe', 'matiere', 'date_remise', 'compte_bonus')
     search_fields = ('titre',)
     raw_id_fields = ('classe', 'matiere')
 
