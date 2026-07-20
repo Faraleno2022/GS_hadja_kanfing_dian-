@@ -33,6 +33,7 @@ from .models import (
 from .calculs_moyennes import (
     calculer_classement_classe,
     calculer_moyenne_generale_annuelle,
+    calculer_moyenne_matiere,
     calculer_moyenne_periode_guineenne,
     detecter_niveau_scolaire,
 )
@@ -1553,66 +1554,28 @@ def _collecter_parcours_eleve(eleve, ecole):
                     continue
 
                 if is_semestre:
-                    # Memes mois que calculs_moyennes.calculer_moyenne_matiere
-                    for sem_num, mois_list, prefix in [
-                        (1, ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER'], 'sem1'),
-                        (2, ['MARS', 'AVRIL', 'MAI'], 'sem2'),
-                    ]:
-                        notes = NoteMensuelle.objects.filter(
-                            eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
-                            mois__in=mois_list
+                    # Utiliser le moteur central: gère la moyenne des mois, la
+                    # composition (avec repli trimestres->semestres si l'école a
+                    # saisi en trimestres), la règle stricte et le bonus.
+                    for sem_num, prefix in [(1, 'sem1'), (2, 'sem2')]:
+                        res = calculer_moyenne_matiere(
+                            eleve, mat, f'SEMESTRE_{sem_num}', 'semestre'
                         )
-                        compo = CompositionNote.objects.filter(
-                            eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
-                            periode=f'SEMESTRE_{sem_num}'
-                        ).first()
-
-                        moy = None
-                        if notes.exists():
-                            vals = [float(n.note) for n in notes if n.note is not None and not n.absent]
-                            moy = round(sum(vals) / len(vals), 2) if vals else None
-
-                        compo_val = float(compo.note) if compo and compo.note is not None and not compo.absent else None
-                        sem_calc = calculer_moyenne_periode_guineenne(
-                            moy,
-                            compo_val,
-                            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
-                        )
-                        sem_moy = round(sem_calc, 2) if sem_calc is not None else None
-
-                        m_data[f'{prefix}_moy'] = moy
-                        m_data[f'{prefix}_compo'] = compo_val
-                        m_data[f'{prefix}_moyenne'] = sem_moy
+                        mc = res.get('moyenne_continue')
+                        nc = res.get('note_composition')
+                        mm = res.get('moyenne_matiere')
+                        m_data[f'{prefix}_moy'] = round(mc, 2) if mc is not None else None
+                        m_data[f'{prefix}_compo'] = round(nc, 2) if nc is not None else None
+                        m_data[f'{prefix}_moyenne'] = round(mm, 2) if mm is not None else None
                 else:
-                    for i, (t_label, mois_list) in enumerate([
-                        ('t1', ['OCTOBRE', 'NOVEMBRE']),
-                        ('t2', ['JANVIER', 'FEVRIER']),
-                        ('t3', ['AVRIL', 'MAI']),
-                    ], 1):
-                        notes_t = NoteMensuelle.objects.filter(
-                            eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
-                            mois__in=mois_list
+                    for i, t_label in [(1, 't1'), (2, 't2'), (3, 't3')]:
+                        res = calculer_moyenne_matiere(
+                            eleve, mat, f'TRIMESTRE_{i}', 'trimestre'
                         )
-                        compo_t = CompositionNote.objects.filter(
-                            eleve=eleve, matiere=mat, annee_scolaire=annee_scolaire,
-                            periode=f'TRIMESTRE_{i}'
-                        ).first()
-
-                        moy_t = None
-                        if notes_t.exists():
-                            vals = [float(n.note) for n in notes_t if n.note is not None and not n.absent]
-                            moy_t = round(sum(vals) / len(vals), 2) if vals else None
-
-                        compo_t_val = float(compo_t.note) if compo_t and compo_t.note is not None and not compo_t.absent else None
-                        final_calc = calculer_moyenne_periode_guineenne(
-                            moy_t,
-                            compo_t_val,
-                            'PRIMAIRE' if niveau == 'PRIMAIRE' else 'SECONDAIRE'
-                        )
-                        final_t = round(final_calc, 2) if final_calc is not None else None
-
-                        m_data[f'{t_label}_moy'] = final_t
-                        m_data[f'{t_label}_compo'] = compo_t_val
+                        nc = res.get('note_composition')
+                        mm = res.get('moyenne_matiere')
+                        m_data[f'{t_label}_moy'] = round(mm, 2) if mm is not None else None
+                        m_data[f'{t_label}_compo'] = round(nc, 2) if nc is not None else None
 
                 matieres_data.append(m_data)
 
