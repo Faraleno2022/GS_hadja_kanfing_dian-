@@ -382,6 +382,8 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
             passe_txt = _s(passe_en) if passe_en else ''
             if passe_txt:
                 c.drawString(lx, fy, f"Passe en : {passe_txt}")
+            elif entry.get('decision_txt'):
+                c.drawString(lx, fy, f"Décision : {_s(entry.get('decision_txt'))}")
             rang_txt2 = _s(rang) if rang else ''
             if rang_txt2:
                 c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
@@ -605,6 +607,8 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
             passe_txt = _s(passe_en) if passe_en else ''
             if passe_txt:
                 c.drawString(lx, fy, f"Passe en : {passe_txt}")
+            elif entry.get('decision_txt'):
+                c.drawString(lx, fy, f"Décision : {_s(entry.get('decision_txt'))}")
             rang_txt2 = _s(rang) if rang else ''
             if rang_txt2:
                 c.drawString(lx + w * 0.40, fy, f"Classement : {rang_txt2}")
@@ -1514,6 +1518,13 @@ def _collecter_parcours_eleve(eleve, ecole):
         classement_annuel_courant = None
         result_annuel = None
         passe_en = ''
+        # Toujours initialiser les stats de classe (évite UnboundLocalError
+        # quand la classe de notes n'est pas trouvée pour l'élève)
+        moy_classe = None
+        note_min_classe = None
+        note_max_classe = None
+        effectif_classe = 0
+        moyennes_periodes = []
 
         if classe_note:
             matieres = MatiereNote.objects.filter(
@@ -1779,12 +1790,19 @@ def _collecter_parcours_eleve(eleve, ecole):
             except Exception:
                 pass
 
+        # Décision de passage: uniquement si l'élève est admis (moyenne >= seuil).
+        # Un élève sous la moyenne redouble (ne "passe" pas en classe supérieure).
+        decision_txt = ''
+        seuil_adm = 5.0 if sur == 10 else 10.0
+        admis_annuel = (moyenne_annuelle is not None and moyenne_annuelle >= seuil_adm)
         try:
             from eleves.views_nouvelle_annee import PROGRESSION_CLASSES, PROGRESSION_LABELS, _normaliser
             base_norm = _normaliser(classe_nom.split('(')[0].strip())
             next_base = PROGRESSION_CLASSES.get(base_norm)
-            if next_base:
+            if next_base and admis_annuel:
                 passe_en = PROGRESSION_LABELS.get(next_base, next_base)
+            elif moyenne_annuelle is not None and not admis_annuel:
+                decision_txt = 'Redouble la classe'
         except Exception:
             pass
 
@@ -1799,6 +1817,7 @@ def _collecter_parcours_eleve(eleve, ecole):
             'moyenne_annuelle': moyenne_annuelle,
             'rang': rang_info,
             'passe_en': passe_en,
+            'decision_txt': decision_txt,
             'moy_classe': moy_classe,
             'note_min_classe': note_min_classe,
             'note_max_classe': note_max_classe,
