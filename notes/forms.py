@@ -278,18 +278,21 @@ class MultipleFileField(forms.FileField):
     """FileField qui accepte plusieurs fichiers (liste retournée par MultipleFileInput)."""
 
     def clean(self, data, initial=None):
+        # Lier super().clean AVANT toute comprehension: un super() sans argument
+        # placé dans une list comprehension perd le contexte de classe (TypeError).
+        single_clean = super().clean
         # Le widget avec allow_multiple_selected retourne une liste
         if isinstance(data, (list, tuple)):
             if not data or all(d is None for d in data):
                 if self.required:
                     raise forms.ValidationError(self.error_messages['required'])
                 return []
-            return [super().clean(f, initial) for f in data if f is not None]
+            return [single_clean(f, initial) for f in data if f is not None]
         if not data:
             if self.required:
                 raise forms.ValidationError(self.error_messages['required'])
             return []
-        return [super().clean(data, initial)]
+        return [single_clean(data, initial)]
 
 
 class PieceJointeActiviteForm(forms.Form):
