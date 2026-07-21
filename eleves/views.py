@@ -2380,21 +2380,26 @@ def fiche_inscription_pdf(request, eleve_id):
         c.setFont("Helvetica", 12)
     
     resp_principal = eleve.responsable_principal
-    c.drawString(left_col, y, f"Nom complet: {resp_principal.nom_complet}")
-    c.drawString(right_col, y, f"Relation: {resp_principal.get_relation_display()}")
-    y -= line_height
-    
-    c.drawString(left_col, y, f"Téléphone: {resp_principal.telephone}")
-    if resp_principal.email:
-        c.drawString(right_col, y, f"Email: {resp_principal.email}")
-    y -= line_height
-    
-    if resp_principal.profession:
-        c.drawString(left_col, y, f"Profession: {resp_principal.profession}")
+    if resp_principal:
+        c.drawString(left_col, y, f"Nom complet: {resp_principal.nom_complet}")
+        c.drawString(right_col, y, f"Relation: {resp_principal.get_relation_display()}")
         y -= line_height
-    
-    if resp_principal.adresse:
-        c.drawString(left_col, y, f"Adresse: {resp_principal.adresse}")
+
+        c.drawString(left_col, y, f"Téléphone: {resp_principal.telephone or '-'}")
+        if resp_principal.email:
+            c.drawString(right_col, y, f"Email: {resp_principal.email}")
+        y -= line_height
+
+        if resp_principal.profession:
+            c.drawString(left_col, y, f"Profession: {resp_principal.profession}")
+            y -= line_height
+
+        if resp_principal.adresse:
+            c.drawString(left_col, y, f"Adresse: {resp_principal.adresse}")
+            y -= line_height
+    else:
+        c.drawString(left_col, y, "Nom complet: -")
+        c.drawString(right_col, y, "Relation: -")
         y -= line_height
     
     # Section Responsable secondaire (si existe)
