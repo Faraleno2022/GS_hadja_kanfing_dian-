@@ -2334,8 +2334,9 @@ def fiche_inscription_pdf(request, eleve_id):
     c.drawString(right_col, y, f"Date de naissance: {_date_naiss}")
     y -= line_height
     
-    c.drawString(left_col, y, f"Lieu de naissance: {eleve.lieu_naissance}")
-    c.drawString(right_col, y, f"Âge: {eleve.age} ans")
+    c.drawString(left_col, y, f"Lieu de naissance: {eleve.lieu_naissance or '-'}")
+    _age = eleve.age
+    c.drawString(right_col, y, f"Âge: {_age} ans" if _age is not None else "Âge: -")
     y -= line_height
     
     c.drawString(left_col, y, f"Statut: {eleve.get_statut_display()}")
