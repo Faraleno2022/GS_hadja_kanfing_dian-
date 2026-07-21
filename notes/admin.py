@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import NoteSuivi, Devoir, RemiseDevoir
+from .models import NoteSuivi, Devoir, RemiseDevoir, CreneauEmploiDuTemps
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote, AppreciationMaternelle, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
 
 @admin.register(ClasseNote)
@@ -234,3 +234,11 @@ class RemiseDevoirAdmin(admin.ModelAdmin):
     list_filter = ('statut',)
     search_fields = ('eleve__nom', 'eleve__prenom', 'devoir__titre')
     raw_id_fields = ('devoir', 'eleve')
+
+
+@admin.register(CreneauEmploiDuTemps)
+class CreneauEmploiDuTempsAdmin(admin.ModelAdmin):
+    list_display = ('classe', 'jour', 'heure_debut', 'heure_fin', 'matiere', 'enseignant', 'salle')
+    list_filter = ('jour', 'classe')
+    search_fields = ('classe__nom', 'matiere__nom', 'libelle')
+    raw_id_fields = ('classe', 'matiere', 'enseignant')

@@ -915,3 +915,49 @@ class RemiseDevoir(SyncTrackedModel):
 
     def __str__(self):
         return f"{self.eleve} - {self.devoir.titre} - {self.get_statut_display()}"
+
+
+class CreneauEmploiDuTemps(SyncTrackedModel):
+    """Un créneau de l'emploi du temps d'une classe (jour + plage horaire)."""
+    JOUR_CHOICES = [
+        ('LUNDI', 'Lundi'),
+        ('MARDI', 'Mardi'),
+        ('MERCREDI', 'Mercredi'),
+        ('JEUDI', 'Jeudi'),
+        ('VENDREDI', 'Vendredi'),
+        ('SAMEDI', 'Samedi'),
+    ]
+    ORDRE_JOURS = {j[0]: i for i, j in enumerate(JOUR_CHOICES)}
+
+    classe = models.ForeignKey(ClasseNote, on_delete=models.CASCADE, related_name='creneaux_edt')
+    jour = models.CharField(max_length=10, choices=JOUR_CHOICES, verbose_name="Jour")
+    heure_debut = models.TimeField(verbose_name="Heure de début")
+    heure_fin = models.TimeField(verbose_name="Heure de fin")
+    matiere = models.ForeignKey(MatiereNote, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='creneaux_edt', verbose_name="Matière")
+    libelle = models.CharField(max_length=100, blank=True,
+                               verbose_name="Libellé (si pas une matière, ex: Récréation)")
+    enseignant = models.ForeignKey('salaires.Enseignant', on_delete=models.SET_NULL, null=True,
+                                   blank=True, related_name='creneaux_edt', verbose_name="Professeur")
+    salle = models.CharField(max_length=50, blank=True, verbose_name="Salle / local")
+
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='creneaux_edt_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Créneau d'emploi du temps"
+        verbose_name_plural = "Emploi du temps"
+        ordering = ['classe', 'jour', 'heure_debut']
+        indexes = [
+            models.Index(fields=['classe', 'jour']),
+        ]
+
+    def __str__(self):
+        libelle = self.matiere.nom if self.matiere else (self.libelle or '—')
+        return f"{self.classe.nom} - {self.get_jour_display()} {self.heure_debut:%H:%M} - {libelle}"
+
+    @property
+    def intitule(self):
+        return self.matiere.nom if self.matiere else (self.libelle or '')

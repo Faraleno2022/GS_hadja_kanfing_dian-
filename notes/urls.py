@@ -44,6 +44,10 @@ from .tableau_honneur import tableau_honneur, tableau_honneur_pdf
 from .livret_scolaire import livret_scolaire_selection, livret_scolaire_pdf, livret_scolaire_annuel_pdf, livret_scolaire_classe_pdf
 from .views_suivi import saisie_suivi, toggle_bonus_suivi
 from .views_devoirs import liste_devoirs, creer_devoir, suivi_devoir, supprimer_devoir
+from .views_edt import (
+    emploi_du_temps, supprimer_creneau, emploi_du_temps_pdf, emploi_du_temps_excel,
+    calendrier_professeurs, pointage_professeurs,
+)
 
 app_name = 'notes'
 
@@ -169,6 +173,12 @@ urlpatterns = [
     # ============================================================================
     path('suivi/', saisie_suivi, name='saisie_suivi'),
     path('suivi/toggle-bonus/', toggle_bonus_suivi, name='toggle_bonus_suivi'),
+    path('emploi-du-temps/', emploi_du_temps, name='emploi_du_temps'),
+    path('emploi-du-temps/creneau/<int:creneau_id>/supprimer/', supprimer_creneau, name='supprimer_creneau'),
+    path('emploi-du-temps/pdf/', emploi_du_temps_pdf, name='emploi_du_temps_pdf'),
+    path('emploi-du-temps/excel/', emploi_du_temps_excel, name='emploi_du_temps_excel'),
+    path('professeurs/calendrier/', calendrier_professeurs, name='calendrier_professeurs'),
+    path('professeurs/pointage/', pointage_professeurs, name='pointage_professeurs'),
     path('devoirs/', liste_devoirs, name='liste_devoirs'),
     path('devoirs/nouveau/', creer_devoir, name='creer_devoir'),
     path('devoirs/<int:devoir_id>/suivi/', suivi_devoir, name='suivi_devoir'),

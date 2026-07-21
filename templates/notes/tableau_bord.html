@@ -312,6 +312,28 @@
                 </p>
             </a>
         </div>
+
+        <!-- Emploi du temps -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:emploi_du_temps' %}" class="notes-card success">
+                <i class="fas fa-calendar-alt notes-card-icon"></i>
+                <h3 class="notes-card-title">Emploi du temps</h3>
+                <p class="notes-card-description">
+                    Concevoir l'emploi du temps par classe (matière, professeur, salle) — impression PDF et Excel
+                </p>
+            </a>
+        </div>
+
+        <!-- Calendrier des professeurs -->
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:calendrier_professeurs' %}" class="notes-card info">
+                <i class="fas fa-user-clock notes-card-icon"></i>
+                <h3 class="notes-card-title">Calendrier des professeurs</h3>
+                <p class="notes-card-description">
+                    Suivre l'entrée et la sortie des professeurs : pointage quotidien et vue calendrier mensuelle
+                </p>
+            </a>
+        </div>
     </div>
 </div>
 {% endblock %}
