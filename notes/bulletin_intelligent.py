@@ -200,6 +200,8 @@ class CalculateurBulletinIntelligent:
         
         return {
             'eleve': f"{self.eleve.prenom} {self.eleve.nom}",
+            'prenom': self.eleve.prenom or '',
+            'nom': self.eleve.nom or '',
             'classe': self.classe_note.nom,
             'periode': self.periode,
             'niveau': self.niveau,
@@ -278,6 +280,8 @@ class CalculateurBulletinIntelligent:
         
         return {
             'eleve': f"{self.eleve.prenom} {self.eleve.nom}",
+            'prenom': self.eleve.prenom or '',
+            'nom': self.eleve.nom or '',
             'classe': self.classe_note.nom,
             'periode': self.periode,
             'niveau': 'MATERNELLE',
@@ -467,10 +471,17 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     y = y_header - 0.6*cm
     
     # Extraire nom et prénom
-    eleve_nom_complet = bulletin_data.get('eleve', '')
-    parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
-    prenom = parties[0] if len(parties) > 0 else ''
-    nom = parties[1] if len(parties) > 1 else ''
+    # Utiliser les champs prenom/nom séparés (fiables même pour un prénom
+    # composé). Repli sur l'ancien découpage si absents.
+    prenom = bulletin_data.get('prenom')
+    nom = bulletin_data.get('nom')
+    if prenom is None and nom is None:
+        eleve_nom_complet = bulletin_data.get('eleve', '')
+        parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
+        prenom = parties[0] if len(parties) > 0 else ''
+        nom = parties[1] if len(parties) > 1 else ''
+    prenom = prenom or ''
+    nom = nom or ''
     
     # Première ligne: PRÉNOM, NOM, MATRICULE (Prénom avant Nom)
     # Deuxième ligne: CLASSE, PÉRIODE, EFFECTIF
@@ -505,11 +516,17 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
             c.setFont("Helvetica-Bold", 7)
             c.drawString(x + 0.15*cm, box_y - 0.3*cm, label)
             
-            # Valeur en noir
+            # Valeur en noir — taille réduite si trop longue pour la case
             c.setFillColor(colors.black)
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(x + 0.15*cm, box_y - 0.7*cm, str(value))
-    
+            val_str = str(value)
+            val_fs = 9
+            max_val_w = box_width - 0.3*cm
+            from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+            while val_fs > 6 and _sw(val_str, "Helvetica-Bold", val_fs) > max_val_w:
+                val_fs -= 0.5
+            c.setFont("Helvetica-Bold", val_fs)
+            c.drawString(x + 0.15*cm, box_y - 0.7*cm, val_str)
+
     # ===== TABLEAU DES NOTES =====
     y -= 2.3*cm
     
@@ -1804,6 +1821,8 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
                 )
                 bulletin_data = {
                     'eleve': f"{eleve.prenom} {eleve.nom}",
+                    'prenom': eleve.prenom or '',
+                    'nom': eleve.nom or '',
                     'classe': classe_note.nom,
                     'periode': periode,
                     'system_type': system_type,
@@ -2000,10 +2019,17 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # ===== INFORMATIONS ÉLÈVE =====
     y = y_header - 0.6*cm
     
-    eleve_nom_complet = bulletin_data.get('eleve', '')
-    parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
-    prenom = parties[0] if len(parties) > 0 else ''
-    nom = parties[1] if len(parties) > 1 else ''
+    # Utiliser les champs prenom/nom séparés (fiables même pour un prénom
+    # composé). Repli sur l'ancien découpage si absents.
+    prenom = bulletin_data.get('prenom')
+    nom = bulletin_data.get('nom')
+    if prenom is None and nom is None:
+        eleve_nom_complet = bulletin_data.get('eleve', '')
+        parties = eleve_nom_complet.split(' ', 1) if eleve_nom_complet else ['', '']
+        prenom = parties[0] if len(parties) > 0 else ''
+        nom = parties[1] if len(parties) > 1 else ''
+    prenom = prenom or ''
+    nom = nom or ''
     
     # Formater la période pour l'affichage dans les infos élève
     periode_info = _formater_periode_libelle(bulletin_data.get('periode', '-'))
@@ -2032,9 +2058,15 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
             c.drawString(x + 0.15*cm, box_y - 0.3*cm, label)
             
             c.setFillColor(colors.black)
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(x + 0.15*cm, box_y - 0.7*cm, str(value))
-    
+            val_str = str(value)
+            val_fs = 9
+            max_val_w = box_width - 0.3*cm
+            from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+            while val_fs > 6 and _sw(val_str, "Helvetica-Bold", val_fs) > max_val_w:
+                val_fs -= 0.5
+            c.setFont("Helvetica-Bold", val_fs)
+            c.drawString(x + 0.15*cm, box_y - 0.7*cm, val_str)
+
     # ===== TABLEAU DES NOTES =====
     y -= 2.3*cm
     
