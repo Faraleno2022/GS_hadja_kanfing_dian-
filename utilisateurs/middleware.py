@@ -176,3 +176,41 @@ class SchoolAccessMixin:
         if not check_school_access(self.request.user, obj, self.school_field):
             raise Http404("Objet non trouvé ou accès non autorisé.")
         return obj
+
+
+class LectureSeuleMiddleware:
+    """Bloque toute action (POST/PUT/PATCH/DELETE) pour les utilisateurs en
+    mode lecture seule, dans TOUS les modules. La consultation (GET) reste
+    autorisée. Les superutilisateurs ne sont jamais bloqués.
+    """
+    METHODES_SURES = ('GET', 'HEAD', 'OPTIONS', 'TRACE')
+    # Chemins autorisés même en écriture (déconnexion notamment)
+    CHEMINS_AUTORISES = (
+        '/utilisateurs/logout/',
+        '/utilisateurs/deconnexion/',
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if (user is not None and user.is_authenticated and not user.is_superuser
+                and request.method not in self.METHODES_SURES):
+            profil = getattr(user, 'profil', None)
+            if profil is not None and getattr(profil, 'lecture_seule', False):
+                path = request.path or ''
+                if not any(path.startswith(p) for p in self.CHEMINS_AUTORISES):
+                    # Requête AJAX : renvoyer un 403 JSON
+                    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                        from django.http import JsonResponse
+                        return JsonResponse(
+                            {'success': False,
+                             'error': "Accès en lecture seule : action non autorisée."},
+                            status=403)
+                    messages.error(
+                        request,
+                        "🔒 Votre compte est en lecture seule : vous pouvez consulter mais pas effectuer cette action.")
+                    retour = request.META.get('HTTP_REFERER') or '/'
+                    return redirect(retour)
+        return self.get_response(request)

@@ -87,6 +87,13 @@ class Profil(models.Model):
     peut_valider_depenses = models.BooleanField(default=False, verbose_name="Peut valider les dépenses")
     peut_generer_rapports = models.BooleanField(default=False, verbose_name="Peut générer des rapports")
     peut_gerer_utilisateurs = models.BooleanField(default=False, verbose_name="Peut gérer les utilisateurs")
+
+    # Mode lecture seule : l'utilisateur peut se connecter et consulter, mais
+    # ne peut effectuer AUCUNE action (ajout/modif/suppression) dans aucun module.
+    lecture_seule = models.BooleanField(
+        default=False,
+        verbose_name="Lecture seule (consultation uniquement)",
+        help_text="Si activé, l'utilisateur peut se connecter et voir les listes, mais ne peut rien ajouter, modifier ni supprimer.")
     
     # Permissions granulaires pour les comptables
     peut_ajouter_paiements = models.BooleanField(default=True, verbose_name="Peut ajouter des paiements")

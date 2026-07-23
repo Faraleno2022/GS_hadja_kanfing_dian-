@@ -201,3 +201,37 @@ def supprimer_compte(request, user_id):
         messages.error(request, "Utilisateur introuvable.")
 
     return redirect('utilisateurs:activation')
+
+
+@login_required
+def toggle_lecture_seule(request, user_id):
+    """Active/désactive le mode lecture seule d'un utilisateur (superuser only)."""
+    from .models import Profil
+    if not request.user.is_superuser:
+        messages.error(request, "Accès refusé.")
+        return redirect('utilisateurs:activation')
+
+    if user_id == request.user.id:
+        messages.error(request, "Vous ne pouvez pas vous mettre vous-même en lecture seule.")
+        return redirect('utilisateurs:activation')
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        messages.error(request, "Utilisateur introuvable.")
+        return redirect('utilisateurs:activation')
+
+    if user.is_superuser:
+        messages.error(request, "Un superutilisateur ne peut pas être mis en lecture seule.")
+        return redirect('utilisateurs:activation')
+
+    profil, _ = Profil.objects.get_or_create(
+        user=user, defaults={'role': 'SECRETAIRE', 'telephone': '+224000000000'})
+    profil.lecture_seule = not profil.lecture_seule
+    profil.save(update_fields=['lecture_seule'])
+
+    if profil.lecture_seule:
+        messages.success(request, f"🔒 « {user.username} » est maintenant en LECTURE SEULE (consultation uniquement).")
+    else:
+        messages.success(request, f"🔓 « {user.username} » peut de nouveau effectuer des actions.")
+    return redirect('utilisateurs:activation')

@@ -214,6 +214,7 @@
                   <th>Nom complet</th>
                   <th>Rôle</th>
                   <th>Email</th>
+                  <th class="text-center">Accès</th>
                   <th class="text-center">Action</th>
                 </tr>
               </thead>
@@ -237,6 +238,28 @@
                   </td>
                   <td><small>{{ u.email|default:"—" }}</small></td>
                   <td class="text-center">
+                    {% if u.is_superuser %}
+                      <span class="badge bg-success">Accès complet</span>
+                    {% elif u == request.user %}
+                      <span class="text-muted">—</span>
+                    {% else %}
+                      {% if u.profil.lecture_seule %}
+                        <span class="badge bg-danger mb-1 d-block">🔒 Lecture seule</span>
+                        <form method="post" action="{% url 'utilisateurs:toggle_lecture_seule' u.id %}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-outline-success btn-sm py-0">Autoriser les actions</button>
+                        </form>
+                      {% else %}
+                        <span class="badge bg-success mb-1 d-block">Actions autorisées</span>
+                        <form method="post" action="{% url 'utilisateurs:toggle_lecture_seule' u.id %}" class="d-inline"
+                              onsubmit="return confirm('Mettre « {{ u.username }} » en lecture seule ? Il pourra consulter mais ne rien modifier.')">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-outline-warning btn-sm py-0">Mettre en lecture seule</button>
+                        </form>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                  <td class="text-center">
                     {% if u != request.user %}
                     <form method="post"
                           action="{% url 'utilisateurs:supprimer_compte' u.id %}"
@@ -252,7 +275,7 @@
                   </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="5" class="text-center text-muted py-3">Aucun compte</td></tr>
+                <tr><td colspan="6" class="text-center text-muted py-3">Aucun compte</td></tr>
                 {% endfor %}
               </tbody>
             </table>

@@ -3,7 +3,7 @@ from django.contrib.auth import views as auth_views
 from .views import comptable_create_view, comptable_list_view, comptes_en_attente_view, valider_compte_view, rejeter_compte_view
 from .activation_views import (
     activation_page, activer_licence, creer_compte,
-    changer_mdp_admin, supprimer_compte,
+    changer_mdp_admin, supprimer_compte, toggle_lecture_seule,
 )
 from .security_views import (
     secure_login, secure_logout, SecurePasswordChangeView, verify_phone,
@@ -42,6 +42,7 @@ urlpatterns = [
     path('activation/creer-compte/', creer_compte, name='creer_compte'),
     path('activation/changer-mdp/', changer_mdp_admin, name='changer_mdp_admin'),
     path('activation/supprimer-compte/<int:user_id>/', supprimer_compte, name='supprimer_compte'),
+    path('activation/lecture-seule/<int:user_id>/', toggle_lecture_seule, name='toggle_lecture_seule'),
 
     # Gestion des permissions
     path('permissions/', gestion_permissions, name='gestion_permissions'),

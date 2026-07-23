@@ -170,6 +170,8 @@ MIDDLEWARE = [
     'ecole_moderne.licence_middleware.LicenceMiddleware',
     # Protection anti brute-force
     'axes.middleware.AxesMiddleware',
+    # Mode lecture seule : bloque toute action pour les comptes en consultation
+    'utilisateurs.middleware.LectureSeuleMiddleware',
 ]
 
 # Ajouter middlewares d'optimisation images
