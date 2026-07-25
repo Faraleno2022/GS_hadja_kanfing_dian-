@@ -109,6 +109,34 @@
         </div>
     </div>
 
+    <!-- Impayées / Invalides -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4" style="border-left:4px solid #fd7e14">
+                <div class="stat-number">{{ depenses_impayees|intcomma }}</div>
+                <div class="stat-label">Impayées (dues)</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4" style="border-left:4px solid #fd7e14">
+                <div class="stat-number">{{ montant_impaye|intcomma }}</div>
+                <div class="stat-label">Montant Impayé (GNF)</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4" style="border-left:4px solid #dc3545">
+                <div class="stat-number">{{ depenses_rejetees|intcomma }}</div>
+                <div class="stat-label">Invalides (rejetées)</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4" style="border-left:4px solid #dc3545">
+                <div class="stat-number">{{ montant_rejete|intcomma }}</div>
+                <div class="stat-label">Montant Rejeté (GNF)</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Montants -->
     <div class="row mb-4">
         <div class="col-md-4 mb-3">
