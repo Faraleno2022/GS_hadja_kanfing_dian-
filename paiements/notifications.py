@@ -5,6 +5,7 @@ from typing import Optional
 from django.utils import timezone
 
 from .models import Paiement, Eleve, Relance
+from .allocation import get_payment_allocation, registration_kind_for_type
 from .twilio_utils import send_message_async, send_payment_confirmation_async
 
 
@@ -44,6 +45,23 @@ def build_payment_receipt_message(paiement: Paiement) -> str:
         parts.append(f"Reçu N°: {paiement.numero_recu}")
     if paiement.reference_externe:
         parts.append(f"Réf: {paiement.reference_externe}")
+    try:
+        allocation = get_payment_allocation(paiement)
+    except Exception:
+        allocation = None
+    if allocation is not None:
+        registration_label = (
+            "Réinscription"
+            if registration_kind_for_type(paiement.type_paiement) == "reinscription"
+            else "Inscription"
+        )
+        details = [
+            f"{registration_label}: {_format_amount(allocation.get('inscription', 0))}",
+            f"T1: {_format_amount(allocation.get('tranche_1', 0))}",
+            f"T2: {_format_amount(allocation.get('tranche_2', 0))}",
+            f"T3: {_format_amount(allocation.get('tranche_3', 0))}",
+        ]
+        parts.append("Affectation: " + " | ".join(details))
     parts.append("Merci pour votre confiance – myschool")
     return "\n".join(parts)
 
@@ -51,14 +69,27 @@ def build_payment_receipt_message(paiement: Paiement) -> str:
 def build_enrollment_receipt_message(eleve: Eleve, paiement: Optional[Paiement] = None) -> str:
     today = timezone.localdate() if hasattr(timezone, "localdate") else datetime.today().date()
     date_txt = today.strftime("%d/%m/%Y")
+    registration_label = "Inscription"
+    if paiement is not None and registration_kind_for_type(paiement.type_paiement) == "reinscription":
+        registration_label = "Réinscription"
+    confirmation_title = (
+        "Confirmation de réinscription"
+        if registration_label == "Réinscription"
+        else "Confirmation d'inscription"
+    )
+    fee_label = (
+        "Frais de réinscription"
+        if registration_label == "Réinscription"
+        else "Frais d'inscription"
+    )
     parts = [
-        "Confirmation d'inscription",
+        confirmation_title,
         f"Élève: {eleve.nom_complet} ({eleve.matricule})",
         f"Classe: {getattr(eleve.classe, 'nom', '')}",
         f"Date: {date_txt}",
     ]
     if paiement is not None:
-        parts.append(f"Frais d'inscription: {_format_amount(paiement.montant)}")
+        parts.append(f"{fee_label}: {_format_amount(paiement.montant)}")
         if paiement.numero_recu:
             parts.append(f"Reçu N°: {paiement.numero_recu}")
     parts.append("Bienvenue à l'myschool")
@@ -116,7 +147,12 @@ def send_enrollment_confirmation(eleve: Eleve, paiement: Optional[Paiement] = No
         return
     body = build_enrollment_receipt_message(eleve, paiement=paiement)
     send_payment_confirmation_async(to_number=tel, body=body)
-    sms_body = f"Inscription confirmée pour {eleve.nom_complet}. Bienvenue!"
+    registration_label = (
+        "Réinscription"
+        if paiement is not None and registration_kind_for_type(paiement.type_paiement) == "reinscription"
+        else "Inscription"
+    )
+    sms_body = f"{registration_label} confirmée pour {eleve.nom_complet}. Bienvenue!"
     send_message_async(to_number=tel, body=sms_body, channel="sms")
 
 
