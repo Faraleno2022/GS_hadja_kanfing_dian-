@@ -648,6 +648,63 @@ def twilio_status_callback(request):
 # Tableau de bord Paiements – statistiques réelles + listes
 # ---------------------------------------------------------------
 
+
+def _echeanciers_a_relancer(user):
+    """Retourne les échéanciers actifs ayant encore un solde net à payer.
+
+    Cette requête est la source commune du compteur « élèves à relancer » et
+    de la liste détaillée, afin d'éviter qu'un compteur positif ouvre une page
+    vide. Les remises validées sont déduites du solde restant.
+    """
+    montant_field = DecimalField(max_digits=12, decimal_places=0)
+    zero = Value(0, output_field=montant_field)
+    total_du_expr = ExpressionWrapper(
+        Coalesce(F('frais_inscription_du'), zero)
+        + Coalesce(F('tranche_1_due'), zero)
+        + Coalesce(F('tranche_2_due'), zero)
+        + Coalesce(F('tranche_3_due'), zero),
+        output_field=montant_field,
+    )
+    total_paye_expr = ExpressionWrapper(
+        Coalesce(F('frais_inscription_paye'), zero)
+        + Coalesce(F('tranche_1_payee'), zero)
+        + Coalesce(F('tranche_2_payee'), zero)
+        + Coalesce(F('tranche_3_payee'), zero),
+        output_field=montant_field,
+    )
+    remises_expr = Coalesce(
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=Q(eleve__paiements__statut='VALIDE'),
+            output_field=montant_field,
+        ),
+        zero,
+        output_field=montant_field,
+    )
+
+    qs = (
+        EcheancierPaiement.objects
+        .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+        .filter(eleve__statut='ACTIF')
+        .annotate(
+            total_du_calc=total_du_expr,
+            total_paye_calc=total_paye_expr,
+            total_remises_calc=remises_expr,
+        )
+        .annotate(
+            solde_a_relancer=Greatest(
+                ExpressionWrapper(
+                    F('total_du_calc') - F('total_paye_calc') - F('total_remises_calc'),
+                    output_field=montant_field,
+                ),
+                zero,
+            )
+        )
+        .filter(solde_a_relancer__gt=0)
+    )
+    return filter_by_user_school(qs, user, 'eleve__classe__ecole')
+
+
 def _compute_stats(user):
     """Calcule les statistiques affichées sur le tableau de bord en respectant l'école de l'utilisateur (sauf admin).
     Retourne un dict: total_paiements_mois, nombre_paiements_mois, eleves_en_retard, paiements_en_attente.
@@ -682,16 +739,9 @@ def _compute_stats(user):
     _qs_nb = filter_by_user_school(_qs_nb, user, 'eleve__classe__ecole')
     nb_paiements_mois = _qs_nb.count()
 
-    # Élèves en retard: calcul simplifié pour éviter les erreurs de colonnes manquantes
-    # Utilise une approche plus robuste qui ne dépend pas des colonnes date_echeance_*
+    # Le compteur utilise exactement la même requête que la page des relances.
     try:
-        # Méthode simplifiée: comparer total dû vs total payé
-        _qs_retard = EcheancierPaiement.objects.annotate(
-            total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
-            total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
-        ).filter(total_du__gt=F('total_paye'))
-        _qs_retard = filter_by_user_school(_qs_retard, user, 'eleve__classe__ecole')
-        eleves_retard_count = _qs_retard.count()
+        eleves_retard_count = _echeanciers_a_relancer(user).count()
     except Exception:
         eleves_retard_count = 0
 
@@ -2217,18 +2267,20 @@ def relancer_eleve(request, eleve_id:int):
 
     # Solde estimé depuis l'échéancier
     try:
+        solde_estime = (
+            _echeanciers_a_relancer(request.user)
+            .filter(eleve=eleve)
+            .values_list('solde_a_relancer', flat=True)
+            .first()
+            or 0
+        )
+    except Exception:
         echeancier = getattr(eleve, 'echeancier', None)
         solde_estime = echeancier.solde_restant if echeancier else 0
-    except Exception:
-        solde_estime = 0
 
     if not message_txt:
         classe_nom = eleve.classe.nom if eleve.classe else ''
-        try:
-            echeancier = getattr(eleve, 'echeancier', None)
-            solde_txt = f"{int(echeancier.solde_restant or 0):,}".replace(",", " ") if echeancier else "0"
-        except Exception:
-            solde_txt = "0"
+        solde_txt = f"{int(solde_estime or 0):,}".replace(",", " ")
         message_txt = (
             f"Bonjour Cher Parent,\n\n"
             f"Nous vous rappelons que la situation financière de {eleve.nom_complet} "
@@ -2330,8 +2382,8 @@ def envoyer_notifs_retards(request):
 
 @login_required
 def liste_relances(request):
-    """Liste des relances avec filtres et pagination."""
-    titre_page = "Liste des relances"
+    """Affiche les élèves à relancer puis l'historique des relances."""
+    titre_page = "Relances et élèves à relancer"
     q = (request.GET.get('q') or '').strip()
     canal = (request.GET.get('canal') or '').strip().upper()
     statut = (request.GET.get('statut') or '').strip().upper()
@@ -2361,6 +2413,32 @@ def liste_relances(request):
             # Si la conversion échoue, on ignore le filtre pour ne pas casser la vue
             pass
 
+    derniere_relance = Relance.objects.filter(
+        eleve_id=OuterRef('eleve_id')
+    ).order_by('-date_creation')
+    a_relancer_qs = _echeanciers_a_relancer(request.user).annotate(
+        derniere_relance_date=Subquery(derniere_relance.values('date_creation')[:1]),
+        derniere_relance_statut=Subquery(derniere_relance.values('statut')[:1]),
+    )
+    if q:
+        a_relancer_qs = a_relancer_qs.filter(
+            Q(eleve__nom__icontains=q)
+            | Q(eleve__prenom__icontains=q)
+            | Q(eleve__matricule__icontains=q)
+        )
+    if eleve_id:
+        try:
+            a_relancer_qs = a_relancer_qs.filter(eleve_id=int(eleve_id))
+        except (TypeError, ValueError):
+            pass
+    a_relancer_qs = a_relancer_qs.order_by(
+        '-solde_a_relancer', 'eleve__classe__nom', 'eleve__nom', 'eleve__prenom'
+    )
+    a_relancer_paginator = Paginator(a_relancer_qs, 25)
+    a_relancer_page_obj = a_relancer_paginator.get_page(
+        request.GET.get('page_relancer') or 1
+    )
+
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get('page') or 1)
 
@@ -2371,6 +2449,8 @@ def liste_relances(request):
         'statut': statut,
         'eleve_id': eleve_id,
         'page_obj': page_obj,
+        'a_relancer_page_obj': a_relancer_page_obj,
+        'total_a_relancer': a_relancer_paginator.count,
     }
     template = 'paiements/relances.html' if _template_exists('paiements/relances.html') else None
     if template:
