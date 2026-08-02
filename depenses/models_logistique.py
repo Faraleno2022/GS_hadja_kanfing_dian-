@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from decimal import Decimal
 from synchronisation.mixins import SyncTrackedModel
@@ -141,6 +142,8 @@ class BienEtablissement(SyncTrackedModel):
         ('CARTE', 'Carte géographique'),
         ('COMPAS', 'Compas'),
         ('EQUERRE', 'Équerre'),
+        ('MARQUEUR', 'Marqueur(s)'),
+        ('FOURNITURE', 'Fourniture(s)'),
         # Électricité
         ('AMPOULE', 'Ampoule(s)'),
         ('VENTILATEUR', 'Ventilateur'),
@@ -154,6 +157,15 @@ class BienEtablissement(SyncTrackedModel):
         ('MOYEN', 'Moyen'),
         ('MAUVAIS', 'Mauvais'),
         ('HORS_SERVICE', 'Hors service'),
+    ]
+
+    UNITE_CHOICES = [
+        ('PIECE', 'Pièce'),
+        ('BOITE', 'Boîte'),
+        ('PAQUET', 'Paquet'),
+        ('RAME', 'Rame'),
+        ('CARTON', 'Carton'),
+        ('LOT', 'Lot'),
     ]
     
     # Identification
@@ -171,6 +183,18 @@ class BienEtablissement(SyncTrackedModel):
     etat = models.CharField(max_length=20, choices=ETAT_CHOICES, default='BON', verbose_name="État")
     valeur_acquisition = models.DecimalField(max_digits=15, decimal_places=0, default=Decimal('0'), verbose_name="Valeur d'acquisition (GNF)")
     date_acquisition = models.DateField(null=True, blank=True, verbose_name="Date d'acquisition")
+
+    # Suivi simplifié des quantités et du coût d'achat
+    unite_mesure = models.CharField(max_length=20, choices=UNITE_CHOICES, default='PIECE', verbose_name="Unité")
+    quantite_achetee = models.PositiveIntegerField(default=1, verbose_name="Quantité achetée")
+    quantite_utilisee = models.PositiveIntegerField(default=0, verbose_name="Quantité utilisée")
+    quantite_gatee = models.PositiveIntegerField(default=0, verbose_name="Quantité gâtée/perdue")
+    prix_achat_unitaire = models.DecimalField(
+        max_digits=15,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Prix d'achat unitaire (GNF)",
+    )
     
     # Maintenance
     date_derniere_maintenance = models.DateField(null=True, blank=True, verbose_name="Dernière maintenance")
@@ -200,6 +224,82 @@ class BienEtablissement(SyncTrackedModel):
         if self.date_prochaine_maintenance:
             return timezone.now().date() >= self.date_prochaine_maintenance
         return False
+
+    @property
+    def quantite_disponible(self):
+        return max(self.quantite_achetee - self.quantite_utilisee - self.quantite_gatee, 0)
+
+    @property
+    def valeur_totale_achat(self):
+        return self.quantite_achetee * self.prix_achat_unitaire
+
+    def clean(self):
+        super().clean()
+        if self.quantite_utilisee + self.quantite_gatee > self.quantite_achetee:
+            raise ValidationError(
+                "La quantité utilisée et la quantité gâtée ne peuvent pas dépasser la quantité achetée."
+            )
+
+
+class ContributionPapierRame(SyncTrackedModel):
+    """Papier RAM remis par un élève ou argent versé à la place."""
+
+    TYPE_CHOICES = [
+        ('PAPIER', 'Papier RAM envoyé'),
+        ('ARGENT', 'Argent payé à la place'),
+    ]
+
+    eleve = models.ForeignKey(
+        'eleves.Eleve',
+        on_delete=models.CASCADE,
+        related_name='contributions_papier_rame',
+        verbose_name="Élève",
+    )
+    type_contribution = models.CharField(max_length=10, choices=TYPE_CHOICES, verbose_name="Mode de contribution")
+    nombre_paquets = models.PositiveIntegerField(default=0, verbose_name="Nombre de paquets/rames")
+    montant_paye = models.DecimalField(
+        max_digits=15,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Montant payé (GNF)",
+    )
+    date_contribution = models.DateField(default=timezone.localdate, verbose_name="Date")
+    observations = models.TextField(blank=True, verbose_name="Observations")
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+    cree_par = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contributions_papier_rame_creees',
+        verbose_name="Créé par",
+    )
+
+    class Meta:
+        verbose_name = "Contribution papier RAM"
+        verbose_name_plural = "Contributions papier RAM"
+        ordering = ['-date_contribution', '-date_creation']
+        indexes = [
+            models.Index(fields=['eleve', 'date_contribution']),
+            models.Index(fields=['type_contribution', 'date_contribution']),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve.nom_complet} - {self.get_type_contribution_display()}"
+
+    def clean(self):
+        super().clean()
+        if self.type_contribution == 'PAPIER':
+            if self.nombre_paquets < 1:
+                raise ValidationError({'nombre_paquets': "Indiquez au moins un paquet de papier RAM."})
+            if self.montant_paye:
+                raise ValidationError({'montant_paye': "Le montant doit rester à zéro pour un envoi de papier."})
+        elif self.type_contribution == 'ARGENT':
+            if self.montant_paye <= 0:
+                raise ValidationError({'montant_paye': "Indiquez le montant payé par l'élève."})
+            if self.nombre_paquets:
+                raise ValidationError({'nombre_paquets': "Le nombre de paquets doit rester à zéro pour un paiement en argent."})
 
 
 class MouvementStock(SyncTrackedModel):

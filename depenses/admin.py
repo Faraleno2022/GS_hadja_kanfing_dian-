@@ -4,8 +4,7 @@ from .models import (
     BudgetAnnuel, HistoriqueDepense
 )
 from .models_logistique import (
-    CategorieArticle, Article, BienEtablissement, MouvementStock,
-    Inventaire, LigneInventaire
+    BienEtablissement, ContributionPapierRame
 )
 from .models_bibliotheque import (
     CategorieLivre, Livre, Emprunt, Reservation,
@@ -37,50 +36,22 @@ class DepenseAdmin(admin.ModelAdmin):
 
 
 # ===== LOGISTIQUE =====
-@admin.register(CategorieArticle)
-class CategorieArticleAdmin(admin.ModelAdmin):
-    list_display = ['code', 'nom', 'type_categorie', 'actif']
-    list_filter = ['type_categorie', 'actif']
-    search_fields = ['nom', 'code']
-
-
-@admin.register(Article)
-class ArticleAdmin(admin.ModelAdmin):
-    list_display = ['code_article', 'nom', 'categorie', 'stock_actuel', 'stock_minimum', 'prix_unitaire', 'etat']
-    list_filter = ['categorie', 'etat', 'actif']
-    search_fields = ['code_article', 'nom', 'marque', 'reference']
-    readonly_fields = ['valeur_stock', 'alerte_stock']
-
-
 @admin.register(BienEtablissement)
 class BienEtablissementAdmin(admin.ModelAdmin):
-    list_display = ['code_bien', 'nom', 'type_bien', 'localisation', 'etat', 'actif']
+    list_display = [
+        'code_bien', 'nom', 'type_bien', 'quantite_achetee',
+        'quantite_utilisee', 'quantite_gatee', 'quantite_disponible', 'etat',
+    ]
     list_filter = ['type_bien', 'etat', 'actif']
     search_fields = ['code_bien', 'nom', 'localisation']
 
 
-@admin.register(MouvementStock)
-class MouvementStockAdmin(admin.ModelAdmin):
-    list_display = ['numero_mouvement', 'article', 'type_mouvement', 'quantite', 'date_mouvement', 'cree_par']
-    list_filter = ['type_mouvement', 'motif', 'date_mouvement']
-    search_fields = ['numero_mouvement', 'article__nom', 'destinataire']
-    date_hierarchy = 'date_mouvement'
-    readonly_fields = ['stock_avant', 'stock_apres']
-
-
-@admin.register(Inventaire)
-class InventaireAdmin(admin.ModelAdmin):
-    list_display = ['numero_inventaire', 'date_inventaire', 'statut', 'nombre_articles', 'valeur_totale']
-    list_filter = ['statut', 'date_inventaire']
-    search_fields = ['numero_inventaire']
-    date_hierarchy = 'date_inventaire'
-
-
-@admin.register(LigneInventaire)
-class LigneInventaireAdmin(admin.ModelAdmin):
-    list_display = ['inventaire', 'article', 'stock_theorique', 'stock_physique', 'ecart']
-    list_filter = ['inventaire']
-    search_fields = ['article__nom']
+@admin.register(ContributionPapierRame)
+class ContributionPapierRameAdmin(admin.ModelAdmin):
+    list_display = ['eleve', 'type_contribution', 'nombre_paquets', 'montant_paye', 'date_contribution']
+    list_filter = ['type_contribution', 'date_contribution']
+    search_fields = ['eleve__matricule', 'eleve__nom', 'eleve__prenom']
+    date_hierarchy = 'date_contribution'
 
 
 # ===== BIBLIOTHÈQUE =====

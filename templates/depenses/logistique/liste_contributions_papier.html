@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div><h2 class="mb-1"><i class="fas fa-file-alt text-success"></i> {{ titre_page }}</h2><p class="text-muted mb-0">Suivi par élève{% if annee_active %} — {{ annee_active }}{% endif %}</p></div>
+        <div class="d-flex gap-2"><a href="{% url 'depenses:dashboard_logistique' %}" class="btn btn-outline-secondary">Tableau de bord</a><a href="{% url 'depenses:creer_contribution_papier' %}" class="btn btn-success"><i class="fas fa-plus"></i> Nouvelle contribution</a></div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><small class="text-muted">Enregistrements</small><h3>{{ stats.total_enregistrements }}</h3></div></div></div>
+        <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><small class="text-muted">Élèves concernés</small><h3>{{ stats.total_eleves }}</h3></div></div></div>
+        <div class="col-6 col-lg-3"><div class="card h-100 border-success"><div class="card-body"><small class="text-muted">Paquets reçus</small><h3 class="text-success">{{ stats.total_paquets }}</h3></div></div></div>
+        <div class="col-6 col-lg-3"><div class="card h-100 border-primary"><div class="card-body"><small class="text-muted">Argent reçu</small><h4 class="text-primary">{{ stats.total_argent|intcomma }} GNF</h4></div></div></div>
+    </div>
+
+    <div class="card mb-4"><div class="card-body"><form method="get" class="row g-3 align-items-end">
+        <div class="col-md-7"><label class="form-label">Rechercher un élève</label><input type="search" name="q" value="{{ q }}" class="form-control" placeholder="Nom, prénom, matricule ou classe"></div>
+        <div class="col-md-3"><label class="form-label">Contribution</label><select name="mode" class="form-select"><option value="">Toutes</option><option value="PAPIER" {% if mode == 'PAPIER' %}selected{% endif %}>Papier RAM envoyé</option><option value="ARGENT" {% if mode == 'ARGENT' %}selected{% endif %}>Argent payé</option></select></div>
+        <div class="col-md-2 d-flex gap-2"><button class="btn btn-primary flex-fill"><i class="fas fa-search"></i> Rechercher</button><a href="{% url 'depenses:liste_contributions_papier' %}" class="btn btn-outline-secondary"><i class="fas fa-times"></i></a></div>
+    </form></div></div>
+
+    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>Date</th><th>Élève</th><th>Classe</th><th>Contribution</th><th class="text-center">Paquets</th><th class="text-end">Montant payé</th><th>Enregistré par</th><th></th></tr></thead>
+        <tbody>{% for contribution in page_obj %}<tr>
+            <td>{{ contribution.date_contribution|date:"d/m/Y" }}</td>
+            <td><strong>{{ contribution.eleve.nom_complet }}</strong><br><small class="text-muted">{{ contribution.eleve.matricule }}</small></td>
+            <td>{{ contribution.eleve.classe.nom }}</td>
+            <td>{% if contribution.type_contribution == 'PAPIER' %}<span class="badge bg-success">Papier RAM</span>{% else %}<span class="badge bg-primary">Argent</span>{% endif %}</td>
+            <td class="text-center">{{ contribution.nombre_paquets }}</td><td class="text-end">{{ contribution.montant_paye|intcomma }} GNF</td><td>{{ contribution.cree_par.get_full_name|default:contribution.cree_par.username|default:"-" }}</td>
+            <td><a href="{% url 'depenses:modifier_contribution_papier' contribution.id %}" class="btn btn-sm btn-outline-primary" title="Modifier"><i class="fas fa-edit"></i></a></td>
+        </tr>{% empty %}<tr><td colspan="8" class="text-center text-muted py-5"><i class="fas fa-inbox fa-3x mb-3 d-block"></i>Aucune contribution trouvée.</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+
+    {% if page_obj.has_other_pages %}<nav class="mt-3"><ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&mode={{ mode }}&page={{ page_obj.previous_page_number }}">Précédent</a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?q={{ q|urlencode }}&mode={{ mode }}&page={{ page_obj.next_page_number }}">Suivant</a></li>{% endif %}
+    </ul></nav>{% endif %}
+</div>
+{% endblock %}
