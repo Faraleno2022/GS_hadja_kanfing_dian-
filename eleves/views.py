@@ -692,13 +692,16 @@ def ajouter_eleve(request):
                         f'classes_ecole_{user_school_obj.id if user_school_obj else "admin"}'
                     ])
                     
-                messages.success(request, f"L'eleve {eleve.prenom} {eleve.nom} a ete ajoute avec succes (Matricule: {eleve.matricule}). Vous pouvez ajouter un autre eleve.")
-                # Rediriger vers le formulaire d'ajout en preservant la classe selectionnee
-                url = reverse('eleves:ajouter_eleve')
-                classe_id = form.cleaned_data.get('classe')
-                if classe_id:
-                    url += f'?classe_id={classe_id.id if hasattr(classe_id, "id") else classe_id}'
-                return redirect(url)
+                # Mémoriser le parcours d'inscription afin qu'après validation du
+                # paiement l'utilisateur revienne ajouter l'élève suivant.
+                request.session['nouvel_eleve_paiement_id'] = eleve.id
+                request.session.modified = True
+                messages.success(
+                    request,
+                    f"L'élève {eleve.prenom} {eleve.nom} a été ajouté avec succès "
+                    f"(matricule : {eleve.matricule}). Enregistrez maintenant son paiement.",
+                )
+                return redirect('paiements:ajouter_paiement_eleve', eleve_id=eleve.id)
                 
             except Exception as e:
                 logger.exception("Erreur lors de l'enregistrement d'un élève")

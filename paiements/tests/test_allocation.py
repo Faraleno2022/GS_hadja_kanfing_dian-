@@ -318,6 +318,15 @@ class TestAllocationPaiements(TestCase):
             )
 
         self.assertEqual(response.status_code, 302)
+        paiement_cree = Paiement.objects.get(
+            eleve=self.eleve,
+            type_paiement=type_t1,
+            montant=Decimal("700000"),
+        )
+        self.assertEqual(
+            response.url,
+            reverse("paiements:detail_paiement", kwargs={"paiement_id": paiement_cree.pk}),
+        )
         self.assertTrue(
             Paiement.objects.filter(
                 eleve=self.eleve,

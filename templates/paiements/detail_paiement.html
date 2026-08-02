@@ -49,6 +49,7 @@
             <i class="fas fa-bell me-1"></i>Relance
         </button>
     </div>
+
 {% endblock %}
 
 {% block content %}
@@ -265,7 +266,82 @@
                     <button type="button" class="btn btn-primary btn-sm w-100 mt-2" data-bs-toggle="modal" data-bs-target="#relanceModal">
                         <i class="fas fa-paper-plane me-1"></i>Relance (choisir canal/message)
                     </button>
+
+                    <a href="{% url 'paiements:liste_eleves_impayes' %}" class="btn btn-outline-danger btn-sm w-100 mt-2">
+                        <i class="fas fa-exclamation-triangle me-1"></i>Consulter les élèves impayés
+                    </a>
+                    <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning btn-sm w-100 mt-2">
+                        <i class="fas fa-bell me-1"></i>Historique des relances
+                    </a>
+                    {% if is_admin or is_comptable %}
+                    <a href="{% url 'rapports:tableau_bord' %}" class="btn btn-outline-info btn-sm w-100 mt-2">
+                        <i class="fas fa-chart-bar me-1"></i>Ouvrir les rapports
+                    </a>
+                    {% endif %}
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-history me-2"></i>Tous les paiements de {{ paiement.eleve.nom_complet }}
+            </h5>
+            <span class="badge bg-primary">{{ paiements_eleve|length }} paiement{{ paiements_eleve|length|pluralize }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Reçu</th>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Mode</th>
+                            <th class="text-end">Montant</th>
+                            <th>Statut</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for paiement_historique in paiements_eleve %}
+                        <tr{% if paiement_historique.id == paiement.id %} class="table-primary"{% endif %}>
+                            <td>
+                                <strong>{{ paiement_historique.numero_recu }}</strong>
+                                {% if paiement_historique.id == paiement.id %}
+                                    <span class="badge bg-primary ms-1">Consulté</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ paiement_historique.date_paiement|date:"d/m/Y" }}</td>
+                            <td>{{ paiement_historique.type_paiement.nom }}</td>
+                            <td>{{ paiement_historique.mode_paiement.nom }}</td>
+                            <td class="text-end fw-bold">{{ paiement_historique.montant|floatformat:0|intcomma }} GNF</td>
+                            <td>
+                                {% if paiement_historique.statut == 'VALIDE' %}
+                                    <span class="badge bg-success">Validé</span>
+                                {% elif paiement_historique.statut == 'EN_ATTENTE' %}
+                                    <span class="badge bg-warning text-dark">En attente</span>
+                                {% elif paiement_historique.statut == 'REJETE' %}
+                                    <span class="badge bg-danger">Rejeté</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ paiement_historique.get_statut_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'paiements:detail_paiement' paiement_historique.id %}"
+                                   class="btn btn-sm {% if paiement_historique.id == paiement.id %}btn-primary disabled{% else %}btn-outline-primary{% endif %}">
+                                    <i class="fas fa-eye me-1"></i>Détail
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">Aucun paiement enregistré pour cet élève.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.contrib.auth import get_user_model
 
 
@@ -7,7 +7,7 @@ class PaiementsReportsTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass1234")
-        self.client.login(username="tester", password="pass1234")
+        self.client.force_login(self.user)
 
     def test_export_periode_excel_ok(self):
         url = reverse("paiements:export_paiements_periode_excel")
@@ -27,3 +27,14 @@ class PaiementsReportsTests(TestCase):
         url = reverse("paiements:rapport_encaissements")
         resp = self.client.get(url, {"du": "2025-01-01", "au": "2025-12-31"})
         self.assertEqual(resp.status_code, 200)
+
+    def test_routes_remises_impayes_relances_et_rapports_sont_disponibles(self):
+        routes = (
+            reverse("paiements:calculateur_remise"),
+            reverse("paiements:liste_eleves_impayes"),
+            reverse("paiements:liste_relances"),
+            reverse("paiements:rapport_remises"),
+            reverse("rapports:tableau_bord"),
+        )
+        for route in routes:
+            self.assertIsNotNone(resolve(route).func)

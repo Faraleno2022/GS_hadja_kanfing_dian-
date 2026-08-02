@@ -1,3 +1,7 @@
+from datetime import timedelta
+from unittest.mock import patch
+
+from django.conf import settings
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -8,6 +12,7 @@ from paiements.models import (
     ModePaiement,
     TypePaiement,
     Paiement,
+    EcheancierPaiement,
     RemiseReduction,
     PaiementRemise,
 )
@@ -20,7 +25,7 @@ class ValiderEcheancierRedirectTests(TestCase):
         self.user = User.objects.create_superuser(
             username="admin", email="admin@example.com", password="pass1234"
         )
-        self.client.login(username="admin", password="pass1234")
+        self.client.force_login(self.user)
 
         # Minimal school data
         self.ecole = Ecole.objects.create(
@@ -59,6 +64,19 @@ class ValiderEcheancierRedirectTests(TestCase):
         )
         self.mode = ModePaiement.objects.create(nom="Espèces")
         self.type = TypePaiement.objects.create(nom="Scolarité")
+        today = timezone.localdate()
+        self.echeancier = EcheancierPaiement.objects.create(
+            eleve=self.eleve,
+            annee_scolaire=self.classe.annee_scolaire,
+            frais_inscription_du=0,
+            tranche_1_due=500000,
+            tranche_2_due=500000,
+            tranche_3_due=500000,
+            date_echeance_inscription=today,
+            date_echeance_tranche_1=today + timedelta(days=30),
+            date_echeance_tranche_2=today + timedelta(days=60),
+            date_echeance_tranche_3=today + timedelta(days=90),
+        )
 
     def _create_pending_payment(self):
         return Paiement.objects.create(
@@ -103,3 +121,75 @@ class ValiderEcheancierRedirectTests(TestCase):
             reverse("paiements:echeancier_eleve", kwargs={"eleve_id": self.eleve.id}),
             resp.url,
         )
+
+    def test_detail_liste_tous_les_paiements_du_meme_eleve_uniquement(self):
+        paiement_consulte = self._create_pending_payment()
+        autre_paiement = self._create_pending_payment()
+        autre_eleve = Eleve.objects.create(
+            matricule="TEMP-002",
+            prenom="Bob",
+            nom="Test",
+            sexe="M",
+            date_naissance=self.eleve.date_naissance,
+            lieu_naissance="Ville",
+            classe=self.classe,
+            date_inscription=timezone.localdate(),
+            statut="ACTIF",
+            responsable_principal=self.responsable,
+        )
+        paiement_autre_eleve = Paiement.objects.create(
+            eleve=autre_eleve,
+            type_paiement=self.type,
+            mode_paiement=self.mode,
+            montant=75000,
+            date_paiement=timezone.localdate(),
+            statut="EN_ATTENTE",
+            numero_recu="",
+        )
+        middleware_sans_licence = [
+            middleware
+            for middleware in settings.MIDDLEWARE
+            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
+        ]
+
+        with self.settings(MIDDLEWARE=middleware_sans_licence):
+            response = self.client.get(
+                reverse(
+                    "paiements:detail_paiement",
+                    kwargs={"paiement_id": paiement_consulte.pk},
+                )
+            )
+
+        self.assertEqual(response.status_code, 200)
+        paiements_affiches = list(response.context["paiements_eleve"])
+        self.assertCountEqual(
+            [paiement.pk for paiement in paiements_affiches],
+            [paiement_consulte.pk, autre_paiement.pk],
+        )
+        self.assertContains(response, paiement_consulte.numero_recu)
+        self.assertContains(response, autre_paiement.numero_recu)
+        self.assertNotContains(response, paiement_autre_eleve.numero_recu)
+
+    @patch("paiements.views.send_payment_receipt")
+    def test_validation_du_paiement_du_nouvel_eleve_retourne_au_formulaire_eleve(self, _send_receipt):
+        paiement = self._create_pending_payment()
+        session = self.client.session
+        session["nouvel_eleve_paiement_id"] = self.eleve.pk
+        session.save()
+        middleware_sans_licence = [
+            middleware
+            for middleware in settings.MIDDLEWARE
+            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
+        ]
+
+        with self.settings(MIDDLEWARE=middleware_sans_licence):
+            response = self.client.post(
+                reverse("paiements:valider_paiement", kwargs={"paiement_id": paiement.pk}),
+                follow=False,
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("eleves:ajouter_eleve"))
+        self.assertNotIn("nouvel_eleve_paiement_id", self.client.session)
+        paiement.refresh_from_db()
+        self.assertEqual(paiement.statut, "VALIDE")

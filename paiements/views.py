@@ -1443,6 +1443,7 @@ def detail_paiement(request, paiement_id:int):
     Contexte pour `templates/paiements/detail_paiement.html`:
       - titre_page: str
       - paiement: instance `Paiement`
+      - paiements_eleve: historique de tous les paiements du même élève
       - is_admin: bool
       - user_permissions: dict avec `can_validate_payments`
     """
@@ -1452,6 +1453,15 @@ def detail_paiement(request, paiement_id:int):
     )
     paiement_qs = filter_by_user_school(paiement_qs, request.user, 'eleve__classe__ecole')
     paiement = get_object_or_404(paiement_qs, pk=paiement_id)
+
+    # Historique complet du même élève. Le paiement courant a déjà été contrôlé
+    # par école, donc tous les paiements de cet élève appartiennent au même périmètre.
+    paiements_eleve = (
+        Paiement.objects
+        .filter(eleve=paiement.eleve)
+        .select_related('type_paiement', 'mode_paiement')
+        .order_by('-date_paiement', '-date_creation', '-id')
+    )
 
     # Préparer les informations de permissions utilisées dans le template
     try:
@@ -1477,6 +1487,7 @@ def detail_paiement(request, paiement_id:int):
     context = {
         'titre_page': f"Détail du paiement #{paiement.id}",
         'paiement': paiement,
+        'paiements_eleve': paiements_eleve,
         'is_admin': user_is_admin(request.user) if request.user.is_authenticated else False,
         'user_permissions': perms_ctx,
         'is_comptable': is_comptable_flag,
@@ -2061,8 +2072,9 @@ def ajouter_paiement(request, eleve_id:int=None):
             except Exception:
                 logging.getLogger(__name__).exception("Erreur lors de l'envoi des notifications Twilio")
             messages.success(request, "Paiement enregistré avec succès.")
-            # Rediriger vers la page échéancier de l'élève
-            return redirect('paiements:echeancier_eleve', eleve_id=paiement.eleve_id)
+            # Le détail permet d'appliquer une remise, d'envoyer une relance puis
+            # de valider immédiatement le paiement avant de poursuivre les inscriptions.
+            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire.")
     else:
@@ -2174,6 +2186,17 @@ def valider_paiement(request, paiement_id:int):
         logging.getLogger(__name__).exception("Erreur lors de l'envoi du reçu après validation")
 
     messages.success(request, "Paiement validé avec succès.")
+
+    # Dans le parcours « nouvel élève », revenir automatiquement au formulaire
+    # d'inscription afin d'enchaîner avec l'élève suivant. Les validations lancées
+    # depuis les autres écrans conservent leur redirection vers le détail du paiement.
+    nouvel_eleve_id = request.session.get('nouvel_eleve_paiement_id')
+    if str(nouvel_eleve_id or '') == str(paiement.eleve_id):
+        request.session.pop('nouvel_eleve_paiement_id', None)
+        request.session.modified = True
+        messages.info(request, "Vous pouvez maintenant ajouter un nouvel élève.")
+        return redirect('eleves:ajouter_eleve')
+
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
 @login_required
