@@ -1,10 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q, Sum, Count, F
+from django.db.models import Q, Sum, Count, F, DecimalField
 from django.db import models
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
+from django.core.paginator import Paginator
 from datetime import datetime, date
 from decimal import Decimal
 import openpyxl
@@ -12,71 +13,98 @@ from openpyxl.styles import Font, Alignment, PatternFill
 
 from .models_logistique import (
     CategorieArticle, Article, BienEtablissement, 
-    MouvementStock, Inventaire, LigneInventaire
+    MouvementStock, Inventaire, LigneInventaire, ContributionPapierRame
 )
 from .forms import (
     CategorieArticleForm, ArticleForm, BienEtablissementForm, MouvementStockForm,
-    InventaireForm, LigneInventaireForm
+    InventaireForm, LigneInventaireForm, ContributionPapierRameForm
 )
+
+
+def _biens_pour_utilisateur(user):
+    from utilisateurs.utils import user_is_superadmin, user_school
+
+    biens = BienEtablissement.objects.filter(actif=True)
+    if user_is_superadmin(user):
+        return biens
+    ecole = user_school(user)
+    if not ecole:
+        return biens.none()
+    return biens.filter(cree_par__profil__ecole=ecole)
+
+
+def _contributions_pour_utilisateur(user, annee_scolaire=None):
+    from utilisateurs.utils import filter_by_user_school
+
+    contributions = ContributionPapierRame.objects.select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'cree_par'
+    )
+    contributions = filter_by_user_school(contributions, user, 'eleve__classe__ecole')
+    if annee_scolaire:
+        contributions = contributions.filter(eleve__classe__annee_scolaire=annee_scolaire)
+    return contributions
 
 
 @login_required
 def dashboard_logistique(request):
-    """Dashboard principal de la logistique"""
-    from utilisateurs.utils import user_school
+    """Tableau de bord simplifié : biens de l'école et papier RAM."""
+    from utilisateurs.utils import user_school, filter_by_user_school
+    from eleves.models import Eleve
+    from eleves.utils_annee import get_annee_active
 
     ecole = user_school(request.user)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    biens = _biens_pour_utilisateur(request.user)
+    contributions = _contributions_pour_utilisateur(request.user, annee_active)
 
-    # Filtres de base par école
-    articles_qs = Article.objects.filter(actif=True)
-    biens_qs = BienEtablissement.objects.filter(actif=True)
-    mouvements_qs = MouvementStock.objects.all()
-    if ecole:
-        articles_qs = articles_qs.filter(cree_par__profil__ecole=ecole)
-        biens_qs = biens_qs.filter(cree_par__profil__ecole=ecole)
-        mouvements_qs = mouvements_qs.filter(cree_par__profil__ecole=ecole)
+    stats_biens = biens.aggregate(
+        total_biens=Count('id'),
+        somme_quantite_achetee=Sum('quantite_achetee'),
+        somme_quantite_utilisee=Sum('quantite_utilisee'),
+        somme_quantite_gatee=Sum('quantite_gatee'),
+        valeur_totale=Sum(
+            F('quantite_achetee') * F('prix_achat_unitaire'),
+            output_field=DecimalField(max_digits=20, decimal_places=0),
+        ),
+    )
+    quantite_achetee = stats_biens.pop('somme_quantite_achetee') or 0
+    quantite_utilisee = stats_biens.pop('somme_quantite_utilisee') or 0
+    quantite_gatee = stats_biens.pop('somme_quantite_gatee') or 0
+    stats_biens['quantite_achetee'] = quantite_achetee
+    stats_biens['quantite_utilisee'] = quantite_utilisee
+    stats_biens['quantite_gatee'] = quantite_gatee
+    stats_biens['quantite_disponible'] = max(
+        quantite_achetee - quantite_utilisee - quantite_gatee,
+        0,
+    )
+    stats_biens['valeur_totale'] = stats_biens['valeur_totale'] or 0
 
-    # Statistiques générales
-    total_articles = articles_qs.count()
-    total_biens = biens_qs.count()
+    stats_papier = contributions.aggregate(
+        total_paquets=Sum('nombre_paquets'),
+        total_argent=Sum('montant_paye'),
+    )
+    stats_papier['total_paquets'] = stats_papier['total_paquets'] or 0
+    stats_papier['total_argent'] = stats_papier['total_argent'] or 0
+    stats_papier['eleves_enregistres'] = contributions.values('eleve_id').distinct().count()
 
-    # Valeur totale du stock
-    valeur_stock = articles_qs.aggregate(
-        total=Sum('stock_actuel') * Sum('prix_unitaire')
+    eleves = Eleve.objects.filter(statut='ACTIF')
+    eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
+    if annee_active:
+        eleves = eleves.filter(classe__annee_scolaire=annee_active)
+    stats_papier['total_eleves'] = eleves.count()
+    stats_papier['eleves_non_enregistres'] = max(
+        stats_papier['total_eleves'] - stats_papier['eleves_enregistres'],
+        0,
     )
 
-    # Articles en alerte (stock minimum)
-    articles_alerte = articles_qs.filter(
-        stock_actuel__lte=models.F('stock_minimum')
-    ).count()
-
-    # Derniers mouvements
-    derniers_mouvements = mouvements_qs.select_related(
-        'article', 'cree_par'
-    ).order_by('-date_mouvement')[:10]
-
-    # Répartition par catégorie
-    repartition_categories = CategorieArticle.objects.annotate(
-        nb_articles=Count('articles'),
-        valeur_totale=Sum('articles__stock_actuel') * Sum('articles__prix_unitaire')
-    ).filter(actif=True)
-
-    # Biens nécessitant une maintenance
-    biens_maintenance = biens_qs.filter(
-        date_prochaine_maintenance__lte=date.today()
-    ).count()
-    
     context = {
-        'titre_page': 'Dashboard Logistique',
-        'total_articles': total_articles,
-        'total_biens': total_biens,
-        'valeur_stock': valeur_stock.get('total', 0) or 0,
-        'articles_alerte': articles_alerte,
-        'derniers_mouvements': derniers_mouvements,
-        'repartition_categories': repartition_categories,
-        'biens_maintenance': biens_maintenance,
+        'titre_page': 'Gestion logistique',
+        'annee_active': annee_active,
+        'stats_biens': stats_biens,
+        'stats_papier': stats_papier,
+        'derniers_biens': biens.order_by('-date_modification')[:6],
+        'dernieres_contributions': contributions[:8],
     }
-    
     return render(request, 'depenses/logistique/dashboard.html', context)
 
 
@@ -131,19 +159,12 @@ def liste_articles(request):
 
 @login_required
 def liste_biens(request):
-    """Liste des biens de l'établissement"""
-    from utilisateurs.utils import user_school
-
-    # Filtres
-    q = request.GET.get('q', '')
+    """Liste simplifiée des biens de l'établissement."""
+    q = request.GET.get('q', '').strip()
     type_bien = request.GET.get('type_bien', '')
     etat = request.GET.get('etat', '')
 
-    biens = BienEtablissement.objects.filter(actif=True)
-    # Sécurité : filtrer par école
-    ecole = user_school(request.user)
-    if ecole:
-        biens = biens.filter(cree_par__profil__ecole=ecole)
+    biens = _biens_pour_utilisateur(request.user)
     
     if q:
         biens = biens.filter(
@@ -157,29 +178,38 @@ def liste_biens(request):
     
     if etat:
         biens = biens.filter(etat=etat)
-    
+
+    stats = biens.aggregate(
+        total=Count('id'),
+        achetee=Sum('quantite_achetee'),
+        utilisee=Sum('quantite_utilisee'),
+        gatee=Sum('quantite_gatee'),
+    )
+    stats = {key: value or 0 for key, value in stats.items()}
+    stats['disponible'] = max(stats['achetee'] - stats['utilisee'] - stats['gatee'], 0)
+
     context = {
-        'titre_page': 'Biens de l\'Établissement',
-        'biens': biens,
+        'titre_page': "Biens de l'établissement",
+        'biens': biens.order_by('nom'),
+        'stats': stats,
         'q': q,
         'type_bien': type_bien,
         'etat': etat,
+        'types_bien': BienEtablissement.TYPE_CHOICES,
+        'etats_bien': BienEtablissement.ETAT_CHOICES,
     }
-    
     return render(request, 'depenses/logistique/liste_biens.html', context)
 
 
 @login_required
 def creer_bien(request):
-    """Créer un bien de l'établissement"""
-    
+    """Ajouter un bien de l'établissement."""
     if request.method == 'POST':
         form = BienEtablissementForm(request.POST, request.FILES)
         if form.is_valid():
             bien = form.save(commit=False)
             bien.cree_par = request.user
             
-            # Générer le code du bien si non fourni
             if not bien.code_bien:
                 today = date.today()
                 prefix = f"BIEN-{today.strftime('%Y%m%d')}"
@@ -209,9 +239,8 @@ def creer_bien(request):
 
 @login_required
 def modifier_bien(request, bien_id):
-    """Modifier un bien de l'établissement"""
-    
-    bien = get_object_or_404(BienEtablissement, pk=bien_id)
+    """Modifier un bien, avec isolation stricte par école."""
+    bien = get_object_or_404(_biens_pour_utilisateur(request.user), pk=bien_id)
     
     if request.method == 'POST':
         form = BienEtablissementForm(request.POST, request.FILES, instance=bien)
@@ -229,6 +258,125 @@ def modifier_bien(request, bien_id):
     }
     
     return render(request, 'depenses/logistique/form_bien.html', context)
+
+
+@login_required
+def liste_contributions_papier(request):
+    """Historique consultable et filtrable des contributions papier RAM."""
+    from utilisateurs.utils import user_school
+    from eleves.utils_annee import get_annee_active
+
+    ecole = user_school(request.user)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    q = request.GET.get('q', '').strip()
+    mode = request.GET.get('mode', '').strip()
+    contributions = _contributions_pour_utilisateur(request.user, annee_active)
+
+    if q:
+        contributions = contributions.filter(
+            Q(eleve__matricule__icontains=q)
+            | Q(eleve__nom__icontains=q)
+            | Q(eleve__prenom__icontains=q)
+            | Q(eleve__classe__nom__icontains=q)
+        )
+    if mode in {'PAPIER', 'ARGENT'}:
+        contributions = contributions.filter(type_contribution=mode)
+
+    stats = contributions.aggregate(
+        total_paquets=Sum('nombre_paquets'),
+        total_argent=Sum('montant_paye'),
+    )
+    stats['total_paquets'] = stats['total_paquets'] or 0
+    stats['total_argent'] = stats['total_argent'] or 0
+    stats['total_enregistrements'] = contributions.count()
+    stats['total_eleves'] = contributions.values('eleve_id').distinct().count()
+    page_obj = Paginator(contributions, 50).get_page(request.GET.get('page'))
+
+    return render(request, 'depenses/logistique/liste_contributions_papier.html', {
+        'titre_page': 'Gestion du papier RAM',
+        'annee_active': annee_active,
+        'page_obj': page_obj,
+        'q': q,
+        'mode': mode,
+        'stats': stats,
+    })
+
+
+@login_required
+def creer_contribution_papier(request):
+    """Enregistrer des paquets de papier ou un paiement à la place."""
+    from utilisateurs.utils import user_school
+    from eleves.utils_annee import get_annee_active
+
+    ecole = user_school(request.user)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    kwargs = {'user': request.user, 'annee_scolaire': annee_active}
+    if request.method == 'POST':
+        form = ContributionPapierRameForm(request.POST, **kwargs)
+        if form.is_valid():
+            contribution = form.save(commit=False)
+            contribution.cree_par = request.user
+            contribution.save()
+            messages.success(
+                request,
+                f'Contribution papier RAM de {contribution.eleve.nom_complet} enregistrée.',
+            )
+            return redirect('depenses:liste_contributions_papier')
+    else:
+        initial = {}
+        if request.GET.get('eleve'):
+            initial['eleve'] = request.GET['eleve']
+        form = ContributionPapierRameForm(initial=initial, **kwargs)
+
+    return render(request, 'depenses/logistique/form_contribution_papier.html', {
+        'titre_page': 'Nouvelle contribution papier RAM',
+        'annee_active': annee_active,
+        'form': form,
+    })
+
+
+@login_required
+def modifier_contribution_papier(request, contribution_id):
+    """Corriger un enregistrement papier RAM de la même école."""
+    from utilisateurs.utils import user_school
+    from eleves.utils_annee import get_annee_active
+
+    ecole = user_school(request.user)
+    annee_active = get_annee_active(request, ecole) if ecole else None
+    contribution = get_object_or_404(
+        _contributions_pour_utilisateur(request.user),
+        pk=contribution_id,
+    )
+    kwargs = {
+        'instance': contribution,
+        'user': request.user,
+        'annee_scolaire': contribution.eleve.classe.annee_scolaire,
+    }
+    if request.method == 'POST':
+        form = ContributionPapierRameForm(request.POST, **kwargs)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Contribution papier RAM modifiée avec succès.')
+            return redirect('depenses:liste_contributions_papier')
+    else:
+        form = ContributionPapierRameForm(**kwargs)
+
+    return render(request, 'depenses/logistique/form_contribution_papier.html', {
+        'titre_page': 'Modifier la contribution papier RAM',
+        'annee_active': annee_active,
+        'form': form,
+        'contribution': contribution,
+    })
+
+
+@login_required
+def ancienne_logistique_redirection(request, *args, **kwargs):
+    """Conserver les anciens liens sans exposer les écrans de stock retirés."""
+    messages.info(
+        request,
+        "La gestion Stock, Articles, Inventaires et Mouvements a été remplacée par la gestion simplifiée des biens.",
+    )
+    return redirect('depenses:dashboard_logistique')
 
 
 @login_required
