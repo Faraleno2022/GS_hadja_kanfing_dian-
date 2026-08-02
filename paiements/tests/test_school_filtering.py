@@ -1,10 +1,19 @@
 from django.test import TestCase
 from django.urls import reverse
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from datetime import date
 
 from eleves.models import Ecole, Classe, Eleve, Responsable
-from paiements.models import Paiement, TypePaiement, ModePaiement
+from paiements.models import (
+    EcheancierPaiement,
+    ModePaiement,
+    Paiement,
+    PaiementRemise,
+    Relance,
+    RemiseReduction,
+    TypePaiement,
+)
 from utilisateurs.models import Profil
 
 
@@ -74,20 +83,69 @@ class SchoolFilteringTests(TestCase):
             statut='VALIDE',
             date_paiement=date(2024, 9, 11),
         )
+        self.echeancier1 = EcheancierPaiement.objects.create(
+            eleve=self.eleve1,
+            annee_scolaire="2024-2025",
+            frais_inscription_du=30000,
+            tranche_1_due=100000,
+            tranche_2_due=0,
+            tranche_3_due=0,
+            frais_inscription_paye=30000,
+            date_echeance_inscription=date(2024, 9, 1),
+            date_echeance_tranche_1=date(2024, 10, 1),
+            date_echeance_tranche_2=date(2025, 1, 1),
+            date_echeance_tranche_3=date(2025, 4, 1),
+        )
+        self.echeancier2 = EcheancierPaiement.objects.create(
+            eleve=self.eleve2,
+            annee_scolaire="2024-2025",
+            frais_inscription_du=30000,
+            tranche_1_due=100000,
+            tranche_2_due=0,
+            tranche_3_due=0,
+            frais_inscription_paye=30000,
+            date_echeance_inscription=date(2024, 9, 1),
+            date_echeance_tranche_1=date(2024, 10, 1),
+            date_echeance_tranche_2=date(2025, 1, 1),
+            date_echeance_tranche_3=date(2025, 4, 1),
+        )
         # Users
         User = get_user_model()
         self.user1 = User.objects.create_user(username="u1", password="pass12345")
         self.user2 = User.objects.create_user(username="u2", password="pass12345")
-        Profil.objects.create(user=self.user1, role='COMPTABLE', ecole=self.ecole1, telephone="+224620000021", peut_consulter_rapports=True)
-        Profil.objects.create(user=self.user2, role='COMPTABLE', ecole=self.ecole2, telephone="+224620000022", peut_consulter_rapports=True)
+        Profil.objects.update_or_create(
+            user=self.user1,
+            defaults={
+                'role': 'COMPTABLE',
+                'ecole': self.ecole1,
+                'telephone': "+224620000021",
+                'peut_consulter_rapports': True,
+            },
+        )
+        Profil.objects.update_or_create(
+            user=self.user2,
+            defaults={
+                'role': 'COMPTABLE',
+                'ecole': self.ecole2,
+                'telephone': "+224620000022",
+                'peut_consulter_rapports': True,
+            },
+        )
 
     def login1(self):
         self.client.logout()
-        self.client.login(username="u1", password="pass12345")
+        self.client.force_login(self.user1)
 
     def login2(self):
         self.client.logout()
-        self.client.login(username="u2", password="pass12345")
+        self.client.force_login(self.user2)
+
+    def sans_middleware_licence(self):
+        return self.settings(MIDDLEWARE=[
+            middleware
+            for middleware in settings.MIDDLEWARE
+            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
+        ])
 
     def test_api_paiements_list_filtered_by_school(self):
         self.login1()
@@ -160,3 +218,90 @@ class SchoolFilteringTests(TestCase):
         # GET simple, on ne vérifie que la protection d'accès (pas les side-effects)
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 404)
+
+    def test_impayes_utilisent_echeancier_et_restent_limites_a_ecole(self):
+        self.login1()
+
+        with self.sans_middleware_licence():
+            response = self.client.get(reverse("paiements:liste_eleves_impayes"))
+
+        self.assertEqual(response.status_code, 200)
+        eleves_affiches = [
+            ligne["eleve"].pk for ligne in response.context["eleves_avec_soldes"]
+        ]
+        self.assertEqual(eleves_affiches, [self.eleve1.pk])
+
+    def test_eleves_soldes_restent_limites_a_ecole(self):
+        self.echeancier1.tranche_1_payee = 100000
+        self.echeancier1.save(update_fields=["tranche_1_payee"])
+        self.echeancier2.tranche_1_payee = 100000
+        self.echeancier2.save(update_fields=["tranche_1_payee"])
+        self.login1()
+
+        with self.sans_middleware_licence():
+            response = self.client.get(
+                reverse("paiements:liste_eleves_soldes"),
+                {"annee": "2024-2025"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        eleves_affiches = [
+            echeancier.eleve_id for echeancier in response.context["page_obj"]
+        ]
+        self.assertEqual(eleves_affiches, [self.eleve1.pk])
+
+    def test_relances_sont_affichees_en_temps_reel_pour_ecole(self):
+        relance1 = Relance.objects.create(
+            eleve=self.eleve1,
+            canal="SMS",
+            message="Relance école A",
+            solde_estime=100000,
+        )
+        Relance.objects.create(
+            eleve=self.eleve2,
+            canal="SMS",
+            message="Relance école B",
+            solde_estime=100000,
+        )
+        self.login1()
+
+        with self.sans_middleware_licence():
+            response = self.client.get(reverse("paiements:liste_relances"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [relance.pk for relance in response.context["page_obj"]],
+            [relance1.pk],
+        )
+
+    def test_rapport_remises_couvre_annee_active_et_filtre_ecole(self):
+        remise = RemiseReduction.objects.create(
+            nom="Remise test",
+            type_remise="MONTANT_FIXE",
+            valeur=5000,
+            motif="AUTRE",
+            date_debut=date(2024, 9, 1),
+            date_fin=date(2025, 8, 31),
+            actif=True,
+        )
+        remise_ecole1 = PaiementRemise.objects.create(
+            paiement=self.paiement1,
+            remise=remise,
+            montant_remise=5000,
+        )
+        PaiementRemise.objects.create(
+            paiement=self.paiement2,
+            remise=remise,
+            montant_remise=5000,
+        )
+        self.login1()
+
+        with self.sans_middleware_licence():
+            response = self.client.get(reverse("rapports:rapport_remises"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["date_debut"], date(2024, 9, 1))
+        self.assertEqual(
+            [item.pk for item in response.context["remises_appliquees"]],
+            [remise_ecole1.pk],
+        )
