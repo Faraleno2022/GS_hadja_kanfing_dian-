@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load humanize %}
 
 {% block page_actions %}
 <div>
@@ -23,9 +24,13 @@
   <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-secondary">
     <i class="fas fa-chart-line me-1"></i>Tableau de bord
   </a>
-  <a href="{% url 'paiements:envoyer_notifs_retards' %}" class="btn btn-outline-danger float-end">
-    <i class="fas fa-paper-plane me-1"></i>Envoyer notifications de retard
-  </a>
+  <form method="post" action="{% url 'paiements:envoyer_notifs_retards' %}" class="d-inline float-end">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger"
+            onclick="return confirm('Envoyer les notifications à tous les élèves actuellement en retard ?');">
+      <i class="fas fa-paper-plane me-1"></i>Envoyer notifications de retard
+    </button>
+  </form>
 </div>
 {% endblock %}
 
@@ -62,6 +67,98 @@
       <button type="submit" class="btn btn-primary w-100">Filtrer</button>
     </div>
   </form>
+
+  <div class="card border-warning mb-4" id="eleves-a-relancer">
+    <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center">
+      <h5 class="mb-0"><i class="fas fa-user-clock me-2"></i>Élèves à relancer</h5>
+      <span class="badge bg-warning text-dark">
+        {{ total_a_relancer }} élève{{ total_a_relancer|pluralize }}
+      </span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Matricule</th>
+              <th>Élève</th>
+              <th>Classe</th>
+              <th class="text-end">Total dû</th>
+              <th class="text-end">Payé</th>
+              <th class="text-end">Remises</th>
+              <th class="text-end">Solde à relancer</th>
+              <th>Dernière relance</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for echeancier in a_relancer_page_obj %}
+            <tr>
+              <td>{{ echeancier.eleve.matricule }}</td>
+              <td class="fw-semibold">{{ echeancier.eleve.nom_complet }}</td>
+              <td>{{ echeancier.eleve.classe.nom|default:'-' }}</td>
+              <td class="text-end">{{ echeancier.total_du_calc|floatformat:0|intcomma }} GNF</td>
+              <td class="text-end text-success">{{ echeancier.total_paye_calc|floatformat:0|intcomma }} GNF</td>
+              <td class="text-end text-success">{{ echeancier.total_remises_calc|floatformat:0|intcomma }} GNF</td>
+              <td class="text-end fw-bold text-danger">{{ echeancier.solde_a_relancer|floatformat:0|intcomma }} GNF</td>
+              <td>
+                {% if echeancier.derniere_relance_date %}
+                  {{ echeancier.derniere_relance_date|date:'d/m/Y H:i' }}
+                  <br><small class="text-muted">{{ echeancier.derniere_relance_statut }}</small>
+                {% else %}
+                  <span class="text-muted">Jamais relancé</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1 align-items-center">
+                  <a href="{% url 'paiements:echeancier_eleve' echeancier.eleve_id %}"
+                     class="btn btn-sm btn-outline-primary" title="Voir l'échéancier">
+                    <i class="fas fa-calendar-alt"></i>
+                  </a>
+                  <form method="post" action="{% url 'paiements:relancer_eleve' echeancier.eleve_id %}"
+                        class="d-flex gap-1"
+                        onsubmit="return confirm('Envoyer cette relance maintenant ?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'paiements:liste_relances' %}">
+                    <select name="canal" class="form-select form-select-sm" aria-label="Canal de relance">
+                      <option value="WHATSAPP">WhatsApp</option>
+                      <option value="SMS">SMS</option>
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-warning">
+                      <i class="fas fa-paper-plane me-1"></i>Relancer
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="9" class="text-center text-success py-4">
+                <i class="fas fa-check-circle me-1"></i>Aucun élève à relancer.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if a_relancer_page_obj.paginator.num_pages > 1 %}
+  <nav aria-label="Pagination des élèves à relancer" class="mb-4">
+    <ul class="pagination">
+      {% if a_relancer_page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page_relancer={{ a_relancer_page_obj.previous_page_number }}&q={{ q }}&canal={{ canal }}&statut={{ statut }}">Précédent</a></li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">Page {{ a_relancer_page_obj.number }} / {{ a_relancer_page_obj.paginator.num_pages }}</span></li>
+      {% if a_relancer_page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page_relancer={{ a_relancer_page_obj.next_page_number }}&q={{ q }}&canal={{ canal }}&statut={{ statut }}">Suivant</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
+
+  <h5 class="mb-3"><i class="fas fa-history me-2"></i>Historique des relances</h5>
 
   <div class="table-responsive">
     <table class="table table-striped table-hover align-middle">
@@ -103,7 +200,7 @@
             <td>{% if r.cree_par %}{{ r.cree_par.get_full_name|default:r.cree_par.username }}{% else %}-{% endif %}</td>
           </tr>
         {% empty %}
-          <tr><td colspan="7" class="text-center text-muted">Aucune relance trouvée.</td></tr>
+          <tr><td colspan="7" class="text-center text-muted">Aucune relance enregistrée pour le moment.</td></tr>
         {% endfor %}
       </tbody>
     </table>

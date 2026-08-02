@@ -274,6 +274,25 @@ class SchoolFilteringTests(TestCase):
             [relance1.pk],
         )
 
+    def test_eleves_a_relancer_sont_listes_meme_sans_historique(self):
+        self.login1()
+
+        with self.sans_middleware_licence():
+            response = self.client.get(reverse("paiements:liste_relances"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_a_relancer"], 1)
+        self.assertEqual(response.context["page_obj"].paginator.count, 0)
+        self.assertEqual(
+            [
+                echeancier.eleve_id
+                for echeancier in response.context["a_relancer_page_obj"]
+            ],
+            [self.eleve1.pk],
+        )
+        self.assertContains(response, "Jamais relancé")
+        self.assertNotContains(response, self.eleve2.matricule)
+
     def test_rapport_remises_couvre_annee_active_et_filtre_ecole(self):
         remise = RemiseReduction.objects.create(
             nom="Remise test",
