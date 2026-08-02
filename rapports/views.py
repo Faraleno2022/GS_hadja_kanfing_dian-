@@ -18,6 +18,7 @@ from reportlab.lib.units import inch
 from .models import Rapport, TypeRapport, ExportProgramme
 from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark
 from eleves.models import Eleve, Ecole
+from eleves.utils_annee import get_annee_active
 from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypePaiement
 from bus.models import AbonnementBus
 from depenses.models import Depense
@@ -984,9 +985,18 @@ def rapport_remises_detaille(request):
     date_debut = request.GET.get('date_debut')
     date_fin = request.GET.get('date_fin')
     
-    # Dates par défaut (mois en cours)
+    # Par défaut, couvrir l'année scolaire active. Une fenêtre limitée au mois
+    # courant rendait le rapport vide les premiers jours d'un nouveau mois.
+    ecole_user = user_school(request.user)
+    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
+    try:
+        annee_debut = int(str(annee_active).split('-')[0])
+    except (ValueError, TypeError, IndexError):
+        aujourd_hui = date.today()
+        annee_debut = aujourd_hui.year if aujourd_hui.month >= 9 else aujourd_hui.year - 1
+
     if not date_debut:
-        date_debut = date.today().replace(day=1)
+        date_debut = date(annee_debut, 9, 1)
     else:
         date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
     
