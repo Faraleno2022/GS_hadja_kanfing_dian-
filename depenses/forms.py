@@ -9,7 +9,7 @@ from .models_logistique import (
     CategorieArticle, Article, BienEtablissement, MouvementStock,
     Inventaire, LigneInventaire, ContributionPapierRame
 )
-from .models_bibliotheque import Livre, Emprunt, Reservation
+from .models_bibliotheque import Livre, Emprunt, Reservation, ParametreBibliotheque
 from eleves.models import Eleve
 
 class DepenseForm(forms.ModelForm):
@@ -731,7 +731,48 @@ class ReservationForm(forms.ModelForm):
         model = Reservation
         fields = ['livre', 'eleve', 'observations']
         widgets = {
-            'livre': forms.Select(attrs={'class': 'form-control'}),
-            'eleve': forms.Select(attrs={'class': 'form-control'}),
+            'livre': forms.Select(attrs={'class': 'form-select'}),
+            'eleve': forms.Select(attrs={'class': 'form-select'}),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        livres = Livre.objects.filter(actif=True).exclude(
+            statut__in=['PERDU', 'EN_REPARATION', 'RETIRE'],
+        ).select_related('categorie')
+        eleves = Eleve.objects.filter(statut='ACTIF').select_related('classe', 'classe__ecole')
+        if user is None:
+            livres = livres.none()
+            eleves = eleves.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            livres = filter_by_user_school(livres, user, 'cree_par__profil__ecole')
+            eleves = filter_by_user_school(eleves, user, 'classe__ecole')
+        self.fields['livre'].queryset = livres.order_by('titre')
+        self.fields['eleve'].queryset = eleves.order_by('nom', 'prenom', 'matricule')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        livre = cleaned_data.get('livre')
+        eleve = cleaned_data.get('eleve')
+        if not livre or not eleve:
+            return cleaned_data
+
+        reservations_actives = Reservation.objects.filter(
+            eleve=eleve,
+            statut__in=['EN_ATTENTE', 'DISPONIBLE'],
+        )
+        if self.instance.pk:
+            reservations_actives = reservations_actives.exclude(pk=self.instance.pk)
+        if reservations_actives.filter(livre=livre).exists():
+            self.add_error('livre', "Cet élève a déjà une réservation active pour ce livre.")
+
+        parametres = ParametreBibliotheque.objects.first()
+        limite = parametres.nombre_reservations_max if parametres else 2
+        if reservations_actives.count() >= limite:
+            self.add_error(
+                'eleve',
+                f"Cet élève a atteint la limite de {limite} réservation(s) active(s).",
+            )
+        return cleaned_data

@@ -228,7 +228,10 @@ class Reservation(SyncTrackedModel):
     @property
     def est_expiree(self):
         """Vérifie si la réservation est expirée"""
-        return timezone.now() > self.date_expiration and self.statut == 'EN_ATTENTE'
+        return (
+            timezone.now() > self.date_expiration
+            and self.statut in ['EN_ATTENTE', 'DISPONIBLE']
+        )
     
     def save(self, *args, **kwargs):
         # Définir la date d'expiration (7 jours par défaut)

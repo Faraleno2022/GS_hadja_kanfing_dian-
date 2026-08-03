@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width: 900px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-bookmark text-warning me-2"></i>{{ titre_page }}</h2>
+            <p class="text-muted mb-0">Le premier élève inscrit est prioritaire lorsqu’un exemplaire revient.</p>
+        </div>
+        <a href="{% url 'depenses:liste_reservations' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour</a>
+    </div>
+
+    <form method="post" class="card border-0 shadow-sm">
+        {% csrf_token %}
+        <div class="card-body p-4">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Livre *</label>{{ form.livre }}
+                    {% if form.livre.errors %}<div class="text-danger small mt-1">{{ form.livre.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Élève *</label>{{ form.eleve }}
+                    {% if form.eleve.errors %}<div class="text-danger small mt-1">{{ form.eleve.errors }}</div>{% endif %}
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Observations</label>{{ form.observations }}
+                    {% if form.observations.errors %}<div class="text-danger small mt-1">{{ form.observations.errors }}</div>{% endif %}
+                </div>
+            </div>
+
+            <div class="alert alert-info mt-4 mb-0">
+                <h6><i class="fas fa-info-circle me-1"></i>Règles appliquées</h6>
+                <ul class="mb-0">
+                    <li>Durée de validité : <strong>{{ duree_reservation }} jours</strong>.</li>
+                    <li>Limite par élève : <strong>{% if parametres %}{{ parametres.nombre_reservations_max }}{% else %}2{% endif %} réservation(s) active(s)</strong>.</li>
+                    <li>Si un exemplaire est disponible, il est immédiatement bloqué pour l’élève.</li>
+                    <li>Sinon, la réservation rejoint automatiquement la file d’attente.</li>
+                </ul>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-end gap-2 p-3">
+            <a href="{% url 'depenses:liste_reservations' %}" class="btn btn-light">Annuler</a>
+            <button type="submit" class="btn btn-warning"><i class="fas fa-check me-1"></i>Enregistrer la réservation</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

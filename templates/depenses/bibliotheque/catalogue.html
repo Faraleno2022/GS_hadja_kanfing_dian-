@@ -114,6 +114,11 @@
                             <a href="{% url 'depenses:modifier_livre' livre.id %}" class="btn btn-sm btn-outline-secondary" title="Modifier">
                                 <i class="fas fa-edit"></i>
                             </a>
+                            {% if livre.statut != 'PERDU' and livre.statut != 'EN_REPARATION' and livre.statut != 'RETIRE' %}
+                            <a href="{% url 'depenses:creer_reservation' %}?livre={{ livre.id }}" class="btn btn-sm btn-outline-warning" title="Réserver">
+                                <i class="fas fa-bookmark"></i> Réserver
+                            </a>
+                            {% endif %}
                             {% if livre.est_disponible %}
                             <a href="{% url 'depenses:creer_emprunt' %}?livre={{ livre.id }}" class="btn btn-sm btn-success">
                                 <i class="fas fa-hand-holding-heart"></i> Emprunter
