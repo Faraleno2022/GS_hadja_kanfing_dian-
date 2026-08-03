@@ -1652,6 +1652,12 @@ def ajouter_paiement(request, eleve_id:int=None):
         eleve = get_object_or_404(eleve_qs, pk=eleve_id)
         initial['eleve'] = eleve
 
+        # N'activer le retour vers l'ajout d'un autre élève que lorsque
+        # l'utilisateur a explicitement choisi le paiement après l'inscription.
+        if request.GET.get('origine') == 'ajout_eleve':
+            request.session['nouvel_eleve_paiement_id'] = eleve.id
+            request.session.modified = True
+
     if request.method == 'POST':
         form = PaiementForm(request.POST)
         if form.is_valid():

@@ -13,6 +13,7 @@ from django.shortcuts import redirect
 from django.core.exceptions import TooManyFieldsSent
 from django.core.mail import mail_admins
 import re
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +48,14 @@ class SecurityMiddleware(MiddlewareMixin):
         r"<embed[^>]*>.*?</embed>",
     ]
     
-    # Patterns de Path Traversal
-    PATH_TRAVERSAL_PATTERNS = [
-        r"\.\./",
-        r"\.\.\\",
-        r"%2e%2e%2f",
-        r"%2e%2e\\",
-        r"..%2f",
-        r"..%5c",
-    ]
+    # Segment parent réel, délimité par un chemin ou un paramètre.
+    # Les anciennes expressions ``..%2f`` et ``..%5c`` utilisaient des
+    # points non échappés : elles correspondaient à n'importe quels deux
+    # caractères suivis d'un slash encodé et bloquaient donc des URL légitimes.
+    PATH_TRAVERSAL_PATTERN = re.compile(
+        r"(?:^|[/\\?&=])\.\.(?:[/\\]|$)",
+        re.IGNORECASE,
+    )
     
     # User agents suspects
     SUSPICIOUS_USER_AGENTS = [
@@ -278,10 +278,20 @@ class SecurityMiddleware(MiddlewareMixin):
     
     def detect_path_traversal(self, request):
         """Détecte les tentatives de Path Traversal"""
-        full_path = request.get_full_path()
-        for pattern in self.PATH_TRAVERSAL_PATTERNS:
-            if re.search(pattern, full_path, re.IGNORECASE):
+        candidate = request.get_full_path()
+
+        # Décoder au maximum deux fois permet de détecter les variantes
+        # encodées et doublement encodées sans confondre un simple ``%2F``
+        # légitime avec un segment parent ``../``.
+        for _ in range(3):
+            if self.PATH_TRAVERSAL_PATTERN.search(candidate):
                 return True
+
+            decoded = unquote(candidate)
+            if decoded == candidate:
+                break
+            candidate = decoded
+
         return False
     
     def is_ip_blocked(self, ip):
