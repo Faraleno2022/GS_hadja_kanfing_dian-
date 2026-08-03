@@ -223,7 +223,7 @@ class WhatsAppNoteRappelSender:
             }
 
         postes = [
-            ("Frais d'inscription", echeancier.frais_inscription_du, echeancier.frais_inscription_paye, echeancier.date_echeance_inscription),
+            (echeancier.libelle_frais_admission, echeancier.frais_inscription_du, echeancier.frais_inscription_paye, echeancier.date_echeance_inscription),
             ("1ère tranche", echeancier.tranche_1_due, echeancier.tranche_1_payee, echeancier.date_echeance_tranche_1),
             ("2ème tranche", echeancier.tranche_2_due, echeancier.tranche_2_payee, echeancier.date_echeance_tranche_2),
             ("3ème tranche", echeancier.tranche_3_due, echeancier.tranche_3_payee, echeancier.date_echeance_tranche_3),

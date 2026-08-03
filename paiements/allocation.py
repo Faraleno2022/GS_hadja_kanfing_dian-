@@ -1,6 +1,7 @@
 """Règles communes d'affectation des paiements sur un échéancier."""
 
 from decimal import Decimal
+import re
 import unicodedata
 
 from .models import Paiement
@@ -34,6 +35,54 @@ def registration_kind_for_type(value):
     if "inscription" in normalized:
         return "inscription"
     return None
+
+
+def payment_type_plan(value):
+    """Décode un type de paiement en postes métier explicites.
+
+    Les accents, la casse et les variantes usuelles (``1ère tranche``,
+    ``tranche 1`` ou ``T1``) sont acceptés. Le plan retourné est partagé par
+    la suggestion et la validation serveur afin d'éviter deux répartitions
+    contradictoires.
+    """
+    normalized = normalize_payment_type(value)
+    registration_kind = registration_kind_for_type(normalized)
+    tranches = set()
+    patterns = {
+        1: (
+            r"\btranche\s*1\b",
+            r"\b1(?:ere|er)?\s+tranche\b",
+            r"\b(?:premier|premiere)\s+tranche\b",
+            r"\bt\s*1\b",
+        ),
+        2: (
+            r"\btranche\s*2\b",
+            r"\b2(?:eme)?\s+tranche\b",
+            r"\bdeuxieme\s+tranche\b",
+            r"\bt\s*2\b",
+        ),
+        3: (
+            r"\btranche\s*3\b",
+            r"\b3(?:eme)?\s+tranche\b",
+            r"\btroisieme\s+tranche\b",
+            r"\bt\s*3\b",
+        ),
+    }
+    for number, number_patterns in patterns.items():
+        if any(re.search(pattern, normalized) for pattern in number_patterns):
+            tranches.add(number)
+
+    is_annual = "annuel" in normalized or "annuelle" in normalized
+    is_tuition = "scolarite" in normalized
+    if is_annual or (is_tuition and not tranches):
+        tranches.update((1, 2, 3))
+
+    return {
+        "normalized": normalized,
+        "registration_kind": registration_kind,
+        "include_registration": registration_kind is not None,
+        "tranches": tuple(sorted(tranches)),
+    }
 
 
 def allocate_amount_sequentially(echeancier, amount, initial_paid=None):

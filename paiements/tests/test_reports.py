@@ -1,8 +1,11 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.contrib.auth import get_user_model
 
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 
+
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class PaiementsReportsTests(TestCase):
     def setUp(self):
         User = get_user_model()

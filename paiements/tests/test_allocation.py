@@ -2,9 +2,8 @@ from decimal import Decimal
 from datetime import date
 from unittest.mock import patch
 
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -16,9 +15,11 @@ from paiements.models import (
     Paiement,
 )
 from paiements.allocation import get_payment_allocation
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from paiements.views import _allocate_combined_payment
 
 
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class TestAllocationPaiements(TestCase):
     def setUp(self):
         # Contexte de base
@@ -298,24 +299,18 @@ class TestAllocationPaiements(TestCase):
         self.client.force_login(admin)
         type_t1 = TypePaiement.objects.create(nom="Paiement 1ère tranche")
 
-        test_middleware = [
-            middleware
-            for middleware in settings.MIDDLEWARE
-            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
-        ]
-        with self.settings(MIDDLEWARE=test_middleware):
-            response = self.client.post(
-                reverse("paiements:ajouter_paiement"),
-                {
-                    "eleve": self.eleve.pk,
-                    "type_paiement": type_t1.pk,
-                    "mode_paiement": self.mode_especes.pk,
-                    "montant": "700000",
-                    "date_paiement": "2024-10-01",
-                    "observations": "",
-                    "reference_externe": "",
-                },
-            )
+        response = self.client.post(
+            reverse("paiements:ajouter_paiement"),
+            {
+                "eleve": self.eleve.pk,
+                "type_paiement": type_t1.pk,
+                "mode_paiement": self.mode_especes.pk,
+                "montant": "700000",
+                "date_paiement": "2024-10-01",
+                "observations": "",
+                "reference_externe": "",
+            },
+        )
 
         self.assertEqual(response.status_code, 302)
         paiement_cree = Paiement.objects.get(
@@ -407,7 +402,9 @@ class TestAllocationPaiements(TestCase):
             type_paiement=self.type_insc_annuel,
             mode_paiement=self.mode_especes,
             numero_recu="REC_EDGE_5",
-            montant=Decimal("1030000"),  # 30k + 1,000,000 (insuffisant pour 1.5M tranches)
+            # À cette date, admission + T1 + T2 = 1 030 000 GNF sont exigibles.
+            # Un paiement de 900 000 laisse donc bien une échéance passée impayée.
+            montant=Decimal("900000"),
             date_paiement=date(2025, 3, 6),  # après échéance T2 (2025-03-05)
             statut="VALIDE",
         )

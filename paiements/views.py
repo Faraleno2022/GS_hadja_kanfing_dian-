@@ -38,6 +38,7 @@ from .allocation import (
     ALLOCATION_COMPONENTS,
     allocate_amount_sequentially,
     get_payment_allocation,
+    payment_type_plan,
     registration_kind_for_type,
 )
 from eleves.models import Eleve, GrilleTarifaire, Classe
@@ -120,11 +121,22 @@ def ensure_echeancier_for_eleve(
     requested_registration_kind = registration_kind
     if requested_registration_kind is None and prefer_reinscription:
         requested_registration_kind = 'reinscription'
+    requested_nature = None
+    if requested_registration_kind == 'reinscription':
+        requested_nature = EcheancierPaiement.NATURE_REINSCRIPTION
+    elif requested_registration_kind == 'inscription':
+        requested_nature = EcheancierPaiement.NATURE_INSCRIPTION
 
     # Corriger uniquement le poste inscription/réinscription d'un échéancier déjà renseigné.
     # Le total déjà encaissé est ensuite réaffecté dans l'ordre afin qu'un excédent
     # d'inscription soit automatiquement reversé sur T1, puis T2 et T3.
     if ech is not None and existing_has_due:
+        changed = False
+        # La nature choisie est persistée même lorsque les deux tarifs ont le
+        # même montant. Le rapport n'a ainsi plus besoin de la deviner.
+        if requested_nature and ech.nature_frais != requested_nature:
+            ech.nature_frais = requested_nature
+            changed = True
         if grille is not None and requested_registration_kind in {'inscription', 'reinscription'}:
             new_fee = (
                 grille.frais_reinscription
@@ -144,13 +156,15 @@ def ensure_echeancier_for_eleve(
                 )
                 for key, _due_field, paid_field in ALLOCATION_COMPONENTS:
                     setattr(ech, paid_field, rebalanced_paid[key])
+                changed = True
                 if unapplied > 0:
                     logging.getLogger(__name__).warning(
                         "Réaffectation incomplète après changement du tarif d'inscription: %s GNF non affectés (élève %s)",
                         unapplied,
                         eleve.id,
                     )
-                ech.save()
+        if changed:
+            ech.save()
         return ech
 
     # Préparer les champs
@@ -205,6 +219,11 @@ def ensure_echeancier_for_eleve(
     if ech is not None:
         try:
             ech.annee_scolaire = annee_scol
+            ech.nature_frais = requested_nature or getattr(
+                ech,
+                'nature_frais',
+                EcheancierPaiement.NATURE_INSCRIPTION,
+            )
             ech.frais_inscription_du = fi
             ech.tranche_1_due = t1
             ech.tranche_2_due = t2
@@ -230,6 +249,7 @@ def ensure_echeancier_for_eleve(
                 ech = EcheancierPaiement.objects.create(
                     eleve=eleve,
                     annee_scolaire=annee_scol,
+                    nature_frais=requested_nature or EcheancierPaiement.NATURE_INSCRIPTION,
                     frais_inscription_du=fi,
                     tranche_1_due=t1,
                     tranche_2_due=t2,
@@ -247,7 +267,12 @@ def ensure_echeancier_for_eleve(
             logging.getLogger(__name__).info(
                 "Échéancier déjà créé par un autre processus pour l'élève %s, récupération.", eleve.id
             )
-            return EcheancierPaiement.objects.filter(eleve=eleve).first()
+            eleve._state.fields_cache.pop('echeancier', None)
+            return ensure_echeancier_for_eleve(
+                eleve,
+                created_by=created_by,
+                registration_kind=requested_registration_kind,
+            )
 
 @login_required
 def ajax_montant_suggere(request):
@@ -265,29 +290,81 @@ def ajax_montant_suggere(request):
         eleve = get_object_or_404(eleve_qs, pk=int(eleve_id))
 
         type_pmt = get_object_or_404(TypePaiement, pk=int(type_id))
-        type_nom = (type_pmt.nom or '').strip().lower()
+        plan = payment_type_plan(type_pmt)
+        kind = plan['registration_kind']
 
-        # Assurer l'échéancier et appliquer le bon tarif d'inscription/réinscription,
-        # même lorsqu'un échéancier existe déjà.
-        kind = registration_kind_for_type(type_nom)
-        ech = ensure_echeancier_for_eleve(
-            eleve,
-            created_by=request.user,
-            registration_kind=kind,
-        )
-        if not ech:
-            return JsonResponse({'ok': False, 'error': "Aucun échéancier disponible pour l'élève."}, status=400)
-
-        # Récup montants dus/payés
+        # Lire l'échéancier sans jamais le créer ni le modifier : changer un
+        # choix dans le formulaire ne doit avoir aucun effet comptable.
         try:
-            fi_due = int(ech.frais_inscription_du or 0)
-            fi_pay = int(ech.frais_inscription_paye or 0)
-            t1_due = int(ech.tranche_1_due or 0)
-            t1_pay = int(ech.tranche_1_payee or 0)
-            t2_due = int(ech.tranche_2_due or 0)
-            t2_pay = int(ech.tranche_2_payee or 0)
-            t3_due = int(ech.tranche_3_due or 0)
-            t3_pay = int(ech.tranche_3_payee or 0)
+            ech = eleve.echeancier
+        except EcheancierPaiement.DoesNotExist:
+            ech = None
+
+        annee_recherche = (
+            getattr(ech, 'annee_scolaire', None)
+            or getattr(eleve.classe, 'annee_scolaire', None)
+        )
+        grille_qs = GrilleTarifaire.objects.filter(
+            ecole=eleve.classe.ecole,
+            niveau=eleve.classe.niveau,
+        )
+        grille = None
+        if annee_recherche:
+            grille = grille_qs.filter(annee_scolaire=annee_recherche).first()
+        if grille is None:
+            grille = grille_qs.order_by('-annee_scolaire').first()
+
+        # Projeter le tarif demandé en mémoire. Cela produit une suggestion
+        # exacte même si l'échéancier n'existe pas encore ou porte l'autre nature.
+        from copy import copy
+        if ech is not None:
+            projected_ech = copy(ech)
+        elif grille is not None:
+            projected_ech = EcheancierPaiement(
+                eleve=eleve,
+                annee_scolaire=grille.annee_scolaire,
+                frais_inscription_du=grille.frais_inscription or 0,
+                tranche_1_due=grille.tranche_1 or 0,
+                tranche_2_due=grille.tranche_2 or 0,
+                tranche_3_due=grille.tranche_3 or 0,
+            )
+        else:
+            return JsonResponse(
+                {'ok': False, 'error': "Aucun échéancier ni grille tarifaire disponible pour l'élève."},
+                status=400,
+            )
+
+        if kind in {'inscription', 'reinscription'} and grille is not None:
+            projected_ech.frais_inscription_du = (
+                grille.frais_reinscription
+                if kind == 'reinscription'
+                else grille.frais_inscription
+            ) or 0
+
+        # Réaffecter virtuellement les encaissements existants si le tarif
+        # d'admission projeté diffère du tarif actuellement enregistré.
+        total_paid = sum(
+            Decimal(str(getattr(ech, paid_field, 0) or 0))
+            for _key, _due_field, paid_field in ALLOCATION_COMPONENTS
+        ) if ech is not None else Decimal('0')
+        _allocation, projected_paid, _unapplied = allocate_amount_sequentially(
+            projected_ech,
+            total_paid,
+            initial_paid={
+                key: Decimal('0')
+                for key, _due_field, _paid_field in ALLOCATION_COMPONENTS
+            },
+        )
+
+        try:
+            fi_due = int(projected_ech.frais_inscription_du or 0)
+            fi_pay = int(projected_paid['inscription'])
+            t1_due = int(projected_ech.tranche_1_due or 0)
+            t1_pay = int(projected_paid['tranche_1'])
+            t2_due = int(projected_ech.tranche_2_due or 0)
+            t2_pay = int(projected_paid['tranche_2'])
+            t3_due = int(projected_ech.tranche_3_due or 0)
+            t3_pay = int(projected_paid['tranche_3'])
         except Exception:
             fi_due = fi_pay = t1_due = t1_pay = t2_due = t2_pay = t3_due = t3_pay = 0
 
@@ -296,44 +373,42 @@ def ajax_montant_suggere(request):
         rt2 = max(0, t2_due - t2_pay)
         rt3 = max(0, t3_due - t3_pay)
 
-        suggested = 0
-        description = ''
-        # Types combinés prioritairement
-        if ((('inscription' in type_nom) and ('annuel' in type_nom)) or ((('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('annuel' in type_nom))):
-            suggested = rfi + rt1 + rt2 + rt3
-            description = "frais d'inscription/réinscription + Annuel (reste)"
-        elif ((('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom)):
-            suggested = rfi + rt1 + rt2
-            description = "frais d'inscription/réinscription + Tranche 1 + Tranche 2 (reste)"
-        elif ((('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom)):
-            suggested = rfi + rt1
-            description = "frais d'inscription/réinscription + Tranche 1 (reste)"
-        elif ('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom):
-            suggested = rfi
-            description = "frais d'inscription/réinscription (reste)"
-        elif ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
-            suggested = rt1 + rt2 + rt3
-            description = "Tranche 1 + Tranche 2 + Tranche 3 (reste)"
-        elif 'tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom:
-            suggested = rt1 + rt2
-            description = "Tranche 1 + Tranche 2 (reste)"
-        elif 'tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom:
-            suggested = rt2 + rt3
-            description = "Tranche 2 + Tranche 3 (reste)"
-        elif 'tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom:
-            suggested = rt1
-            description = "1ère tranche (reste)"
-        elif 'tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom:
-            suggested = rt2
-            description = "2ème tranche (reste)"
-        elif 'tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom:
-            suggested = rt3
-            description = "3ème tranche (reste)"
-        elif 'scolarité' in type_nom:
-            suggested = rt1 + rt2 + rt3
-            description = "Scolarité (reste)"
+        remaining_by_component = {
+            'inscription': rfi,
+            'tranche_1': rt1,
+            'tranche_2': rt2,
+            'tranche_3': rt3,
+        }
+        requested_components = []
+        labels = []
+        if plan['include_registration']:
+            requested_components.append('inscription')
+            labels.append('Réinscription' if kind == 'reinscription' else 'Inscription')
+        for tranche in plan['tranches']:
+            requested_components.append(f'tranche_{tranche}')
+            labels.append(f'Tranche {tranche}')
+        suggested = sum(remaining_by_component[key] for key in requested_components)
+        description = ' + '.join(labels)
+        if description:
+            description += ' (reste)'
 
+        projected_nature = getattr(
+            projected_ech,
+            'nature_frais',
+            EcheancierPaiement.NATURE_INSCRIPTION,
+        )
+        if kind == 'reinscription':
+            projected_nature = EcheancierPaiement.NATURE_REINSCRIPTION
+        elif kind == 'inscription':
+            projected_nature = EcheancierPaiement.NATURE_INSCRIPTION
+        frais_admission_label = (
+            'Réinscription'
+            if projected_nature == EcheancierPaiement.NATURE_REINSCRIPTION
+            else 'Inscription'
+        )
         breakdown = {
+            'nature_frais': projected_nature,
+            'frais_admission_label': frais_admission_label,
             'fi_restant': rfi,
             't1_restant': rt1,
             't2_restant': rt2,
@@ -391,7 +466,10 @@ def _allocate_payment_to_echeancier(paiement: "Paiement"):
 
             # Éviter qu'une relation OneToOne mise en cache masque les cumuls sauvés.
             eleve._state.fields_cache.pop('echeancier', None)
-            _auto_validate_echeancier_for_eleve(eleve)
+            _auto_validate_echeancier_for_eleve(
+                eleve,
+                reference_date=paiement.date_paiement,
+            )
             allocation['non_affecte'] = remaining
             return allocation
     except Exception:
@@ -399,7 +477,7 @@ def _allocate_payment_to_echeancier(paiement: "Paiement"):
         return None
 
 def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaiement" = None):
-    """CompatibilitÃ© avec les anciens tests et appels internes."""
+    """Compatibilité avec les anciens tests et appels internes."""
     return _allocate_payment_to_echeancier(paiement)
 
 
@@ -420,7 +498,10 @@ def _sum_validated_payments_and_remises(eleve):
     return int(paiement_total or 0), int(remise_total or 0)
 
 
-def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
+def _auto_validate_echeancier_for_eleve(
+    eleve: "Eleve",
+    reference_date=None,
+) -> None:
     """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
 
     Règles conservatrices:
@@ -428,6 +509,10 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
     - Les champs *_paye restent limités aux encaissements; les remises restent séparées.
     - Si couverture = 0 -> statut = A_PAYER (pas d'allocation détaillée effectuée ici)
     - Sinon -> statut = PAYE_PARTIEL (sans répartir finement par tranche)
+
+    ``reference_date`` permet aux allocations de paiements antidatés de calculer
+    le statut à la date effective du paiement. Sans valeur, la date courante est
+    utilisée.
 
     Cette fonction évite les incohérences si l'allocation manuelle par tranche a été oubliée.
     """
@@ -450,18 +535,20 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
 
         couverture = max(0, sum_montant + sum_remises)
 
-        # Déterminer le nouveau statut avec gestion du retard
-        # Calcul de l'exigible (sommes dont la date d'échéance est passée ou aujourd'hui)
+        # Déterminer le nouveau statut avec gestion du retard. Une échéance
+        # devient en retard le lendemain de sa date, pas le jour même.
         from django.utils import timezone as _tz
-        today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
+        date_statut = reference_date or (
+            _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
+        )
         exigible = 0
-        if echeancier.date_echeance_inscription and echeancier.date_echeance_inscription <= today:
+        if echeancier.date_echeance_inscription and echeancier.date_echeance_inscription < date_statut:
             exigible += int(echeancier.frais_inscription_du or 0)
-        if echeancier.date_echeance_tranche_1 and echeancier.date_echeance_tranche_1 <= today:
+        if echeancier.date_echeance_tranche_1 and echeancier.date_echeance_tranche_1 < date_statut:
             exigible += int(echeancier.tranche_1_due or 0)
-        if echeancier.date_echeance_tranche_2 and echeancier.date_echeance_tranche_2 <= today:
+        if echeancier.date_echeance_tranche_2 and echeancier.date_echeance_tranche_2 < date_statut:
             exigible += int(echeancier.tranche_2_due or 0)
-        if echeancier.date_echeance_tranche_3 and echeancier.date_echeance_tranche_3 <= today:
+        if echeancier.date_echeance_tranche_3 and echeancier.date_echeance_tranche_3 < date_statut:
             exigible += int(echeancier.tranche_3_due or 0)
 
         # Allocation conservatrice sur les tranches SANS jamais réduire l'existant
@@ -1189,28 +1276,55 @@ def liste_paiements(request):
             output_field=DecimalField(max_digits=12, decimal_places=0),
         )
     )
-    remises_expr = Coalesce(
-        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
-        Value(0),
-        output_field=DecimalField(max_digits=12, decimal_places=0),
+    # Agréger les remises dans une requête séparée. Une jointure
+    # échéancier -> paiements -> remises multiplierait les montants dus dès
+    # qu'un élève possède plusieurs remises.
+    montant_remise_field = DecimalField(max_digits=12, decimal_places=0)
+    remises_qs = PaiementRemise.objects.filter(
+        paiement__eleve__in=eleves_qs,
+        paiement__statut='VALIDE',
     )
-    # Annoter montant de réinscription dû par échéancier (en comparant à la grille tarifaire)
-    try:
-        reinsc_subq = GrilleTarifaire.objects.filter(
-            ecole=OuterRef('eleve__classe__ecole'),
-            niveau=OuterRef('eleve__classe__niveau'),
-            annee_scolaire=OuterRef('annee_scolaire'),
-        ).values('frais_reinscription')[:1]
-        eche_qs = eche_qs.annotate(
-            reinsc_due=Case(
-                When(frais_inscription_du=Subquery(reinsc_subq), then=F('frais_inscription_du')),
-                default=Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=0),
+    remises_total = int(
+        remises_qs.aggregate(
+            total=Coalesce(
+                Sum('montant_remise', output_field=montant_remise_field),
+                Value(0, output_field=montant_remise_field),
+                output_field=montant_remise_field,
+            )
+        ).get('total') or 0
+    )
+    remises_par_classe = {
+        row['paiement__eleve__classe_id']: int(row['total'] or 0)
+        for row in remises_qs.values('paiement__eleve__classe_id').annotate(
+            total=Coalesce(
+                Sum('montant_remise', output_field=montant_remise_field),
+                Value(0, output_field=montant_remise_field),
+                output_field=montant_remise_field,
             )
         )
-    except Exception:
-        # En cas d'erreur d'annotation, fallback sans champ dédié
-        pass
+    }
+    # Ventilation disjointe du poste d'admission. La nature est enregistrée au
+    # moment du choix utilisateur et reste fiable même si les deux tarifs sont
+    # identiques dans la grille.
+    montant_admission_field = DecimalField(max_digits=12, decimal_places=0)
+    eche_qs = eche_qs.annotate(
+        insc_due=Case(
+            When(
+                nature_frais=EcheancierPaiement.NATURE_INSCRIPTION,
+                then=F('frais_inscription_du'),
+            ),
+            default=Value(0),
+            output_field=montant_admission_field,
+        ),
+        reinsc_due=Case(
+            When(
+                nature_frais=EcheancierPaiement.NATURE_REINSCRIPTION,
+                then=F('frais_inscription_du'),
+            ),
+            default=Value(0),
+            output_field=montant_admission_field,
+        ),
+    )
 
     aggr_du = eche_qs.aggregate(
         dues_sco=Coalesce(
@@ -1218,41 +1332,29 @@ def liste_paiements(request):
             Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
             output_field=DecimalField(max_digits=12, decimal_places=0),
         ),
-        remises=remises_expr,
     )
     dues_sco_total = int(aggr_du.get('dues_sco') or 0)
-    remises_total = int(aggr_du.get('remises') or 0)
     du_sco_net = max(dues_sco_total - remises_total, 0)
-    frais_inscription_total = int(
-        eche_qs.aggregate(
-            total=Coalesce(
-                Sum(F('frais_inscription_du'), output_field=DecimalField(max_digits=12, decimal_places=0)),
-                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                output_field=DecimalField(max_digits=12, decimal_places=0),
-            )
-        ).get('total')
-        or 0
+    admission_totals = eche_qs.aggregate(
+        inscription=Coalesce(
+            Sum('insc_due', output_field=montant_admission_field),
+            Value(0, output_field=montant_admission_field),
+            output_field=montant_admission_field,
+        ),
+        reinscription=Coalesce(
+            Sum('reinsc_due', output_field=montant_admission_field),
+            Value(0, output_field=montant_admission_field),
+            output_field=montant_admission_field,
+        ),
     )
-    du_global_net = du_sco_net + frais_inscription_total
-
-    # Total global de réinscription (échéanciers dont le poste inscription correspond à la réinscription de la grille)
-    try:
-        reinsc_total = int(
-            eche_qs.aggregate(
-                total=Coalesce(
-                    Sum(F('reinsc_due'), output_field=DecimalField(max_digits=12, decimal_places=0)),
-                    Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
-                    output_field=DecimalField(max_digits=12, decimal_places=0),
-                )
-            ).get('total') or 0
-        )
-    except Exception:
-        reinsc_total = 0
-    # Ratio global (éviter division par 0)
-    try:
-        reinsc_ratio = float(reinsc_total) / float(frais_inscription_total) * 100.0 if int(frais_inscription_total) > 0 else 0.0
-    except Exception:
-        reinsc_ratio = 0.0
+    frais_inscription_total = int(admission_totals.get('inscription') or 0)
+    reinsc_total = int(admission_totals.get('reinscription') or 0)
+    total_admission = frais_inscription_total + reinsc_total
+    du_global_net = du_sco_net + total_admission
+    reinsc_ratio = (
+        float(reinsc_total) / float(total_admission) * 100.0
+        if total_admission > 0 else 0.0
+    )
 
     # Détail par école/classe (filtre libre appliqué aux élèves)
     detail_qs = (
@@ -1268,9 +1370,8 @@ def liste_paiements(request):
                 Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
                 output_field=DecimalField(max_digits=12, decimal_places=0),
             ),
-            remises_sum=remises_expr,
             frais_insc_sum=Coalesce(
-                Sum(F('frais_inscription_du'), output_field=DecimalField(max_digits=12, decimal_places=0)),
+                Sum('insc_due', output_field=DecimalField(max_digits=12, decimal_places=0)),
                 Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
                 output_field=DecimalField(max_digits=12, decimal_places=0),
             ),
@@ -1285,17 +1386,14 @@ def liste_paiements(request):
     totaux_du_detail_classes = []
     for row in detail_qs:
         dues = int(row.get('dues_sco_sum') or 0)
-        rem = int(row.get('remises_sum') or 0)
+        rem = remises_par_classe.get(row.get('eleve__classe__id'), 0)
         net_sco = max(dues - rem, 0)
         cnt = int(row.get('eleves_count') or 0)
         insc = int(row.get('frais_insc_sum') or 0)
         reinsc = int(row.get('reinsc_sum') or 0)
-        tot = net_sco + insc
-        # Ratio par classe (réinscription / inscription)
-        try:
-            reinsc_pct = float(reinsc) / float(insc) * 100.0 if insc > 0 else 0.0
-        except Exception:
-            reinsc_pct = 0.0
+        admission = insc + reinsc
+        tot = net_sco + admission
+        reinsc_pct = float(reinsc) / float(admission) * 100.0 if admission > 0 else 0.0
         totaux_du_detail_classes.append({
             'ecole_id': row.get('eleve__classe__ecole__id'),
             'ecole_nom': row.get('eleve__classe__ecole__nom'),
@@ -1398,13 +1496,6 @@ def export_recap_par_classe_excel(request):
     echeanciers = list(eche_qs)
     eleve_ids = [echeancier.eleve_id for echeancier in echeanciers]
 
-    grille_map = {
-        (grille.ecole_id, grille.niveau, grille.annee_scolaire): grille.frais_reinscription or Decimal('0')
-        for grille in GrilleTarifaire.objects.filter(
-            ecole_id__in={e.eleve.classe.ecole_id for e in echeanciers}
-        )
-    } if echeanciers else {}
-
     remises_qs = PaiementRemise.objects.filter(
         paiement__statut='VALIDE', paiement__eleve_id__in=eleve_ids
     )
@@ -1433,13 +1524,11 @@ def export_recap_par_classe_excel(request):
             + (echeancier.tranche_2_due or 0)
             + (echeancier.tranche_3_due or 0)
         )
-        frais_inscription = echeancier.frais_inscription_du or Decimal('0')
-        row['frais_insc_sum'] += frais_inscription
-        frais_reinscription = grille_map.get(
-            (classe.ecole_id, classe.niveau, echeancier.annee_scolaire), Decimal('0')
-        )
-        if frais_reinscription and frais_inscription == frais_reinscription:
-            row['reinsc_sum'] += frais_inscription
+        frais_admission = echeancier.frais_inscription_du or Decimal('0')
+        if echeancier.nature_frais == EcheancierPaiement.NATURE_REINSCRIPTION:
+            row['reinsc_sum'] += frais_admission
+        else:
+            row['frais_insc_sum'] += frais_admission
 
     detail_rows = sorted(details.items(), key=lambda item: (item[1]['ecole'], item[1]['classe']))
 
@@ -1459,8 +1548,9 @@ def export_recap_par_classe_excel(request):
         net_sco = max(dues - rem, 0)
         insc = int(row.get('frais_insc_sum') or 0)
         reinsc = int(row.get('reinsc_sum') or 0)
-        tot = net_sco + insc
-        pct = (reinsc / insc * 100.0) if insc > 0 else 0.0
+        admission = insc + reinsc
+        tot = net_sco + admission
+        pct = (reinsc / admission * 100.0) if admission > 0 else 0.0
         ws.append([
             row.get('ecole'),
             row.get('classe'),
@@ -1581,6 +1671,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     return redirect('paiements:liste_paiements')
 
             type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
+            type_plan = payment_type_plan(paiement.type_paiement)
 
             # Récupérer/assurer l'échéancier et appliquer le tarif correspondant
             # au type réellement choisi (inscription ou réinscription).
@@ -1588,7 +1679,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                 ech = ensure_echeancier_for_eleve(
                     paiement.eleve,
                     created_by=request.user if request.user.is_authenticated else None,
-                    registration_kind=registration_kind_for_type(type_nom),
+                    registration_kind=type_plan['registration_kind'],
                 )
             except Exception:
                 ech = None
@@ -1625,46 +1716,37 @@ def ajouter_paiement(request, eleve_id:int=None):
             t1_restant = max(0, t1_due - t1_payee)
             t2_restant = max(0, t2_due - t2_payee)
             t3_restant = max(0, t3_due - t3_payee)
-            
-            # IMPORTANT: évaluer d'abord les types combinés pour éviter que 'inscription' seul ne matche
-            if ('inscription' in type_nom and 'annuel' in type_nom):
-                # Frais d'inscription + Annuel (T1+T2+T3)
-                montant_attendu = fi_restant + t1_restant + t2_restant + t3_restant
-                type_description = "frais d'inscription + Annuel"
-            elif ('inscription' in type_nom and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom)):
-                # Frais d'inscription + T1 + T2
-                montant_attendu = fi_restant + t1_restant + t2_restant
-                type_description = "frais d'inscription + Tranche 1 + Tranche 2"
-            elif ('inscription' in type_nom and ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom)):
-                # Frais d'inscription + T1
-                montant_attendu = fi_restant + t1_restant
-                type_description = "frais d'inscription + Tranche 1"
-            elif 'inscription' in type_nom:
-                montant_attendu = fi_restant
-                type_description = "frais d'inscription"
-            elif ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
-                montant_attendu = t1_restant + t2_restant + t3_restant
-                type_description = "Tranche 1 + Tranche 2 + Tranche 3"
-            elif 'tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom:
-                montant_attendu = t1_restant + t2_restant
-                type_description = "Tranche 1 + Tranche 2"
-            elif 'tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom:
-                montant_attendu = t2_restant + t3_restant
-                type_description = "Tranche 2 + Tranche 3"
-            elif 'tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom:
-                montant_attendu = t1_restant
-                type_description = "1ère tranche"
-            elif 'tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom:
-                montant_attendu = t2_restant
-                type_description = "2ème tranche"
-            elif 'tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom:
-                montant_attendu = t3_restant
-                type_description = "3ème tranche"
+            remaining_by_component = {
+                'inscription': fi_restant,
+                'tranche_1': t1_restant,
+                'tranche_2': t2_restant,
+                'tranche_3': t3_restant,
+            }
+            requested_components = []
+            type_labels = []
+            if type_plan['include_registration']:
+                requested_components.append('inscription')
+                type_labels.append(
+                    'frais de réinscription'
+                    if type_plan['registration_kind'] == 'reinscription'
+                    else "frais d'inscription"
+                )
+            for tranche in type_plan['tranches']:
+                requested_components.append(f'tranche_{tranche}')
+                type_labels.append(f'tranche {tranche}')
+            montant_attendu = sum(
+                remaining_by_component[component]
+                for component in requested_components
+            )
+            type_description = ' + '.join(type_labels)
             
             # Vérifier si le montant correspond au type sélectionné
             if montant_attendu > 0 and montant_saisi != montant_attendu:
                 # Paiements partiels: autoriser sans confirmation pour une tranche simple
-                is_single_tranche = type_description in ["1ère tranche", "2ème tranche", "3ème tranche"]
+                is_single_tranche = (
+                    not type_plan['include_registration']
+                    and len(type_plan['tranches']) == 1
+                )
                 if montant_saisi < montant_attendu and is_single_tranche:
                     # Autoriser directement le paiement partiel de tranche
                     pass
@@ -2510,8 +2592,8 @@ def echeancier_eleve(request, eleve_id:int):
 
         postes = [
             {
-                'code': 'INSCRIPTION',
-                'libelle': "Frais d'inscription",
+                'code': echeancier.nature_frais,
+                'libelle': echeancier.libelle_frais_admission,
                 'du': int(echeancier.frais_inscription_du or 0),
                 'paye': int(echeancier.frais_inscription_paye or 0),
                 'echeance': echeancier.date_echeance_inscription,
@@ -2851,12 +2933,12 @@ def generer_recu_pdf(request, paiement_id:int):
     except Exception:
         pass
 
-    # Déterminer libellé Inscription/Réinscription pour l'affichage (structure inchangée)
-    try:
-        _type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
-    except Exception:
-        _type_nom = ''
-    label_insc = "Réinscription" if ('réinscription' in _type_nom or 'reinscription' in _type_nom) else "Inscription"
+    # Déterminer le libellé avec le même parseur que l'allocation.
+    label_insc = (
+        "Réinscription"
+        if registration_kind_for_type(paiement.type_paiement) == 'reinscription'
+        else "Inscription"
+    )
 
     # Mise en page simple
     left = 40
@@ -3149,6 +3231,7 @@ def generer_recu_pdf(request, paiement_id:int):
     except Exception:
         echeancier = None
     if echeancier:
+        label_frais_admission = echeancier.libelle_frais_admission
         top -= 6
         draw_line("Échéances", bold=True)
         try:
@@ -3163,7 +3246,7 @@ def generer_recu_pdf(request, paiement_id:int):
                 except Exception:
                     return str(d) if d else ''
             # Inscription / Réinscription (libellé dynamique, structure inchangée)
-            draw_line(f"{label_insc}: {_fmt_amount(echeancier.frais_inscription_du)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_inscription)}")
+            draw_line(f"{label_frais_admission}: {_fmt_amount(echeancier.frais_inscription_du)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_inscription)}")
             # Tranches
             draw_line(f"1ère tranche: {_fmt_amount(echeancier.tranche_1_due)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_tranche_1)}")
             draw_line(f"2ème tranche: {_fmt_amount(echeancier.tranche_2_due)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_tranche_2)}")
@@ -3212,7 +3295,7 @@ def generer_recu_pdf(request, paiement_id:int):
                 r_t1 = _reste(echeancier.tranche_1_due, echeancier.tranche_1_payee)
                 r_t2 = _reste(echeancier.tranche_2_due, echeancier.tranche_2_payee)
                 r_t3 = _reste(echeancier.tranche_3_due, echeancier.tranche_3_payee)
-            draw_line(f"{label_insc}: {str(f'{r_insc:,}').replace(',', ' ')} GNF")
+            draw_line(f"{label_frais_admission}: {str(f'{r_insc:,}').replace(',', ' ')} GNF")
             draw_line(f"1ère tranche: {str(f'{r_t1:,}').replace(',', ' ')} GNF")
             draw_line(f"2ème tranche: {str(f'{r_t2:,}').replace(',', ' ')} GNF")
             draw_line(f"3ème tranche: {str(f'{r_t3:,}').replace(',', ' ')} GNF")
@@ -3828,28 +3911,16 @@ def eleves_soldes_simple(request):
         ),
         Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
     )
-    # Calcul du montant de réinscription dû (basé sur la grille tarifaire)
-    try:
-        from eleves.models import GrilleTarifaire
-        reinsc_subq = GrilleTarifaire.objects.filter(
-            ecole=OuterRef('eleve__classe__ecole'),
-            niveau=OuterRef('eleve__classe__niveau'),
-            annee_scolaire=OuterRef('annee_scolaire'),
-        ).values('frais_reinscription')[:1]
-        
-        # Annotation pour identifier les frais de réinscription
-        qs = qs.annotate(
-            reinsc_due=Case(
-                When(frais_inscription_du=Subquery(reinsc_subq), then=F('frais_inscription_du')),
-                default=Value(0),
-                output_field=DecimalField(max_digits=12, decimal_places=0),
-            )
+    qs = qs.annotate(
+        reinsc_due=Case(
+            When(
+                nature_frais=EcheancierPaiement.NATURE_REINSCRIPTION,
+                then=F('frais_inscription_du'),
+            ),
+            default=Value(0),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
         )
-    except Exception:
-        # Fallback si pas de grille tarifaire
-        qs = qs.annotate(
-            reinsc_due=Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))
-        )
+    )
 
     paye_effectif = ExpressionWrapper(
         Coalesce(F('frais_inscription_paye'), Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)))
@@ -3957,6 +4028,8 @@ def ajax_eleve_info(request):
 
     if echeancier:
         data['echeancier'] = {
+            'nature_frais': echeancier.nature_frais,
+            'frais_admission_label': echeancier.libelle_frais_admission,
             'inscription_du': int(echeancier.frais_inscription_du or 0),
             'inscription_paye': int(echeancier.frais_inscription_paye or 0),
             'tranche_1_du': int(echeancier.tranche_1_due or 0),
@@ -4310,8 +4383,22 @@ def rapport_encaissements(request):
             qs = qs.filter(date_paiement__lte=au)
     except Exception:
         pass
+    montant_field = DecimalField(max_digits=12, decimal_places=0)
     total = int(qs.aggregate(total=Sum('montant'))['total'] or 0)
-    par_statut = list(qs.values('statut').annotate(count=Count('id'), somme=Coalesce(Sum('montant'), Value(0))).order_by('statut'))
+    par_statut = list(
+        qs.values('statut')
+        .annotate(
+            count=Count('id'),
+            somme=Coalesce(
+                Sum('montant', output_field=montant_field),
+                Value(0, output_field=montant_field),
+                output_field=montant_field,
+            ),
+        )
+        .order_by('statut')
+    )
+    for ligne in par_statut:
+        ligne['somme'] = int(ligne['somme'] or 0)
     context = {'titre_page': 'Rapport des encaissements', 'total': total, 'par_statut': par_statut}
     if _template_exists('rapports/tableau_bord.html'):
         return render(request, 'rapports/tableau_bord.html', context)

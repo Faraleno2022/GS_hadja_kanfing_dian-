@@ -55,7 +55,7 @@
     </div>
 </div>
 
-<!-- Dû scolarité après remises + Frais d'inscription (filtre libre appliqué) -->
+<!-- Dû scolarité après remises + frais d'admission ventilés (filtre libre appliqué) -->
 <div class="stats-row">
     <div class="row">
         <div class="col-md-3">
@@ -70,17 +70,17 @@
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-secondary">{{ totaux_du.frais_inscription_total|default:0|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Frais d'inscription (échéancier)</div>
+                <div class="stat-label">Frais d'inscription</div>
                 <small class="text-muted">Calculés depuis les échéanciers filtrés</small>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-primary">{{ totaux_du.frais_reinscription_total|default:0|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Réinscription (échéancier)</div>
-                <small class="text-muted">Part spécifique des réinscriptions</small>
+                <div class="stat-label">Frais de réinscription</div>
+                <small class="text-muted">Ventilation distincte des inscriptions</small>
                 {% if totaux_du.frais_reinscription_pct is not None %}
-                    <div><small class="text-muted">{{ totaux_du.frais_reinscription_pct|floatformat:2 }} % des inscriptions</small></div>
+                    <div><small class="text-muted">{{ totaux_du.frais_reinscription_pct|floatformat:2 }} % des frais d'admission</small></div>
                 {% endif %}
             </div>
         </div>
