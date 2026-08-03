@@ -9,7 +9,13 @@ from eleves.models import Classe, Ecole, Eleve
 from utilisateurs.models import Profil
 
 from .forms import BienEtablissementForm, ContributionPapierRameForm
-from .models_logistique import BienEtablissement, ContributionPapierRame
+from .models_logistique import (
+    Article,
+    BienEtablissement,
+    CategorieArticle,
+    ContributionPapierRame,
+    MouvementStock,
+)
 
 
 MIDDLEWARE_SANS_LICENCE = [
@@ -60,6 +66,23 @@ class LogistiqueSimplifieeTests(TestCase):
             classe=self.autre_classe, statut='ACTIF', cree_par=self.autre_user,
         )
         self.client.force_login(self.user)
+        self.categorie_fournitures = CategorieArticle.objects.create(
+            nom='Fournitures scolaires',
+            code='FOURN-TEST',
+            type_categorie='FOURNITURE',
+        )
+
+    def creer_fourniture(self, *, code='FOUR-001', nom='Cahier', user=None):
+        return Article.objects.create(
+            code_article=code,
+            nom=nom,
+            categorie=self.categorie_fournitures,
+            stock_minimum=2,
+            stock_maximum=100,
+            prix_unitaire=Decimal('5000'),
+            prix_vente_unitaire=Decimal('7500'),
+            cree_par=user or self.user,
+        )
 
     def test_calcul_des_quantites_et_de_la_valeur_du_bien(self):
         bien = BienEtablissement.objects.create(
@@ -171,7 +194,108 @@ class LogistiqueSimplifieeTests(TestCase):
             response = self.client.get(reverse(f'depenses:{url_name}'))
             self.assertEqual(response.status_code, 200)
 
-    def test_anciens_ecrans_de_stock_redirigent_vers_le_nouveau_module(self):
-        for url_name in ('liste_articles', 'liste_mouvements', 'liste_inventaires'):
+    def test_module_fournitures_est_accessible_et_inventaire_reste_redirige(self):
+        for url_name in ('liste_articles', 'liste_mouvements'):
+            response = self.client.get(reverse(f'depenses:{url_name}'))
+            self.assertEqual(response.status_code, 200)
+
+        for url_name in ('liste_inventaires',):
             response = self.client.get(reverse(f'depenses:{url_name}'))
             self.assertRedirects(response, reverse('depenses:dashboard_logistique'))
+
+    def test_creation_produit_avec_stock_initial(self):
+        response = self.client.post(reverse('depenses:creer_article'), {
+            'code_article': 'STYLO-001',
+            'nom': 'Stylo bleu',
+            'categorie': self.categorie_fournitures.pk,
+            'description': '',
+            'marque': '',
+            'reference': '',
+            'unite_mesure': 'PIECE',
+            'stock_minimum': 5,
+            'stock_maximum': 100,
+            'prix_unitaire': 2000,
+            'prix_vente_unitaire': 3000,
+            'stock_initial': 20,
+            'etat': 'NEUF',
+            'emplacement': 'Magasin',
+        })
+
+        self.assertRedirects(response, reverse('depenses:liste_articles'))
+        article = Article.objects.get(code_article='STYLO-001')
+        self.assertEqual(article.stock_actuel, 20)
+        mouvement = article.mouvements.get()
+        self.assertEqual(mouvement.type_mouvement, 'ENTREE')
+        self.assertEqual(mouvement.quantite, 20)
+
+    def test_vente_met_a_jour_stock_et_tableau_de_bord(self):
+        article = self.creer_fourniture()
+        MouvementStock.objects.create(
+            numero_mouvement='MVT-ENTREE-001',
+            article=article,
+            type_mouvement='ENTREE',
+            motif='ACHAT',
+            quantite=10,
+            prix_unitaire=article.prix_unitaire,
+            cree_par=self.user,
+        )
+
+        response = self.client.post(reverse('depenses:creer_vente_fourniture'), {
+            'article': article.pk,
+            'quantite': 3,
+            'prix_vente_unitaire': 7500,
+            'acheteur': 'Parent Eleve',
+            'document_reference': 'REC-001',
+            'observations': '',
+        })
+
+        self.assertRedirects(response, reverse('depenses:liste_articles'))
+        article.refresh_from_db()
+        self.assertEqual(article.stock_actuel, 7)
+        vente = article.mouvements.get(motif='VENTE')
+        self.assertEqual(vente.montant_total, Decimal('22500'))
+        dashboard = self.client.get(reverse('depenses:liste_articles'))
+        self.assertEqual(dashboard.context['stats']['quantite_vendue'], 3)
+        self.assertEqual(dashboard.context['stats']['quantite_restante'], 7)
+        self.assertEqual(dashboard.context['stats']['chiffre_affaires'], Decimal('22500'))
+        self.assertEqual(dashboard.context['stats']['solde'], Decimal('7500'))
+
+    def test_vente_refuse_un_stock_insuffisant(self):
+        article = self.creer_fourniture()
+        MouvementStock.objects.create(
+            numero_mouvement='MVT-ENTREE-002',
+            article=article,
+            type_mouvement='ENTREE',
+            motif='ACHAT',
+            quantite=2,
+            prix_unitaire=article.prix_unitaire,
+            cree_par=self.user,
+        )
+
+        response = self.client.post(reverse('depenses:creer_vente_fourniture'), {
+            'article': article.pk,
+            'quantite': 3,
+            'prix_vente_unitaire': 7500,
+            'acheteur': '',
+            'document_reference': '',
+            'observations': '',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Stock insuffisant')
+        article.refresh_from_db()
+        self.assertEqual(article.stock_actuel, 2)
+        self.assertFalse(article.mouvements.filter(motif='VENTE').exists())
+
+    def test_fournitures_des_autres_ecoles_sont_masquees(self):
+        self.creer_fourniture(code='ECOLE-001', nom='Cahier visible')
+        self.creer_fourniture(
+            code='AUTRE-001',
+            nom='Produit autre ecole',
+            user=self.autre_user,
+        )
+
+        response = self.client.get(reverse('depenses:liste_articles'))
+
+        self.assertContains(response, 'Cahier visible')
+        self.assertNotContains(response, 'Produit autre ecole')

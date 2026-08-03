@@ -72,7 +72,18 @@ class Article(SyncTrackedModel):
     stock_maximum = models.IntegerField(default=0, verbose_name="Stock maximum")
     
     # Prix
-    prix_unitaire = models.DecimalField(max_digits=12, decimal_places=0, default=Decimal('0'), verbose_name="Prix unitaire (GNF)")
+    prix_unitaire = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Prix d'achat unitaire (GNF)",
+    )
+    prix_vente_unitaire = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Prix de vente unitaire (GNF)",
+    )
     
     # État et localisation
     etat = models.CharField(max_length=20, choices=ETAT_CHOICES, default='NEUF', verbose_name="État")
@@ -97,8 +108,18 @@ class Article(SyncTrackedModel):
     
     @property
     def valeur_stock(self):
-        """Valeur totale du stock"""
+        """Valeur d'achat du stock restant."""
         return self.stock_actuel * self.prix_unitaire
+
+    @property
+    def valeur_vente_stock(self):
+        """Valeur de vente potentielle du stock restant."""
+        return self.stock_actuel * self.prix_vente_unitaire
+
+    @property
+    def marge_unitaire(self):
+        """Marge prévisionnelle sur une unité vendue."""
+        return self.prix_vente_unitaire - self.prix_unitaire
     
     @property
     def alerte_stock(self):

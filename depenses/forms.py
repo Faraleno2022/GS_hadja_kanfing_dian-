@@ -372,12 +372,20 @@ class CategorieArticleForm(forms.ModelForm):
 
 
 class ArticleForm(forms.ModelForm):
+    stock_initial = forms.IntegerField(
+        required=False,
+        min_value=0,
+        initial=0,
+        label="Quantité initiale en stock",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+    )
+
     class Meta:
         model = Article
         fields = [
             'code_article', 'nom', 'categorie', 'description', 'marque', 'reference',
             'unite_mesure', 'stock_minimum', 'stock_maximum', 'prix_unitaire',
-            'etat', 'emplacement', 'photo'
+            'prix_vente_unitaire', 'stock_initial', 'etat', 'emplacement', 'photo'
         ]
         widgets = {
             'code_article': forms.TextInput(attrs={'class': 'form-control'}),
@@ -389,19 +397,25 @@ class ArticleForm(forms.ModelForm):
             'unite_mesure': forms.Select(attrs={'class': 'form-control'}),
             'stock_minimum': forms.NumberInput(attrs={'class': 'form-control'}),
             'stock_maximum': forms.NumberInput(attrs={'class': 'form-control'}),
-            'prix_unitaire': forms.NumberInput(attrs={'class': 'form-control'}),
+            'prix_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+            'prix_vente_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
             'etat': forms.Select(attrs={'class': 'form-control'}),
             'emplacement': forms.TextInput(attrs={'class': 'form-control'}),
             'photo': forms.FileInput(attrs={'class': 'form-control'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Le code est généré automatiquement si laissé vide
         self.fields['code_article'].required = False
         self.fields['code_article'].widget.attrs['placeholder'] = 'Laissez vide pour génération automatique'
-        # Limiter aux catégories actives
-        self.fields['categorie'].queryset = CategorieArticle.objects.filter(actif=True)
+        # Ce module est réservé aux fournitures scolaires.
+        self.fields['categorie'].queryset = CategorieArticle.objects.filter(
+            actif=True,
+            type_categorie='FOURNITURE',
+        )
+        if self.instance.pk:
+            self.fields.pop('stock_initial', None)
 
     def clean_code_article(self):
         code = self.cleaned_data.get('code_article')
@@ -413,6 +427,16 @@ class ArticleForm(forms.ModelForm):
             if qs.exists():
                 raise ValidationError("Ce code article existe déjà.")
         return code
+
+    def clean(self):
+        cleaned_data = super().clean()
+        prix_achat = cleaned_data.get('prix_unitaire') or Decimal('0')
+        prix_vente = cleaned_data.get('prix_vente_unitaire') or Decimal('0')
+        if prix_achat < 0:
+            self.add_error('prix_unitaire', "Le prix d'achat ne peut pas être négatif.")
+        if prix_vente <= 0:
+            self.add_error('prix_vente_unitaire', "Indiquez un prix de vente supérieur à zéro.")
+        return cleaned_data
 
 
 class BienEtablissementForm(forms.ModelForm):
@@ -527,6 +551,112 @@ class MouvementStockForm(forms.ModelForm):
             'document_reference': forms.TextInput(attrs={'class': 'form-control'}),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        articles = Article.objects.filter(
+            actif=True,
+            categorie__type_categorie='FOURNITURE',
+        ).select_related('categorie')
+        if user is None:
+            articles = articles.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            articles = filter_by_user_school(articles, user, 'cree_par__profil__ecole')
+        self.fields['article'].queryset = articles.order_by('nom')
+        self.fields['quantite'].widget.attrs.update({'min': 1})
+        self.fields['prix_unitaire'].widget.attrs.update({'min': 0, 'step': 1})
+
+    def clean(self):
+        cleaned_data = super().clean()
+        article = cleaned_data.get('article')
+        type_mouvement = cleaned_data.get('type_mouvement')
+        motif = cleaned_data.get('motif')
+        quantite = cleaned_data.get('quantite') or 0
+
+        if quantite <= 0:
+            self.add_error('quantite', "La quantité doit être supérieure à zéro.")
+        if article and type_mouvement == 'SORTIE' and quantite > article.stock_actuel:
+            self.add_error(
+                'quantite',
+                f"Stock insuffisant : {article.stock_actuel} unité(s) disponible(s).",
+            )
+        if motif == 'VENTE' and type_mouvement != 'SORTIE':
+            self.add_error('type_mouvement', "Une vente doit être enregistrée comme une sortie.")
+        return cleaned_data
+
+
+class VenteFournitureForm(forms.Form):
+    article = forms.ModelChoiceField(
+        queryset=Article.objects.none(),
+        label="Produit",
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    quantite = forms.IntegerField(
+        min_value=1,
+        label="Quantité vendue",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+    )
+    prix_vente_unitaire = forms.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        required=False,
+        label="Prix de vente unitaire (GNF)",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+    )
+    acheteur = forms.CharField(
+        max_length=200,
+        required=False,
+        label="Acheteur / destinataire",
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+    )
+    document_reference = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Référence du reçu",
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+    )
+    observations = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+    )
+
+    def __init__(self, *args, user=None, article_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        articles = Article.objects.filter(
+            actif=True,
+            categorie__type_categorie='FOURNITURE',
+        ).select_related('categorie')
+        if user is None:
+            articles = articles.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            articles = filter_by_user_school(articles, user, 'cree_par__profil__ecole')
+        self.fields['article'].queryset = articles.order_by('nom')
+
+        if article_id:
+            article = articles.filter(pk=article_id).first()
+            if article:
+                self.fields['article'].initial = article
+                self.fields['prix_vente_unitaire'].initial = article.prix_vente_unitaire
+
+    def clean(self):
+        cleaned_data = super().clean()
+        article = cleaned_data.get('article')
+        quantite = cleaned_data.get('quantite') or 0
+        prix_vente = cleaned_data.get('prix_vente_unitaire')
+
+        if article and quantite > article.stock_actuel:
+            self.add_error(
+                'quantite',
+                f"Stock insuffisant : {article.stock_actuel} unité(s) disponible(s).",
+            )
+        if article and not prix_vente:
+            prix_vente = article.prix_vente_unitaire
+            cleaned_data['prix_vente_unitaire'] = prix_vente
+        if not prix_vente or prix_vente <= 0:
+            self.add_error('prix_vente_unitaire', "Indiquez un prix de vente supérieur à zéro.")
+        return cleaned_data
 
 
 class InventaireForm(forms.ModelForm):
