@@ -1,13 +1,16 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 
+
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class PaiementsApiTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass1234")
-        self.client.login(username="tester", password="pass1234")
+        self.client.force_login(self.user)
 
     def test_api_paiements_list_empty_ok(self):
         url = reverse("paiements:api_paiements_list")

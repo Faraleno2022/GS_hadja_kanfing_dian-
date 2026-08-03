@@ -116,7 +116,7 @@ def export_tranches_par_classe_pdf(request):
     elements.append(Spacer(1, 0.5*cm))
 
     header = [
-        'Élève', 'Inscription payée', 'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée',
+        'Élève', 'Admission payée', 'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée',
         'Total dû', 'Total payé', 'Reste'
     ]
 
@@ -210,7 +210,7 @@ def export_tranches_par_classe_pdf(request):
 
 @login_required
 def export_tranches_par_classe_excel(request):
-    """Export Excel (XLSX) des tranches par classe: Élève, Inscription payée, Tranche 1, Tranche 2, Tranche 3, Total dû, Total payé, Reste.
+    """Export Excel (XLSX) des tranches par classe: Élève, admission payée, Tranche 1, Tranche 2, Tranche 3, Total dû, Total payé, Reste.
 
     Filtres GET facultatifs: ecole, classe/classe_id, annee_scolaire.
     Respecte la séparation par école pour non-admin.
@@ -268,7 +268,7 @@ def export_tranches_par_classe_excel(request):
     ws_index.append(['Tranches par classe', f"Année: {annee_scolaire}" if annee_scolaire else ''])
     ws_index.append(['Écoles / Classes listées:'])
 
-    headers = ['Élève', 'Inscription payée', 'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée', 'Total dû', 'Total payé', 'Reste']
+    headers = ['Élève', 'Admission payée', 'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée', 'Total dû', 'Total payé', 'Reste']
 
     from django.db.models import Sum
     from datetime import date

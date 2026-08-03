@@ -129,15 +129,17 @@ def generer_note_rappel_eleve(eleve, response=None):
         montant_total = ech.total_du
         reste_a_payer = ech.solde_restant
 
-        # Inscription
+        # Frais d'admission (inscription ou réinscription)
         fi_du = Decimal(str(ech.frais_inscription_du or 0))
         fi_paye = Decimal(str(ech.frais_inscription_paye or 0))
         if fi_du > 0:
             fi_reste = max(Decimal('0'), fi_du - fi_paye)
             if fi_reste <= 0:
-                tranches_payees.append("Inscription")
+                tranches_payees.append(ech.get_nature_frais_display())
             else:
-                tranches_restantes.append(f"Inscription ({fi_reste:,.0f} GNF restant)")
+                tranches_restantes.append(
+                    f"{ech.get_nature_frais_display()} ({fi_reste:,.0f} GNF restant)"
+                )
 
         # Tranches 1, 2, 3
         for i, (due_field, paye_field) in enumerate([

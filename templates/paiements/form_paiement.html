@@ -378,7 +378,7 @@
                                 <div class="card border-info">
                                     <div class="card-body py-2">
                                         <div class="d-flex flex-wrap small" style="gap: 12px 24px;">
-                                            <div><span class="text-muted">FI restant:</span> <strong id="sbFi">0 GNF</strong></div>
+                                            <div><span id="sbFiLabel" class="text-muted">Inscription restante:</span> <strong id="sbFi">0 GNF</strong></div>
                                             <div><span class="text-muted">T1 restant:</span> <strong id="sbT1">0 GNF</strong></div>
                                             <div><span class="text-muted">T2 restant:</span> <strong id="sbT2">0 GNF</strong></div>
                                             <div><span class="text-muted">T3 restant:</span> <strong id="sbT3">0 GNF</strong></div>
@@ -587,12 +587,12 @@
                 <div class="card-body">
                     <h6>Types de paiements</h6>
                     <ul class="small">
-                        <li><strong>Frais d'inscription :</strong> Paiement initial (30 000 GNF)</li>
+                        <li><strong>Inscription / Réinscription :</strong> Le tarif adapté à l'élève est appliqué</li>
                         <li><strong>Tranche 1, 2, 3 :</strong> Paiements échelonnés</li>
                         <li><strong>Frais divers :</strong> Autres frais scolaires</li>
-                        <li><strong>Inscription + 1ère tranche :</strong> Paiement combiné</li>
-                        <li><strong>Inscription + 1ère + 2ème tranche :</strong> Paiement combiné</li>
-                        <li><strong>Inscription + Annuel :</strong> Paiement complet</li>
+                        <li><strong>Admission + 1ère tranche :</strong> Paiement combiné</li>
+                        <li><strong>Admission + 1ère + 2ème tranche :</strong> Paiement combiné</li>
+                        <li><strong>Admission + Annuel :</strong> Paiement complet</li>
                     </ul>
                     
                     <h6 class="mt-3">Modes de paiement</h6>
@@ -770,6 +770,8 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             {% if eleve.echeancier %}
             serverEcheancier = {
+                nature_frais: '{{ eleve.echeancier.nature_frais|escapejs }}',
+                frais_admission_label: '{{ eleve.echeancier.libelle_frais_admission|escapejs }}',
                 inscription_du: {{ eleve.echeancier.frais_inscription_du|default:0|stringformat:"d" }},
                 inscription_paye: {{ eleve.echeancier.frais_inscription_paye|default:0|stringformat:"d" }},
                 tranche_1_du: {{ eleve.echeancier.tranche_1_due|default:0|stringformat:"d" }},
@@ -808,14 +810,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (src && src.echeancier) {
                 const e = src.echeancier;
                 return {
+                    nature_frais: e.nature_frais || 'INSCRIPTION',
+                    frais_admission_label: e.frais_admission_label || "Frais d'inscription",
                     inscription_du: e.inscription_du || 0,
                     inscription_paye: e.inscription_paye || 0,
                     tranche_1_du: e.tranche_1_du || 0,
-                    tranche_1_payee: e.tranche_1_payee || 0,
+                    tranche_1_payee: e.tranche_1_payee || e.tranche_1_paye || 0,
                     tranche_2_du: e.tranche_2_du || 0,
-                    tranche_2_payee: e.tranche_2_payee || 0,
+                    tranche_2_payee: e.tranche_2_payee || e.tranche_2_paye || 0,
                     tranche_3_du: e.tranche_3_du || 0,
-                    tranche_3_payee: e.tranche_3_payee || 0,
+                    tranche_3_payee: e.tranche_3_payee || e.tranche_3_paye || 0,
                     total_du: e.total_du || 0,
                     total_paye: e.total_paye || 0,
                     reste: Math.max(0, (e.total_du||0)-(e.total_paye||0))
@@ -913,6 +917,11 @@ document.addEventListener('DOMContentLoaded', function() {
         var amount = 0;
 
         const hasIns = selectedText.includes('inscription') || selectedText.includes('insc');
+        const hasReins = selectedText.includes('reinscription');
+        const sbFiLabel = document.getElementById('sbFiLabel');
+        if (sbFiLabel) {
+            sbFiLabel.textContent = hasReins ? 'Réinscription restante:' : 'Inscription restante:';
+        }
         const hasAnn = selectedText.includes('annuel') || selectedText.includes('annuelle');
         var nearTranche = function(n) { 
             return new RegExp('(tranche\\\\D{0,8}' + n + '|' + n + '\\\\D{0,8}tranche)').test(selectedText);
@@ -966,9 +975,66 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('Montant field updated to:', montantInput.value);
     }
 
+    // La suggestion serveur projette le bon tarif inscription/réinscription
+    // sans modifier l'échéancier avant l'enregistrement du formulaire.
+    async function updateServerSuggestion() {
+        try {
+            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
+            const eleveHidden = document.getElementById('id_eleve');
+            const typeSelectEl = document.getElementById('id_type_paiement');
+            const eleveId = eleveHidden && eleveHidden.value ? eleveHidden.value : null;
+            const typeId = typeSelectEl && typeSelectEl.value ? typeSelectEl.value : null;
+            if (!eleveId || !typeId) return false;
+
+            const resp = await fetch('{% url "paiements:ajax_montant_suggere" %}', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfInput ? csrfInput.value : ''
+                },
+                body: new URLSearchParams({ eleve_id: eleveId, type_id: typeId }).toString()
+            });
+            const data = await resp.json();
+            if (!data || !data.ok) return false;
+
+            const suggested = Number(data.suggested || 0);
+            if (suggested > 0) {
+                montantInput.value = suggested;
+                montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            const bd = data.breakdown || {};
+            const sb = document.getElementById('suggestionBreakdown');
+            const fmt = (v) => Number(v || 0).toLocaleString('fr-FR') + ' GNF';
+            if (sb) {
+                const sbFi = document.getElementById('sbFi');
+                const sbFiLabel = document.getElementById('sbFiLabel');
+                const sbT1 = document.getElementById('sbT1');
+                const sbT2 = document.getElementById('sbT2');
+                const sbT3 = document.getElementById('sbT3');
+                const sbDesc = document.getElementById('sbDesc');
+                if (sbFi) sbFi.textContent = fmt(bd.fi_restant);
+                if (sbFiLabel) sbFiLabel.textContent = (bd.frais_admission_label || 'Inscription') + ' restante:';
+                if (sbT1) sbT1.textContent = fmt(bd.t1_restant);
+                if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
+                if (sbT3) sbT3.textContent = fmt(bd.t3_restant);
+                if (sbDesc) sbDesc.textContent = bd.description || '';
+                sb.style.display = '';
+            }
+            return true;
+        } catch (e) {
+            console.warn('Suggestion serveur indisponible, conservation du calcul local.', e);
+            return false;
+        }
+    }
+
     // Écouteurs d'événements
     if (typeSelect) {
-        typeSelect.addEventListener('change', updateMontantSuggestion);
+        typeSelect.addEventListener('change', function() {
+            updateMontantSuggestion();
+            updateServerSuggestion();
+        });
         // Déclencher aussi sur focus pour s'assurer que ça marche
         typeSelect.addEventListener('focus', updateMontantSuggestion);
     }
@@ -976,7 +1042,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Bouton pour remplir le montant suggéré à la demande
     const btnFillSuggested = document.getElementById('btnFillSuggested');
     if (btnFillSuggested) {
-        btnFillSuggested.addEventListener('click', updateMontantSuggestion);
+        btnFillSuggested.addEventListener('click', function() {
+            updateMontantSuggestion();
+            updateServerSuggestion();
+        });
     }
 
     // Auto-sélection d'un type par défaut si aucun n'est choisi
@@ -1032,6 +1101,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         updateMontantSuggestion();
+        await updateServerSuggestion();
         
         // Réessayer dans 500ms si le montant n'est toujours pas rempli
         setTimeout(async () => {
@@ -1084,11 +1154,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                     const fmt = (v) => { try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; } };
                                     if (sb) {
                                         const sbFi = document.getElementById('sbFi');
+                                        const sbFiLabel = document.getElementById('sbFiLabel');
                                         const sbT1 = document.getElementById('sbT1');
                                         const sbT2 = document.getElementById('sbT2');
                                         const sbT3 = document.getElementById('sbT3');
                                         const sbDesc = document.getElementById('sbDesc');
                                         if (sbFi) sbFi.textContent = fmt(bd.fi_restant);
+                                        if (sbFiLabel) sbFiLabel.textContent = (bd.frais_admission_label || 'Inscription') + ' restante:';
                                         if (sbT1) sbT1.textContent = fmt(bd.t1_restant);
                                         if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
                                         if (sbT3) sbT3.textContent = fmt(bd.t3_restant);

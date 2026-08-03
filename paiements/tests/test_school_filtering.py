@@ -1,7 +1,6 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
-from django.conf import settings
 from datetime import date
 
 from eleves.models import Ecole, Classe, Eleve, Responsable
@@ -14,9 +13,11 @@ from paiements.models import (
     RemiseReduction,
     TypePaiement,
 )
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from utilisateurs.models import Profil
 
 
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class SchoolFilteringTests(TestCase):
     def setUp(self):
         # Schools (provide required fields)
@@ -140,13 +141,6 @@ class SchoolFilteringTests(TestCase):
         self.client.logout()
         self.client.force_login(self.user2)
 
-    def sans_middleware_licence(self):
-        return self.settings(MIDDLEWARE=[
-            middleware
-            for middleware in settings.MIDDLEWARE
-            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
-        ])
-
     def test_api_paiements_list_filtered_by_school(self):
         self.login1()
         url = reverse("paiements:api_paiements_list")
@@ -215,15 +209,13 @@ class SchoolFilteringTests(TestCase):
     def test_relancer_eleve_other_school_is_404(self):
         self.login1()
         url = reverse("paiements:relancer_eleve", kwargs={"eleve_id": self.eleve2.id})
-        # GET simple, on ne vérifie que la protection d'accès (pas les side-effects)
-        resp = self.client.get(url)
+        resp = self.client.post(url)
         self.assertEqual(resp.status_code, 404)
 
     def test_impayes_utilisent_echeancier_et_restent_limites_a_ecole(self):
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_eleves_impayes"))
+        response = self.client.get(reverse("paiements:liste_eleves_impayes"))
 
         self.assertEqual(response.status_code, 200)
         eleves_affiches = [
@@ -238,11 +230,10 @@ class SchoolFilteringTests(TestCase):
         self.echeancier2.save(update_fields=["tranche_1_payee"])
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(
-                reverse("paiements:liste_eleves_soldes"),
-                {"annee": "2024-2025"},
-            )
+        response = self.client.get(
+            reverse("paiements:liste_eleves_soldes"),
+            {"annee": "2024-2025"},
+        )
 
         self.assertEqual(response.status_code, 200)
         eleves_affiches = [
@@ -265,8 +256,7 @@ class SchoolFilteringTests(TestCase):
         )
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_relances"))
+        response = self.client.get(reverse("paiements:liste_relances"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -277,8 +267,7 @@ class SchoolFilteringTests(TestCase):
     def test_eleves_a_relancer_sont_listes_meme_sans_historique(self):
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_relances"))
+        response = self.client.get(reverse("paiements:liste_relances"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_a_relancer"], 1)
@@ -315,8 +304,7 @@ class SchoolFilteringTests(TestCase):
         )
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("rapports:rapport_remises"))
+        response = self.client.get(reverse("rapports:rapport_remises"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["date_debut"], date(2024, 9, 1))
