@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.db.models import Q, Sum, Count, F, DecimalField
-from django.db import models
+from django.db.models import Q, Sum, Count, F, DecimalField, IntegerField, Value
+from django.db.models.functions import Coalesce
+from django.db import models, transaction
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.core.paginator import Paginator
@@ -17,6 +18,7 @@ from .models_logistique import (
 )
 from .forms import (
     CategorieArticleForm, ArticleForm, BienEtablissementForm, MouvementStockForm,
+    VenteFournitureForm,
     InventaireForm, LigneInventaireForm, ContributionPapierRameForm
 )
 
@@ -31,6 +33,40 @@ def _biens_pour_utilisateur(user):
     if not ecole:
         return biens.none()
     return biens.filter(cree_par__profil__ecole=ecole)
+
+
+def _articles_fournitures_pour_utilisateur(user, actifs_seulement=True):
+    """Fournitures visibles par l'utilisateur, strictement limitees a son ecole."""
+    from utilisateurs.utils import filter_by_user_school
+
+    articles = Article.objects.select_related('categorie').filter(
+        categorie__type_categorie='FOURNITURE',
+    )
+    if actifs_seulement:
+        articles = articles.filter(actif=True)
+    return filter_by_user_school(articles, user, 'cree_par__profil__ecole')
+
+
+def _categorie_fournitures_defaut():
+    categorie, _ = CategorieArticle.objects.get_or_create(
+        code='FOURNITURES',
+        defaults={
+            'nom': 'Fournitures scolaires',
+            'type_categorie': 'FOURNITURE',
+            'description': 'Produits scolaires destines a la vente.',
+            'actif': True,
+        },
+    )
+    champs = []
+    if categorie.type_categorie != 'FOURNITURE':
+        categorie.type_categorie = 'FOURNITURE'
+        champs.append('type_categorie')
+    if not categorie.actif:
+        categorie.actif = True
+        champs.append('actif')
+    if champs:
+        categorie.save(update_fields=champs)
+    return categorie
 
 
 def _contributions_pour_utilisateur(user, annee_scolaire=None):
@@ -110,6 +146,90 @@ def dashboard_logistique(request):
 
 @login_required
 def liste_articles(request):
+    """Tableau de bord du stock et des ventes de fournitures scolaires."""
+    q = request.GET.get('q', '').strip()
+    categorie_id = request.GET.get('categorie', '')
+    alerte = request.GET.get('alerte', '')
+
+    articles = _articles_fournitures_pour_utilisateur(request.user)
+    if q:
+        articles = articles.filter(
+            Q(code_article__icontains=q)
+            | Q(nom__icontains=q)
+            | Q(marque__icontains=q)
+            | Q(reference__icontains=q)
+        )
+    if categorie_id:
+        articles = articles.filter(categorie_id=categorie_id)
+    if alerte == 'oui':
+        articles = articles.filter(stock_actuel__lte=F('stock_minimum'))
+
+    articles = articles.annotate(
+        quantite_approvisionnee=Coalesce(
+            Sum('mouvements__quantite', filter=Q(mouvements__type_mouvement='ENTREE')),
+            Value(0),
+            output_field=IntegerField(),
+        ),
+        quantite_vendue=Coalesce(
+            Sum(
+                'mouvements__quantite',
+                filter=Q(mouvements__type_mouvement='SORTIE', mouvements__motif='VENTE'),
+            ),
+            Value(0),
+            output_field=IntegerField(),
+        ),
+        chiffre_affaires=Coalesce(
+            Sum(
+                'mouvements__montant_total',
+                filter=Q(mouvements__type_mouvement='SORTIE', mouvements__motif='VENTE'),
+            ),
+            Value(Decimal('0')),
+            output_field=DecimalField(max_digits=20, decimal_places=0),
+        ),
+    ).order_by('nom')
+
+    articles = list(articles)
+    stats = {
+        'produits': len(articles),
+        'quantite_approvisionnee': 0,
+        'quantite_vendue': 0,
+        'quantite_restante': 0,
+        'valeur_stock': Decimal('0'),
+        'chiffre_affaires': Decimal('0'),
+        'solde': Decimal('0'),
+    }
+    for article in articles:
+        article.cout_produits_vendus = article.quantite_vendue * article.prix_unitaire
+        article.solde_ventes = article.chiffre_affaires - article.cout_produits_vendus
+        stats['quantite_approvisionnee'] += article.quantite_approvisionnee
+        stats['quantite_vendue'] += article.quantite_vendue
+        stats['quantite_restante'] += article.stock_actuel
+        stats['valeur_stock'] += article.valeur_stock
+        stats['chiffre_affaires'] += article.chiffre_affaires
+        stats['solde'] += article.solde_ventes
+
+    categories = CategorieArticle.objects.filter(actif=True, type_categorie='FOURNITURE')
+    articles_ids = [article.pk for article in articles]
+    dernieres_ventes = MouvementStock.objects.select_related('article', 'cree_par').filter(
+        article_id__in=articles_ids,
+        type_mouvement='SORTIE',
+        motif='VENTE',
+    ).order_by('-date_mouvement')[:8]
+
+    return render(request, 'depenses/logistique/liste_articles.html', {
+        'titre_page': 'Gestion et vente des fournitures scolaires',
+        'articles': articles,
+        'categories': categories,
+        'stats': stats,
+        'dernieres_ventes': dernieres_ventes,
+        'q': q,
+        'categorie_id': categorie_id,
+        'alerte': alerte,
+    })
+
+
+@login_required
+def liste_articles_ancienne(request):
     """Liste des articles en stock"""
     from utilisateurs.utils import user_school
 
@@ -381,6 +501,38 @@ def ancienne_logistique_redirection(request, *args, **kwargs):
 
 @login_required
 def liste_mouvements(request):
+    """Historique des entrees, ventes et autres sorties de fournitures."""
+    article_id = request.GET.get('article', '')
+    type_mouvement = request.GET.get('type', '')
+    date_debut = request.GET.get('date_debut', '')
+    date_fin = request.GET.get('date_fin', '')
+    articles = _articles_fournitures_pour_utilisateur(request.user).order_by('nom')
+    mouvements = MouvementStock.objects.select_related('article', 'cree_par').filter(
+        article__in=articles,
+    )
+
+    if article_id:
+        mouvements = mouvements.filter(article_id=article_id)
+    if type_mouvement:
+        mouvements = mouvements.filter(type_mouvement=type_mouvement)
+    if date_debut:
+        mouvements = mouvements.filter(date_mouvement__date__gte=date_debut)
+    if date_fin:
+        mouvements = mouvements.filter(date_mouvement__date__lte=date_fin)
+
+    return render(request, 'depenses/logistique/liste_mouvements.html', {
+        'titre_page': 'Historique des fournitures scolaires',
+        'mouvements': mouvements.order_by('-date_mouvement'),
+        'articles': articles,
+        'article_id': article_id,
+        'type_mouvement': type_mouvement,
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+    })
+
+
+@login_required
+def liste_mouvements_ancienne(request):
     """Liste des mouvements de stock"""
     from utilisateurs.utils import user_school
 
@@ -443,6 +595,117 @@ def liste_inventaires(request):
 
 @login_required
 def creer_mouvement(request):
+    """Enregistrer un approvisionnement ou une sortie de stock."""
+    kwargs = {'user': request.user}
+    mouvement_enregistre = False
+    if request.method == 'POST':
+        form = MouvementStockForm(request.POST, **kwargs)
+        if form.is_valid():
+            with transaction.atomic():
+                article = get_object_or_404(
+                    _articles_fournitures_pour_utilisateur(request.user).select_for_update(),
+                    pk=form.cleaned_data['article'].pk,
+                )
+                quantite = form.cleaned_data['quantite']
+                type_mouvement = form.cleaned_data['type_mouvement']
+                if type_mouvement == 'SORTIE' and quantite > article.stock_actuel:
+                    form.add_error(
+                        'quantite',
+                        f"Stock insuffisant : {article.stock_actuel} unite(s) disponible(s).",
+                    )
+                else:
+                    mouvement = form.save(commit=False)
+                    mouvement.article = article
+                    mouvement.cree_par = request.user
+                    mouvement.numero_mouvement = _generer_code(
+                        MouvementStock, 'numero_mouvement', 'MVT'
+                    )
+                    if mouvement.prix_unitaire is None:
+                        mouvement.prix_unitaire = (
+                            article.prix_vente_unitaire
+                            if mouvement.motif == 'VENTE'
+                            else article.prix_unitaire
+                        )
+                    mouvement.save()
+                    mouvement_enregistre = True
+            if mouvement_enregistre:
+                messages.success(request, 'Mouvement de stock enregistre avec succes.')
+                return redirect('depenses:liste_articles')
+    else:
+        initial = {
+            'article': request.GET.get('article', ''),
+            'type_mouvement': 'ENTREE',
+            'motif': 'ACHAT',
+            'date_mouvement': timezone.localtime().strftime('%Y-%m-%dT%H:%M'),
+        }
+        article = _articles_fournitures_pour_utilisateur(request.user).filter(
+            pk=request.GET.get('article') or None,
+        ).first()
+        if article:
+            initial['prix_unitaire'] = article.prix_unitaire
+        form = MouvementStockForm(initial=initial, **kwargs)
+
+    return render(request, 'depenses/logistique/form_mouvement.html', {
+        'titre_page': 'Approvisionner le stock',
+        'form': form,
+    })
+
+
+@login_required
+def creer_vente_fourniture(request):
+    """Enregistrer une vente et diminuer le stock de facon atomique."""
+    kwargs = {
+        'user': request.user,
+        'article_id': request.GET.get('article'),
+    }
+    vente_enregistree = False
+    if request.method == 'POST':
+        form = VenteFournitureForm(request.POST, **kwargs)
+        if form.is_valid():
+            with transaction.atomic():
+                article = get_object_or_404(
+                    _articles_fournitures_pour_utilisateur(request.user).select_for_update(),
+                    pk=form.cleaned_data['article'].pk,
+                )
+                quantite = form.cleaned_data['quantite']
+                if quantite > article.stock_actuel:
+                    form.add_error(
+                        'quantite',
+                        f"Stock insuffisant : {article.stock_actuel} unite(s) disponible(s).",
+                    )
+                else:
+                    MouvementStock.objects.create(
+                        numero_mouvement=_generer_code(
+                            MouvementStock, 'numero_mouvement', 'MVT'
+                        ),
+                        article=article,
+                        type_mouvement='SORTIE',
+                        motif='VENTE',
+                        quantite=quantite,
+                        prix_unitaire=form.cleaned_data['prix_vente_unitaire'],
+                        destinataire=form.cleaned_data.get('acheteur', ''),
+                        document_reference=form.cleaned_data.get('document_reference', ''),
+                        observations=form.cleaned_data.get('observations', ''),
+                        cree_par=request.user,
+                    )
+                    vente_enregistree = True
+            if vente_enregistree:
+                messages.success(
+                    request,
+                    f"Vente de {quantite} unite(s) de {article.nom} enregistree avec succes.",
+                )
+                return redirect('depenses:liste_articles')
+    else:
+        form = VenteFournitureForm(**kwargs)
+
+    return render(request, 'depenses/logistique/form_vente_fourniture.html', {
+        'titre_page': 'Enregistrer une vente de fournitures',
+        'form': form,
+    })
+
+
+@login_required
+def creer_mouvement_ancien(request):
     """Créer un mouvement de stock"""
     
     if request.method == 'POST':
@@ -499,6 +762,31 @@ def _generer_code(modele, champ, prefixe):
 
 @login_required
 def detail_article(request, article_id):
+    """Detail d'une fourniture avec ses ventes et ses mouvements."""
+    article = get_object_or_404(
+        _articles_fournitures_pour_utilisateur(request.user, actifs_seulement=False),
+        pk=article_id,
+    )
+    mouvements = article.mouvements.select_related('cree_par').order_by('-date_mouvement')[:50]
+    ventes = article.mouvements.filter(type_mouvement='SORTIE', motif='VENTE').aggregate(
+        quantite=Coalesce(Sum('quantite'), Value(0), output_field=IntegerField()),
+        chiffre_affaires=Coalesce(
+            Sum('montant_total'),
+            Value(Decimal('0')),
+            output_field=DecimalField(max_digits=20, decimal_places=0),
+        ),
+    )
+    ventes['solde'] = ventes['chiffre_affaires'] - ventes['quantite'] * article.prix_unitaire
+    return render(request, 'depenses/logistique/detail_article.html', {
+        'titre_page': f"Produit : {article.nom}",
+        'article': article,
+        'mouvements': mouvements,
+        'ventes': ventes,
+    })
+
+
+@login_required
+def detail_article_ancien(request, article_id):
     """Détail d'un article avec historique des mouvements"""
     article = get_object_or_404(Article, pk=article_id)
     mouvements = article.mouvements.select_related('cree_par').order_by('-date_mouvement')[:50]
@@ -513,6 +801,46 @@ def detail_article(request, article_id):
 
 @login_required
 def creer_article(request):
+    """Creer une fourniture et, si necessaire, son stock initial."""
+    categorie = _categorie_fournitures_defaut()
+    kwargs = {'user': request.user}
+    if request.method == 'POST':
+        form = ArticleForm(request.POST, request.FILES, **kwargs)
+        if form.is_valid():
+            with transaction.atomic():
+                article = form.save(commit=False)
+                article.cree_par = request.user
+                if not article.code_article:
+                    article.code_article = _generer_code(Article, 'code_article', 'FOUR')
+                article.stock_actuel = 0
+                article.save()
+                stock_initial = form.cleaned_data.get('stock_initial') or 0
+                if stock_initial:
+                    MouvementStock.objects.create(
+                        numero_mouvement=_generer_code(
+                            MouvementStock, 'numero_mouvement', 'MVT'
+                        ),
+                        article=article,
+                        type_mouvement='ENTREE',
+                        motif='ACHAT',
+                        quantite=stock_initial,
+                        prix_unitaire=article.prix_unitaire,
+                        observations='Stock initial du produit',
+                        cree_par=request.user,
+                    )
+            messages.success(request, f'Produit "{article.nom}" ajoute avec succes.')
+            return redirect('depenses:liste_articles')
+    else:
+        form = ArticleForm(initial={'categorie': categorie}, **kwargs)
+
+    return render(request, 'depenses/logistique/form_article.html', {
+        'titre_page': 'Nouveau produit scolaire',
+        'form': form,
+    })
+
+
+@login_required
+def creer_article_ancien(request):
     """Créer un article en stock"""
     if request.method == 'POST':
         form = ArticleForm(request.POST, request.FILES)
@@ -536,6 +864,29 @@ def creer_article(request):
 
 @login_required
 def modifier_article(request, article_id):
+    """Modifier un produit de la meme ecole."""
+    article = get_object_or_404(
+        _articles_fournitures_pour_utilisateur(request.user),
+        pk=article_id,
+    )
+    kwargs = {'instance': article, 'user': request.user}
+    if request.method == 'POST':
+        form = ArticleForm(request.POST, request.FILES, **kwargs)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Produit "{article.nom}" modifie avec succes.')
+            return redirect('depenses:liste_articles')
+    else:
+        form = ArticleForm(**kwargs)
+    return render(request, 'depenses/logistique/form_article.html', {
+        'titre_page': f"Modifier : {article.nom}",
+        'form': form,
+        'article': article,
+    })
+
+
+@login_required
+def modifier_article_ancien(request, article_id):
     """Modifier un article en stock"""
     article = get_object_or_404(Article, pk=article_id)
 
@@ -558,6 +909,24 @@ def modifier_article(request, article_id):
 
 @login_required
 def supprimer_article(request, article_id):
+    """Archiver un produit de la meme ecole."""
+    article = get_object_or_404(
+        _articles_fournitures_pour_utilisateur(request.user),
+        pk=article_id,
+    )
+    if request.method == 'POST':
+        article.actif = False
+        article.save(update_fields=['actif'])
+        messages.success(request, f'Produit "{article.nom}" archive.')
+        return redirect('depenses:liste_articles')
+    return render(request, 'depenses/logistique/confirmer_suppression_article.html', {
+        'titre_page': 'Archiver un produit',
+        'article': article,
+    })
+
+
+@login_required
+def supprimer_article_ancien(request, article_id):
     """Désactiver (suppression logique) un article"""
     article = get_object_or_404(Article, pk=article_id)
     if request.method == 'POST':
@@ -735,6 +1104,70 @@ def valider_inventaire(request, inventaire_id):
 
 @login_required
 def export_stock_excel(request):
+    """Exporter le tableau des fournitures de l'ecole au format Excel."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Fournitures scolaires'
+    headers = [
+        'Code', 'Produit', 'Categorie', 'Quantite en stock', 'Quantite vendue',
+        'Reste', "Prix d'achat unitaire", 'Prix de vente unitaire',
+        "Chiffre d'affaires", 'Solde (marge realisee)',
+    ]
+    header_fill = PatternFill(start_color='0D6EFD', end_color='0D6EFD', fill_type='solid')
+    header_font = Font(bold=True, color='FFFFFF')
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    articles = _articles_fournitures_pour_utilisateur(request.user).annotate(
+        quantite_vendue=Coalesce(
+            Sum(
+                'mouvements__quantite',
+                filter=Q(mouvements__type_mouvement='SORTIE', mouvements__motif='VENTE'),
+            ),
+            Value(0),
+            output_field=IntegerField(),
+        ),
+        chiffre_affaires=Coalesce(
+            Sum(
+                'mouvements__montant_total',
+                filter=Q(mouvements__type_mouvement='SORTIE', mouvements__motif='VENTE'),
+            ),
+            Value(Decimal('0')),
+            output_field=DecimalField(max_digits=20, decimal_places=0),
+        ),
+    ).order_by('nom')
+    for row, article in enumerate(articles, 2):
+        solde = article.chiffre_affaires - article.quantite_vendue * article.prix_unitaire
+        valeurs = [
+            article.code_article,
+            article.nom,
+            article.categorie.nom,
+            article.stock_actuel,
+            article.quantite_vendue,
+            article.stock_actuel,
+            float(article.prix_unitaire),
+            float(article.prix_vente_unitaire),
+            float(article.chiffre_affaires),
+            float(solde),
+        ]
+        for col, valeur in enumerate(valeurs, 1):
+            ws.cell(row=row, column=col, value=valeur)
+    for col in ws.columns:
+        largeur = max((len(str(cell.value)) for cell in col if cell.value is not None), default=10)
+        ws.column_dimensions[col[0].column_letter].width = min(largeur + 2, 40)
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename=fournitures_{date.today()}.xlsx'
+    wb.save(response)
+    return response
+
+
+@login_required
+def export_stock_excel_ancien(request):
     """Exporter le stock en Excel"""
     
     # Créer le workbook

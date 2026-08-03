@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width: 900px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-cash-register text-success me-2"></i>{{ titre_page }}</h2>
+            <p class="text-muted mb-0">La quantité vendue sera automatiquement retirée du stock.</p>
+        </div>
+        <a href="{% url 'depenses:liste_articles' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour</a>
+    </div>
+
+    <form method="post" class="card border-0 shadow-sm">
+        {% csrf_token %}
+        <div class="card-body p-4">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="row g-3">
+                <div class="col-md-7"><label class="form-label">Produit *</label>{{ form.article }}{{ form.article.errors }}</div>
+                <div class="col-md-5"><label class="form-label">Quantité vendue *</label>{{ form.quantite }}{{ form.quantite.errors }}</div>
+                <div class="col-md-6">
+                    <label class="form-label">Prix de vente unitaire (GNF)</label>{{ form.prix_vente_unitaire }}{{ form.prix_vente_unitaire.errors }}
+                    <div class="form-text">Le prix configuré sur le produit est utilisé par défaut.</div>
+                </div>
+                <div class="col-md-6"><label class="form-label">Acheteur / destinataire</label>{{ form.acheteur }}{{ form.acheteur.errors }}</div>
+                <div class="col-md-6"><label class="form-label">Référence du reçu</label>{{ form.document_reference }}{{ form.document_reference.errors }}</div>
+                <div class="col-12"><label class="form-label">Observations</label>{{ form.observations }}{{ form.observations.errors }}</div>
+            </div>
+        </div>
+        <div class="card-footer bg-white d-flex justify-content-end gap-2 p-3">
+            <a href="{% url 'depenses:liste_articles' %}" class="btn btn-light">Annuler</a>
+            <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i>Valider la vente</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
