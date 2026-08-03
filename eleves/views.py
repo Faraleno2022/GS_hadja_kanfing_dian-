@@ -692,16 +692,15 @@ def ajouter_eleve(request):
                         f'classes_ecole_{user_school_obj.id if user_school_obj else "admin"}'
                     ])
                     
-                # Mémoriser le parcours d'inscription afin qu'après validation du
-                # paiement l'utilisateur revienne ajouter l'élève suivant.
-                request.session['nouvel_eleve_paiement_id'] = eleve.id
-                request.session.modified = True
                 messages.success(
                     request,
                     f"L'élève {eleve.prenom} {eleve.nom} a été ajouté avec succès "
-                    f"(matricule : {eleve.matricule}). Enregistrez maintenant son paiement.",
+                    f"(Matricule : {eleve.matricule}). Vous pouvez ajouter un autre élève.",
                 )
-                return redirect('paiements:ajouter_paiement_eleve', eleve_id=eleve.id)
+                choix_url = reverse('eleves:ajouter_eleve')
+                return redirect(
+                    f"{choix_url}?eleve_ajoute={eleve.id}&classe_id={eleve.classe_id}"
+                )
                 
             except Exception as e:
                 logger.exception("Erreur lors de l'enregistrement d'un élève")
@@ -711,6 +710,12 @@ def ajouter_eleve(request):
     else:
         # GET: Initialisation optimisée des formulaires
         form = EleveForm(user=request.user)
+
+        # Le bouton « Continuer l'ajout des élèves » quitte explicitement le
+        # parcours de paiement du dernier élève enregistré.
+        if request.GET.get('continuer') == '1':
+            request.session.pop('nouvel_eleve_paiement_id', None)
+            request.session.modified = True
 
         # Cache des classes pour le formulaire GET (filtrées par année active)
         if not user_is_admin(request.user) and user_school_obj:
@@ -735,6 +740,23 @@ def ajouter_eleve(request):
 
         responsable_principal_form = ResponsableForm(prefix='resp_principal', user=request.user)
         responsable_secondaire_form = ResponsableForm(prefix='resp_secondaire', user=request.user)
+
+    # Après une création, afficher les deux suites possibles sans imposer de
+    # redirection : paiement de l'élève créé ou saisie de l'élève suivant.
+    eleve_ajoute = None
+    eleve_ajoute_id = request.GET.get('eleve_ajoute') if request.method == 'GET' else None
+    if eleve_ajoute_id:
+        eleve_ajoute_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+        if not user_is_admin(request.user):
+            eleve_ajoute_qs = filter_by_user_school(
+                eleve_ajoute_qs,
+                request.user,
+                'classe__ecole',
+            )
+        try:
+            eleve_ajoute = eleve_ajoute_qs.get(pk=int(eleve_ajoute_id))
+        except (Eleve.DoesNotExist, TypeError, ValueError):
+            eleve_ajoute = None
     
     # Statistiques optimisées avec cache
     stats_cache_key = f'stats_eleves_{request.user.id}'
@@ -769,6 +791,7 @@ def ajouter_eleve(request):
         'responsable_principal_form': responsable_principal_form,
         'responsable_secondaire_form': responsable_secondaire_form,
         'stats': stats,
+        'eleve_ajoute': eleve_ajoute,
         'titre_page': 'Ajouter un Élève',
         'action': 'Ajouter'
     }

@@ -31,7 +31,7 @@ class NouvelElevePaiementWorkflowTests(TestCase):
             capacite_max=40,
         )
 
-    def test_ajout_eleve_redirige_vers_son_paiement(self):
+    def test_ajout_eleve_affiche_le_choix_paiement_ou_nouvel_eleve(self):
         middleware_sans_licence = [
             middleware
             for middleware in settings.MIDDLEWARE
@@ -53,9 +53,51 @@ class NouvelElevePaiementWorkflowTests(TestCase):
         eleve = Eleve.objects.get(prenom="MARIAMA", nom="DIALLO")
         self.assertEqual(
             response.url,
-            reverse("paiements:ajouter_paiement_eleve", kwargs={"eleve_id": eleve.pk}),
+            f"{reverse('eleves:ajouter_eleve')}?eleve_ajoute={eleve.pk}&classe_id={self.classe.pk}",
         )
+        self.assertNotIn("nouvel_eleve_paiement_id", self.client.session)
+
+        with self.settings(MIDDLEWARE=middleware_sans_licence):
+            choix = self.client.get(response.url)
+        self.assertEqual(choix.status_code, 200)
+        self.assertContains(choix, "Ajouter un paiement")
+        self.assertContains(choix, "Continuer l'ajout des élèves")
+        self.assertContains(choix, eleve.matricule)
+        self.assertContains(
+            choix,
+            f"{reverse('paiements:ajouter_paiement_eleve', kwargs={'eleve_id': eleve.pk})}?origine=ajout_eleve",
+        )
+
+        with self.settings(MIDDLEWARE=middleware_sans_licence):
+            paiement = self.client.get(
+                reverse(
+                    "paiements:ajouter_paiement_eleve",
+                    kwargs={"eleve_id": eleve.pk},
+                ),
+                {"origine": "ajout_eleve"},
+            )
+        self.assertEqual(paiement.status_code, 200)
         self.assertEqual(
             self.client.session.get("nouvel_eleve_paiement_id"),
             eleve.pk,
         )
+
+    def test_continuer_ajout_quitte_le_parcours_de_paiement(self):
+        session = self.client.session
+        session["nouvel_eleve_paiement_id"] = 123
+        session.save()
+
+        middleware_sans_licence = [
+            middleware
+            for middleware in settings.MIDDLEWARE
+            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
+        ]
+        with self.settings(MIDDLEWARE=middleware_sans_licence):
+            response = self.client.get(
+                reverse("eleves:ajouter_eleve"),
+                {"classe_id": self.classe.pk, "continuer": "1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("nouvel_eleve_paiement_id", self.client.session)
+        self.assertEqual(response.context["form"].fields["classe"].initial, self.classe.pk)
