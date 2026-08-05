@@ -264,6 +264,13 @@ class RemiseReduction(SyncTrackedModel):
         ('MERITE', 'Réduction mérite'),
         ('SOCIALE', 'Réduction sociale'),
         ('EMPLOYEE', 'Enfant d\'employé'),
+        ('CLIENT_FIDELE', 'Client fidèle'),
+        ('PROMOTION', 'Promotion'),
+        ('ERREUR_COMMERCIALE', 'Erreur commerciale'),
+        ('PARTENAIRE', 'Partenaire'),
+        ('GESTE_COMMERCIAL', 'Geste commercial'),
+        ('NE_PAIE_RIEN', 'Ne paie rien'),
+        ('MOITIE', 'La moitié'),
         ('AUTRE', 'Autre'),
     ]
     
