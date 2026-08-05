@@ -343,6 +343,93 @@ class RechercheDepenseForm(forms.Form):
         return cleaned_data
 
 
+# ===== FORMULAIRES RECOUVREMENT (nouveaux modules) =====
+
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
+)
+
+
+class DepenseCuisineForm(forms.ModelForm):
+    class Meta:
+        model = DepenseCuisine
+        fields = ['date', 'designation', 'montant', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class DepenseDocumentForm(forms.ModelForm):
+    class Meta:
+        model = DepenseDocument
+        fields = ['date', 'designation', 'montant', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class VersementForm(forms.ModelForm):
+    class Meta:
+        model = Versement
+        fields = ['date', 'montant', 'lieu_versement', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'lieu_versement': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Lieu de versement (banque, trésor...)'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class AbonnementInformatiqueForm(forms.ModelForm):
+    class Meta:
+        model = AbonnementInformatique
+        fields = [
+            'eleve', 'montant', 'date_debut', 'date_fin',
+            'statut', 'alerte_avant_jours', 'observation'
+        ]
+        widgets = {
+            'eleve': forms.Select(attrs={'class': 'form-control'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': "Montant d'abonnement en GNF"}),
+            'date_debut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'statut': forms.Select(attrs={'class': 'form-control'}),
+            'alerte_avant_jours': forms.NumberInput(attrs={'class': 'form-control', 'value': 7}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        date_debut = cleaned_data.get('date_debut')
+        date_fin = cleaned_data.get('date_fin')
+        if date_debut and date_fin and date_fin < date_debut:
+            raise ValidationError("La date de fin ne peut pas être antérieure à la date de début.")
+        return cleaned_data
+
+
 # ===== FORMULAIRES LOGISTIQUE =====
 
 class CategorieArticleForm(forms.ModelForm):

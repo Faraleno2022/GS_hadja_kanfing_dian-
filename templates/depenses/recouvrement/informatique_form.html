@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if abonnement %}Modifier{% else %}Nouvel{% endif %} Abonnement Informatique{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-laptop-code"></i>
+                        {% if abonnement %}Modifier{% else %}Nouvel{% endif %} Abonnement Informatique
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% if not abonnement %}
+                    <div class="mb-4">
+                        <label class="form-label">Rechercher un élève par matricule ou nom</label>
+                        <input type="text" id="rechercheEleve" class="form-control" placeholder="Tapez un matricule, nom ou prénom...">
+                        <div id="resultatsRecherche" class="list-group mt-2"></div>
+                    </div>
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        {% for field in form %}
+                        <div class="mb-3">
+                            <label class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+                            {{ field }}
+                            {% if field.errors %}
+                                <div class="text-danger small">{{ field.errors }}</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'depenses:liste_abonnements_informatique' %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Annuler
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Enregistrer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const input = document.getElementById('rechercheEleve');
+    if (!input) return;
+    const resultsBox = document.getElementById('resultatsRecherche');
+    const eleveSelect = document.querySelector('#id_eleve');
+    let timer = null;
+
+    input.addEventListener('input', function () {
+        clearTimeout(timer);
+        const q = input.value.trim();
+        if (q.length < 2) { resultsBox.innerHTML = ''; return; }
+        timer = setTimeout(function () {
+            fetch(`{% url 'depenses:recherche_eleve_informatique' %}?q=${encodeURIComponent(q)}`)
+                .then(r => r.json())
+                .then(data => {
+                    resultsBox.innerHTML = '';
+                    data.forEach(eleve => {
+                        const item = document.createElement('button');
+                        item.type = 'button';
+                        item.className = 'list-group-item list-group-item-action';
+                        item.textContent = `${eleve.matricule} — ${eleve.nom_complet} (${eleve.classe})`;
+                        item.addEventListener('click', function () {
+                            if (eleveSelect) { eleveSelect.value = eleve.id; }
+                            input.value = `${eleve.matricule} — ${eleve.nom_complet}`;
+                            resultsBox.innerHTML = '';
+                        });
+                        resultsBox.appendChild(item);
+                    });
+                });
+        }, 250);
+    });
+});
+</script>
+{% endblock %}

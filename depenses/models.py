@@ -260,3 +260,6 @@ from .models_bibliotheque import (
     CategorieLivre, Livre, Emprunt, Reservation,
     HistoriqueLivre, ParametreBibliotheque
 )
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
+)
