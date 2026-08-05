@@ -264,11 +264,14 @@
                         {% if 'depenses' in allowed %}
                         <li class="nav-item dropdown">
                             <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-receipt me-1"></i>Dépenses
+                                <i class="fas fa-hand-holding-usd me-1"></i>Recouvrement
                             </button>
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
-                                    <i class="fas fa-receipt me-1"></i>Dépenses
+                                    <i class="fas fa-th-large me-1"></i>Vue d'ensemble
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_courantes' %}">
+                                    <i class="fas fa-receipt me-1"></i>Dépenses courantes
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><h6 class="dropdown-header">Logistique</h6></li>
@@ -283,6 +286,38 @@
                                 </a></li>
                                 <li><a class="dropdown-item" href="{% url 'depenses:liste_contributions_papier' %}">
                                     <i class="fas fa-file-alt text-success me-1"></i>Papier RAM
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Cuisine</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'cuisine' %}">
+                                    <i class="fas fa-utensils text-warning me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'cuisine' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Document</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'document' %}">
+                                    <i class="fas fa-file-alt text-secondary me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'document' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Versement</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'versement' %}">
+                                    <i class="fas fa-hand-holding-usd text-success me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'versement' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des versements
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Informatique</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_informatique' %}">
+                                    <i class="fas fa-laptop-code text-primary me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_abonnements_informatique' %}">
+                                    <i class="fas fa-list me-1"></i>Abonnements élèves
                                 </a></li>
                             </ul>
                         </li>
@@ -390,11 +425,14 @@
                         </li>
                         <li class="nav-item dropdown">
                             <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-receipt me-1"></i>Dépenses
+                                <i class="fas fa-hand-holding-usd me-1"></i>Recouvrement
                             </button>
                             <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
-                                    <i class="fas fa-receipt me-1"></i>Dépenses
+                                    <i class="fas fa-th-large me-1"></i>Vue d'ensemble
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_courantes' %}">
+                                    <i class="fas fa-receipt me-1"></i>Dépenses courantes
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><h6 class="dropdown-header">Logistique</h6></li>
@@ -409,6 +447,38 @@
                                 </a></li>
                                 <li><a class="dropdown-item" href="{% url 'depenses:liste_contributions_papier' %}">
                                     <i class="fas fa-file-alt text-success me-1"></i>Papier RAM
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Cuisine</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'cuisine' %}">
+                                    <i class="fas fa-utensils text-warning me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'cuisine' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Document</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'document' %}">
+                                    <i class="fas fa-file-alt text-secondary me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'document' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des dépenses
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Versement</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_module_simple' 'versement' %}">
+                                    <i class="fas fa-hand-holding-usd text-success me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_module_simple' 'versement' %}">
+                                    <i class="fas fa-list me-1"></i>Liste des versements
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header">Informatique</h6></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_informatique' %}">
+                                    <i class="fas fa-laptop-code text-primary me-1"></i>Tableau de bord
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'depenses:liste_abonnements_informatique' %}">
+                                    <i class="fas fa-list me-1"></i>Abonnements élèves
                                 </a></li>
                             </ul>
                         </li>

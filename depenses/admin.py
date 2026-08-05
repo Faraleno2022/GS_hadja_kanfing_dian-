@@ -10,6 +10,9 @@ from .models_bibliotheque import (
     CategorieLivre, Livre, Emprunt, Reservation,
     HistoriqueLivre, ParametreBibliotheque
 )
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
+)
 
 
 # ===== DÉPENSES =====
@@ -33,6 +36,39 @@ class DepenseAdmin(admin.ModelAdmin):
     list_filter = ['statut', 'type_depense', 'categorie']
     search_fields = ['numero_facture', 'libelle', 'fournisseur__nom']
     date_hierarchy = 'date_facture'
+
+
+# ===== RECOUVREMENT (nouveaux modules) =====
+@admin.register(DepenseCuisine)
+class DepenseCuisineAdmin(admin.ModelAdmin):
+    list_display = ['designation', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['designation', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(DepenseDocument)
+class DepenseDocumentAdmin(admin.ModelAdmin):
+    list_display = ['designation', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['designation', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(Versement)
+class VersementAdmin(admin.ModelAdmin):
+    list_display = ['lieu_versement', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['lieu_versement', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(AbonnementInformatique)
+class AbonnementInformatiqueAdmin(admin.ModelAdmin):
+    list_display = ['eleve', 'montant', 'date_debut', 'date_fin', 'statut']
+    list_filter = ['statut']
+    search_fields = ['eleve__nom', 'eleve__prenom', 'eleve__matricule']
+    date_hierarchy = 'date_fin'
 
 
 # ===== LOGISTIQUE =====

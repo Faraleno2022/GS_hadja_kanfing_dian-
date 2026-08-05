@@ -2,13 +2,37 @@ from django.urls import path
 from . import views
 from . import views_logistique
 from . import views_bibliotheque
+from . import views_recouvrement
 
 app_name = 'depenses'
 
 urlpatterns = [
-    # Tableau de bord principal
-    path('', views.tableau_bord, name='tableau_bord'),
-    
+    # Tableau de bord général du menu Recouvrement (vue d'ensemble en cartes)
+    path('', views_recouvrement.tableau_bord_general, name='tableau_bord'),
+
+    # ===== RECOUVREMENT : Dépenses courantes (ancien tableau de bord) =====
+    path('courantes/', views.dashboard_courantes, name='dashboard_courantes'),
+
+    # ===== RECOUVREMENT : Cuisine / Document / Versement (modules génériques) =====
+    path('recouvrement/<str:cle>/', views_recouvrement.liste_module_simple, name='liste_module_simple'),
+    path('recouvrement/<str:cle>/tableau-de-bord/', views_recouvrement.dashboard_module_simple, name='dashboard_module_simple'),
+    path('recouvrement/<str:cle>/ajouter/', views_recouvrement.ajouter_module_simple, name='ajouter_module_simple'),
+    path('recouvrement/<str:cle>/<int:pk>/modifier/', views_recouvrement.modifier_module_simple, name='modifier_module_simple'),
+    path('recouvrement/<str:cle>/<int:pk>/supprimer/', views_recouvrement.supprimer_module_simple, name='supprimer_module_simple'),
+    path('recouvrement/<str:cle>/export/excel/', views_recouvrement.export_module_simple_excel, name='export_module_simple_excel'),
+    path('recouvrement/<str:cle>/export/pdf/', views_recouvrement.export_module_simple_pdf, name='export_module_simple_pdf'),
+
+    # ===== RECOUVREMENT : Informatique (abonnements élèves) =====
+    path('informatique/', views_recouvrement.liste_abonnements_informatique, name='liste_abonnements_informatique'),
+    path('informatique/tableau-de-bord/', views_recouvrement.dashboard_informatique, name='dashboard_informatique'),
+    path('informatique/recherche-eleve/', views_recouvrement.recherche_eleve_informatique, name='recherche_eleve_informatique'),
+    path('informatique/ajouter/', views_recouvrement.ajouter_abonnement_informatique, name='ajouter_abonnement_informatique'),
+    path('informatique/<int:pk>/modifier/', views_recouvrement.modifier_abonnement_informatique, name='modifier_abonnement_informatique'),
+    path('informatique/<int:pk>/supprimer/', views_recouvrement.supprimer_abonnement_informatique, name='supprimer_abonnement_informatique'),
+    path('informatique/<int:pk>/carte/pdf/', views_recouvrement.carte_abonnement_informatique_pdf, name='carte_abonnement_informatique_pdf'),
+    path('informatique/export/excel/', views_recouvrement.export_informatique_excel, name='export_informatique_excel'),
+    path('informatique/export/pdf/', views_recouvrement.export_informatique_pdf, name='export_informatique_pdf'),
+
     # Gestion des dépenses
     path('liste/', views.liste_depenses, name='liste_depenses'),
     path('ajouter/', views.ajouter_depense, name='ajouter_depense'),

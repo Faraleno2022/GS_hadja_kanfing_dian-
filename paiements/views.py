@@ -4167,7 +4167,13 @@ def appliquer_remise_paiement(request, paiement_id:int):
                 created = 0
                 for remise in remises:
                     try:
-                        montant_remise = remise.calculer_remise(paiement.montant)
+                        # La remise ne porte jamais sur les frais d'inscription/réinscription:
+                        # même base que la remise scolarité (%) ci-dessous (T1+T2+T3), plafonnée
+                        # au montant réellement encaissé sur ce reçu. Sans cela, une remise en %
+                        # calculée sur paiement.montant s'appliquait aussi à la part inscription
+                        # d'un paiement combiné (ex: "Réinscription + Tranche 1").
+                        montant_remise = remise.calculer_remise(Decimal(str(base_scolarite or 0)))
+                        montant_remise = min(Decimal(str(montant_remise)), Decimal(str(paiement.montant)))
                     except Exception:
                         montant_remise = 0
                     PaiementRemise.objects.create(

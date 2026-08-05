@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Tableau de bord — Informatique{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-card { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .stat-number { font-size: 2.2rem; font-weight: 600; color: #2c3e50; }
+    .stat-label { font-size: 0.9rem; color: #666; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+    .chart-container { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .section-title { color: #2c3e50; border-bottom: 2px solid #6c757d; padding-bottom: 8px; margin-bottom: 20px; font-weight: 600; }
+    .alert-retard { background-color: #fff3cd; border-color: #ffeaa7; color: #856404; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <p class="mb-1"><a href="{% url 'depenses:tableau_bord' %}"><i class="fas fa-arrow-left me-1"></i>Recouvrement</a></p>
+            <h1 class="h3 mb-0"><i class="fas fa-laptop-code me-2"></i>Tableau de bord — Informatique</h1>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'depenses:liste_abonnements_informatique' %}" class="btn btn-outline-secondary"><i class="fas fa-list"></i> Liste</a>
+            <a href="{% url 'depenses:ajouter_abonnement_informatique' %}" class="btn btn-outline-primary"><i class="fas fa-plus"></i> Ajouter</a>
+            <a href="{% url 'depenses:export_informatique_excel' %}" class="btn btn-outline-success"><i class="fas fa-file-excel"></i> Excel</a>
+            <a href="{% url 'depenses:export_informatique_pdf' %}" class="btn btn-outline-danger"><i class="fas fa-file-pdf"></i> PDF</a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4">
+                <div class="stat-number">{{ total|intcomma }}</div>
+                <div class="stat-label">Total abonnements</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4">
+                <div class="stat-number">{{ actifs|intcomma }}</div>
+                <div class="stat-label">Actifs</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4">
+                <div class="stat-number">{{ expires|intcomma }}</div>
+                <div class="stat-label">Expirés</div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="stat-card text-center p-4">
+                <div class="stat-number">{{ montant_total|intcomma }}</div>
+                <div class="stat-label">Montant actif (GNF)</div>
+            </div>
+        </div>
+    </div>
+
+    {% if nb_expires > 0 %}
+    <div class="alert alert-danger">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>{{ nb_expires }}</strong> abonnement{{ nb_expires|pluralize }} expiré{{ nb_expires|pluralize }} (statut encore actif).
+        <a href="{% url 'depenses:liste_abonnements_informatique' %}?filtre=actif" class="alert-link">Voir la liste</a>
+    </div>
+    {% endif %}
+    {% if nb_proche_expiration > 0 %}
+    <div class="alert alert-retard">
+        <i class="fas fa-clock"></i>
+        <strong>{{ nb_proche_expiration }}</strong> abonnement{{ nb_proche_expiration|pluralize }} proche{{ nb_proche_expiration|pluralize }} de l'expiration (7 jours).
+        <a href="{% url 'depenses:liste_abonnements_informatique' %}?filtre=proche_expiration" class="alert-link">Voir la liste</a>
+    </div>
+    {% endif %}
+
+    <div class="chart-container p-4">
+        <h5 class="section-title"><i class="fas fa-exclamation-circle"></i> Abonnements à surveiller</h5>
+        {% if abonnements_expires or abonnements_proche_expiration %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Élève</th>
+                        <th>Matricule</th>
+                        <th>Fin</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for abo in abonnements_expires %}
+                    <tr class="table-danger">
+                        <td>{{ abo.eleve.prenom }} {{ abo.eleve.nom }}</td>
+                        <td>{{ abo.eleve.matricule|default:"-" }}</td>
+                        <td>{{ abo.date_fin|date:"d/m/Y" }}</td>
+                        <td><span class="badge bg-danger">Expiré</span></td>
+                    </tr>
+                    {% endfor %}
+                    {% for abo in abonnements_proche_expiration %}
+                    <tr class="table-warning">
+                        <td>{{ abo.eleve.prenom }} {{ abo.eleve.nom }}</td>
+                        <td>{{ abo.eleve.matricule|default:"-" }}</td>
+                        <td>{{ abo.date_fin|date:"d/m/Y" }}</td>
+                        <td><span class="badge bg-warning">Proche expiration</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+            <p class="text-muted">Aucune alerte, tout est à jour.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
