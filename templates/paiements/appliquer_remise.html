@@ -195,18 +195,21 @@
                                     <div class="card-body">
                                         <div id="calculPreview">
                                             <p class="mb-2">
-                                                <strong>Montant original:</strong><br>
+                                                <strong>Montant encaissé (ce reçu):</strong><br>
                                                 <span class="montant-original" id="montantOriginal">{{ paiement.montant|floatformat:0 }} GNF</span>
                                             </p>
                                             <p class="mb-2">
-                                                <strong>Total des remises:</strong><br>
+                                                <strong>Total des remises (scolarité):</strong><br>
                                                 <span class="remise-economie" id="totalRemises">0 GNF</span>
                                             </p>
                                             <hr>
                                             <p class="mb-2">
-                                                <strong>Montant final:</strong><br>
+                                                <strong>Couverture totale (encaissement + remise):</strong><br>
                                                 <span class="montant-final" id="montantFinal">{{ paiement.montant|floatformat:0 }} GNF</span>
                                             </p>
+                                            <small class="text-muted d-block mb-2">
+                                                La remise ne change pas le montant encaissé sur ce reçu : elle s'ajoute comme couverture supplémentaire de la scolarité due.
+                                            </small>
                                             <div id="remisesDetails" class="mt-3"></div>
                                         </div>
                                         
@@ -254,12 +257,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const remiseId = checkbox.dataset.remiseId;
                 const remiseLabel = checkbox.nextElementSibling.textContent.trim();
                 
+                // Même base que la remise scolarité (%): T1+T2+T3, jamais l'inscription.
                 let montantRemise = 0;
                 if (remiseType === 'POURCENTAGE') {
-                    montantRemise = (montantOriginal * remiseValeur) / 100;
+                    montantRemise = (baseScolarite * remiseValeur) / 100;
                 } else {
-                    montantRemise = Math.min(remiseValeur, montantOriginal);
+                    montantRemise = Math.min(remiseValeur, baseScolarite);
                 }
+                montantRemise = Math.min(montantRemise, montantOriginal);
                 
                 totalRemises += montantRemise;
                 remisesDetails.push({
@@ -292,8 +297,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        const montantFinal = Math.max(0, montantOriginal - totalRemises);
-        
+        // La remise ne réduit jamais le montant encaissé sur ce reçu: elle s'ajoute
+        // comme couverture supplémentaire de la scolarité due (voir PaiementRemise).
+        const montantFinal = montantOriginal + totalRemises;
+
         // Mettre à jour l'affichage
         document.getElementById('totalRemises').textContent = totalRemises.toLocaleString('fr-FR') + ' GNF';
         document.getElementById('montantFinal').textContent = montantFinal.toLocaleString('fr-FR') + ' GNF';
@@ -339,9 +346,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let message = (
             `Confirmer l'application des remises ?\n\n` +
-            `Montant original: ${montantOriginal.toLocaleString('fr-FR')} GNF\n` +
-            `Total des remises: ${totalRemises.toLocaleString('fr-FR')} GNF\n` +
-            `Nouveau montant: ${montantFinal.toLocaleString('fr-FR')} GNF`
+            `Montant encaissé (ce reçu, inchangé): ${montantOriginal.toLocaleString('fr-FR')} GNF\n` +
+            `Total des remises (scolarité): ${totalRemises.toLocaleString('fr-FR')} GNF\n` +
+            `Couverture totale (encaissement + remise): ${montantFinal.toLocaleString('fr-FR')} GNF`
         );
         // Alerte spécifique 100%
         if (pctValue && parseFloat(pctValue) === 100) {
