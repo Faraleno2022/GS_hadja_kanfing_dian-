@@ -93,10 +93,14 @@ class EnseignantForm(forms.ModelForm):
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
         
-        # Restreindre les écoles visibles selon l'utilisateur
+        # Restreindre les écoles visibles selon l'utilisateur.
+        # Seul un superadmin (is_superuser) gère plusieurs écoles: un ADMIN
+        # d'école ne doit voir/choisir que la sienne, sinon un enseignant créé
+        # par erreur sur une autre école disparaît silencieusement de son
+        # propre tableau de bord Salaires (filtré par école).
         if self.user:
-            from utilisateurs.utils import user_is_admin, user_school
-            if not user_is_admin(self.user):
+            from utilisateurs.utils import user_is_superadmin, user_school
+            if not user_is_superadmin(self.user):
                 ecole_user = user_school(self.user)
                 if ecole_user:
                     self.fields['ecole'].queryset = Ecole.objects.filter(id=ecole_user.id)
