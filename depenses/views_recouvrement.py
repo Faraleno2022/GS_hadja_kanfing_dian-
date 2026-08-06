@@ -779,6 +779,100 @@ def _salaires_payes_qs(user):
     return qs
 
 
+def _enseignants_scope_qs(user):
+    """Liste des enseignants visibles par l'utilisateur (scoping par école).
+
+    Les démissionnaires sont exclus: ils ne sont plus en poste et ne doivent
+    pas continuer à accumuler un salaire dû mois après mois. Les enseignants
+    en congé ou suspendus restent visibles (toujours en poste, la question de
+    leur paie pendant cette période relève d'une décision de gestion, pas
+    d'un filtrage automatique).
+    """
+    from salaires.models import Enseignant, StatutEnseignant
+    qs = Enseignant.objects.select_related('ecole').exclude(statut=StatutEnseignant.DEMISSIONNAIRE)
+    if not user_is_superadmin(user):
+        ecole = user_school(user)
+        qs = qs.none() if ecole is None else qs.filter(ecole=ecole)
+    return qs
+
+
+def _mois_disponibles(user):
+    """Liste des mois (annee, mois) ayant une période de salaire créée pour
+    l'école de l'utilisateur, complétée par le mois en cours s'il est absent,
+    triée du plus récent au plus ancien."""
+    from salaires.models import PeriodeSalaire
+
+    qs = PeriodeSalaire.objects.all()
+    if not user_is_superadmin(user):
+        ecole = user_school(user)
+        qs = qs.none() if ecole is None else qs.filter(ecole=ecole)
+
+    cles = set(qs.values_list('annee', 'mois').distinct())
+    today = timezone.localdate()
+    cles.add((today.year, today.month))
+
+    mois_tries = sorted(cles, reverse=True)
+    return [
+        {'annee': annee, 'mois': mois, 'libelle': f"{MOIS_NOMS_FR[mois]} {annee}"}
+        for annee, mois in mois_tries
+    ]
+
+
+def _construire_lignes_salaires_mois(user, annee, mois, niveau=None):
+    """Construit, pour un mois donné, une ligne par enseignant : montant dû
+    (état de salaire s'il existe, sinon estimation via calculer_salaire_mensuel)
+    et montant reçu (montant net si l'état est marqué payé, sinon 0).
+
+    Un enseignant nouvellement ajouté dans le module Salaires apparaît donc
+    immédiatement ici, même sans aucun état de salaire calculé pour ce mois.
+    """
+    from salaires.models import AffectationClasse, EtatSalaire
+
+    enseignants = list(_enseignants_scope_qs(user).order_by('nom', 'prenoms'))
+    enseignant_ids = [e.id for e in enseignants]
+
+    affectations_par_enseignant = {}
+    if enseignant_ids:
+        for aff in AffectationClasse.objects.filter(enseignant_id__in=enseignant_ids).select_related('classe'):
+            affectations_par_enseignant.setdefault(aff.enseignant_id, []).append(aff)
+
+    etats_par_enseignant = {}
+    if enseignant_ids:
+        etats = EtatSalaire.objects.filter(
+            enseignant_id__in=enseignant_ids, periode__annee=annee, periode__mois=mois
+        )
+        etats_par_enseignant = {e.enseignant_id: e for e in etats}
+
+    lignes = []
+    for ens in enseignants:
+        niveau_ens = _niveau_enseignant(ens, affectations_par_enseignant)
+        if niveau and niveau_ens != niveau:
+            continue
+
+        etat = etats_par_enseignant.get(ens.id)
+        if etat is not None:
+            montant = etat.salaire_net
+            estime = False
+        else:
+            montant = ens.calculer_salaire_mensuel()
+            estime = True
+
+        montant_recu = etat.salaire_net if (etat and etat.paye) else Decimal('0')
+
+        lignes.append({
+            'enseignant_id': ens.id,
+            'nom': ens.nom,
+            'prenoms': ens.prenoms,
+            'niveau': niveau_ens,
+            'montant': montant,
+            'montant_recu': montant_recu,
+            'paye': bool(etat and etat.paye),
+            'estime': estime,
+        })
+
+    return lignes
+
+
 def _construire_pivot_salaires(user):
     """Construit le tableau croisé enseignant x mois des salaires payés.
 
@@ -837,23 +931,45 @@ def _construire_pivot_salaires(user):
 
 @login_required
 def dashboard_salaires(request):
-    """Tableau de bord Recouvrement > Salaires enseignants : suivi des montants
-    de salaire payés par enseignant et par mois (colonnes ajustées automatiquement
-    aux mois où des paiements existent), avec répartition par niveau."""
-    periodes, lignes, totaux_par_periode, totaux_par_niveau = _construire_pivot_salaires(request.user)
-
-    total_general = sum((l['total'] for l in lignes), Decimal('0'))
-
+    """Tableau de bord Recouvrement > Salaires enseignants : liste, pour le mois
+    sélectionné (le mois courant par défaut), chaque enseignant avec le montant
+    dû et le montant reçu affichés en face de son nom. Le tableau s'ajuste
+    automatiquement au mois choisi et peut être filtré par niveau
+    (Maternelle/Primaire/Collège/Lycée). Un enseignant nouvellement créé dans
+    le module Salaires apparaît immédiatement ici, même sans paiement encore
+    enregistré."""
     today = timezone.localdate()
-    cle_mois_courant = (today.year, today.month)
-    total_mois_courant = totaux_par_periode.get(cle_mois_courant, Decimal('0'))
 
+    mois_disponibles = _mois_disponibles(request.user)
+    try:
+        annee_sel = int(request.GET.get('annee') or today.year)
+        mois_sel = int(request.GET.get('mois') or today.month)
+    except (TypeError, ValueError):
+        annee_sel, mois_sel = today.year, today.month
+    niveau_sel = request.GET.get('niveau') or ''
+
+    lignes = _construire_lignes_salaires_mois(request.user, annee_sel, mois_sel, niveau_sel or None)
+
+    total_du = sum((l['montant'] or Decimal('0') for l in lignes), Decimal('0'))
+    total_recu = sum((l['montant_recu'] for l in lignes), Decimal('0'))
+    reste_a_payer = total_du - total_recu
+
+    # Répartition par niveau pour le mois sélectionné (indépendante du filtre niveau,
+    # pour toujours afficher la vue d'ensemble des 4 familles).
+    lignes_tous_niveaux = (
+        lignes if not niveau_sel else _construire_lignes_salaires_mois(request.user, annee_sel, mois_sel)
+    )
+    totaux_par_niveau = {}
+    for l in lignes_tous_niveaux:
+        totaux_par_niveau[l['niveau']] = totaux_par_niveau.get(l['niveau'], Decimal('0')) + l['montant_recu']
     totaux_par_niveau_ordonnes = [
         {'niveau': niveau, 'montant': totaux_par_niveau.get(niveau, Decimal('0'))}
         for niveau in NIVEAUX_ENSEIGNANT_ORDRE
         if totaux_par_niveau.get(niveau)
     ]
 
+    # Tendance sur les mois payés (historique global, non filtré par mois sélectionné).
+    periodes, _lignes_pivot, totaux_par_periode, _t = _construire_pivot_salaires(request.user)
     evolution_mensuelle = [
         {'libelle': p['libelle'], 'montant': totaux_par_periode.get((p['annee'], p['mois']), Decimal('0'))}
         for p in periodes
@@ -861,18 +977,20 @@ def dashboard_salaires(request):
     max_mensuel = max((e['montant'] for e in evolution_mensuelle), default=Decimal('0'))
     for e in evolution_mensuelle:
         e['part'] = int((e['montant'] / max_mensuel) * 100) if max_mensuel else 0
-
-    # Pré-calculer, pour chaque ligne, la liste des montants dans l'ordre des périodes
-    # (plus simple à itérer dans le template qu'un dict indexé par tuple).
-    for ligne in lignes:
-        ligne['montants'] = [ligne['par_periode'].get((p['annee'], p['mois'])) for p in periodes]
+    total_general = sum(totaux_par_periode.values(), Decimal('0'))
 
     context = {
-        'periodes': periodes,
+        'mois_disponibles': mois_disponibles,
+        'niveau_choices': NIVEAUX_ENSEIGNANT_ORDRE,
+        'annee_sel': annee_sel,
+        'mois_sel': mois_sel,
+        'niveau_sel': niveau_sel,
+        'mois_sel_libelle': f"{MOIS_NOMS_FR[mois_sel]} {annee_sel}",
         'lignes': lignes,
+        'total_du': total_du,
+        'total_recu': total_recu,
+        'reste_a_payer': reste_a_payer,
         'total_general': total_general,
-        'total_mois_courant': total_mois_courant,
-        'mois_courant_libelle': f"{MOIS_NOMS_FR[today.month]} {today.year}",
         'totaux_par_niveau': totaux_par_niveau_ordonnes,
         'evolution_mensuelle': evolution_mensuelle,
     }
@@ -881,13 +999,24 @@ def dashboard_salaires(request):
 
 @login_required
 def export_salaires_excel(request):
-    periodes, lignes, totaux_par_periode, _totaux_par_niveau = _construire_pivot_salaires(request.user)
+    """Export du mois sélectionné (mêmes filtres mois/niveau que le tableau de bord) :
+    une ligne par enseignant avec le montant dû et le montant reçu."""
+    today = timezone.localdate()
+    try:
+        annee_sel = int(request.GET.get('annee') or today.year)
+        mois_sel = int(request.GET.get('mois') or today.month)
+    except (TypeError, ValueError):
+        annee_sel, mois_sel = today.year, today.month
+    niveau_sel = request.GET.get('niveau') or ''
+
+    lignes = _construire_lignes_salaires_mois(request.user, annee_sel, mois_sel, niveau_sel or None)
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Salaires enseignants'
 
-    headers = ['Prénoms', 'Nom', 'Niveau'] + [p['libelle'] for p in periodes] + ['Total (GNF)']
+    mois_libelle = f"{MOIS_NOMS_FR[mois_sel]} {annee_sel}"
+    headers = ['Mois', 'Prénoms', 'Nom', 'Niveau', 'Montant (GNF)', 'Montant reçu (GNF)', 'Statut']
     header_fill = PatternFill(start_color='198754', end_color='198754', fill_type='solid')
     header_font = Font(bold=True, color='FFFFFF')
     for col, header in enumerate(headers, 1):
@@ -897,30 +1026,24 @@ def export_salaires_excel(request):
         cell.alignment = Alignment(horizontal='center')
 
     row = 2
+    total_du = Decimal('0')
+    total_recu = Decimal('0')
     for ligne in lignes:
-        ws.cell(row=row, column=1, value=ligne['prenoms'])
-        ws.cell(row=row, column=2, value=ligne['nom'])
-        ws.cell(row=row, column=3, value=ligne['niveau'])
-        col = 4
-        for p in periodes:
-            montant = ligne['par_periode'].get((p['annee'], p['mois']))
-            ws.cell(row=row, column=col, value=float(montant) if montant else None)
-            col += 1
-        ws.cell(row=row, column=col, value=float(ligne['total']))
+        montant = ligne['montant'] or Decimal('0')
+        total_du += montant
+        total_recu += ligne['montant_recu']
+        ws.cell(row=row, column=1, value=mois_libelle)
+        ws.cell(row=row, column=2, value=ligne['prenoms'])
+        ws.cell(row=row, column=3, value=ligne['nom'])
+        ws.cell(row=row, column=4, value=ligne['niveau'])
+        ws.cell(row=row, column=5, value=float(montant))
+        ws.cell(row=row, column=6, value=float(ligne['montant_recu']))
+        ws.cell(row=row, column=7, value='Payé' if ligne['paye'] else 'Non payé')
         row += 1
 
-    # Ligne de totaux par mois
-    ws.cell(row=row, column=2, value='TOTAL').font = Font(bold=True)
-    col = 4
-    total_general = Decimal('0')
-    for p in periodes:
-        montant_periode = totaux_par_periode.get((p['annee'], p['mois']), Decimal('0'))
-        total_general += montant_periode
-        c = ws.cell(row=row, column=col, value=float(montant_periode))
-        c.font = Font(bold=True)
-        col += 1
-    c = ws.cell(row=row, column=col, value=float(total_general))
-    c.font = Font(bold=True)
+    ws.cell(row=row, column=4, value='TOTAL').font = Font(bold=True)
+    ws.cell(row=row, column=5, value=float(total_du)).font = Font(bold=True)
+    ws.cell(row=row, column=6, value=float(total_recu)).font = Font(bold=True)
 
     for col_cells in ws.columns:
         largeur = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
@@ -929,6 +1052,6 @@ def export_salaires_excel(request):
     response = HttpResponse(
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-    response['Content-Disposition'] = f"attachment; filename=salaires_enseignants_{timezone.localdate()}.xlsx"
+    response['Content-Disposition'] = f"attachment; filename=salaires_{mois_sel:02d}_{annee_sel}.xlsx"
     wb.save(response)
     return response

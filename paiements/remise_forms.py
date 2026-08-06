@@ -5,7 +5,18 @@ from .models import RemiseReduction, PaiementRemise
 
 class PaiementRemiseForm(forms.Form):
     """Formulaire pour appliquer des remises à un paiement"""
-    
+
+    TRANCHE_CHOICES = [
+        ('1', '1ère tranche'),
+        ('2', '2ème tranche'),
+        ('3', '3ème tranche'),
+    ]
+
+    BASE_CALCUL_CHOICES = [
+        ('paiement_echeance', "Paiement à l'échéance"),
+        ('tranches_dues', 'Montant des tranches sélectionnées'),
+    ]
+
     remises = forms.ModelMultipleChoiceField(
         queryset=RemiseReduction.objects.filter(actif=True),
         widget=forms.CheckboxSelectMultiple(attrs={
@@ -14,7 +25,7 @@ class PaiementRemiseForm(forms.Form):
         required=False,
         label="Remises disponibles"
     )
-    
+
     montant_original = forms.DecimalField(
         widget=forms.NumberInput(attrs={
             'class': 'form-control',
@@ -31,11 +42,36 @@ class PaiementRemiseForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label="Remise scolarité (%)"
     )
-    
+
+    # Tranches concernées par la remise (jamais l'inscription/réinscription)
+    tranches = forms.MultipleChoiceField(
+        choices=TRANCHE_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'form-check-input'}),
+        label="Tranches concernées"
+    )
+
+    # Base sur laquelle le pourcentage/montant de remise est calculé
+    base_calcul = forms.ChoiceField(
+        choices=BASE_CALCUL_CHOICES,
+        required=False,
+        initial='paiement_echeance',
+        widget=forms.RadioSelect,
+        label="Base de calcul"
+    )
+
+    # Motif obligatoire dès qu'une remise est appliquée
+    motif = forms.ChoiceField(
+        choices=[("", "— Choisir —")] + RemiseReduction.MOTIF_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Motif de la remise"
+    )
+
     def __init__(self, *args, **kwargs):
         paiement = kwargs.pop('paiement', None)
         super().__init__(*args, **kwargs)
-        
+
         if paiement:
             self.fields['montant_original'].initial = paiement.montant
             # Filtrer les remises valides à la date du paiement
@@ -45,6 +81,20 @@ class PaiementRemiseForm(forms.Form):
                 date_debut__lte=today,
                 date_fin__gte=today
             )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        remises = cleaned_data.get('remises') or []
+        pct_str = cleaned_data.get('pourcentage_scolarite') or ''
+        motif = cleaned_data.get('motif') or ''
+        tranches = cleaned_data.get('tranches') or []
+        applying_remise = bool(remises) or bool(pct_str)
+        if applying_remise:
+            if not tranches:
+                self.add_error('tranches', "Sélectionnez au moins une tranche concernée par la remise.")
+            if not motif:
+                self.add_error('motif', "Le motif de la remise est obligatoire.")
+        return cleaned_data
     
     def calculate_total_remise(self, montant_base):
         """Calcule le montant total des remises sélectionnées"""
