@@ -16,10 +16,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
 from .models import Rapport, TypeRapport, ExportProgramme
-from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark
+from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark, remises_par_categorie
 from eleves.models import Eleve, Ecole
 from eleves.utils_annee import get_annee_active
 from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypePaiement
+from paiements.allocation import registration_kind_for_type
 from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
@@ -445,7 +446,7 @@ def _build_excel_from_donnees(donnees, titre):
 
     headers1 = [
         'École', 'Nouveaux élèves', 'Nb paiements', 'Scolarité normale', "Scolarité payée",
-        "Frais d'inscription", 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
+        "Frais d'inscription", "Frais de réinscription", 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
         'Nb dépenses', 'Total dépenses', 'États salaires', 'Total salaires'
     ]
     ws1.append(headers1)
@@ -465,6 +466,7 @@ def _build_excel_from_donnees(donnees, titre):
             float(e['paiements'].get('total_du_concernes', 0) or 0),
             float(e['paiements'].get('scolarite', 0) or 0),
             float(e['paiements'].get('frais_inscription', 0) or 0),
+            float(e['paiements'].get('reinscription', 0) or 0),
             float(e['paiements'].get('reste_a_payer', 0) or 0),
             float(e['paiements'].get('montant_original', 0) or 0),
             float(e['paiements'].get('total_remises', 0) or 0),
@@ -478,12 +480,12 @@ def _build_excel_from_donnees(donnees, titre):
         for col in range(1, len(headers1) + 1):
             cell = ws1.cell(row=row, column=col)
             cell.border = border_all
-            if col >= 4 and col != 11 and col != 13:  # colonnes montants
+            if col >= 4 and col != 12 and col != 14:  # colonnes montants
                 cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
         row += 1
 
     # Largeurs
-    widths = [26, 16, 14, 18, 18, 18, 16, 18, 16, 16, 14, 16, 14, 16]
+    widths = [26, 16, 14, 18, 18, 18, 18, 16, 18, 16, 16, 14, 16, 14, 16]
     for i, w in enumerate(widths, start=1):
         ws1.column_dimensions[get_column_letter(i)].width = w
 
@@ -520,6 +522,32 @@ def _build_excel_from_donnees(donnees, titre):
 
     for i, w in enumerate([22, 18, 12, 16, 16, 16, 16], start=1):
         ws2.column_dimensions[get_column_letter(i)].width = w
+
+    # Feuille 3: remises par catégorie (motif), toutes écoles
+    ws3 = wb.create_sheet('Remises par catégorie')
+    headers3 = ['École', 'Catégorie (motif)', 'Montant (GNF)']
+    ws3.append(headers3)
+    for col in range(1, len(headers3) + 1):
+        c = ws3.cell(row=1, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal='center')
+        c.border = border_all
+
+    r = 2
+    for _, e in donnees.get('ecoles', {}).items():
+        ecole_nom = e.get('nom', '')
+        for categorie, montant in (e['paiements'].get('remises_par_categorie') or {}).items():
+            ws3.append([ecole_nom, categorie, float(montant or 0)])
+            for col in range(1, len(headers3) + 1):
+                cell = ws3.cell(row=r, column=col)
+                cell.border = border_all
+                if col == 3:
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+            r += 1
+
+    for i, w in enumerate([26, 26, 18], start=1):
+        ws3.column_dimensions[get_column_letter(i)].width = w
 
     return wb
 
@@ -570,7 +598,9 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 'nombre': 0,
                 'montant_total': Decimal('0'),
                 'frais_inscription': Decimal('0'),
+                'reinscription': Decimal('0'),
                 'scolarite': Decimal('0'),
+                'remises_par_categorie': {},
                 # Total dû (GNF) pour les élèves concernés ce jour (paiement/inscription)
                 'total_du_concernes': Decimal('0')
             },
@@ -622,17 +652,21 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         donnees_ecole['paiements']['montant_original'] = montant_original
         donnees_ecole['paiements']['total_remises'] = remises_appliquees
         donnees_ecole['paiements']['montant_net'] = donnees_ecole['paiements']['montant_total']
-        
+        donnees_ecole['paiements']['remises_par_categorie'] = remises_par_categorie(paiements_jour)
+
         # Séparation frais d'inscription et scolarité (alignée avec rapports/utils.collecter_donnees_periode)
         frais_inscription = Decimal('0')
+        frais_reinscription = Decimal('0')
         scolarite = Decimal('0')
         non_categorises = Decimal('0')
 
         for p in paiements_jour.select_related('type_paiement'):
             montant = p.montant or Decimal('0')
             nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
+            kind = registration_kind_for_type(p.type_paiement)
 
-            has_inscription = 'inscription' in nom
+            has_inscription = kind == 'inscription'
+            has_reinscription = kind == 'reinscription'
             has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
 
             if has_inscription and has_scolarite:
@@ -643,6 +677,10 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 scolarite += part_sco
             elif has_inscription:
                 frais_inscription += montant
+            elif has_reinscription:
+                # Cf. rapports/utils.collecter_donnees_periode: pas de forfait
+                # réinscription connu ici, montant compté intégralement.
+                frais_reinscription += montant
             elif has_scolarite:
                 scolarite += montant
             else:
@@ -672,6 +710,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
 
         # Assigner les valeurs finales
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
+        donnees_ecole['paiements']['reinscription'] = frais_reinscription
         donnees_ecole['paiements']['scolarite'] = scolarite
         
         # (Supprimé) Frais de scolarité annuel ne figure pas dans le rapport journalier
@@ -871,6 +910,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ["Scolarité normale", f"{donnees_ecole['paiements'].get('total_du_concernes', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ["Frais d'inscription", f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
+            ["Frais de réinscription", f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
             ["Reste à payer", f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
@@ -925,7 +965,29 @@ def generer_pdf_journalier(donnees, date_rapport):
             ]))
             story.append(class_table)
             story.append(Spacer(1, 16))
-    
+
+        # Remises par catégorie (motif)
+        remises_categorie = donnees_ecole['paiements'].get('remises_par_categorie') or {}
+        if remises_categorie:
+            story.append(Paragraph("Remises par catégorie", styles['Heading3']))
+            story.append(Spacer(1, 6))
+            remises_data = [['Catégorie (motif)', 'Montant']]
+            for categorie, montant in remises_categorie.items():
+                remises_data.append([categorie, f"{montant:,} GNF".replace(',', ' ')])
+
+            remises_table = Table(remises_data, colWidths=[220, 120])
+            remises_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+            ]))
+            story.append(remises_table)
+            story.append(Spacer(1, 16))
+
     # Section Dépenses globales (non rattachées à une école)
     story.append(Paragraph("DÉPENSES GLOBALES (journée)", styles['Heading2']))
     story.append(Spacer(1, 8))

@@ -240,9 +240,17 @@ class WhatsAppNoteRappelSender:
         exigible = sum((du or Decimal('0')) for _libelle, du, _paye, echeance in postes if echeance and echeance <= today)
         retard_reel = max(exigible - montant_couvert, Decimal('0'))
 
+        # Répartit la couverture (encaissements + remises) en cascade, comme
+        # l'allocation réelle des paiements, pour que le "prochain montant"
+        # annoncé au parent ne soit jamais gonflé par une remise qui a déjà
+        # réduit le solde global mais qu'aucune tranche prise isolément ne reflète.
+        from .allocation import reste_par_tranche_avec_couverture
+        restes_par_poste = reste_par_tranche_avec_couverture(echeancier, montant_paye + remises_total)
+        cles_postes = ['inscription', 'tranche_1', 'tranche_2', 'tranche_3']
+
         prochains = []
-        for libelle, du, paye, echeance in postes:
-            reste_poste = max((du or Decimal('0')) - (paye or Decimal('0')), Decimal('0'))
+        for (libelle, du, paye, echeance), cle in zip(postes, cles_postes):
+            reste_poste = restes_par_poste[cle]
             if reste_poste > 0:
                 prochains.append({
                     'libelle': libelle,

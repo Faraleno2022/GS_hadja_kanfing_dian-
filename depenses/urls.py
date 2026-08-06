@@ -33,6 +33,10 @@ urlpatterns = [
     path('informatique/export/excel/', views_recouvrement.export_informatique_excel, name='export_informatique_excel'),
     path('informatique/export/pdf/', views_recouvrement.export_informatique_pdf, name='export_informatique_pdf'),
 
+    # ===== RECOUVREMENT : Salaires enseignants (suivi des montants payés) =====
+    path('salaires/', views_recouvrement.dashboard_salaires, name='dashboard_salaires'),
+    path('salaires/export/excel/', views_recouvrement.export_salaires_excel, name='export_salaires_excel'),
+
     # Gestion des dépenses
     path('liste/', views.liste_depenses, name='liste_depenses'),
     path('ajouter/', views.ajouter_depense, name='ajouter_depense'),

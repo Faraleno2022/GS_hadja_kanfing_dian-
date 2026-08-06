@@ -238,11 +238,34 @@ class EcheancierPaiement(SyncTrackedModel):
     @property
     def total_paye(self):
         return self.frais_inscription_paye + self.tranche_1_payee + self.tranche_2_payee + self.tranche_3_payee
-    
+
+    @property
+    def total_remises_valides(self):
+        """Somme des remises appliquées aux paiements VALIDÉS de l'élève.
+
+        Les remises réduisent le solde dû au même titre qu'un encaissement,
+        mais ne sont jamais comptabilisées dans les champs *_paye (qui ne
+        représentent que l'argent réellement encaissé).
+        """
+        from django.db.models import Sum
+        total = (
+            PaiementRemise.objects
+            .filter(paiement__eleve_id=self.eleve_id, paiement__statut='VALIDE')
+            .aggregate(total=Sum('montant_remise'))
+            .get('total')
+        )
+        return Decimal(str(total or 0))
+
     @property
     def solde_restant(self):
-        """Solde restant à payer (ne peut jamais être négatif)"""
-        return max(Decimal('0'), self.total_du - self.total_paye)
+        """Solde restant à payer (ne peut jamais être négatif).
+
+        Déduit les remises validées, sans quoi ce solde diverge du plafond
+        réellement appliqué à la saisie des paiements (cf. ajouter_paiement)
+        et du "Solde global restant" affiché sur le reçu — l'un des deux
+        finissant par annoncer un montant que l'autre refuse.
+        """
+        return max(Decimal('0'), self.total_du - self.total_paye - self.total_remises_valides)
 
     @property
     def pourcentage_paye(self):

@@ -9,12 +9,14 @@ from django.utils import timezone
 
 from eleves.models import Ecole, Classe, Eleve, Responsable, GrilleTarifaire
 from paiements.models import (
-    EcheancierPaiement,  
+    EcheancierPaiement,
     TypePaiement,
     ModePaiement,
     Paiement,
+    PaiementRemise,
+    RemiseReduction,
 )
-from paiements.allocation import get_payment_allocation
+from paiements.allocation import get_payment_allocation, reste_par_tranche_avec_couverture
 from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from paiements.views import _allocate_combined_payment
 
@@ -428,3 +430,65 @@ class TestAllocationPaiements(TestCase):
         self._refresh()
         self.assertEqual(self.echeancier.solde_restant, Decimal("0"))
         self.assertEqual(self.echeancier.statut, "PAYE_COMPLET")
+
+    def test_remise_deduite_du_solde_et_repartie_sur_la_derniere_tranche(self):
+        """Reproduit le cas Mansaré (REC20260014 / REC20260015): une remise
+        globale doit réduire solde_restant ET la tranche qui l'absorbe dans
+        la répartition en cascade, faute de quoi le reçu annonce un montant
+        payable que le formulaire de saisie refuse ensuite (sur-paiement)."""
+        # Insc (30k) + T1 (500k) + T2 (500k) déjà réglés au comptant.
+        paiement1 = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_insc_t1_t2,
+            mode_paiement=self.mode_especes,
+            numero_recu="REC_REMISE_1",
+            montant=Decimal("1030000"),
+            date_paiement=date(2024, 9, 30),
+            statut="VALIDE",
+        )
+        _allocate_combined_payment(paiement1, self.echeancier)
+        self._refresh()
+
+        # Paiement partiel sur T3 (300k) avec une remise de 25k accordée sur ce reçu.
+        paiement2 = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_t3,
+            mode_paiement=self.mode_especes,
+            numero_recu="REC_REMISE_2",
+            montant=Decimal("300000"),
+            date_paiement=date(2025, 3, 10),
+            statut="VALIDE",
+        )
+        remise = RemiseReduction.objects.create(
+            nom="Geste commercial",
+            type_remise="MONTANT_FIXE",
+            valeur=Decimal("25000"),
+            motif="GESTE_COMMERCIAL",
+            date_debut=date(2024, 9, 1),
+            date_fin=date(2025, 8, 31),
+        )
+        PaiementRemise.objects.create(
+            paiement=paiement2,
+            remise=remise,
+            montant_remise=Decimal("25000"),
+        )
+        _allocate_combined_payment(paiement2, self.echeancier)
+        self._refresh()
+
+        # total_du=1 530 000 ; payé cash=1 330 000 ; remise=25 000 => solde=175 000
+        self.assertEqual(self.echeancier.total_remises_valides, Decimal("25000"))
+        self.assertEqual(self.echeancier.solde_restant, Decimal("175000"))
+
+        couverture = self.echeancier.total_paye + self.echeancier.total_remises_valides
+        restes = reste_par_tranche_avec_couverture(self.echeancier, couverture)
+        # La remise doit apparaître sur T3 (dernière tranche entamée), pas
+        # disparaître dans un angle mort qui ne réduirait aucune tranche.
+        self.assertEqual(restes["inscription"], Decimal("0"))
+        self.assertEqual(restes["tranche_1"], Decimal("0"))
+        self.assertEqual(restes["tranche_2"], Decimal("0"))
+        self.assertEqual(restes["tranche_3"], Decimal("175000"))
+        # La somme des restes par tranche doit toujours correspondre au solde global.
+        self.assertEqual(
+            sum(restes.values()),
+            self.echeancier.solde_restant,
+        )
