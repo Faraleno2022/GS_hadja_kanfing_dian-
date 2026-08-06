@@ -743,6 +743,15 @@ def _echeanciers_a_relancer(user):
     Cette requête est la source commune du compteur « élèves à relancer » et
     de la liste détaillée, afin d'éviter qu'un compteur positif ouvre une page
     vide. Les remises validées sont déduites du solde restant.
+
+    Le total des remises est calculé via une sous-requête corrélée (même
+    logique que EcheancierPaiement.total_remises_valides) plutôt que par un
+    Sum() direct sur la jointure eleve->paiements->remises: cette jointure
+    multiplie les lignes (un élève peut avoir plusieurs paiements, chacun
+    avec plusieurs remises) et impose un GROUP BY, dans lequel Greatest()
+    renvoie NULL dès qu'un des termes est NULL sur MySQL/SQLite (au lieu
+    d'ignorer le NULL comme sur PostgreSQL) — ce qui provoquait une erreur
+    serveur (500) sur la page des relances en production (MySQL).
     """
     montant_field = DecimalField(max_digits=12, decimal_places=0)
     zero = Value(0, output_field=montant_field)
@@ -760,12 +769,16 @@ def _echeanciers_a_relancer(user):
         + Coalesce(F('tranche_3_payee'), zero),
         output_field=montant_field,
     )
+    remises_subquery = (
+        PaiementRemise.objects
+        .filter(paiement__eleve_id=OuterRef('eleve_id'), paiement__statut='VALIDE')
+        .order_by()
+        .values('paiement__eleve_id')
+        .annotate(total=Sum('montant_remise'))
+        .values('total')
+    )
     remises_expr = Coalesce(
-        Sum(
-            'eleve__paiements__remises__montant_remise',
-            filter=Q(eleve__paiements__statut='VALIDE'),
-            output_field=montant_field,
-        ),
+        Subquery(remises_subquery, output_field=montant_field),
         zero,
         output_field=montant_field,
     )
