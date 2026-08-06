@@ -130,6 +130,13 @@ def tableau_bord_general(request):
             'total': informatique_qs.count(),
             'montant': informatique_qs.filter(statut='ACTIF').aggregate(t=Sum('montant'))['t'] or Decimal('0'),
         },
+        {
+            'titre': 'Salaires enseignants', 'icone': 'fa-chalkboard-teacher', 'couleur': 'success',
+            'description': 'Suivi des salaires payés par enseignant et par mois.',
+            'href': reverse('depenses:dashboard_salaires'),
+            'total': _salaires_payes_qs(user).count(),
+            'montant': _salaires_payes_qs(user).aggregate(t=Sum('salaire_net'))['t'] or Decimal('0'),
+        },
     ]
 
     context = {
@@ -712,4 +719,216 @@ def export_informatique_pdf(request):
 
     response = HttpResponse(pdf, content_type='application/pdf')
     response['Content-Disposition'] = f"attachment; filename=abonnements_informatique_{timezone.localdate()}.pdf"
+    return response
+
+
+# =====================================================================
+# Module Salaires enseignants (suivi des montants payés par mois)
+# =====================================================================
+
+MOIS_NOMS_FR = [
+    '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+]
+
+NIVEAUX_ENSEIGNANT_ORDRE = ['Maternelle', 'Primaire', 'Collège', 'Lycée', 'Autre']
+
+
+def _niveau_depuis_classe(niveau_classe):
+    """Regroupe les niveaux détaillés de Classe.NIVEAUX_CHOICES en 4 grandes familles."""
+    if not niveau_classe:
+        return 'Autre'
+    if niveau_classe in ('GARDERIE', 'MATERNELLE'):
+        return 'Maternelle'
+    if niveau_classe.startswith('PRIMAIRE'):
+        return 'Primaire'
+    if niveau_classe.startswith('COLLEGE'):
+        return 'Collège'
+    if niveau_classe in ('LYCEE_11', 'LYCEE_12', 'TERMINALE'):
+        return 'Lycée'
+    return 'Autre'
+
+
+def _niveau_enseignant(enseignant, affectations_par_enseignant):
+    """Détermine le niveau (Maternelle/Primaire/Collège/Lycée) d'un enseignant
+    à partir de sa classe réellement affectée (la plus récente), avec un
+    repli sur son type de rémunération si aucune affectation n'existe."""
+    affectations = affectations_par_enseignant.get(enseignant.id) or []
+    if affectations:
+        derniere = max(affectations, key=lambda a: (a.actif, a.date_debut))
+        if derniere.classe_id:
+            return _niveau_depuis_classe(derniere.classe.niveau)
+
+    mapping_type = {
+        'GARDERIE': 'Maternelle',
+        'MATERNELLE': 'Maternelle',
+        'PRIMAIRE': 'Primaire',
+        'SECONDAIRE': 'Collège',
+        'ADMINISTRATEUR': 'Autre',
+    }
+    return mapping_type.get(enseignant.type_enseignant, 'Autre')
+
+
+def _salaires_payes_qs(user):
+    """États de salaire marqués payés, filtrés par école pour les non-superadmins."""
+    from salaires.models import EtatSalaire
+    qs = EtatSalaire.objects.filter(paye=True).select_related('enseignant', 'periode', 'enseignant__ecole')
+    if not user_is_superadmin(user):
+        ecole = user_school(user)
+        qs = qs.none() if ecole is None else qs.filter(enseignant__ecole=ecole)
+    return qs
+
+
+def _construire_pivot_salaires(user):
+    """Construit le tableau croisé enseignant x mois des salaires payés.
+
+    Retourne (periodes, lignes, totaux_par_periode, totaux_par_niveau) où :
+    - periodes: liste ordonnée de dicts {annee, mois, libelle} présentes dans les données
+    - lignes: liste de dicts par enseignant {nom, prenoms, niveau, par_periode: {(annee,mois): montant}, total}
+    - totaux_par_periode: {(annee,mois): montant total tous enseignants}
+    - totaux_par_niveau: {niveau: montant total}
+    """
+    from salaires.models import Enseignant, AffectationClasse
+
+    qs = _salaires_payes_qs(user).order_by('periode__annee', 'periode__mois')
+
+    enseignant_ids = set(qs.values_list('enseignant_id', flat=True))
+    affectations_par_enseignant = {}
+    if enseignant_ids:
+        for aff in AffectationClasse.objects.filter(enseignant_id__in=enseignant_ids).select_related('classe'):
+            affectations_par_enseignant.setdefault(aff.enseignant_id, []).append(aff)
+
+    periodes_vues = {}
+    lignes_par_enseignant = {}
+    totaux_par_periode = {}
+    totaux_par_niveau = {}
+
+    for etat in qs:
+        cle_periode = (etat.periode.annee, etat.periode.mois)
+        if cle_periode not in periodes_vues:
+            periodes_vues[cle_periode] = {
+                'annee': etat.periode.annee,
+                'mois': etat.periode.mois,
+                'libelle': f"{MOIS_NOMS_FR[etat.periode.mois]} {etat.periode.annee}",
+            }
+
+        ens = etat.enseignant
+        if ens.id not in lignes_par_enseignant:
+            lignes_par_enseignant[ens.id] = {
+                'nom': ens.nom,
+                'prenoms': ens.prenoms,
+                'niveau': _niveau_enseignant(ens, affectations_par_enseignant),
+                'par_periode': {},
+                'total': Decimal('0'),
+            }
+        ligne = lignes_par_enseignant[ens.id]
+        montant = etat.salaire_net or Decimal('0')
+        ligne['par_periode'][cle_periode] = ligne['par_periode'].get(cle_periode, Decimal('0')) + montant
+        ligne['total'] += montant
+
+        totaux_par_periode[cle_periode] = totaux_par_periode.get(cle_periode, Decimal('0')) + montant
+        totaux_par_niveau[ligne['niveau']] = totaux_par_niveau.get(ligne['niveau'], Decimal('0')) + montant
+
+    periodes = sorted(periodes_vues.values(), key=lambda p: (p['annee'], p['mois']))
+    lignes = sorted(lignes_par_enseignant.values(), key=lambda l: (l['nom'], l['prenoms']))
+
+    return periodes, lignes, totaux_par_periode, totaux_par_niveau
+
+
+@login_required
+def dashboard_salaires(request):
+    """Tableau de bord Recouvrement > Salaires enseignants : suivi des montants
+    de salaire payés par enseignant et par mois (colonnes ajustées automatiquement
+    aux mois où des paiements existent), avec répartition par niveau."""
+    periodes, lignes, totaux_par_periode, totaux_par_niveau = _construire_pivot_salaires(request.user)
+
+    total_general = sum((l['total'] for l in lignes), Decimal('0'))
+
+    today = timezone.localdate()
+    cle_mois_courant = (today.year, today.month)
+    total_mois_courant = totaux_par_periode.get(cle_mois_courant, Decimal('0'))
+
+    totaux_par_niveau_ordonnes = [
+        {'niveau': niveau, 'montant': totaux_par_niveau.get(niveau, Decimal('0'))}
+        for niveau in NIVEAUX_ENSEIGNANT_ORDRE
+        if totaux_par_niveau.get(niveau)
+    ]
+
+    evolution_mensuelle = [
+        {'libelle': p['libelle'], 'montant': totaux_par_periode.get((p['annee'], p['mois']), Decimal('0'))}
+        for p in periodes
+    ]
+    max_mensuel = max((e['montant'] for e in evolution_mensuelle), default=Decimal('0'))
+    for e in evolution_mensuelle:
+        e['part'] = int((e['montant'] / max_mensuel) * 100) if max_mensuel else 0
+
+    # Pré-calculer, pour chaque ligne, la liste des montants dans l'ordre des périodes
+    # (plus simple à itérer dans le template qu'un dict indexé par tuple).
+    for ligne in lignes:
+        ligne['montants'] = [ligne['par_periode'].get((p['annee'], p['mois'])) for p in periodes]
+
+    context = {
+        'periodes': periodes,
+        'lignes': lignes,
+        'total_general': total_general,
+        'total_mois_courant': total_mois_courant,
+        'mois_courant_libelle': f"{MOIS_NOMS_FR[today.month]} {today.year}",
+        'totaux_par_niveau': totaux_par_niveau_ordonnes,
+        'evolution_mensuelle': evolution_mensuelle,
+    }
+    return render(request, 'depenses/recouvrement/salaires_dashboard.html', context)
+
+
+@login_required
+def export_salaires_excel(request):
+    periodes, lignes, totaux_par_periode, _totaux_par_niveau = _construire_pivot_salaires(request.user)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Salaires enseignants'
+
+    headers = ['Prénoms', 'Nom', 'Niveau'] + [p['libelle'] for p in periodes] + ['Total (GNF)']
+    header_fill = PatternFill(start_color='198754', end_color='198754', fill_type='solid')
+    header_font = Font(bold=True, color='FFFFFF')
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    row = 2
+    for ligne in lignes:
+        ws.cell(row=row, column=1, value=ligne['prenoms'])
+        ws.cell(row=row, column=2, value=ligne['nom'])
+        ws.cell(row=row, column=3, value=ligne['niveau'])
+        col = 4
+        for p in periodes:
+            montant = ligne['par_periode'].get((p['annee'], p['mois']))
+            ws.cell(row=row, column=col, value=float(montant) if montant else None)
+            col += 1
+        ws.cell(row=row, column=col, value=float(ligne['total']))
+        row += 1
+
+    # Ligne de totaux par mois
+    ws.cell(row=row, column=2, value='TOTAL').font = Font(bold=True)
+    col = 4
+    total_general = Decimal('0')
+    for p in periodes:
+        montant_periode = totaux_par_periode.get((p['annee'], p['mois']), Decimal('0'))
+        total_general += montant_periode
+        c = ws.cell(row=row, column=col, value=float(montant_periode))
+        c.font = Font(bold=True)
+        col += 1
+    c = ws.cell(row=row, column=col, value=float(total_general))
+    c.font = Font(bold=True)
+
+    for col_cells in ws.columns:
+        largeur = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
+        ws.column_dimensions[col_cells[0].column_letter].width = min(largeur + 2, 30)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f"attachment; filename=salaires_enseignants_{timezone.localdate()}.xlsx"
+    wb.save(response)
     return response

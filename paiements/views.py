@@ -40,6 +40,7 @@ from .allocation import (
     get_payment_allocation,
     payment_type_plan,
     registration_kind_for_type,
+    reste_par_tranche_avec_couverture,
 )
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from eleves.utils_annee import get_annee_active
@@ -3262,11 +3263,6 @@ def generer_recu_pdf(request, paiement_id:int):
 
         # Restes à payer par tranche
         try:
-            def _reste(due, paye):
-                try:
-                    return max(0, int((due or 0) - (paye or 0)))
-                except Exception:
-                    return 0
             # Calcul global basé sur les paiements validés: somme(montants) - somme(remises)
             try:
                 total_du = int((echeancier.frais_inscription_du or 0) + (echeancier.tranche_1_due or 0) + (echeancier.tranche_2_due or 0) + (echeancier.tranche_3_due or 0))
@@ -3297,10 +3293,17 @@ def generer_recu_pdf(request, paiement_id:int):
             if tout_solde:
                 r_insc = r_t1 = r_t2 = r_t3 = 0
             else:
-                r_insc = _reste(echeancier.frais_inscription_du, echeancier.frais_inscription_paye)
-                r_t1 = _reste(echeancier.tranche_1_due, echeancier.tranche_1_payee)
-                r_t2 = _reste(echeancier.tranche_2_due, echeancier.tranche_2_payee)
-                r_t3 = _reste(echeancier.tranche_3_due, echeancier.tranche_3_payee)
+                # Répartit la couverture (encaissements + remises) en cascade,
+                # comme l'allocation réelle des paiements, pour que la somme des
+                # restes par tranche corresponde toujours au solde global affiché
+                # ci-dessus (sinon la remise n'apparaît sur aucune tranche et le
+                # reçu annonce un montant payable supérieur à celui accepté par
+                # le formulaire de saisie).
+                restes = reste_par_tranche_avec_couverture(echeancier, couverture_effective)
+                r_insc = int(restes['inscription'])
+                r_t1 = int(restes['tranche_1'])
+                r_t2 = int(restes['tranche_2'])
+                r_t3 = int(restes['tranche_3'])
             draw_line(f"{label_frais_admission}: {str(f'{r_insc:,}').replace(',', ' ')} GNF")
             draw_line(f"1ère tranche: {str(f'{r_t1:,}').replace(',', ' ')} GNF")
             draw_line(f"2ème tranche: {str(f'{r_t2:,}').replace(',', ' ')} GNF")

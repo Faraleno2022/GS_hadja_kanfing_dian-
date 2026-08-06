@@ -112,6 +112,28 @@ def allocate_amount_sequentially(echeancier, amount, initial_paid=None):
     return allocation, paid, remaining
 
 
+def reste_par_tranche_avec_couverture(echeancier, couverture_totale):
+    """Répartit une couverture totale (encaissements + remises) sur les postes.
+
+    Utilise le même ordre en cascade (inscription -> T1 -> T2 -> T3) que
+    l'allocation réelle des paiements, pour que le "reste" par tranche
+    reste cohérent avec le solde global (qui, lui, déduit les remises).
+    Sans cette répartition, une remise réduit le solde global sans jamais
+    réduire aucune tranche, et l'écart affiché induit le caissier en erreur
+    sur le montant réellement encore payable.
+
+    Retourne un dict {key: reste} pour chaque poste de ALLOCATION_COMPONENTS.
+    """
+    zero_paid = {key: Decimal('0') for key, _due, _paid in ALLOCATION_COMPONENTS}
+    _allocation, paid, _remaining = allocate_amount_sequentially(
+        echeancier, couverture_totale, initial_paid=zero_paid
+    )
+    return {
+        key: max(Decimal('0'), _decimal(getattr(echeancier, due_field, 0)) - paid[key])
+        for key, due_field, _paid_field in ALLOCATION_COMPONENTS
+    }
+
+
 def get_payment_allocation(paiement, echeancier=None):
     """Reconstruit l'affectation exacte d'un paiement validé pour les reçus."""
     if echeancier is None:

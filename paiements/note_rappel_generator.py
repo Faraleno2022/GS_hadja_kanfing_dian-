@@ -129,11 +129,19 @@ def generer_note_rappel_eleve(eleve, response=None):
         montant_total = ech.total_du
         reste_a_payer = ech.solde_restant
 
+        # Répartition en cascade (inscription -> T1 -> T2 -> T3) de la couverture
+        # réelle (encaissements + remises validées) : sans elle, une remise
+        # réduit le solde global sans jamais apparaître sur une tranche, et la
+        # note de rappel annoncerait un reste par tranche supérieur au solde
+        # global réellement dû.
+        from .allocation import reste_par_tranche_avec_couverture
+        couverture_totale = ech.total_paye + ech.total_remises_valides
+        restes = reste_par_tranche_avec_couverture(ech, couverture_totale)
+
         # Frais d'admission (inscription ou réinscription)
         fi_du = Decimal(str(ech.frais_inscription_du or 0))
-        fi_paye = Decimal(str(ech.frais_inscription_paye or 0))
         if fi_du > 0:
-            fi_reste = max(Decimal('0'), fi_du - fi_paye)
+            fi_reste = restes['inscription']
             if fi_reste <= 0:
                 tranches_payees.append(ech.get_nature_frais_display())
             else:
@@ -142,15 +150,14 @@ def generer_note_rappel_eleve(eleve, response=None):
                 )
 
         # Tranches 1, 2, 3
-        for i, (due_field, paye_field) in enumerate([
-            ('tranche_1_due', 'tranche_1_payee'),
-            ('tranche_2_due', 'tranche_2_payee'),
-            ('tranche_3_due', 'tranche_3_payee'),
+        for i, (due_field, key) in enumerate([
+            ('tranche_1_due', 'tranche_1'),
+            ('tranche_2_due', 'tranche_2'),
+            ('tranche_3_due', 'tranche_3'),
         ], start=1):
             t_du = Decimal(str(getattr(ech, due_field, 0) or 0))
-            t_paye = Decimal(str(getattr(ech, paye_field, 0) or 0))
             if t_du > 0:
-                t_reste = max(Decimal('0'), t_du - t_paye)
+                t_reste = restes[key]
                 if t_reste <= 0:
                     tranches_payees.append(f"Tranche {i}")
                 else:
