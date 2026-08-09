@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}Élève ajouté avec succès{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+            <div class="card border-0 shadow-sm overflow-hidden">
+                <div class="card-body p-4 p-md-5 text-center">
+                    <div class="mb-4">
+                        <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-success text-white"
+                              style="width: 72px; height: 72px; font-size: 2rem;">
+                            <i class="fas fa-check"></i>
+                        </span>
+                    </div>
+
+                    <h2 class="h3 mb-3">Élève ajouté avec succès</h2>
+                    <p class="lead mb-2">
+                        L'élève <strong>{{ eleve.prenom }} {{ eleve.nom }}</strong> a été ajouté avec succès.
+                    </p>
+                    <p class="text-muted mb-4">
+                        Matricule : <strong>{{ eleve.matricule }}</strong>
+                    </p>
+
+                    <div class="alert alert-light border mb-4" role="status">
+                        Que souhaitez-vous faire maintenant ?
+                    </div>
+
+                    <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                        <a href="{{ paiement_url }}" class="btn btn-success btn-lg px-4">
+                            <i class="fas fa-money-bill-wave me-2"></i>
+                            Ajouter un paiement
+                        </a>
+                        <a href="{{ continuer_url }}" class="btn btn-primary btn-lg px-4">
+                            <i class="fas fa-user-plus me-2"></i>
+                            Continuer l'ajout des élèves
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

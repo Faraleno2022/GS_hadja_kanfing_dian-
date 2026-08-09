@@ -11,6 +11,7 @@ from django.db import transaction
 from django.apps import apps
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
+from django.urls import reverse
 from django.utils import timezone
 from datetime import datetime, timedelta
 import logging
@@ -420,140 +421,143 @@ def user_detail(request, user_id):
     return render(request, 'administration/user_detail.html', context)
 
 
+def peut_voir_corbeille(user):
+    """Super-admin, ou utilisateur autorisé à supprimer des élèves.
+
+    Un utilisateur non super-admin ne voit que la corbeille de son école
+    (filtrage appliqué dans les vues).
+    """
+    if not user.is_authenticated:
+        return False
+    if is_super_admin(user):
+        return True
+    profil = getattr(user, 'profil', None)
+    return bool(profil and getattr(profil, 'peut_supprimer_eleves', False))
+
+
+def _corbeille_ecole_utilisateur(request):
+    """École à laquelle limiter la corbeille, ou None pour tout voir."""
+    if is_super_admin(request.user):
+        return None
+    from utilisateurs.utils import user_school
+    return user_school(request.user)
+
+
 @login_required
-@user_passes_test(is_super_admin, login_url='admin:login')
+@user_passes_test(peut_voir_corbeille, login_url='admin:login')
 def corbeille_list(request):
-    """Affiche la corbeille avec les éléments supprimés définitivement"""
-    
-    # Récupérer les suppressions définitives
-    suppressions = SystemLog.objects.filter(
-        action='SUPPRESSION_DEFINITIVE'
-    ).select_related('user').order_by('-timestamp')
-    
-    # Pagination
-    paginator = Paginator(suppressions, 20)
-    page_number = request.GET.get('page')
-    page_obj = paginator.get_page(page_number)
-    
-    # Statistiques
+    """Corbeille : éléments supprimés et modifications enregistrées."""
+    from .models import ElementCorbeille
+
+    onglet = (request.GET.get('onglet') or 'suppressions').lower()
+    if onglet not in ('suppressions', 'modifications'):
+        onglet = 'suppressions'
+
+    type_operation = (
+        ElementCorbeille.MODIFICATION if onglet == 'modifications'
+        else ElementCorbeille.SUPPRESSION
+    )
+
+    elements = (
+        ElementCorbeille.objects
+        .filter(type_operation=type_operation)
+        .select_related('utilisateur', 'restaure_par', 'ecole')
+    )
+
+    ecole_utilisateur = _corbeille_ecole_utilisateur(request)
+    if ecole_utilisateur is not None:
+        elements = elements.filter(ecole=ecole_utilisateur)
+
+    recherche = (request.GET.get('q') or '').strip()
+    if recherche:
+        elements = elements.filter(
+            Q(libelle__icontains=recherche)
+            | Q(model_label__icontains=recherche)
+            | Q(motif__icontains=recherche)
+        )
+
+    etat = (request.GET.get('etat') or '').lower()
+    if etat == 'restaures':
+        elements = elements.filter(restaure=True)
+    elif etat == 'en_attente':
+        elements = elements.filter(restaure=False)
+
+    paginator = Paginator(elements, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    # Détail des champs modifiés, calculé pour la page affichée uniquement
+    if type_operation == ElementCorbeille.MODIFICATION:
+        from .corbeille import differences
+        for element in page_obj:
+            element.details_modification = differences(element)
+
+    base_qs = ElementCorbeille.objects.all()
+    if ecole_utilisateur is not None:
+        base_qs = base_qs.filter(ecole=ecole_utilisateur)
     stats = {
-        'total_suppressions': suppressions.count(),
-        'suppressions_aujourd_hui': suppressions.filter(
-            timestamp__date=timezone.now().date()
-        ).count(),
-        'suppressions_cette_semaine': suppressions.filter(
-            timestamp__gte=timezone.now() - timedelta(days=7)
-        ).count(),
+        'suppressions': base_qs.filter(
+            type_operation=ElementCorbeille.SUPPRESSION, restaure=False).count(),
+        'modifications': base_qs.filter(
+            type_operation=ElementCorbeille.MODIFICATION, restaure=False).count(),
+        'restaures': base_qs.filter(restaure=True).count(),
+        'aujourd_hui': base_qs.filter(date__date=timezone.now().date()).count(),
     }
-    
-    context = {
-        'suppressions': page_obj,
+
+    return render(request, 'administration/corbeille.html', {
+        'elements': page_obj,
+        'onglet': onglet,
+        'etat': etat,
+        'recherche': recherche,
         'stats': stats,
-        'titre_page': 'Corbeille - Éléments supprimés'
-    }
-    
-    return render(request, 'administration/corbeille.html', context)
+        'titre_page': 'Corbeille',
+    })
 
 
 @login_required
-@user_passes_test(is_super_admin, login_url='admin:login')
+@user_passes_test(peut_voir_corbeille, login_url='admin:login')
 @require_POST
 @csrf_protect
-def restaurer_element(request, log_id):
-    """Restaure un élément supprimé depuis la corbeille"""
-    
+def corbeille_restaurer(request, element_id):
+    """Restaure un élément supprimé ou annule une modification."""
+    from .corbeille import CorbeilleError, annuler_modification, restaurer
+    from .models import ElementCorbeille
+
+    elements = ElementCorbeille.objects.all()
+    ecole_utilisateur = _corbeille_ecole_utilisateur(request)
+    if ecole_utilisateur is not None:
+        elements = elements.filter(ecole=ecole_utilisateur)
+    element = get_object_or_404(elements, pk=element_id)
+    onglet = 'modifications' if element.type_operation == ElementCorbeille.MODIFICATION else 'suppressions'
+
     try:
-        # Récupérer le log de suppression
-        log_suppression = get_object_or_404(
-            SystemLog, 
-            id=log_id, 
-            action='SUPPRESSION_DEFINITIVE'
+        if element.type_operation == ElementCorbeille.MODIFICATION:
+            objet, ignores = annuler_modification(element, request=request)
+            messages.success(request, f"Modification annulée : « {objet} » a retrouvé son état précédent.")
+        else:
+            objet, ignores = restaurer(element, request=request)
+            messages.success(request, f"« {objet} » a été restauré.")
+
+        if ignores:
+            messages.warning(
+                request,
+                "Éléments non rétablis (leur cible n'existe plus) : " + ", ".join(str(i) for i in ignores[:8])
+                + (f" (+{len(ignores) - 8})" if len(ignores) > 8 else "")
+            )
+
+        log_admin_action(
+            'RESTORE',
+            f"Restauration depuis la corbeille : {element.libelle}",
+            user=request.user,
+            ip_address=request.META.get('REMOTE_ADDR'),
+            details={'element_id': element.id, 'model_label': element.model_label},
         )
-        
-        # Vérifier que l'élément n'a pas déjà été restauré
-        if SystemLog.objects.filter(
-            action='RESTORE',
-            details__original_log_id=log_id
-        ).exists():
-            return JsonResponse({
-                'success': False, 
-                'error': 'Cet élément a déjà été restauré.'
-            })
-        
-        # Extraire les détails de la suppression
-        details = log_suppression.details
-        
-        if not details or 'eleve_id' not in details:
-            return JsonResponse({
-                'success': False, 
-                'error': 'Données de restauration incomplètes.'
-            })
-        
-        with transaction.atomic():
-            # Restaurer l'élève
-            eleve_data = {
-                'matricule': details.get('matricule'),
-                'nom': details.get('nom_complet', '').split(' ')[-1],
-                'prenom': ' '.join(details.get('nom_complet', '').split(' ')[:-1]),
-                'statut': 'ACTIF',  # Restaurer comme actif
-            }
-            
-            # Trouver la classe (si elle existe encore)
-            classe_nom = details.get('classe', '')
-            classe = None
-            if classe_nom:
-                try:
-                    classe = Classe.objects.get(nom__icontains=classe_nom.split(' - ')[0])
-                except Classe.DoesNotExist:
-                    pass
-            
-            if not classe:
-                return JsonResponse({
-                    'success': False, 
-                    'error': f'Impossible de restaurer: la classe "{classe_nom}" n\'existe plus.'
-                })
-            
-            # Créer le nouvel élève restauré
-            from eleves.models import Eleve
-            eleve_restaure = Eleve.objects.create(
-                matricule=eleve_data['matricule'] + '_RESTAURE',  # Éviter les doublons
-                nom=eleve_data['nom'],
-                prenom=eleve_data['prenom'],
-                classe=classe,
-                statut=eleve_data['statut']
-            )
-            
-            # Enregistrer la restauration
-            SystemLog.objects.create(
-                action='RESTORE',
-                description=f"Restauration de l'élève {details.get('nom_complet')} (nouveau ID: {eleve_restaure.id})",
-                user=request.user,
-                ip_address=request.META.get('REMOTE_ADDR', ''),
-                details={
-                    'original_log_id': log_id,
-                    'original_eleve_id': details.get('eleve_id'),
-                    'new_eleve_id': eleve_restaure.id,
-                    'matricule_original': details.get('matricule'),
-                    'matricule_restaure': eleve_restaure.matricule,
-                    'classe': str(classe),
-                    'paiements_perdus': len(details.get('paiements_supprimes', [])),
-                    'user_agent': request.META.get('HTTP_USER_AGENT', '')
-                }
-            )
-            
-            return JsonResponse({
-                'success': True,
-                'message': f'Élève restauré avec succès. Nouveau matricule: {eleve_restaure.matricule}',
-                'new_eleve_id': eleve_restaure.id,
-                'new_matricule': eleve_restaure.matricule
-            })
-            
-    except Exception as e:
-        logger.error(f"Erreur lors de la restauration: {e}")
-        return JsonResponse({
-            'success': False, 
-            'error': f'Erreur lors de la restauration: {str(e)}'
-        })
+    except CorbeilleError as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        logger.exception("Erreur lors de la restauration depuis la corbeille")
+        messages.error(request, f"Restauration impossible : {exc}")
+
+    return redirect(f"{reverse('administration:corbeille_list')}?onglet={onglet}")
 
 
 @login_required

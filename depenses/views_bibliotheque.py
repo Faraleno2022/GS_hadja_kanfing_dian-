@@ -1,8 +1,11 @@
+import re
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Count, Sum
 from django.http import JsonResponse, HttpResponse
+from django.views.decorators.http import require_POST
 from django.utils import timezone
 from datetime import datetime, date, timedelta
 from decimal import Decimal
@@ -459,3 +462,249 @@ def statistiques_bibliotheque(request):
     }
 
     return render(request, 'depenses/bibliotheque/statistiques.html', context)
+
+
+# ─── Catégories de livres ──────────────────────────────────────────────────────
+@login_required
+def gestion_categories_livres(request):
+    """Créer et lister les catégories de livres (indispensables pour ajouter un livre)."""
+    if request.method == 'POST':
+        nom = (request.POST.get('nom') or '').strip()
+        code = (request.POST.get('code') or '').strip().upper()
+        description = (request.POST.get('description') or '').strip()
+
+        if not nom:
+            messages.error(request, "Le nom de la catégorie est obligatoire.")
+        else:
+            # Générer un code automatiquement s'il n'est pas fourni
+            if not code:
+                base = ''.join(ch for ch in nom.upper() if ch.isalnum())[:6] or 'CAT'
+                code = base
+                i = 1
+                while CategorieLivre.objects.filter(code=code).exists():
+                    i += 1
+                    code = f"{base}{i}"
+            if CategorieLivre.objects.filter(code=code).exists():
+                messages.error(request, f"Le code « {code} » existe déjà. Choisissez-en un autre.")
+            else:
+                CategorieLivre.objects.create(nom=nom, code=code, description=description)
+                messages.success(request, f"Catégorie « {nom} » créée avec succès.")
+                return redirect('depenses:gestion_categories_livres')
+
+    categories = CategorieLivre.objects.annotate(nb_livres=Count('livres')).order_by('nom')
+    context = {
+        'titre_page': 'Catégories de livres',
+        'categories': categories,
+    }
+    return render(request, 'depenses/bibliotheque/gestion_categories.html', context)
+
+
+@login_required
+def modifier_categorie_livre(request, categorie_id):
+    """Modifier une catégorie de livre."""
+    categorie = get_object_or_404(CategorieLivre, pk=categorie_id)
+    if request.method == 'POST':
+        nom = (request.POST.get('nom') or '').strip()
+        code = (request.POST.get('code') or '').strip().upper()
+        description = (request.POST.get('description') or '').strip()
+        actif = request.POST.get('actif') == 'on'
+
+        if not nom or not code:
+            messages.error(request, "Le nom et le code sont obligatoires.")
+        elif CategorieLivre.objects.filter(code=code).exclude(pk=categorie.pk).exists():
+            messages.error(request, f"Le code « {code} » est déjà utilisé par une autre catégorie.")
+        else:
+            categorie.nom = nom
+            categorie.code = code
+            categorie.description = description
+            categorie.actif = actif
+            categorie.save()
+            messages.success(request, "Catégorie modifiée avec succès.")
+            return redirect('depenses:gestion_categories_livres')
+
+    return render(request, 'depenses/bibliotheque/form_categorie.html', {
+        'titre_page': 'Modifier la catégorie',
+        'categorie': categorie,
+    })
+
+
+@login_required
+@require_POST
+def supprimer_categorie_livre(request, categorie_id):
+    """Supprimer une catégorie (refusé si des livres l'utilisent)."""
+    categorie = get_object_or_404(CategorieLivre, pk=categorie_id)
+    if categorie.livres.exists():
+        messages.error(
+            request,
+            "Impossible de supprimer : des livres utilisent cette catégorie. "
+            "Désactivez-la ou réaffectez les livres."
+        )
+    else:
+        nom = categorie.nom
+        categorie.delete()
+        messages.success(request, f"Catégorie « {nom} » supprimée.")
+    return redirect('depenses:gestion_categories_livres')
+
+
+# ─── Livres (catalogue) ────────────────────────────────────────────────────────
+def _next_code_livre():
+    """Génère le prochain code livre séquentiel (LIV-0001, LIV-0002, ...)."""
+    dernier = Livre.objects.filter(code_livre__startswith='LIV-').order_by('-code_livre').first()
+    n = 0
+    if dernier:
+        m = re.match(r'LIV-(\d+)', dernier.code_livre)
+        if m:
+            n = int(m.group(1))
+    return f"LIV-{n + 1:04d}"
+
+
+def _form_livre(request, livre):
+    """Formulaire partagé création / édition d'un livre."""
+    categories = CategorieLivre.objects.filter(actif=True).order_by('nom')
+
+    def _val(name, default=''):
+        """Valeur à pré-remplir : POST si soumis, sinon le livre existant."""
+        if request.method == 'POST':
+            v = request.POST.get(name, default)
+        elif livre is not None:
+            v = getattr(livre, name, default)
+        else:
+            v = default
+        return default if v is None else v
+
+    def _render_form():
+        if request.method == 'POST':
+            categorie_sel = request.POST.get('categorie', '')
+        else:
+            categorie_sel = str(livre.categorie_id) if livre and livre.categorie_id else ''
+        f = {
+            'titre': _val('titre'), 'code_livre': _val('code_livre'),
+            'auteur': _val('auteur'), 'categorie': categorie_sel,
+            'isbn': _val('isbn'), 'editeur': _val('editeur'),
+            'langue': _val('langue', 'Français') or 'Français',
+            'annee_publication': _val('annee_publication'),
+            'nombre_pages': _val('nombre_pages'),
+            'resume': _val('resume'), 'mots_cles': _val('mots_cles'),
+            'emplacement': _val('emplacement'),
+            'nombre_exemplaires': _val('nombre_exemplaires', '1') or '1',
+            'etat': _val('etat', 'BON') or 'BON',
+            'prix_acquisition': _val('prix_acquisition'),
+        }
+        return render(request, 'depenses/bibliotheque/form_livre.html', {
+            'titre_page': 'Modifier le livre' if livre else 'Ajouter un livre',
+            'livre': livre, 'categories': categories,
+            'etats': Livre.ETAT_CHOICES, 'f': f,
+        })
+
+    if request.method == 'POST':
+        p = request.POST
+        titre = (p.get('titre') or '').strip()
+        auteur = (p.get('auteur') or '').strip()
+        categorie_id = p.get('categorie') or ''
+        categorie = CategorieLivre.objects.filter(pk=categorie_id).first() if categorie_id else None
+
+        def _int(name, default=0):
+            try:
+                return int(p.get(name) or default)
+            except (TypeError, ValueError):
+                return default
+
+        manquants = []
+        if not titre:
+            manquants.append("le titre")
+        if not auteur:
+            manquants.append("l'auteur")
+        if not categorie:
+            manquants.append("la catégorie")
+
+        if manquants:
+            messages.error(request, "Veuillez renseigner : " + ", ".join(manquants) + ".")
+            return _render_form()
+
+        code_livre = (p.get('code_livre') or '').strip().upper() or _next_code_livre()
+        doublon = Livre.objects.filter(code_livre=code_livre)
+        if livre:
+            doublon = doublon.exclude(pk=livre.pk)
+        if doublon.exists():
+            messages.error(request, f"Le code « {code_livre} » existe déjà.")
+            return _render_form()
+
+        nombre_exemplaires = max(1, _int('nombre_exemplaires', 1))
+        is_new = livre is None
+        old_total = 0 if is_new else livre.nombre_exemplaires
+        if is_new:
+            livre = Livre(cree_par=request.user)
+
+        livre.code_livre = code_livre
+        livre.titre = titre
+        livre.auteur = auteur
+        livre.categorie = categorie
+        livre.isbn = (p.get('isbn') or '').strip()
+        livre.editeur = (p.get('editeur') or '').strip()
+        livre.langue = (p.get('langue') or 'Français').strip() or 'Français'
+        livre.annee_publication = _int('annee_publication', 0) or None
+        livre.nombre_pages = _int('nombre_pages', 0) or None
+        livre.emplacement = (p.get('emplacement') or '').strip() or 'Non précisé'
+        livre.etat = p.get('etat') or 'BON'
+        livre.resume = (p.get('resume') or '').strip()
+        livre.mots_cles = (p.get('mots_cles') or '').strip()
+        prix = p.get('prix_acquisition')
+        try:
+            livre.prix_acquisition = int(prix) if prix else None
+        except (TypeError, ValueError):
+            livre.prix_acquisition = None
+        livre.nombre_exemplaires = nombre_exemplaires
+
+        if is_new:
+            livre.exemplaires_disponibles = nombre_exemplaires
+            livre.statut = 'DISPONIBLE'
+        else:
+            delta = nombre_exemplaires - old_total
+            livre.exemplaires_disponibles = max(0, min(nombre_exemplaires, livre.exemplaires_disponibles + delta))
+
+        if request.FILES.get('couverture'):
+            livre.couverture = request.FILES['couverture']
+
+        livre.save()
+
+        HistoriqueLivre.objects.create(
+            livre=livre,
+            action='ACQUISITION' if is_new else 'MODIFICATION',
+            description=("Ajout au catalogue" if is_new else "Modification de la fiche") + f" : {livre.titre}",
+            utilisateur=request.user,
+        )
+
+        messages.success(request, f"Livre « {livre.titre} » {'ajouté' if is_new else 'modifié'} avec succès.")
+        return redirect('depenses:catalogue_livres')
+
+    return _render_form()
+
+
+@login_required
+def creer_livre(request):
+    """Ajouter un livre au catalogue."""
+    if not CategorieLivre.objects.filter(actif=True).exists():
+        messages.warning(request, "Créez d'abord au moins une catégorie de livre avant d'ajouter un livre.")
+        return redirect('depenses:gestion_categories_livres')
+    return _form_livre(request, None)
+
+
+@login_required
+def modifier_livre(request, livre_id):
+    """Modifier la fiche d'un livre."""
+    livre = get_object_or_404(Livre, pk=livre_id)
+    return _form_livre(request, livre)
+
+
+@login_required
+@require_POST
+def supprimer_livre(request, livre_id):
+    """Retirer un livre du catalogue (soft delete), sauf si emprunts en cours."""
+    livre = get_object_or_404(Livre, pk=livre_id)
+    if livre.emprunts.filter(statut__in=['EN_COURS', 'EN_RETARD']).exists():
+        messages.error(request, "Impossible de retirer ce livre : des emprunts sont en cours.")
+    else:
+        livre.actif = False
+        livre.save(update_fields=['actif'])
+        messages.success(request, f"Livre « {livre.titre} » retiré du catalogue.")
+    return redirect('depenses:catalogue_livres')

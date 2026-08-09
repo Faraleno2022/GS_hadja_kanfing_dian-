@@ -322,7 +322,8 @@
             <div class="row align-items-center">
                 <div class="col-md-4">
                     <h6 class="mb-1">
-                        <i class="fas fa-clipboard-list me-2"></i>Frais d'inscription
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        {% if echeancier.nature_frais == 'REINSCRIPTION' %}Frais de réinscription{% else %}Frais d'inscription{% endif %}
                     </h6>
                     <small class="text-muted">Échéance : {{ echeancier.date_echeance_inscription|date:"d/m/Y" }}</small>
                 </div>

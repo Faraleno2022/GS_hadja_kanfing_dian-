@@ -611,64 +611,18 @@ def generer_cartes_classe_moderne(classe, eleves, response):
     Génère plusieurs cartes par page pour une classe entière
     Format: 8 cartes par page A4
     """
-    from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
-    
-    # Créer le canvas PDF
+
+    from .cartes_layout import dessiner_planche_cartes, enregistrer_polices
+
     c = canvas.Canvas(response, pagesize=A4)
-    
-    # Dimensions et positions pour l'impression en masse (4x2 = 8 cartes)
-    page_width, page_height = A4
-    
-    # Dimensions fixes format PVC standard (CR80)
-    card_width = 85.6*mm   # Largeur standard carte PVC
-    card_height = 53.98*mm  # Hauteur standard carte PVC
-    
-    # Calcul des marges et espacements pour centrer les 8 cartes
-    total_cards_width = 2 * card_width  # 2 colonnes
-    total_cards_height = 4 * card_height  # 4 lignes
-    
-    # Espacement entre les cartes
-    h_spacing = 5*mm  # Espacement horizontal
-    v_spacing = 5*mm  # Espacement vertical
-    
-    # Marges automatiques pour centrer sur la page
-    margin_x = (page_width - total_cards_width - h_spacing) / 2
-    margin_y = (page_height - total_cards_height - 3*v_spacing) / 2
-    
-    # Positions des 8 cartes (4 lignes, 2 colonnes)
-    positions = []
-    for row in range(4):  # 4 lignes
-        for col in range(2):  # 2 colonnes
-            x = margin_x + col * (card_width + h_spacing)
-            y = page_height - margin_y - (row + 1) * card_height - row * v_spacing
-            positions.append((x, y))
-    
-    # Enregistrement des polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        bold_font = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        bold_font = 'Helvetica-Bold'
-    
-    card_count = 0
-    
-    for eleve in eleves:
-        pos_index = card_count % 8  # 8 cartes par page
-        x, y = positions[pos_index]
-        
-        # Dessiner la carte à la position donnée
-        _dessiner_carte_simple(c, eleve, x, y, card_width, card_height, main_font, bold_font)
-        
-        card_count += 1
-        
-        # Nouvelle page après 8 cartes
-        if card_count % 8 == 0 and card_count < len(eleves):
-            c.showPage()
-    
+    main_font, bold_font = enregistrer_polices()
+
+    def _dessiner(canvas_pdf, eleve, x, y, width, height):
+        _dessiner_carte_simple(canvas_pdf, eleve, x, y, width, height, main_font, bold_font)
+
+    dessiner_planche_cartes(c, eleves, _dessiner)
+
     c.showPage()
     c.save()
     return response

@@ -1,5 +1,22 @@
 from django.contrib import admin
-from .models import SystemLog, MaintenanceMode
+from .models import ElementCorbeille, SystemLog, MaintenanceMode
+
+
+@admin.register(ElementCorbeille)
+class ElementCorbeilleAdmin(admin.ModelAdmin):
+    list_display = ("date", "type_operation", "model_label", "libelle", "utilisateur", "restaure")
+    list_filter = ("type_operation", "restaure", "model_label", "ecole")
+    search_fields = ("libelle", "model_label", "motif")
+    date_hierarchy = "date"
+    readonly_fields = (
+        "type_operation", "model_label", "objet_id", "libelle", "donnees_avant",
+        "donnees_apres", "champs_modifies", "objets_lies", "motif", "ecole",
+        "utilisateur", "adresse_ip", "date", "restaure", "date_restauration", "restaure_par",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
 
 
 @admin.register(SystemLog)

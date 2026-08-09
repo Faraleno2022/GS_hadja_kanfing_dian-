@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="row justify-content-center">
+        <div class="col-xl-9">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h1 class="h3 mb-1">{{ titre_page }}</h1>
+                    <p class="text-muted mb-0">Renseignez le stock et les prix unitaires du produit.</p>
+                </div>
+                <a href="{% url 'depenses:dashboard_fournitures' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Retour
+                </a>
+            </div>
+
+            <form method="post" class="card shadow-sm">
+                {% csrf_token %}
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    {% if ecoles %}
+                    <div class="mb-4">
+                        <label for="ecole" class="form-label">Établissement <span class="text-danger">*</span></label>
+                        <select id="ecole" name="ecole" class="form-select" required>
+                            <option value="">Sélectionner...</option>
+                            {% for ecole in ecoles %}
+                            <option value="{{ ecole.pk }}" {% if ecole_selectionnee == ecole.pk %}selected{% endif %}>{{ ecole.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ form.reference.id_for_label }}">{{ form.reference.label }}</label>
+                            {{ form.reference }}
+                            {% for error in form.reference.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label" for="{{ form.nom.id_for_label }}">{{ form.nom.label }} <span class="text-danger">*</span></label>
+                            {{ form.nom }}
+                            {% for error in form.nom.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.categorie.id_for_label }}">{{ form.categorie.label }}</label>
+                            {{ form.categorie }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.unite.id_for_label }}">{{ form.unite.label }}</label>
+                            {{ form.unite }}
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+                    <h2 class="h5 mb-3">Stock et prix</h2>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label" for="{{ form.quantite_stock.id_for_label }}">{{ form.quantite_stock.label }}</label>
+                            {{ form.quantite_stock }}
+                            {% for error in form.quantite_stock.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="{{ form.stock_minimum.id_for_label }}">{{ form.stock_minimum.label }}</label>
+                            {{ form.stock_minimum }}
+                            {% for error in form.stock_minimum.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="{{ form.prix_achat_unitaire.id_for_label }}">Prix d'achat unitaire</label>
+                            {{ form.prix_achat_unitaire }}
+                            {% for error in form.prix_achat_unitaire.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label" for="{{ form.prix_vente_unitaire.id_for_label }}">Prix de vente unitaire</label>
+                            {{ form.prix_vente_unitaire }}
+                            {% for error in form.prix_vente_unitaire.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="form-label" for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+                        {{ form.description }}
+                    </div>
+                    <div class="form-check mt-3">
+                        {{ form.actif }}
+                        <label class="form-check-label" for="{{ form.actif.id_for_label }}">Produit actif et disponible à la vente</label>
+                    </div>
+                </div>
+                <div class="card-footer bg-white d-flex justify-content-end gap-2 p-3">
+                    <a href="{% url 'depenses:dashboard_fournitures' %}" class="btn btn-secondary">Annuler</a>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

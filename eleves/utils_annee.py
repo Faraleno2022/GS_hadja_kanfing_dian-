@@ -2,7 +2,7 @@
 Utilitaire pour la gestion de l'année scolaire active.
 Centralise la logique de récupération de l'année active depuis la session.
 """
-from datetime import date
+from datetime import date, timedelta
 
 from django.conf import settings
 
@@ -33,6 +33,25 @@ def get_annee_active(request, ecole):
     if annee_session and annee_session in annees:
         return annee_session
     return annees[0]
+
+
+def get_debut_periode_reporting(request, ecole=None, today=None):
+    """Retourne le début par défaut des rapports financiers.
+
+    La période couvre au minimum les douze derniers mois et remonte au début
+    de l'année scolaire active lorsque celui-ci est plus ancien.
+    """
+    today = today or date.today()
+    debut_glissant = today - timedelta(days=365)
+    annee = get_annee_active(request, ecole) if ecole else None
+    if not annee:
+        return debut_glissant
+
+    try:
+        debut_annee = date(int(str(annee).split('-')[0]), 8, 1)
+    except (TypeError, ValueError, IndexError):
+        return debut_glissant
+    return min(debut_annee, debut_glissant)
 
 
 def annee_suivante(annee: str) -> str:

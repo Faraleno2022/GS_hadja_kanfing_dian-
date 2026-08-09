@@ -11,7 +11,18 @@ except ImportError:
     load_dotenv = None
 
 # =================== Base ===================
+# BASE_DIR = racine du CODE (templates, static, staticfiles). En exe
+# PyInstaller elle pointe dans _internal/ : c'est voulu, ces fichiers sont
+# livrés avec l'application et remplacés à chaque mise à jour.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# DATA_DIR = racine des DONNÉES DE L'ÉCOLE (base SQLite, médias, logs).
+# En exe PyInstaller, run_server.py fixe MYSCHOOL_BASE_DIR sur le dossier
+# d'installation (à côté de MySchoolGN.exe). Sans cela ces données seraient
+# créées dans _internal/, hors de portée des sauvegardes/restaurations de
+# l'installateur, donc écrasées à chaque mise à jour.
+# Ne JAMAIS utiliser DATA_DIR pour des fichiers de code/design.
+DATA_DIR = Path(os.environ.get('MYSCHOOL_BASE_DIR') or BASE_DIR)
 
 
 def _load_plain_env(path):
@@ -245,7 +256,7 @@ if DEBUG or not os.environ.get('DJANGO_DB_NAME'):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
+            "NAME": DATA_DIR / "db.sqlite3",
         }
     }
 else:
@@ -318,7 +329,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = DATA_DIR / 'media'
 
 if DEBUG:
     STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
@@ -326,7 +337,7 @@ else:
     STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
 
 # =================== Logging ===================
-LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR = DATA_DIR / 'logs'
 os.makedirs(LOGS_DIR, exist_ok=True)
 
 LOGGING = {
@@ -377,3 +388,18 @@ LOGIN_BLOCK_DURATION = 300
 # Code de vérification pour les suppressions et déverrouillages critiques.
 # IMPORTANT : Définir via variable d'environnement, ne JAMAIS hardcoder dans le code source.
 SECURITY_VERIFICATION_CODE = os.environ.get('SECURITY_VERIFICATION_CODE', '')
+
+# =================== Messages (mapping Bootstrap) ===================
+# Django émet le tag 'error' ; Bootstrap attend 'danger'. Sans ce mapping les
+# messages d'erreur ne sont pas stylés en rouge (rendu non professionnel).
+from django.contrib.messages import constants as _messages_constants  # noqa: E402
+MESSAGE_TAGS = {
+    _messages_constants.DEBUG: 'secondary',
+    _messages_constants.INFO: 'info',
+    _messages_constants.SUCCESS: 'success',
+    _messages_constants.WARNING: 'warning',
+    _messages_constants.ERROR: 'danger',
+}
+
+# Page conviviale en cas d'échec CSRF (ex. formulaire soumis après expiration).
+CSRF_FAILURE_VIEW = 'ecole_moderne.desktop_views.csrf_failure'

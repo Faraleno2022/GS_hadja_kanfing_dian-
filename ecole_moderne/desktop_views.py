@@ -22,6 +22,20 @@ def _is_offline():
     return os.environ.get('OFFLINE_MODE', '0') == '1'
 
 
+def csrf_failure(request, reason=''):
+    """Page conviviale en cas d'échec de vérification CSRF.
+
+    Se produit typiquement quand un formulaire est soumis après expiration de
+    la session/du jeton. Remplace la page 403 brute de Django par un message
+    professionnel avec un bouton pour revenir en arrière.
+    """
+    referer = request.META.get('HTTP_REFERER') or '/'
+    return render(request, 'csrf_failure.html', {
+        'reason': reason,
+        'back_url': referer,
+    }, status=403)
+
+
 @login_required
 @require_POST
 def arreter_application(request):

@@ -262,32 +262,10 @@
                         </li>
                         {% endif %}
                         {% if 'depenses' in allowed %}
-                        <li class="nav-item dropdown">
-                            <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-receipt me-1"></i>Dépenses
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
-                                    <i class="fas fa-receipt me-1"></i>Dépenses
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><h6 class="dropdown-header">Logistique</h6></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_logistique' %}">
-                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_articles' %}">
-                                    <i class="fas fa-boxes text-primary me-1"></i>Stock & Articles
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_biens' %}">
-                                    <i class="fas fa-building text-info me-1"></i>Biens Établissement
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_mouvements' %}">
-                                    <i class="fas fa-exchange-alt text-warning me-1"></i>Mouvements
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_inventaires' %}">
-                                    <i class="fas fa-clipboard-list text-success me-1"></i>Inventaires
-                                </a></li>
-                            </ul>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'depenses:tableau_bord' %}">
+                                <i class="fas fa-hand-holding-dollar me-1"></i>Recouvrement
+                            </a>
                         </li>
                         <li class="nav-item dropdown">
                             <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -391,32 +369,10 @@
                                 <i class="fas fa-money-bill me-1"></i>Paiements
                             </a>
                         </li>
-                        <li class="nav-item dropdown">
-                            <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-receipt me-1"></i>Dépenses
-                            </button>
-                            <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="{% url 'depenses:tableau_bord' %}">
-                                    <i class="fas fa-receipt me-1"></i>Dépenses
-                                </a></li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li><h6 class="dropdown-header">Logistique</h6></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:dashboard_logistique' %}">
-                                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_articles' %}">
-                                    <i class="fas fa-boxes text-primary me-1"></i>Stock & Articles
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_biens' %}">
-                                    <i class="fas fa-building text-info me-1"></i>Biens Établissement
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_mouvements' %}">
-                                    <i class="fas fa-exchange-alt text-warning me-1"></i>Mouvements
-                                </a></li>
-                                <li><a class="dropdown-item" href="{% url 'depenses:liste_inventaires' %}">
-                                    <i class="fas fa-clipboard-list text-success me-1"></i>Inventaires
-                                </a></li>
-                            </ul>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'depenses:tableau_bord' %}">
+                                <i class="fas fa-hand-holding-dollar me-1"></i>Recouvrement
+                            </a>
                         </li>
                         <li class="nav-item dropdown">
                             <button class="nav-link dropdown-toggle btn btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -546,6 +502,9 @@
                                 <li><a class="dropdown-item" href="{% url 'administration:users_management' %}">
                                     <i class="fas fa-users-cog me-1"></i>Gestion utilisateurs
                                 </a></li>
+                                {% endif %}
+
+                                {% if user.is_superuser or user.profil.peut_supprimer_eleves %}
                                 <li><a class="dropdown-item" href="{% url 'administration:corbeille_list' %}">
                                     <i class="fas fa-trash-restore me-1"></i>Corbeille
                                 </a></li>
@@ -586,24 +545,59 @@
         </div>
     </nav>
 
-    <!-- Messages -->
+    <!-- Notifications (toasts professionnels : flottants, auto-fermants) -->
     {% if messages %}
-        <div class="container-fluid mt-3">
+        <div class="msg-toast-wrap" aria-live="polite" aria-atomic="true">
             {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {% if message.tags == 'error' %}
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                    {% elif message.tags == 'success' %}
-                        <i class="fas fa-check-circle me-2"></i>
-                    {% elif message.tags == 'warning' %}
-                        <i class="fas fa-exclamation-circle me-2"></i>
-                    {% else %}
-                        <i class="fas fa-info-circle me-2"></i>
-                    {% endif %}
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <div class="msg-toast alert alert-{{ message.tags }} alert-dismissible shadow-sm d-flex align-items-start" role="alert">
+                    <span class="msg-toast-ic me-2">
+                        {% if message.tags == 'danger' %}
+                            <i class="fas fa-exclamation-triangle"></i>
+                        {% elif message.tags == 'success' %}
+                            <i class="fas fa-check-circle"></i>
+                        {% elif message.tags == 'warning' %}
+                            <i class="fas fa-exclamation-circle"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle"></i>
+                        {% endif %}
+                    </span>
+                    <div class="flex-grow-1">{{ message }}</div>
+                    <button type="button" class="btn-close ms-2" data-bs-dismiss="alert" aria-label="Fermer"></button>
                 </div>
             {% endfor %}
+        </div>
+        <style>
+            .msg-toast-wrap{position:fixed;top:1rem;right:1rem;z-index:1090;width:calc(100% - 2rem);max-width:400px;display:flex;flex-direction:column;gap:.6rem;pointer-events:none}
+            .msg-toast{pointer-events:auto;margin:0;border-radius:.6rem;box-shadow:0 8px 24px rgba(15,23,42,.14);animation:msgSlideIn .28s cubic-bezier(.2,.8,.2,1)}
+            .msg-toast-ic{flex:0 0 auto;line-height:1.4}
+            @keyframes msgSlideIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+            .msg-toast.msg-hide{opacity:0;transform:translateX(24px);transition:opacity .3s ease,transform .3s ease}
+            @media (max-width:576px){.msg-toast-wrap{top:.6rem;right:.6rem;left:.6rem;width:auto;max-width:none}}
+        </style>
+        <script>
+            (function(){
+                document.querySelectorAll('.msg-toast').forEach(function(t){
+                    var delay = t.classList.contains('alert-danger') ? 9000 : 5000;
+                    setTimeout(function(){
+                        t.classList.add('msg-hide');
+                        setTimeout(function(){ if(t.parentNode){ t.parentNode.removeChild(t); } }, 320);
+                    }, delay);
+                });
+            })();
+        </script>
+    {% endif %}
+
+    {% if user.is_authenticated and not user.is_superuser and user_profil and not user_ecole %}
+        <div class="container-fluid mt-3">
+            <div class="alert alert-danger d-flex align-items-center" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <div>
+                    Votre compte n'est associé à aucune école : par sécurité, aucune donnée
+                    (paiements, élèves, rapports…) ne peut donc s'afficher. Contactez un
+                    administrateur pour qu'il associe votre compte à votre école dans la
+                    Gestion des utilisateurs.
+                </div>
+            </div>
         </div>
     {% endif %}
 

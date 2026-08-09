@@ -22,7 +22,13 @@ from .models import (
     Enseignant, AffectationClasse, PeriodeSalaire, 
     EtatSalaire, DetailHeuresClasse, TypeEnseignant, PresenceEnseignant
 )
-from .forms import EnseignantForm, AffectationClasseForm, PresenceForm
+from .forms import (
+    AffectationClasseForm,
+    EnseignantForm,
+    EtatSalaireAjustementForm,
+    PresenceForm,
+)
+from .services import calculer_salaires_periode
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
@@ -892,89 +898,42 @@ def calculer_salaires(request, periode_id):
         messages.error(request, "Le calcul des salaires nécessite une requête POST.")
         return redirect('salaires:etats_salaire')
 
-    if request.method == 'POST':
-        try:
-            # Récupérer tous les enseignants actifs de l'école
-            enseignants = Enseignant.objects.filter(
-                ecole=periode.ecole,
-                statut='ACTIF'
-            )
-            
-            calculs_effectues = 0
-            
-            for enseignant in enseignants:
-                # Vérifier si l'état de salaire existe déjà
-                etat_salaire, created = EtatSalaire.objects.get_or_create(
-                    enseignant=enseignant,
-                    periode=periode,
-                    defaults={
-                        'calcule_par': request.user,
-                        'salaire_base': Decimal('0'),
-                        'salaire_net': Decimal('0'),
-                    }
-                )
-                
-                if created or not etat_salaire.valide:
-                    # Calculer le salaire selon le type d'enseignant
-                    if enseignant.est_salaire_fixe:
-                        # Salaire fixe
-                        etat_salaire.salaire_base = enseignant.salaire_fixe or Decimal('0')
-                        etat_salaire.total_heures = None
-                    else:
-                        # Taux horaire - utiliser les heures mensuelles définies
-                        # Utiliser les heures mensuelles de l'enseignant ou la valeur par défaut
-                        total_heures = enseignant.heures_mensuelles_effectives
-                        
-                        # Supprimer les anciens détails
-                        etat_salaire.details_heures.all().delete()
-                        
-                        # Récupérer les affectations actives pour créer les détails
-                        affectations = enseignant.affectations.filter(
-                            actif=True,
-                            date_debut__lte=timezone.now().date()
-                        ).filter(
-                            Q(date_fin__isnull=True) | Q(date_fin__gte=timezone.now().date())
-                        )
-                        
-                        # Si l'enseignant a des affectations, répartir les heures
-                        if affectations.exists():
-                            heures_par_affectation = total_heures / len(affectations)
-                            for affectation in affectations:
-                                # Créer le détail des heures
-                                DetailHeuresClasse.objects.create(
-                                    etat_salaire=etat_salaire,
-                                    affectation_classe=affectation,
-                                    heures_prevues=heures_par_affectation,
-                                    heures_realisees=heures_par_affectation,
-                                    taux_horaire_applique=enseignant.taux_horaire or Decimal('0'),
-                                )
-                        else:
-                            # Pas d'affectation, créer un détail générique
-                            DetailHeuresClasse.objects.create(
-                                etat_salaire=etat_salaire,
-                                affectation_classe=None,
-                                heures_prevues=total_heures,
-                                heures_realisees=total_heures,
-                                taux_horaire_applique=enseignant.taux_horaire or Decimal('0'),
-                            )
-                        
-                        etat_salaire.total_heures = total_heures
-                        etat_salaire.salaire_base = total_heures * (enseignant.taux_horaire or Decimal('0'))
-                    
-                    # Sauvegarder (le salaire_net sera calculé automatiquement)
-                    etat_salaire.calcule_par = request.user
-                    etat_salaire.save()
-                    
-                    calculs_effectues += 1
-            
-            messages.success(
-                request, 
-                f"Calcul des salaires terminé. {calculs_effectues} état(s) de salaire calculé(s)."
-            )
-            
-        except Exception as e:
-            messages.error(request, f"Erreur lors du calcul des salaires : {str(e)}")
+    try:
+        calculs_effectues = calculer_salaires_periode(periode, request.user)
+        messages.success(
+            request,
+            f"Calcul des salaires terminé. {calculs_effectues} état(s) de salaire calculé(s).",
+        )
+    except Exception as e:
+        messages.error(request, f"Erreur lors du calcul des salaires : {str(e)}")
     
+    return redirect('salaires:etats_salaire')
+
+
+@login_required
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
+def modifier_etat_salaire(request, etat_id):
+    """Modifier primes, retenues et observations avant validation."""
+    etat = get_object_or_404(EtatSalaire, id=etat_id)
+    if request.method != 'POST':
+        messages.error(request, "La modification d'un salaire nécessite une requête POST.")
+        return redirect('salaires:etats_salaire')
+
+    if etat.valide or etat.paye or etat.periode.cloturee:
+        messages.error(request, "Un salaire validé, payé ou clôturé ne peut plus être modifié.")
+        return redirect('salaires:etats_salaire')
+
+    form = EtatSalaireAjustementForm(request.POST, instance=etat)
+    if form.is_valid():
+        form.save()
+        messages.success(request, f"Ajustements de {etat.enseignant.nom_complet} enregistrés.")
+    else:
+        erreurs = ' '.join(
+            message
+            for messages_champ in form.errors.values()
+            for message in messages_champ
+        )
+        messages.error(request, f"Ajustements refusés : {erreurs}")
     return redirect('salaires:etats_salaire')
 
 
@@ -1146,7 +1105,7 @@ def fiche_paie_pdf(request, etat_id):
     
     if etat.total_heures:
         data.append(['Heures travaillées', f"{etat.total_heures}h"])
-        data.append(['Taux horaire', f"{etat.enseignant.taux_horaire or 0:,.0f}".replace(',', ' ')])
+        data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
     
     if etat.primes:
         data.append(['Primes', f"{etat.primes:,.0f}".replace(',', ' ')])

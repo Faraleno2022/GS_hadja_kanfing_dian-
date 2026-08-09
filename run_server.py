@@ -42,6 +42,50 @@ else:
 
 sys.path.insert(0, BASE_DIR)
 
+
+def _promote_legacy_data(base_dir):
+    """Remonte les données piégées dans _internal/ (bug de chemin corrigé) vers
+    le dossier racine, sans jamais écraser des données déjà présentes côté
+    racine. Protège les installations déjà en place chez une école avant ce
+    correctif (la DB/les médias y étaient créés dans _internal/ au lieu du
+    dossier d'installation, hors de portée des sauvegardes de l'installateur).
+    """
+    legacy_dir = os.path.join(base_dir, '_internal')
+    if not os.path.isdir(legacy_dir):
+        return
+    import shutil as _shutil
+
+    legacy_db = os.path.join(legacy_dir, 'db.sqlite3')
+    new_db = os.path.join(base_dir, 'db.sqlite3')
+    if os.path.exists(legacy_db) and not os.path.exists(new_db):
+        try:
+            _shutil.move(legacy_db, new_db)
+            for _suffix in ('-wal', '-shm', '-journal'):
+                _lp = legacy_db + _suffix
+                if os.path.exists(_lp):
+                    _shutil.move(_lp, new_db + _suffix)
+        except Exception:
+            pass
+
+    legacy_media = os.path.join(legacy_dir, 'media')
+    new_media = os.path.join(base_dir, 'media')
+    if os.path.isdir(legacy_media):
+        try:
+            for _root, _dirs, _files in os.walk(legacy_media):
+                _rel = os.path.relpath(_root, legacy_media)
+                _dest_root = new_media if _rel == '.' else os.path.join(new_media, _rel)
+                os.makedirs(_dest_root, exist_ok=True)
+                for _fn in _files:
+                    _dst = os.path.join(_dest_root, _fn)
+                    if not os.path.exists(_dst):
+                        _shutil.move(os.path.join(_root, _fn), _dst)
+        except Exception:
+            pass
+
+
+if getattr(sys, 'frozen', False):
+    _promote_legacy_data(BASE_DIR)
+
 # ─── Mode sans console (windowed) : rediriger stdout/stderr vers un log ────────
 # En build PyInstaller avec console=False, sys.stdout / sys.stderr / sys.stdin
 # valent None. Tout print() ou input() lèverait alors une exception.
@@ -137,6 +181,38 @@ os.environ['OPENAI_DISABLED'] = '1'
 
 # Dossier de données Django (DB, media, logs)
 os.environ['MYSCHOOL_BASE_DIR'] = BASE_DIR
+
+
+# ─── Configuration de synchronisation (par machine, sans recompilation) ───────
+# Chaque poste definit son serveur EN LIGNE et son appareil via un fichier JSON
+# local (jamais embarque dans le build). Cle attendues :
+#   MYSCHOOL_SYNC_SERVER_URL, MYSCHOOL_SYNC_ECOLE_ID,
+#   MYSCHOOL_SYNC_DEVICE_ID, MYSCHOOL_SYNC_TOKEN, MYSCHOOL_SYNC_INTERVAL
+def _load_sync_config():
+    import json
+    candidates = [
+        os.path.join(BASE_DIR, 'sync_config.json'),
+        os.path.join(os.environ.get('APPDATA', ''), 'MySchoolGN', 'sync_config.json'),
+    ]
+    keys = (
+        'MYSCHOOL_SYNC_SERVER_URL', 'MYSCHOOL_SYNC_ECOLE_ID',
+        'MYSCHOOL_SYNC_DEVICE_ID', 'MYSCHOOL_SYNC_TOKEN',
+        'MYSCHOOL_SYNC_INTERVAL',
+    )
+    for path in candidates:
+        try:
+            if path and os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as _f:
+                    data = json.load(_f)
+                for key in keys:
+                    value = data.get(key)
+                    if value not in (None, ''):
+                        os.environ.setdefault(key, str(value))
+                break
+        except Exception:
+            pass
+
+_load_sync_config()
 
 
 # ─── Fenêtre d'activation de licence (tkinter) ────────────────────────────────
@@ -517,35 +593,91 @@ def find_free_port(start_port=8000, max_port=8100):
     return start_port
 
 
+def _app_version_stamp():
+    """Empreinte de version (mtime de l'exe/script) pour n'exécuter certaines
+    étapes lourdes qu'une fois par version installée."""
+    try:
+        ref = sys.executable if getattr(sys, 'frozen', False) else os.path.join(BASE_DIR, 'run_server.py')
+        return str(int(os.path.getmtime(ref)))
+    except Exception:
+        return '0'
+
+
+def _static_is_ready():
+    """Vrai si collectstatic a déjà été fait pour cette version de l'app."""
+    try:
+        marker = os.path.join(BASE_DIR, '.static_ready')
+        if os.path.exists(marker):
+            with open(marker, 'r', encoding='utf-8') as f:
+                return f.read().strip() == _app_version_stamp()
+    except Exception:
+        pass
+    return False
+
+
+def _mark_static_ready():
+    try:
+        with open(os.path.join(BASE_DIR, '.static_ready'), 'w', encoding='utf-8') as f:
+            f.write(_app_version_stamp())
+    except Exception:
+        pass
+
+
 def setup_database():
-    """Initialise / migre la base de données SQLite.
-    
-    En cas de mise à jour, sauvegarde automatiquement la DB avant migration.
+    """Initialise la base SQLite — migration UNIQUEMENT si nécessaire.
+
+    Démarrage rapide : on ne migre (et ne sauvegarde la DB) que s'il existe des
+    migrations en attente ; collectstatic n'est refait qu'à chaque nouvelle
+    version de l'application. Cela évite ~6 s de surcoût à chaque lancement.
     """
     import django
     django.setup()
     from django.core.management import call_command
+    from django.db import connection
 
-    db_path = os.path.join(BASE_DIR, 'db.sqlite3')
-    is_new_db = not os.path.exists(db_path) or os.path.getsize(db_path) == 0
+    # Chemin réel de la base selon Django (robuste quel que soit le layout)
+    try:
+        real_db_path = str(connection.settings_dict.get('NAME') or '')
+    except Exception:
+        real_db_path = os.path.join(BASE_DIR, 'db.sqlite3')
+    is_new_db = not os.path.exists(real_db_path) or os.path.getsize(real_db_path) == 0
 
-    # Sauvegarder la DB existante avant migration (protection des données client)
+    # Y a-t-il des migrations en attente ? (vérif rapide ~0,3 s)
+    pending = True
     if not is_new_db:
-        backup_dir = os.path.join(BASE_DIR, 'backups')
-        os.makedirs(backup_dir, exist_ok=True)
-        import shutil
-        backup_name = f"db_avant_migration_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3"
-        backup_path = os.path.join(backup_dir, backup_name)
         try:
-            shutil.copy2(db_path, backup_path)
-            print(f"[MySchoolGN] Sauvegarde DB → {backup_name}")
-            # Garder seulement les 5 dernières sauvegardes automatiques
-            _cleanup_old_backups(backup_dir, prefix='db_avant_migration_', keep=5)
-        except Exception as e:
-            print(f"[MySchoolGN] Avertissement sauvegarde DB : {e}")
+            from django.db.migrations.executor import MigrationExecutor
+            executor = MigrationExecutor(connection)
+            targets = executor.loader.graph.leaf_nodes()
+            pending = bool(executor.migration_plan(targets))
+        except Exception:
+            pending = True  # en cas de doute, migrer
 
-    print("[MySchoolGN] Migration de la base de données...")
-    call_command('migrate', '--run-syncdb', verbosity=0)
+    if is_new_db or pending:
+        # Sauvegarde de la DB uniquement AVANT une vraie migration
+        if not is_new_db:
+            backup_dir = os.path.join(BASE_DIR, 'backups')
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_name = f"db_avant_migration_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.sqlite3"
+            backup_path = os.path.join(backup_dir, backup_name)
+            try:
+                # Produit une copie SQLite cohérente (y compris en mode WAL) et
+                # la vérifie avant d'autoriser la moindre migration.
+                connection.close()
+                _backup_sqlite_verified(real_db_path, backup_path)
+                print(f"[MySchoolGN] Sauvegarde DB → {backup_name}")
+                _cleanup_old_backups(backup_dir, prefix='db_avant_migration_', keep=5)
+            except Exception as e:
+                raise RuntimeError(
+                    "Mise à jour annulée : impossible de créer et vérifier la "
+                    f"sauvegarde de la base de données ({e}). Aucune migration "
+                    "n'a été lancée."
+                ) from e
+
+        print("[MySchoolGN] Migration de la base de données...")
+        call_command('migrate', '--run-syncdb', verbosity=0)
+    else:
+        print("[MySchoolGN] Base de données à jour — démarrage rapide.")
 
     if is_new_db:
         print("[MySchoolGN] Nouvelle installation détectée.")
@@ -562,11 +694,55 @@ def setup_database():
         except Exception as e:
             print(f"[MySchoolGN] Avertissement création admin : {e}")
 
-    print("[MySchoolGN] Préparation des fichiers statiques...")
+    # Fichiers statiques : une seule fois par version de l'application
+    if not _static_is_ready():
+        print("[MySchoolGN] Préparation des fichiers statiques...")
+        try:
+            call_command('collectstatic', '--noinput', verbosity=0)
+            _mark_static_ready()
+        except Exception:
+            pass
+
+
+def _backup_sqlite_verified(source_path, backup_path):
+    """Crée atomiquement une sauvegarde SQLite et contrôle son intégrité."""
+    import sqlite3
+
+    temp_path = backup_path + '.tmp'
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
+
+    source = None
+    destination = None
     try:
-        call_command('collectstatic', '--noinput', verbosity=0)
+        source = sqlite3.connect(source_path, timeout=30)
+        destination = sqlite3.connect(temp_path, timeout=30)
+        source.backup(destination)
+        destination.commit()
+        check = destination.execute('PRAGMA quick_check').fetchone()
+        if not check or str(check[0]).lower() != 'ok':
+            raise RuntimeError(f"contrôle SQLite invalide : {check}")
     except Exception:
-        pass
+        if destination is not None:
+            destination.close()
+            destination = None
+        if source is not None:
+            source.close()
+            source = None
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
+    finally:
+        if destination is not None:
+            destination.close()
+        if source is not None:
+            source.close()
+
+    if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise RuntimeError('la sauvegarde créée est vide')
+    os.replace(temp_path, backup_path)
 
 
 def _cleanup_old_backups(backup_dir, prefix='db_avant_migration_', keep=5):
@@ -769,10 +945,30 @@ def main():
     except Exception as e:
         print(f"[MySchoolGN] Erreur initialisation : {e}")
         traceback.print_exc()  # Traceback complète (la vraie cause) dans myschool.log
-        print("[MySchoolGN] Tentative de démarrage sans migration...")
+        _show_fatal_error(
+            "La mise à jour de la base de données a été interrompue.\n\n"
+            f"{e}\n\n"
+            "Vos données existantes sont conservées. Corrigez le problème de "
+            "sauvegarde, puis relancez MySchoolGN."
+        )
+        return
 
     # Afficher la bannière
     show_banner(port, license_status)
+
+    # Démarrer la synchronisation automatique en arrière-plan (si configurée).
+    # Le worker tente push+pull périodiquement ; hors-ligne il réessaie et se
+    # synchronise automatiquement dès que la connexion revient.
+    try:
+        from synchronisation import auto_sync
+        try:
+            _sync_interval = int(os.environ.get('MYSCHOOL_SYNC_INTERVAL', '60'))
+        except (TypeError, ValueError):
+            _sync_interval = 60
+        if auto_sync.start(interval=_sync_interval, boot_delay=25):
+            print(f"[Sync] Synchronisation automatique active (intervalle {_sync_interval}s).")
+    except Exception as _sync_err:
+        print(f"[Sync] Synchronisation automatique non démarrée : {_sync_err}")
 
     # Ouvrir le navigateur en arrière-plan
     browser_thread = threading.Thread(

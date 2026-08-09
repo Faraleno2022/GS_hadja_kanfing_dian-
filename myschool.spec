@@ -162,14 +162,19 @@ def _add_if_exists(src_rel, dst):
 _add_if_exists('templates', 'templates')
 _add_if_exists('static', 'static')
 _add_if_exists('staticfiles', 'staticfiles')
-_add_if_exists('media', 'media')
+# Le dossier media contient les photos et documents propres à chaque école.
+# Il reste vide dans la distribution et sera créé au premier lancement.
 
 # Base de données : NE PAS inclure la DB du dev dans le build
 # Elle sera créée automatiquement via 'migrate' au premier lancement chez le client
 # _add_if_exists('db.sqlite3', '.')
 
-# Fichier .env
-_add_if_exists('.env', '.')
+# Fichier .env : NE PAS l'inclure dans le build.
+# run_server.py genere sa propre SECRET_KEY par installation (.secret_key) et
+# fixe DJANGO_DEBUG. Embarquer le .env du dev ferait fuiter ses secrets et,
+# surtout, les tokens MYSCHOOL_SYNC_* de l'ecole d'origine (mauvaise identite
+# de synchronisation pour une autre ecole). Chaque ecole part d'une config vierge.
+# _add_if_exists('.env', '.')
 
 # PROTECTION ANTI-MODIFICATION :
 # Les modules critiques (integrity_check, license_manager, load_env) sont

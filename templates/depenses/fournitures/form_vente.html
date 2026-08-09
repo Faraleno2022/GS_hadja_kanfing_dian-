@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h1 class="h3 mb-1">{{ titre_page }}</h1>
+                    <p class="text-muted mb-0">La vente sera refusée si elle dépasse le stock restant.</p>
+                </div>
+                <a href="{% url 'depenses:dashboard_fournitures' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Retour
+                </a>
+            </div>
+
+            <form method="post" class="card shadow-sm">
+                {% csrf_token %}
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+                    <div class="mb-3">
+                        <label class="form-label" for="{{ form.produit.id_for_label }}">Produit <span class="text-danger">*</span></label>
+                        {{ form.produit }}
+                        {% for error in form.produit.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div id="productInfo" class="alert alert-info d-none"></div>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.quantite.id_for_label }}">Quantité vendue <span class="text-danger">*</span></label>
+                            {{ form.quantite }}
+                            {% for error in form.quantite.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.prix_vente_unitaire.id_for_label }}">Prix de vente unitaire</label>
+                            {{ form.prix_vente_unitaire }}
+                            {% for error in form.prix_vente_unitaire.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.client.id_for_label }}">Client / Acheteur</label>
+                            {{ form.client }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ form.date_vente.id_for_label }}">Date de vente</label>
+                            {{ form.date_vente }}
+                        </div>
+                    </div>
+
+                    <div class="card bg-light border-0 mt-4">
+                        <div class="card-body d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold">Montant total estimé</span>
+                            <strong id="estimatedTotal" class="fs-4 text-success">0 GNF</strong>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <label class="form-label" for="{{ form.observations.id_for_label }}">Observations</label>
+                        {{ form.observations }}
+                    </div>
+                </div>
+                <div class="card-footer bg-white d-flex justify-content-end gap-2 p-3">
+                    <a href="{% url 'depenses:dashboard_fournitures' %}" class="btn btn-secondary">Annuler</a>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-cart-plus me-1"></i>Enregistrer la vente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{{ produits_infos|json_script:'produits-infos' }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const products = JSON.parse(document.getElementById('produits-infos').textContent);
+    const productField = document.getElementById('{{ form.produit.id_for_label }}');
+    const quantityField = document.getElementById('{{ form.quantite.id_for_label }}');
+    const priceField = document.getElementById('{{ form.prix_vente_unitaire.id_for_label }}');
+    const info = document.getElementById('productInfo');
+    const total = document.getElementById('estimatedTotal');
+    const requestedProduct = new URLSearchParams(window.location.search).get('produit');
+
+    if (requestedProduct && products[requestedProduct] && !productField.value) {
+        productField.value = requestedProduct;
+    }
+
+    function formatMoney(value) {
+        return new Intl.NumberFormat('fr-FR').format(value || 0) + ' GNF';
+    }
+
+    function updateProduct(resetPrice) {
+        const selected = products[productField.value];
+        if (selected) {
+            info.classList.remove('d-none');
+            info.textContent = 'Stock restant : ' + selected.stock + ' ' + selected.unite + '(s)';
+            quantityField.max = selected.stock;
+            if (resetPrice || !priceField.value) priceField.value = selected.prix;
+        } else {
+            info.classList.add('d-none');
+            quantityField.removeAttribute('max');
+        }
+        updateTotal();
+    }
+
+    function updateTotal() {
+        const quantity = Number(quantityField.value || 0);
+        const price = Number(priceField.value || 0);
+        total.textContent = formatMoney(quantity * price);
+    }
+
+    productField.addEventListener('change', function () { updateProduct(true); });
+    quantityField.addEventListener('input', updateTotal);
+    priceField.addEventListener('input', updateTotal);
+    updateProduct(false);
+});
+</script>
+{% endblock %}

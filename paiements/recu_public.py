@@ -12,6 +12,14 @@ from django.shortcuts import get_object_or_404
 import logging
 
 from .models import Paiement
+from .allocation import (
+    INSCRIPTION,
+    TRANCHE_1,
+    TRANCHE_2,
+    TRANCHE_3,
+    echeancier_dues,
+    replay_payment_allocations,
+)
 from eleves.models import Eleve
 
 logger = logging.getLogger(__name__)
@@ -170,6 +178,12 @@ def recu_public_pdf(request, paiement_id):
         total_du = ech.total_du if ech else Decimal('0')
         total_paye = ech.total_paye if ech else Decimal('0')
         solde_restant = ech.solde_restant if ech else Decimal('0')
+        allocation_courante = None
+        if ech:
+            from .payment_engine import situation_echeancier
+            allocation_courante = situation_echeancier(ech)[
+                'allocations'
+            ].get(paiement.id)
 
         # Préparer le buffer et le canvas
         buffer = BytesIO()
@@ -248,6 +262,24 @@ def recu_public_pdf(request, paiement_id):
             c.drawString(left, top, f"Net payé: {montant_net:,.0f} GNF".replace(",", " "))
             c.setFont('Helvetica', 11)
             top -= line_h
+
+        if allocation_courante:
+            label_admission = (
+                "Réinscription" if ech.nature_frais == 'REINSCRIPTION' else "Inscription"
+            )
+            c.setFont('Helvetica-Bold', 11)
+            c.drawString(left, top, "AFFECTATION DU PAIEMENT")
+            top -= line_h
+            c.setFont('Helvetica', 10)
+            for label, bucket in (
+                (label_admission, INSCRIPTION),
+                ("1ère tranche", TRANCHE_1),
+                ("2ème tranche", TRANCHE_2),
+                ("3ème tranche", TRANCHE_3),
+            ):
+                amount = allocation_courante[bucket]
+                c.drawString(left, top, f"{label}: {amount:,.0f} GNF".replace(",", " "))
+                top -= 15
 
         top -= 10
 
@@ -335,9 +367,11 @@ def note_rappel_public_pdf(request, eleve_id):
             ech = None
 
         if ech and ech.total_du > 0:
-            montant_total = ech.total_du
-            montant_paye = ech.total_paye
-            reste_a_payer = ech.solde_restant
+            from .payment_engine import situation_echeancier
+            situation = situation_echeancier(ech)
+            montant_total = situation['total_du']
+            montant_paye = situation['total_encaisse']
+            reste_a_payer = situation['solde_restant']
         else:
             # Fallback: ConfigurationPaiement
             try:

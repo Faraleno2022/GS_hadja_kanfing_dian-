@@ -8,6 +8,8 @@ from decimal import Decimal
 from eleves.models import Classe
 from eleves.utils_annee import get_annee_active
 from paiements.models import Paiement
+from paiements.allocation import INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3
+from paiements.payment_engine import situation_echeancier
 from utilisateurs.utils import user_is_admin, user_school
 from rapports.utils import _draw_header_and_watermark
 
@@ -147,21 +149,19 @@ def export_tranches_par_classe_pdf(request):
             total_du = total_paye = reste = Decimal('0')
 
             if eche is not None and (not annee_scolaire or eche.annee_scolaire == annee_scolaire):
-                insc = eche.frais_inscription_paye or 0
-                t1 = eche.tranche_1_payee or 0
-                t2 = eche.tranche_2_payee or 0
-                t3 = eche.tranche_3_payee or 0
-                total_du = (eche.frais_inscription_du or 0) + (eche.tranche_1_due or 0) + (eche.tranche_2_due or 0) + (eche.tranche_3_due or 0)
-                total_paye = (insc or 0) + (t1 or 0) + (t2 or 0) + (t3 or 0)
-                reste = (total_du or 0) - (total_paye or 0)
+                situation = situation_echeancier(eche)
+                insc = situation['couverts'][INSCRIPTION]
+                t1 = situation['couverts'][TRANCHE_1]
+                t2 = situation['couverts'][TRANCHE_2]
+                t3 = situation['couverts'][TRANCHE_3]
+                total_du = situation['total_du']
+                total_paye = situation['total_couvert']
+                reste = situation['solde_restant']
             else:
                 # Fallback: somme depuis Paiement validé
                 paiements = Paiement.objects.filter(eleve=e, statut='VALIDE')
                 if annee_scolaire:
-                    an_deb, an_fin = _annee_vers_dates(annee_scolaire)
-                    start = date(an_deb, 9, 1)
-                    end = date(an_fin, 8, 31)
-                    paiements = paiements.filter(date_paiement__range=(start, end))
+                    paiements = paiements.filter(annee_scolaire=annee_scolaire)
                 insc = paiements.filter(type_paiement__nom__icontains='inscription').aggregate(total=Sum('montant'))['total'] or 0
                 t1 = paiements.filter(type_paiement__nom__icontains='tranche 1').aggregate(total=Sum('montant'))['total'] or 0
                 t2 = paiements.filter(type_paiement__nom__icontains='tranche 2').aggregate(total=Sum('montant'))['total'] or 0
@@ -301,20 +301,18 @@ def export_tranches_par_classe_excel(request):
             insc = t1 = t2 = t3 = Decimal('0')
             total_du = total_paye = reste = Decimal('0')
             if eche is not None and (not annee_scolaire or eche.annee_scolaire == annee_scolaire):
-                insc = eche.frais_inscription_paye or 0
-                t1 = eche.tranche_1_payee or 0
-                t2 = eche.tranche_2_payee or 0
-                t3 = eche.tranche_3_payee or 0
-                total_du = (eche.frais_inscription_du or 0) + (eche.tranche_1_due or 0) + (eche.tranche_2_due or 0) + (eche.tranche_3_due or 0)
-                total_paye = (insc or 0) + (t1 or 0) + (t2 or 0) + (t3 or 0)
-                reste = (total_du or 0) - (total_paye or 0)
+                situation = situation_echeancier(eche)
+                insc = situation['couverts'][INSCRIPTION]
+                t1 = situation['couverts'][TRANCHE_1]
+                t2 = situation['couverts'][TRANCHE_2]
+                t3 = situation['couverts'][TRANCHE_3]
+                total_du = situation['total_du']
+                total_paye = situation['total_couvert']
+                reste = situation['solde_restant']
             else:
                 paiements = Paiement.objects.filter(eleve=e, statut='VALIDE')
                 if annee_scolaire:
-                    an_deb, an_fin = annee_vers_dates(annee_scolaire)
-                    start = date(an_deb, 9, 1)
-                    end = date(an_fin, 8, 31)
-                    paiements = paiements.filter(date_paiement__range=(start, end))
+                    paiements = paiements.filter(annee_scolaire=annee_scolaire)
                 insc = paiements.filter(type_paiement__nom__icontains='inscription').aggregate(total=Sum('montant'))['total'] or 0
                 t1 = paiements.filter(type_paiement__nom__icontains='tranche 1').aggregate(total=Sum('montant'))['total'] or 0
                 t2 = paiements.filter(type_paiement__nom__icontains='tranche 2').aggregate(total=Sum('montant'))['total'] or 0

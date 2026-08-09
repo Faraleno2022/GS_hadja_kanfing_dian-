@@ -11,14 +11,13 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import (
-    Q, F, Case, When, Value, DecimalField, ExpressionWrapper,
-)
+from django.db.models import Q
 from django.http import HttpResponse
 
 from eleves.models import Classe
 from utilisateurs.utils import filter_by_user_school
 from .models import Paiement, EcheancierPaiement, ModePaiement, TypePaiement
+from .payment_engine import situation_echeancier
 
 
 def _fmt_gnf(v):
@@ -59,7 +58,7 @@ def filtrer_paiements(request):
         qs = qs.filter(statut=statut)
         libelles.append(f'Statut : {statut}')
     if annee:
-        qs = qs.filter(eleve__classe__annee_scolaire=annee)
+        qs = qs.filter(annee_scolaire=annee)
         libelles.append(f'Année : {annee}')
     if classe_id.isdigit():
         qs = qs.filter(eleve__classe_id=int(classe_id))
@@ -76,34 +75,32 @@ def filtrer_paiements(request):
 
     if situation in ('retard', 'reste', 'solde'):
         today = date.today()
-        exig = (
-            Case(When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')),
-                 default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
-            + Case(When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')),
-                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
-            + Case(When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')),
-                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
-            + Case(When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')),
-                   default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+        eche = EcheancierPaiement.objects.select_related(
+            'eleve', 'eleve__classe', 'eleve__classe__ecole'
         )
-        paye = (F('frais_inscription_paye') + F('tranche_1_payee')
-                + F('tranche_2_payee') + F('tranche_3_payee'))
-        du_total = (F('frais_inscription_du') + F('tranche_1_due')
-                    + F('tranche_2_due') + F('tranche_3_due'))
-        eche = EcheancierPaiement.objects.annotate(
-            _retard=ExpressionWrapper(exig - paye, output_field=DecimalField(max_digits=12, decimal_places=0)),
-            _reste=ExpressionWrapper(du_total - paye, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        eche = filter_by_user_school(
+            eche, request.user, 'eleve__classe__ecole'
         )
+        if annee:
+            eche = eche.filter(annee_scolaire=annee)
+        ids = []
+        for echeancier in eche:
+            calcul = situation_echeancier(
+                echeancier, date_reference=today
+            )
+            if situation == 'retard' and calcul['retard_total'] > 0:
+                ids.append(echeancier.eleve_id)
+            elif situation == 'reste' and calcul['solde_restant'] > 0:
+                ids.append(echeancier.eleve_id)
+            elif situation == 'solde' and calcul['solde_restant'] <= 0:
+                ids.append(echeancier.eleve_id)
         if situation == 'retard':
-            eche = eche.filter(_retard__gt=0)
             libelles.append('Niveau : en retard')
         elif situation == 'reste':
-            eche = eche.filter(_reste__gt=0)
             libelles.append('Niveau : reste à payer')
         elif situation == 'solde':
-            eche = eche.filter(_reste__lte=0)
             libelles.append('Niveau : soldé')
-        qs = qs.filter(eleve_id__in=list(eche.values_list('eleve_id', flat=True)))
+        qs = qs.filter(eleve_id__in=ids)
 
     return qs, libelles
 

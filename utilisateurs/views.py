@@ -253,13 +253,11 @@ def rejeter_compte_view(request, user_id):
         
         try:
             # Supprimer l'école associée si elle existe
+            from eleves.services_suppression import supprimer_ecole_complete
+
             ecole_supprimee = None
-            try:
-                ecole = Ecole.objects.get(created_by=user, etat='EN_ATTENTE')
-                ecole_supprimee = ecole.nom
-                ecole.delete()
-            except Ecole.DoesNotExist:
-                pass
+            for ecole in Ecole.objects.filter(created_by=user, etat='EN_ATTENTE'):
+                ecole_supprimee = supprimer_ecole_complete(ecole)
             
             # Envoyer un email de notification si possible
             try:
@@ -305,12 +303,8 @@ L'équipe Myschool"""
             messages.error(request, f"Erreur lors du rejet : {e}")
     
     # Récupérer l'école associée s'il y en a une
-    ecole_associee = None
-    try:
-        ecole_associee = Ecole.objects.get(created_by=user, etat='EN_ATTENTE')
-    except Ecole.DoesNotExist:
-        pass
-    
+    ecole_associee = Ecole.objects.filter(created_by=user, etat='EN_ATTENTE').first()
+
     return render(request, 'utilisateurs/rejeter_compte.html', {
         'user_to_reject': user,
         'ecole_associee': ecole_associee,

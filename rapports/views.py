@@ -18,7 +18,9 @@ from reportlab.lib.units import inch
 from .models import Rapport, TypeRapport, ExportProgramme
 from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark
 from eleves.models import Eleve, Ecole
+from eleves.utils_annee import get_debut_periode_reporting
 from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypePaiement
+from paiements.allocation import is_reinscription_payment
 from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
@@ -444,7 +446,7 @@ def _build_excel_from_donnees(donnees, titre):
 
     headers1 = [
         'École', 'Nouveaux élèves', 'Nb paiements', 'Scolarité normale', "Scolarité payée",
-        "Frais d'inscription", 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
+        "Frais d'inscription", 'Réinscription', 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
         'Nb dépenses', 'Total dépenses', 'États salaires', 'Total salaires'
     ]
     ws1.append(headers1)
@@ -464,6 +466,7 @@ def _build_excel_from_donnees(donnees, titre):
             float(e['paiements'].get('total_du_concernes', 0) or 0),
             float(e['paiements'].get('scolarite', 0) or 0),
             float(e['paiements'].get('frais_inscription', 0) or 0),
+            float(e['paiements'].get('reinscription', 0) or 0),
             float(e['paiements'].get('reste_a_payer', 0) or 0),
             float(e['paiements'].get('montant_original', 0) or 0),
             float(e['paiements'].get('total_remises', 0) or 0),
@@ -477,12 +480,12 @@ def _build_excel_from_donnees(donnees, titre):
         for col in range(1, len(headers1) + 1):
             cell = ws1.cell(row=row, column=col)
             cell.border = border_all
-            if col >= 4 and col != 11 and col != 13:  # colonnes montants
+            if col >= 4 and col != 12 and col != 14:  # colonnes montants
                 cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
         row += 1
 
     # Largeurs
-    widths = [26, 16, 14, 18, 18, 18, 16, 18, 16, 16, 14, 16, 14, 16]
+    widths = [26, 16, 14, 18, 18, 18, 16, 16, 18, 16, 16, 14, 16, 14, 16]
     for i, w in enumerate(widths, start=1):
         ws1.column_dimensions[get_column_letter(i)].width = w
 
@@ -519,6 +522,34 @@ def _build_excel_from_donnees(donnees, titre):
 
     for i, w in enumerate([22, 18, 12, 16, 16, 16, 16], start=1):
         ws2.column_dimensions[get_column_letter(i)].width = w
+
+    # Feuille 3: remises par catégorie (toutes écoles cumulées)
+    ws3 = wb.create_sheet('Remises par catégorie')
+    headers3 = ['Catégorie', 'Total remises']
+    ws3.append(headers3)
+    for col in range(1, len(headers3) + 1):
+        c = ws3.cell(row=1, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal='center')
+        c.border = border_all
+
+    totaux_categorie = {}
+    for _, e in donnees.get('ecoles', {}).items():
+        for label, total in (e['paiements'].get('remises_par_categorie') or {}).items():
+            totaux_categorie[label] = totaux_categorie.get(label, 0) + float(total or 0)
+
+    r3 = 2
+    for label, total in sorted(totaux_categorie.items(), key=lambda item: -item[1]):
+        ws3.append([label, total])
+        ws3.cell(row=r3, column=1).border = border_all
+        cell_total = ws3.cell(row=r3, column=2)
+        cell_total.border = border_all
+        cell_total.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+        r3 += 1
+
+    for i, w in enumerate([26, 18], start=1):
+        ws3.column_dimensions[get_column_letter(i)].width = w
 
     return wb
 
@@ -569,9 +600,11 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 'nombre': 0,
                 'montant_total': Decimal('0'),
                 'frais_inscription': Decimal('0'),
+                'reinscription': Decimal('0'),
                 'scolarite': Decimal('0'),
                 # Total dû (GNF) pour les élèves concernés ce jour (paiement/inscription)
-                'total_du_concernes': Decimal('0')
+                'total_du_concernes': Decimal('0'),
+                'remises_par_categorie': {},
             },
             # Répartition par classe (remplie plus bas)
             'classes': [],
@@ -624,6 +657,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         
         # Séparation frais d'inscription et scolarité (alignée avec rapports/utils.collecter_donnees_periode)
         frais_inscription = Decimal('0')
+        reinscription = Decimal('0')
         scolarite = Decimal('0')
         non_categorises = Decimal('0')
 
@@ -631,10 +665,18 @@ def collecter_donnees_journalieres(date_rapport, user=None):
             montant = p.montant or Decimal('0')
             nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
 
+            is_reinsc = is_reinscription_payment(nom)
             has_inscription = 'inscription' in nom
             has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
 
-            if has_inscription and has_scolarite:
+            if is_reinsc and has_scolarite:
+                part_ins = min(Decimal('30000'), montant)
+                part_sco = montant - part_ins
+                reinscription += part_ins
+                scolarite += part_sco
+            elif is_reinsc:
+                reinscription += montant
+            elif has_inscription and has_scolarite:
                 # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
                 part_ins = min(Decimal('30000'), montant)
                 part_sco = montant - part_ins
@@ -671,8 +713,24 @@ def collecter_donnees_journalieres(date_rapport, user=None):
 
         # Assigner les valeurs finales
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
+        donnees_ecole['paiements']['reinscription'] = reinscription
         donnees_ecole['paiements']['scolarite'] = scolarite
-        
+
+        # Totaux des remises par catégorie (motif de la remise appliquée)
+        try:
+            motif_labels = dict(PaiementRemise.MOTIF_CHOICES)
+            remises_categorie_map = {}
+            for row in (
+                PaiementRemise.objects.filter(paiement__in=paiements_jour)
+                .values('motif')
+                .annotate(total=Sum('montant_remise'))
+            ):
+                label = motif_labels.get(row.get('motif') or '', 'Non précisé')
+                remises_categorie_map[label] = remises_categorie_map.get(label, Decimal('0')) + (row.get('total') or Decimal('0'))
+            donnees_ecole['paiements']['remises_par_categorie'] = remises_categorie_map
+        except Exception:
+            donnees_ecole['paiements']['remises_par_categorie'] = {}
+
         # (Supprimé) Frais de scolarité annuel ne figure pas dans le rapport journalier
         
         # Calcul: Reste à payer (élèves concernés par la journée)
@@ -870,6 +928,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ["Scolarité normale", f"{donnees_ecole['paiements'].get('total_du_concernes', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ["Frais d'inscription", f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
+            ['Réinscription', f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
             ["Reste à payer", f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
@@ -924,7 +983,28 @@ def generer_pdf_journalier(donnees, date_rapport):
             ]))
             story.append(class_table)
             story.append(Spacer(1, 16))
-    
+
+        # Totaux des remises par catégorie
+        remises_cat = donnees_ecole['paiements'].get('remises_par_categorie') or {}
+        if remises_cat:
+            story.append(Paragraph("Remises par catégorie", styles['Heading3']))
+            story.append(Spacer(1, 6))
+            remises_data = [['Catégorie', 'Total remises']]
+            for label, total in sorted(remises_cat.items(), key=lambda item: -item[1]):
+                remises_data.append([label, f"{total:,} GNF".replace(',', ' ')])
+            remises_table = Table(remises_data, colWidths=[200, 120])
+            remises_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+            ]))
+            story.append(remises_table)
+            story.append(Spacer(1, 16))
+
     # Section Dépenses globales (non rattachées à une école)
     story.append(Paragraph("DÉPENSES GLOBALES (journée)", styles['Heading2']))
     story.append(Spacer(1, 8))
@@ -981,21 +1061,26 @@ def generer_pdf_journalier(donnees, date_rapport):
 @user_passes_test(can_access_rapports)
 def rapport_remises_detaille(request):
     """Rapport détaillé des remises appliquées"""
-    date_debut = request.GET.get('date_debut')
-    date_fin = request.GET.get('date_fin')
+    aujourd_hui = django_timezone.localdate()
+    debut_defaut = get_debut_periode_reporting(
+        request, user_school(request.user), today=aujourd_hui
+    )
+    try:
+        date_debut = datetime.strptime(
+            request.GET.get('date_debut'), '%Y-%m-%d'
+        ).date() if request.GET.get('date_debut') else debut_defaut
+    except (TypeError, ValueError):
+        date_debut = debut_defaut
+    try:
+        date_fin = datetime.strptime(
+            request.GET.get('date_fin'), '%Y-%m-%d'
+        ).date() if request.GET.get('date_fin') else aujourd_hui
+    except (TypeError, ValueError):
+        date_fin = aujourd_hui
+    if date_debut > date_fin:
+        date_debut, date_fin = date_fin, date_debut
     
-    # Dates par défaut (mois en cours)
-    if not date_debut:
-        date_debut = date.today().replace(day=1)
-    else:
-        date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
-    
-    if not date_fin:
-        date_fin = date.today()
-    else:
-        date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
-    
-    # Récupérer toutes les remises appliquées dans la période
+    # Récupérer les remises de toute la période de reporting sélectionnée.
     remises_appliquees = PaiementRemise.objects.filter(
         paiement__date_paiement__range=[date_debut, date_fin],
         paiement__statut='VALIDE'
@@ -1019,8 +1104,13 @@ def rapport_remises_detaille(request):
         total=Sum('montant_remise')
     )['total'] or Decimal('0')
     
-    total_montants_finals = remises_appliquees.aggregate(
-        total=Sum('paiement__montant')
+    paiement_ids = remises_appliquees.values_list(
+        'paiement_id', flat=True
+    ).distinct()
+    total_montants_finals = Paiement.objects.filter(
+        id__in=paiement_ids
+    ).aggregate(
+        total=Sum('montant')
     )['total'] or Decimal('0')
     
     difference_totale = total_montants_finals - total_remises

@@ -146,6 +146,29 @@ def _traiter_import_eleves(request):
                     f"🔢 {stats['matricules_generes']} matricule(s) généré(s) automatiquement"
                 )
             
+            if stats.get('matricules_remplaces', 0) > 0:
+                messages.warning(
+                    request,
+                    f"🔁 {stats['matricules_remplaces']} matricule(s) du fichier étaient déjà "
+                    f"utilisés : un nouveau matricule a été attribué"
+                )
+
+            if stats.get('classes_ciblees', 0) > 1:
+                messages.info(
+                    request,
+                    f"🏫 Élèves répartis dans {stats['classes_ciblees']} classes "
+                    f"d'après la colonne « Classe » du fichier"
+                )
+
+            introuvables = stats.get('classes_introuvables') or []
+            if introuvables:
+                messages.warning(
+                    request,
+                    f"⚠️ Classe(s) absente(s) de cette école, élèves placés dans "
+                    f"{classe.nom} : {', '.join(introuvables[:5])}"
+                    + (f" (+{len(introuvables) - 5})" if len(introuvables) > 5 else "")
+                )
+
             if stats['erreurs'] > 0:
                 messages.warning(
                     request,
@@ -293,6 +316,116 @@ def telecharger_template_eleves(request):
     except Exception as e:
         messages.error(request, f"Erreur lors de la génération du template: {e}")
         return redirect('eleves:importer_eleves')
+
+
+@login_required
+def exporter_tous_eleves_import(request):
+    """
+    Exporte tous les élèves au format exact du template d'importation,
+    afin de pouvoir les réimporter sur un autre poste.
+
+    Filtres GET optionnels : classe_id, statut (défaut ACTIF, `tous` pour tout).
+    """
+    import pandas as pd
+    from eleves.import_eleves import COLONNES_TRANSFERT, exporter_eleves_modele_import
+
+    try:
+        eleves = Eleve.objects.all()
+
+        # Restriction à l'école de l'utilisateur
+        from utilisateurs.utils import user_is_superadmin, user_school
+
+        ecole = None
+        if not user_is_superadmin(request.user):
+            ecole = user_school(request.user)
+            if ecole:
+                eleves = eleves.filter(classe__ecole=ecole)
+
+        classe_id = request.GET.get('classe_id')
+        if classe_id:
+            eleves = eleves.filter(classe_id=classe_id)
+
+        statut = (request.GET.get('statut') or 'ACTIF').upper()
+        if statut != 'TOUS':
+            eleves = eleves.filter(statut=statut)
+
+        df = exporter_eleves_modele_import(eleves)
+
+        if df.empty:
+            messages.warning(request, "Aucun élève à exporter avec ces filtres.")
+            return redirect('eleves:liste_eleves')
+
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"eleves_import_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Élèves', index=False)
+            worksheet = writer.sheets['Élèves']
+
+            for idx, col in enumerate(COLONNES_TRANSFERT, 1):
+                lettre = get_column_letter(idx)
+                if col in ('École', 'Classe', 'Prénom', 'Nom', 'Lieu de Naissance', 'Adresse'):
+                    worksheet.column_dimensions[lettre].width = 22
+                else:
+                    worksheet.column_dimensions[lettre].width = 16
+
+            for cell in worksheet[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            worksheet.freeze_panes = 'A2'
+
+            # Récapitulatif par classe + mode d'emploi du transfert
+            recap = writer.book.create_sheet('Instructions')
+            lignes = [
+                ["TRANSFERT DES ÉLÈVES VERS UN AUTRE POSTE"],
+                [""],
+                [f"Export du {datetime.now().strftime('%d/%m/%Y à %H:%M')}"],
+                [f"École : {ecole.nom if ecole else 'toutes les écoles'}"],
+                [f"Nombre d'élèves exportés : {len(df)}"],
+                [""],
+                ["MODE D'EMPLOI SUR LE POSTE DE DESTINATION :"],
+                ["   1. Créer d'abord les classes avec EXACTEMENT les mêmes noms que"],
+                ["      dans la colonne 'Classe' de la feuille 'Élèves'."],
+                ["   2. Ouvrir Élèves > Importer des élèves."],
+                ["   3. Choisir ce fichier et sélectionner une classe par défaut."],
+                ["   4. Chaque élève est placé dans la classe indiquée par la colonne"],
+                ["      'Classe'. Si le nom n'existe pas, l'élève va dans la classe"],
+                ["      par défaut choisie à l'étape 3 et un avertissement s'affiche."],
+                [""],
+                ["IMPORTANT :"],
+                ["   - Ne pas modifier les noms des colonnes."],
+                ["   - Les colonnes École / Classe / Année scolaire servent au transfert ;"],
+                ["     elles sont ignorées par un import classique."],
+                ["   - Les matricules sont conservés tels quels."],
+                [""],
+                ["RÉPARTITION PAR CLASSE :"],
+            ]
+
+            for (classe_nom, annee), sous_df in df.groupby(['Classe', 'Année scolaire'], sort=True):
+                lignes.append([f"   - {classe_nom} ({annee}) : {len(sous_df)} élève(s)"])
+
+            for row_idx, ligne in enumerate(lignes, 1):
+                for col_idx, texte in enumerate(ligne, 1):
+                    recap.cell(row=row_idx, column=col_idx, value=texte)
+
+            recap.column_dimensions['A'].width = 80
+            recap['A1'].font = Font(bold=True, size=14, color="366092")
+            for row_idx in (7, 16, 22):
+                recap.cell(row=row_idx, column=1).font = Font(bold=True, color="366092")
+
+        return response
+
+    except Exception as e:
+        messages.error(request, f"Erreur lors de l'export: {e}")
+        return redirect('eleves:liste_eleves')
 
 
 @login_required

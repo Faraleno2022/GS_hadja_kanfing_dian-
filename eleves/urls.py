@@ -1,6 +1,11 @@
 from django.urls import path
 from . import views
-from .views_import import importer_eleves, telecharger_template_eleves, exporter_eleves_classe
+from .views_import import (
+    importer_eleves,
+    telecharger_template_eleves,
+    exporter_eleves_classe,
+    exporter_tous_eleves_import,
+)
 from .views_nouvelle_annee import (
     nouvelle_annee_apercu,
     nouvelle_annee_creer,
@@ -20,6 +25,7 @@ urlpatterns = [
     
     # Gestion des élèves
     path('ajouter/', views.ajouter_eleve, name='ajouter_eleve'),
+    path('ajouter/succes/<int:eleve_id>/', views.ajout_eleve_succes, name='ajout_eleve_succes'),
     path('<int:eleve_id>/modifier/', views.modifier_eleve, name='modifier_eleve'),
     path('<int:eleve_id>/supprimer/', views.supprimer_eleve, name='supprimer_eleve'),
     path('supprimer-masse/', views.supprimer_eleves_masse, name='supprimer_eleves_masse'),
@@ -52,6 +58,7 @@ urlpatterns = [
     path('classe/<int:classe_id>/tickets-retrait-pdf/', views.generer_tickets_retrait_classe_pdf, name='tickets_retrait_classe_pdf'),
     path('classe/<int:classe_id>/tickets-bus-pdf/', views.generer_tickets_bus_classe_pdf, name='tickets_bus_classe_pdf'),
     path('classe/<int:classe_id>/cartes-scolaires-pdf/', views.generer_cartes_classe_pdf, name='cartes_scolaires_classe_pdf'),
+    path('classe/<int:classe_id>/cartes-cantine-pdf/', views.generer_cartes_cantine_classe_pdf, name='cartes_cantine_classe_pdf'),
 
     # Exports par classe
     path('export/classe/<int:classe_id>/pdf/', views.export_eleves_classe_pdf, name='export_eleves_classe_pdf'),
@@ -71,5 +78,5 @@ urlpatterns = [
     path('importer/', importer_eleves, name='importer_eleves'),
     path('template-eleves/', telecharger_template_eleves, name='telecharger_template_eleves'),
     path('exporter/classe/<int:classe_id>/', exporter_eleves_classe, name='exporter_eleves_classe'),
+    path('exporter/modele-import/', exporter_tous_eleves_import, name='exporter_tous_eleves_import'),
 ]
-

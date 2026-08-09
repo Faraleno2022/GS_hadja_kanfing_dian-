@@ -14,6 +14,66 @@ class ImportElevesError(Exception):
     pass
 
 
+# Colonnes du modèle d'importation (ordre exact du template téléchargeable)
+COLONNES_TEMPLATE = [
+    'Matricule',  # Optionnel - sera généré si vide
+    'Prénom',  # Obligatoire
+    'Nom',  # Obligatoire
+    'Sexe',  # M ou F - Obligatoire
+    'Date de Naissance',  # Optionnel - Format: JJ/MM/AAAA
+    'Lieu de Naissance',  # Optionnel
+    'Nom du Père/Tuteur',  # Optionnel
+    'Prénom du Père/Tuteur',  # Optionnel
+    'Téléphone Principal',  # Optionnel
+    'Adresse',  # Optionnel
+    'Nom de la Mère',  # Optionnel
+    'Prénom de la Mère',  # Optionnel
+    'Téléphone Secondaire',  # Optionnel
+    'Email',  # Optionnel
+]
+
+# Format exact de transfert vers un autre poste. L'ordre est volontairement
+# figé : le fichier produit peut être envoyé directement au module d'importation.
+COLONNES_TRANSFERT = [
+    'École',
+    'Classe',
+    'Année scolaire',
+    *COLONNES_TEMPLATE,
+]
+
+
+def normaliser_nom_classe(valeur):
+    """Cle de rapprochement d'un nom de classe entre deux postes."""
+    if valeur is None or (isinstance(valeur, float) and pd.isna(valeur)):
+        return ''
+    return ' '.join(str(valeur).strip().upper().split())
+
+
+def nettoyer_telephone(valeur):
+    """Numero tel qu'il sera enregistre : sans espaces ni tirets, le '+' conserve."""
+    if valeur is None or (isinstance(valeur, float) and pd.isna(valeur)):
+        return ''
+    texte = str(valeur).strip()
+    # Excel renvoie parfois un nombre : 224622613559.0
+    if texte.endswith('.0'):
+        texte = texte[:-2]
+    return texte.replace(' ', '').replace('-', '')
+
+
+def cle_telephone(valeur):
+    """Cle de rapprochement d'un numero : '+224...' et '224...' designent le meme parent."""
+    texte = nettoyer_telephone(valeur)
+    return texte[1:] if texte.startswith('+') else texte
+
+
+def _texte(valeur, defaut=''):
+    """Valeur de cellule convertie en texte propre ('' si vide/NaN)."""
+    if valeur is None or (not isinstance(valeur, str) and pd.isna(valeur)):
+        return defaut
+    texte = str(valeur).strip()
+    return texte if texte else defaut
+
+
 def generer_matricule(classe, numero_ordre, annee_scolaire=None, matricules_existants=None):
     """
     Génère un matricule unique pour un élève - VERSION OPTIMISÉE
@@ -58,22 +118,18 @@ def lire_fichier_eleves(file_path_or_obj):
     Lit un fichier Excel ou CSV contenant la liste des élèves
     """
     try:
-        # Déterminer le type de fichier
-        if hasattr(file_path_or_obj, 'name'):
-            if file_path_or_obj.name.endswith('.csv'):
-                df = pd.read_csv(file_path_or_obj)
-            else:
-                df = pd.read_excel(file_path_or_obj)
+        nom = getattr(file_path_or_obj, 'name', None) or str(file_path_or_obj)
+
+        # dtype=str : sinon pandas convertit '+224622613559' en 2.246e11 et le
+        # matricule '0012' en 12, ce qui casse la validation et les rapprochements.
+        if nom.endswith('.csv'):
+            df = pd.read_csv(file_path_or_obj, dtype=str)
         else:
-            # Si c'est un chemin
-            if str(file_path_or_obj).endswith('.csv'):
-                df = pd.read_csv(file_path_or_obj)
-            else:
-                df = pd.read_excel(file_path_or_obj)
-        
+            df = pd.read_excel(file_path_or_obj, dtype=str)
+
         # Nettoyer les noms de colonnes
         df.columns = df.columns.str.strip()
-        
+
         return df
     except Exception as e:
         raise ImportElevesError(f"Erreur lors de la lecture du fichier: {e}")
@@ -84,26 +140,8 @@ def generer_template_eleves(classe_id=None):
     Génère un template Excel pour l'importation d'élèves
     """
     try:
-        # Colonnes du template
-        colonnes = [
-            'Matricule',  # Optionnel - sera généré si vide
-            'Prénom',  # Obligatoire
-            'Nom',  # Obligatoire
-            'Sexe',  # M ou F - Obligatoire
-            'Date de Naissance',  # Optionnel - Format: JJ/MM/AAAA
-            'Lieu de Naissance',  # Optionnel
-            'Nom du Père/Tuteur',  # Optionnel
-            'Prénom du Père/Tuteur',  # Optionnel
-            'Téléphone Principal',  # Optionnel
-            'Adresse',  # Optionnel
-            'Nom de la Mère',  # Optionnel
-            'Prénom de la Mère',  # Optionnel
-            'Téléphone Secondaire',  # Optionnel
-            'Email'  # Optionnel
-        ]
-        
         # Créer un DataFrame avec des exemples
-        data = {col: [] for col in colonnes}
+        data = {col: [] for col in COLONNES_TEMPLATE}
         
         # Ajouter quelques lignes d'exemple
         data['Matricule'] = ['', '', '']  # Laisser vide pour génération auto
@@ -210,8 +248,8 @@ class ImportElevesValidator:
         
         # Valider le téléphone (optionnel - valider uniquement si présent)
         tel_val = row.get('Téléphone Principal')
-        if tel_val and not pd.isna(tel_val) and str(tel_val).strip() != '':
-            tel = str(tel_val).replace(' ', '').replace('-', '')
+        if tel_val is not None and not pd.isna(tel_val) and str(tel_val).strip() != '':
+            tel = cle_telephone(tel_val)
             if not tel.isdigit() or len(tel) < 8:
                 self.erreurs.append(
                     f"Ligne {ligne_num}: Téléphone invalide (doit contenir au moins 8 chiffres)"
@@ -248,10 +286,41 @@ class ImportElevesProcessor:
             'crees': 0,
             'modifies': 0,
             'erreurs': 0,
-            'matricules_generes': 0
+            'matricules_generes': 0,
+            'matricules_remplaces': 0,
+            'classes_ciblees': 0,
+            'classes_introuvables': [],
         }
         self.eleves_importes = []
-        
+
+    def _prochain_numero_ordre(self, classe):
+        """Prochain numero de matricule disponible pour une classe."""
+        derniere_matricule = Eleve.objects.filter(classe=classe).order_by('-matricule').first()
+        if derniere_matricule and derniere_matricule.matricule and '-' in derniere_matricule.matricule:
+            try:
+                return int(derniere_matricule.matricule.split('-')[-1]) + 1
+            except (TypeError, ValueError):
+                return 1
+        return 1
+
+    def _resoudre_classe(self, row, classe_defaut, classes_ecole):
+        """Classe cible d'une ligne : colonne 'Classe' si elle correspond, sinon classe choisie."""
+        if 'Classe' not in self.df.columns:
+            return classe_defaut
+
+        nom = normaliser_nom_classe(row.get('Classe'))
+        if not nom:
+            return classe_defaut
+
+        annee = str(row.get('Année scolaire') or '').strip()
+        classe = classes_ecole.get((nom, annee)) or classes_ecole.get((nom, ''))
+        if classe:
+            return classe
+
+        if nom not in self.stats['classes_introuvables']:
+            self.stats['classes_introuvables'].append(nom)
+        return classe_defaut
+
     def importer(self):
         """
         Importe les élèves depuis le DataFrame - VERSION OPTIMISÉE
@@ -261,56 +330,59 @@ class ImportElevesProcessor:
             classe = Classe.objects.get(id=self.classe_id)
         except Classe.DoesNotExist:
             raise ImportElevesError("Classe introuvable")
-        
+
         # ⚡ OPTIMISATION: Charger tous les matricules existants (1 seule requête)
         matricules_existants = set(Eleve.objects.values_list('matricule', flat=True))
-        
+
         # ⚡ OPTIMISATION: Charger tous les responsables existants (1 seule requête)
-        responsables_dict = {r.telephone: r for r in Responsable.objects.all()}
-        
-        # ⚡ OPTIMISATION: Charger les élèves de la classe (détection doublons)
+        responsables_dict = {cle_telephone(r.telephone): r for r in Responsable.objects.all()}
+
+        # Classes de la même école, pour honorer une éventuelle colonne 'Classe'
+        # (export multi-classes provenant d'un autre poste).
+        classes_ecole = {}
+        for c in Classe.objects.filter(ecole=classe.ecole):
+            cle = normaliser_nom_classe(c.nom)
+            classes_ecole.setdefault((cle, c.annee_scolaire or ''), c)
+            classes_ecole.setdefault((cle, ''), c)
+
+        # ⚡ OPTIMISATION: Charger les élèves déjà présents (détection doublons)
         eleves_existants = {}
-        for eleve in Eleve.objects.filter(classe=classe).select_related('responsable_principal', 'responsable_secondaire'):
-            key = f"{eleve.prenom}_{eleve.nom}".lower()
+        for eleve in Eleve.objects.filter(classe__ecole=classe.ecole).select_related('responsable_principal', 'responsable_secondaire'):
+            key = (eleve.classe_id, f"{eleve.prenom}_{eleve.nom}".lower())
             eleves_existants[key] = eleve
-        
-        # Obtenir le prochain numéro d'ordre pour les matricules
-        derniere_matricule = Eleve.objects.filter(
-            classe=classe
-        ).order_by('-matricule').first()
-        
-        if derniere_matricule and '-' in derniere_matricule.matricule:
-            try:
-                numero_ordre = int(derniere_matricule.matricule.split('-')[-1]) + 1
-            except:
-                numero_ordre = 1
-        else:
-            numero_ordre = 1
-        
+
+        # Prochain numéro d'ordre des matricules, par classe
+        numeros_ordre = {classe.id: self._prochain_numero_ordre(classe)}
+        classes_utilisees = set()
+
         # Listes pour bulk operations
         eleves_a_creer = []
         eleves_a_modifier = []
         responsables_a_creer = []
-        
+
         with transaction.atomic():
             for index, row in self.df.iterrows():
                 try:
                     self.stats['total'] += 1
+                    classe_cible = self._resoudre_classe(row, classe, classes_ecole)
+                    classes_utilisees.add(classe_cible.id)
+                    if classe_cible.id not in numeros_ordre:
+                        numeros_ordre[classe_cible.id] = self._prochain_numero_ordre(classe_cible)
+
                     resultat = self._preparer_eleve(
-                        row, classe, numero_ordre, 
+                        row, classe_cible, numeros_ordre[classe_cible.id],
                         matricules_existants, responsables_dict, eleves_existants
                     )
-                    
+
                     if resultat:
                         if resultat['type'] == 'creer':
                             eleves_a_creer.append(resultat['eleve'])
-                            if 'responsables' in resultat:
-                                responsables_a_creer.extend(resultat['responsables'])
+                            responsables_a_creer.extend(resultat.get('responsables') or [])
                         elif resultat['type'] == 'modifier':
                             eleves_a_modifier.append(resultat['eleve'])
-                    
-                    numero_ordre += 1
-                    
+
+                    numeros_ordre[classe_cible.id] += 1
+
                 except Exception as e:
                     self.stats['erreurs'] += 1
                     print(f"Erreur ligne {index + 2}: {e}")
@@ -319,15 +391,15 @@ class ImportElevesProcessor:
             if responsables_a_creer:
                 Responsable.objects.bulk_create(responsables_a_creer, ignore_conflicts=True)
                 # Recharger pour avoir les IDs
-                responsables_dict = {r.telephone: r for r in Responsable.objects.all()}
-            
-            # Assigner les responsables aux élèves
-            for eleve_data in eleves_a_creer:
-                if hasattr(eleve_data, '_responsable_tel'):
+                responsables_dict = {cle_telephone(r.telephone): r for r in Responsable.objects.all()}
+
+            # Assigner les responsables (créations ET modifications)
+            for eleve_data in eleves_a_creer + eleves_a_modifier:
+                if getattr(eleve_data, '_responsable_tel', None):
                     eleve_data.responsable_principal = responsables_dict.get(eleve_data._responsable_tel)
-                if hasattr(eleve_data, '_responsable2_tel'):
+                if getattr(eleve_data, '_responsable2_tel', None):
                     eleve_data.responsable_secondaire = responsables_dict.get(eleve_data._responsable2_tel)
-            
+
             # ⚡ BULK CREATE élèves
             if eleves_a_creer:
                 Eleve.objects.bulk_create(eleves_a_creer, batch_size=500)
@@ -342,88 +414,81 @@ class ImportElevesProcessor:
                     batch_size=500
                 )
                 self.stats['modifies'] += len(eleves_a_modifier)
-        
+
+        self.stats['classes_ciblees'] = len(classes_utilisees)
+
         return self.stats
     
     def _preparer_eleve(self, row, classe, numero_ordre, matricules_existants, responsables_dict, eleves_existants):
         """
         Prépare un élève pour bulk creation/update - VERSION OPTIMISÉE
         """
-        # Préparer les données de l'élève
-        matricule = row.get('Matricule')
-        
-        # Générer le matricule si nécessaire
-        if not matricule or pd.isna(matricule) or str(matricule).strip() == '':
-            if self.generer_matricules:
+        # Gérer le responsable principal (optionnel)
+        cle_resp = None
+        responsable = None
+        nouveau_resp = None
+        if _texte(row.get('Téléphone Principal')):
+            cle_resp, responsable, nouveau_resp = self._preparer_responsable(row, responsables_dict)
+
+        # Gérer le responsable secondaire (mère) - optionnel
+        cle_resp2 = None
+        responsable_secondaire = None
+        nouveau_resp2 = None
+        if _texte(row.get('Nom de la Mère')):
+            cle_resp2, responsable_secondaire, nouveau_resp2 = self._preparer_responsable_secondaire(row, responsables_dict)
+
+        # Formater la date de naissance (optionnel)
+        date_naissance = self._formater_date(row.get('Date de Naissance'))
+
+        # Vérifier si l'élève existe déjà dans la classe cible
+        key = (classe.id, f"{_texte(row.get('Prénom'))}_{_texte(row.get('Nom'))}".lower())
+        eleve_existant = eleves_existants.get(key)
+
+        # Gérer lieu de naissance (optionnel)
+        lieu_naissance = _texte(row.get('Lieu de Naissance')) or None
+
+        if eleve_existant:
+            # Modifier
+            eleve_existant.prenom = _texte(row.get('Prénom'))
+            eleve_existant.nom = _texte(row.get('Nom')).upper()
+            eleve_existant.sexe = _texte(row.get('Sexe')).upper()
+            eleve_existant.date_naissance = date_naissance
+            eleve_existant.lieu_naissance = lieu_naissance
+            eleve_existant.statut = 'ACTIF'
+            self._lier_responsables(
+                eleve_existant, cle_resp, responsable, cle_resp2, responsable_secondaire
+            )
+
+            return {'type': 'modifier', 'eleve': eleve_existant}
+        else:
+            # Créer : le matricule doit rester unique en base
+            matricule = _texte(row.get('Matricule'))
+            if not matricule or matricule in matricules_existants:
+                if not self.generer_matricules:
+                    if matricule:
+                        raise ImportElevesError(f"Matricule déjà utilisé: {matricule}")
+                    raise ImportElevesError("Matricule manquant et génération désactivée")
+                if matricule:
+                    self.stats['matricules_remplaces'] += 1
                 matricule = generer_matricule(classe, numero_ordre, classe.annee_scolaire, matricules_existants)
                 self.stats['matricules_generes'] += 1
             else:
-                raise ImportElevesError("Matricule manquant et génération désactivée")
-        else:
-            matricule = str(matricule).strip()
-        
-        # Gérer le responsable principal (optionnel)
-        responsable = None
-        nouveau_resp = None
-        if (row.get('Téléphone Principal') and not pd.isna(row.get('Téléphone Principal')) and 
-            str(row.get('Téléphone Principal')).strip() != ''):
-            responsable, nouveau_resp = self._preparer_responsable(row, responsables_dict)
-        
-        # Gérer le responsable secondaire (mère) - optionnel
-        responsable_secondaire = None
-        nouveau_resp2 = None
-        if row.get('Nom de la Mère') and not pd.isna(row.get('Nom de la Mère')):
-            responsable_secondaire, nouveau_resp2 = self._preparer_responsable_secondaire(row, responsables_dict)
-        
-        # Formater la date de naissance (optionnel)
-        date_naissance = self._formater_date(row.get('Date de Naissance'))
-        
-        # Vérifier si l'élève existe déjà
-        key = f"{str(row['Prénom']).strip()}_{str(row['Nom']).strip()}".lower()
-        eleve_existant = eleves_existants.get(key)
-        
-        # Gérer lieu de naissance (optionnel)
-        lieu_naissance = None
-        if row.get('Lieu de Naissance') and not pd.isna(row.get('Lieu de Naissance')):
-            lieu_naissance = str(row['Lieu de Naissance']).strip()
-        
-        if eleve_existant:
-            # Modifier
-            eleve_existant.prenom = str(row['Prénom']).strip()
-            eleve_existant.nom = str(row['Nom']).strip().upper()
-            eleve_existant.sexe = str(row['Sexe']).upper()
-            eleve_existant.date_naissance = date_naissance
-            eleve_existant.lieu_naissance = lieu_naissance
-            eleve_existant.responsable_principal = responsable
-            eleve_existant.responsable_secondaire = responsable_secondaire
-            eleve_existant.statut = 'ACTIF'
-            
-            return {'type': 'modifier', 'eleve': eleve_existant}
-        else:
-            # Créer
+                matricules_existants.add(matricule)
+
             eleve = Eleve(
                 matricule=matricule,
-                prenom=str(row['Prénom']).strip(),
-                nom=str(row['Nom']).strip().upper(),
-                sexe=str(row['Sexe']).upper(),
+                prenom=_texte(row.get('Prénom')),
+                nom=_texte(row.get('Nom')).upper(),
+                sexe=_texte(row.get('Sexe')).upper(),
                 date_naissance=date_naissance,
                 lieu_naissance=lieu_naissance,
                 classe=classe,
                 date_inscription=datetime.now().date(),
                 statut='ACTIF'
             )
-            
-            # Stocker les téléphones pour lier après bulk_create des responsables
-            if responsable:
-                eleve.responsable_principal = responsable
-            elif nouveau_resp:
-                eleve._responsable_tel = nouveau_resp.telephone
-            
-            if responsable_secondaire:
-                eleve.responsable_secondaire = responsable_secondaire
-            elif nouveau_resp2:
-                eleve._responsable2_tel = nouveau_resp2.telephone
-            
+
+            self._lier_responsables(eleve, cle_resp, responsable, cle_resp2, responsable_secondaire)
+
             nouveaux_resp = []
             if nouveau_resp:
                 nouveaux_resp.append(nouveau_resp)
@@ -436,78 +501,134 @@ class ImportElevesProcessor:
                 'responsables': nouveaux_resp if nouveaux_resp else None
             }
     
+    @staticmethod
+    def _lier_responsables(eleve, cle_resp, responsable, cle_resp2, responsable_secondaire):
+        """Relie les responsables. Ceux pas encore enregistres sont relies par cle,
+        apres le bulk_create des responsables (voir importer())."""
+        if responsable is not None:
+            eleve.responsable_principal = responsable
+        elif cle_resp:
+            eleve._responsable_tel = cle_resp
+
+        if responsable_secondaire is not None:
+            eleve.responsable_secondaire = responsable_secondaire
+        elif cle_resp2:
+            eleve._responsable2_tel = cle_resp2
+
     def _preparer_responsable(self, row, responsables_dict):
         """
         Prépare un responsable principal (père/tuteur) - VERSION OPTIMISÉE
-        Retourne (responsable_existant, nouveau_responsable)
+        Retourne (cle, responsable_deja_enregistre, nouveau_responsable_a_creer)
         """
-        telephone = str(row['Téléphone Principal']).replace(' ', '').replace('-', '')
-        
+        telephone = nettoyer_telephone(row.get('Téléphone Principal'))
+        cle = cle_telephone(telephone)
+
         # Vérifier en mémoire
-        if telephone in responsables_dict:
-            return (responsables_dict[telephone], None)
-        
+        existant = responsables_dict.get(cle)
+        if existant is not None:
+            # Un responsable du même lot n'a pas encore d'ID : le lien sera fait
+            # après le bulk_create, via la clé.
+            return (cle, existant if existant.pk else None, None)
+
         # Créer un nouveau responsable (sera bulk_create plus tard)
         nouveau_resp = Responsable(
             telephone=telephone,
-            nom=str(row['Nom du Père/Tuteur']).strip().upper(),
-            prenom=str(row['Prénom du Père/Tuteur']).strip(),
-            adresse=str(row['Adresse']).strip(),
-            email=row.get('Email') if not pd.isna(row.get('Email')) else None
+            nom=_texte(row.get('Nom du Père/Tuteur')).upper(),
+            prenom=_texte(row.get('Prénom du Père/Tuteur')),
+            adresse=_texte(row.get('Adresse')),
+            email=_texte(row.get('Email')) or None,
         )
-        
+
         # Ajouter au dict pour éviter duplicatas dans le même batch
-        responsables_dict[telephone] = nouveau_resp
-        
-        return (None, nouveau_resp)
-    
+        responsables_dict[cle] = nouveau_resp
+
+        return (cle, None, nouveau_resp)
+
     def _preparer_responsable_secondaire(self, row, responsables_dict):
         """
         Prépare un responsable secondaire (mère) - VERSION OPTIMISÉE
-        Retourne (responsable_existant, nouveau_responsable)
+        Retourne (cle, responsable_deja_enregistre, nouveau_responsable_a_creer)
         """
-        telephone = row.get('Téléphone Secondaire')
-        
-        if pd.isna(telephone) or str(telephone).strip() == '':
-            telephone = str(row['Téléphone Principal']).replace(' ', '').replace('-', '') + '_2'
-        else:
-            telephone = str(telephone).replace(' ', '').replace('-', '')
-        
+        telephone = nettoyer_telephone(row.get('Téléphone Secondaire'))
+        if not telephone:
+            telephone = nettoyer_telephone(row.get('Téléphone Principal')) + '_2'
+
+        cle = cle_telephone(telephone)
+
         # Vérifier en mémoire
-        if telephone in responsables_dict:
-            return (responsables_dict[telephone], None)
-        
+        existant = responsables_dict.get(cle)
+        if existant is not None:
+            return (cle, existant if existant.pk else None, None)
+
         # Créer un nouveau responsable (sera bulk_create plus tard)
         nouveau_resp = Responsable(
             telephone=telephone,
-            nom=str(row['Nom de la Mère']).strip().upper(),
-            prenom=str(row['Prénom de la Mère']).strip(),
-            adresse=str(row['Adresse']).strip()
+            nom=_texte(row.get('Nom de la Mère')).upper(),
+            prenom=_texte(row.get('Prénom de la Mère')),
+            adresse=_texte(row.get('Adresse')),
         )
-        
+
         # Ajouter au dict pour éviter duplicatas dans le même batch
-        responsables_dict[telephone] = nouveau_resp
-        
-        return (None, nouveau_resp)
+        responsables_dict[cle] = nouveau_resp
+
+        return (cle, None, nouveau_resp)
     
     def _formater_date(self, date_str):
         """
         Formate une date depuis différents formats possibles
         """
-        if pd.isna(date_str):
+        if date_str is None or pd.isna(date_str):
             return None
-        
-        date_str = str(date_str)
-        
+
+        # Cellule Excel de type date
+        if hasattr(date_str, 'date') and not isinstance(date_str, str):
+            return date_str.date()
+
+        date_str = str(date_str).strip()
+        if not date_str:
+            return None
+
         # Essayer différents formats
-        for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d.%m.%Y']:
+        for fmt in ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y', '%d.%m.%Y',
+                    '%Y-%m-%d %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
             try:
                 return datetime.strptime(date_str, fmt).date()
-            except:
+            except ValueError:
                 continue
-        
+
         # Si aucun format ne marche, lever une exception
         raise ImportElevesError(f"Format de date invalide: {date_str}")
+
+
+def _ligne_modele_import(eleve, avec_classe=False):
+    """Convertit un eleve en ligne au format du template d'importation."""
+    responsable = eleve.responsable_principal
+    responsable_2 = eleve.responsable_secondaire
+
+    ligne = {
+        'Matricule': eleve.matricule or '',
+        'Prénom': eleve.prenom or '',
+        'Nom': eleve.nom or '',
+        'Sexe': eleve.sexe or '',
+        'Date de Naissance': eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '',
+        'Lieu de Naissance': eleve.lieu_naissance or '',
+        'Nom du Père/Tuteur': responsable.nom if responsable else '',
+        'Prénom du Père/Tuteur': responsable.prenom if responsable else '',
+        'Téléphone Principal': responsable.telephone if responsable else '',
+        'Adresse': responsable.adresse if responsable else '',
+        'Nom de la Mère': responsable_2.nom if responsable_2 else '',
+        'Prénom de la Mère': responsable_2.prenom if responsable_2 else '',
+        'Téléphone Secondaire': responsable_2.telephone if responsable_2 else '',
+        'Email': (responsable.email if responsable else '') or '',
+    }
+
+    if avec_classe:
+        classe = eleve.classe
+        ligne['École'] = classe.ecole.nom if classe and classe.ecole else ''
+        ligne['Classe'] = classe.nom if classe else ''
+        ligne['Année scolaire'] = (classe.annee_scolaire if classe else '') or ''
+
+    return ligne
 
 
 def exporter_liste_eleves(classe_id):
@@ -516,33 +637,33 @@ def exporter_liste_eleves(classe_id):
     """
     try:
         classe = Classe.objects.get(id=classe_id)
-        eleves = Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('nom', 'prenom')
-        
-        data = []
-        for eleve in eleves:
-            responsable = eleve.responsable_principal
-            responsable_2 = eleve.responsable_secondaire
-            
-            data.append({
-                'Matricule': eleve.matricule,
-                'Prénom': eleve.prenom,
-                'Nom': eleve.nom,
-                'Sexe': eleve.sexe,
-                'Date de Naissance': eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '',
-                'Lieu de Naissance': eleve.lieu_naissance,
-                'Nom du Père/Tuteur': responsable.nom if responsable else '',
-                'Prénom du Père/Tuteur': responsable.prenom if responsable else '',
-                'Téléphone Principal': responsable.telephone if responsable else '',
-                'Adresse': responsable.adresse if responsable else '',
-                'Nom de la Mère': responsable_2.nom if responsable_2 else '',
-                'Prénom de la Mère': responsable_2.prenom if responsable_2 else '',
-                'Téléphone Secondaire': responsable_2.telephone if responsable_2 else '',
-                'Email': responsable.email if responsable else ''
-            })
-        
-        df = pd.DataFrame(data)
-        
-        return df
-    
+        eleves = (
+            Eleve.objects.filter(classe=classe, statut='ACTIF')
+            .select_related('responsable_principal', 'responsable_secondaire')
+            .order_by('nom', 'prenom')
+        )
+
+        data = [_ligne_modele_import(eleve) for eleve in eleves]
+
+        return pd.DataFrame(data, columns=COLONNES_TEMPLATE)
+
+    except Exception as e:
+        raise ImportElevesError(f"Erreur lors de l'export: {e}")
+
+
+def exporter_eleves_modele_import(eleves_qs):
+    """
+    Exporte un queryset d'élèves au format de transfert réimportable :
+    École / Classe / Année scolaire, puis les champs du template d'importation.
+    """
+    try:
+        eleves = eleves_qs.select_related(
+            'classe', 'classe__ecole', 'responsable_principal', 'responsable_secondaire'
+        ).order_by('classe__annee_scolaire', 'classe__nom', 'nom', 'prenom')
+
+        data = [_ligne_modele_import(eleve, avec_classe=True) for eleve in eleves]
+
+        return pd.DataFrame(data, columns=COLONNES_TRANSFERT)
+
     except Exception as e:
         raise ImportElevesError(f"Erreur lors de l'export: {e}")

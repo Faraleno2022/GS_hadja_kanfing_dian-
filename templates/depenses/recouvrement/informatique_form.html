@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .eleve-info { background: #f8f9fa; border-radius: .6rem; padding: .85rem 1rem; }
+    .eleve-info .valeur { font-weight: 600; }
+    #id_eleve { min-height: 2.4rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-desktop me-2"></i>{{ titre_page }}</h5>
+                    <a href="{% url 'depenses:dashboard_informatique' %}" class="btn btn-sm btn-secondary">
+                        <i class="fas fa-arrow-left me-1"></i>Retour
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+
+                        <!-- Recherche de l'élève par matricule -->
+                        <div class="mb-3">
+                            <label class="form-label" for="recherche_matricule">
+                                <i class="fas fa-magnifying-glass me-1"></i>Rechercher un élève (matricule ou nom)
+                            </label>
+                            <input type="text" class="form-control" id="recherche_matricule"
+                                   placeholder="Tapez un matricule, un nom ou une classe pour filtrer la liste"
+                                   autocomplete="off">
+                            <div class="form-text">
+                                La liste ci-dessous se réduit à mesure que vous tapez.
+                                <span id="compteurEleves"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.eleve.id_for_label }}">
+                                Élève <span class="text-danger">*</span>
+                            </label>
+                            {{ form.eleve }}
+                            {% for error in form.eleve.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+
+                        <div class="eleve-info mb-4 d-none" id="ficheEleve">
+                            <div class="row g-2 small">
+                                <div class="col-md-4">
+                                    <div class="text-muted">Matricule</div>
+                                    <div class="valeur" id="ficheMatricule">—</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-muted">Classe</div>
+                                    <div class="valeur" id="ficheClasse">—</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-muted">Dernier abonnement</div>
+                                    <div class="valeur" id="ficheAbonnement">—</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.date.id_for_label }}">Date d'enregistrement</label>
+                                {{ form.date }}
+                                <div class="form-text">Posée automatiquement au jour de la saisie.</div>
+                                {% for error in form.date.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.montant.id_for_label }}">
+                                    Montant de l'abonnement (GNF) <span class="text-danger">*</span>
+                                </label>
+                                {{ form.montant }}
+                                {% for error in form.montant.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.statut.id_for_label }}">Statut</label>
+                                {{ form.statut }}
+                                {% for error in form.statut.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.date_debut.id_for_label }}">
+                                    Début <span class="text-danger">*</span>
+                                </label>
+                                {{ form.date_debut }}
+                                {% for error in form.date_debut.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.date_fin.id_for_label }}">
+                                    Fin <span class="text-danger">*</span>
+                                </label>
+                                {{ form.date_fin }}
+                                {% for error in form.date_fin.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                <div class="mt-1">
+                                    <span class="text-muted small me-1">Durée :</span>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm duree-rapide" data-mois="1">1 mois</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm duree-rapide" data-mois="3">3 mois</button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm duree-rapide" data-mois="12">1 an</button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.alerte_avant_jours.id_for_label }}">
+                                    Alerte avant (jours)
+                                </label>
+                                {{ form.alerte_avant_jours }}
+                                <div class="form-text">Signalement avant la fin de l'abonnement.</div>
+                                {% for error in form.alerte_avant_jours.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="{{ form.observation.id_for_label }}">Observation</label>
+                                {{ form.observation }}
+                                {% for error in form.observation.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save me-1"></i>Enregistrer
+                            </button>
+                            {% if abonnement %}
+                            <a href="{% url 'depenses:carte_abonnement_informatique' pk=abonnement.pk %}"
+                               class="btn btn-outline-dark" target="_blank" rel="noopener">
+                                <i class="fas fa-id-card me-1"></i>Carte d'abonnement
+                            </a>
+                            {% endif %}
+                            <a href="{% url 'depenses:dashboard_informatique' %}" class="btn btn-outline-secondary">
+                                Annuler
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectEleve = document.getElementById('id_eleve');
+    const champRecherche = document.getElementById('recherche_matricule');
+    const compteur = document.getElementById('compteurEleves');
+    const fiche = document.getElementById('ficheEleve');
+    const urlFiche = "{% url 'depenses:api_eleve_informatique' eleve_id=0 %}";
+
+    if (!selectEleve) { return; }
+
+    // Copie des options pour pouvoir restaurer la liste complète
+    const toutesLesOptions = Array.from(selectEleve.options).map(option => ({
+        value: option.value,
+        texte: option.text,
+        recherche: option.text.toLowerCase()
+    }));
+
+    function filtrerEleves() {
+        const terme = (champRecherche.value || '').trim().toLowerCase();
+        const valeurCourante = selectEleve.value;
+        const retenues = toutesLesOptions.filter(option =>
+            !option.value || !terme || option.recherche.indexOf(terme) !== -1
+        );
+
+        selectEleve.innerHTML = '';
+        retenues.forEach(option => {
+            const element = document.createElement('option');
+            element.value = option.value;
+            element.text = option.texte;
+            selectEleve.appendChild(element);
+        });
+
+        // Conserver la sélection si elle fait toujours partie de la liste
+        if (retenues.some(option => option.value === valeurCourante)) {
+            selectEleve.value = valeurCourante;
+        }
+        const nombre = retenues.filter(option => option.value).length;
+        compteur.textContent = `${nombre} élève${nombre > 1 ? 's' : ''} affiché${nombre > 1 ? 's' : ''}.`;
+    }
+
+    function chargerFiche() {
+        const eleveId = selectEleve.value;
+        if (!eleveId) {
+            fiche.classList.add('d-none');
+            return;
+        }
+        fetch(urlFiche.replace('/0/', '/' + eleveId + '/'))
+            .then(reponse => reponse.ok ? reponse.json() : Promise.reject(reponse.status))
+            .then(donnees => {
+                document.getElementById('ficheMatricule').textContent = donnees.matricule || '—';
+                document.getElementById('ficheClasse').textContent = donnees.classe || '—';
+                document.getElementById('ficheAbonnement').textContent = donnees.dernier_abonnement
+                    ? `${donnees.dernier_abonnement.statut} — fin ${donnees.dernier_abonnement.fin}`
+                    : 'Aucun abonnement précédent';
+                fiche.classList.remove('d-none');
+            })
+            .catch(() => { fiche.classList.add('d-none'); });
+    }
+
+    champRecherche.addEventListener('input', filtrerEleves);
+    selectEleve.addEventListener('change', chargerFiche);
+
+    // Durées rapides: calcule la date de fin à partir du début
+    document.querySelectorAll('.duree-rapide').forEach(function(bouton) {
+        bouton.addEventListener('click', function() {
+            const champDebut = document.getElementById('{{ form.date_debut.id_for_label }}');
+            const champFin = document.getElementById('{{ form.date_fin.id_for_label }}');
+            if (!champDebut.value) { return; }
+            const debut = new Date(champDebut.value);
+            debut.setMonth(debut.getMonth() + parseInt(bouton.dataset.mois, 10));
+            champFin.value = debut.toISOString().slice(0, 10);
+        });
+    });
+
+    filtrerEleves();
+    chargerFiche();
+});
+</script>
+{% endblock %}

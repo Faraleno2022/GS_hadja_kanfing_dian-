@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from decimal import Decimal
 from synchronisation.mixins import SyncTrackedModel
@@ -144,6 +145,9 @@ class BienEtablissement(SyncTrackedModel):
         # Électricité
         ('AMPOULE', 'Ampoule(s)'),
         ('VENTILATEUR', 'Ventilateur'),
+        # Fournitures et consommables suivis comme biens simples
+        ('FOURNITURE', 'Fourniture'),
+        ('MARQUEUR', 'Marqueur(s)'),
         # Autre
         ('AUTRE', 'Autre'),
     ]
@@ -160,6 +164,26 @@ class BienEtablissement(SyncTrackedModel):
     code_bien = models.CharField(max_length=50, unique=True, verbose_name="Code du bien")
     nom = models.CharField(max_length=200, verbose_name="Nom/Désignation")
     type_bien = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type de bien")
+    ecole = models.ForeignKey(
+        'eleves.Ecole',
+        on_delete=models.PROTECT,
+        related_name='biens_etablissement',
+        null=True,
+        blank=True,
+        verbose_name="Établissement",
+    )
+    marque = models.CharField(max_length=100, blank=True, verbose_name="Marque")
+
+    # Suivi simplifié des quantités
+    quantite_achetee = models.PositiveIntegerField(default=1, verbose_name="Quantité achetée")
+    quantite_utilisee = models.PositiveIntegerField(default=0, verbose_name="Quantité utilisée")
+    quantite_endommagee = models.PositiveIntegerField(default=0, verbose_name="Quantité gâtée/perdue")
+    prix_achat_unitaire = models.DecimalField(
+        max_digits=15,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Prix d'achat unitaire (GNF)",
+    )
     
     # Description
     description = models.TextField(blank=True, verbose_name="Description")
@@ -193,6 +217,42 @@ class BienEtablissement(SyncTrackedModel):
     
     def __str__(self):
         return f"{self.code_bien} - {self.nom}"
+
+    def clean(self):
+        super().clean()
+        achetee = self.quantite_achetee or 0
+        utilisee = self.quantite_utilisee or 0
+        endommagee = self.quantite_endommagee or 0
+        if utilisee + endommagee > achetee:
+            raise ValidationError({
+                'quantite_endommagee': (
+                    "La quantité utilisée et la quantité gâtée ne peuvent pas "
+                    "dépasser la quantité achetée."
+                )
+            })
+
+    def save(self, *args, **kwargs):
+        self.valeur_acquisition = (
+            Decimal(self.quantite_achetee or 0)
+            * Decimal(self.prix_achat_unitaire or 0)
+        )
+        super().save(*args, **kwargs)
+
+    @property
+    def quantite_disponible(self):
+        return max(
+            0,
+            (self.quantite_achetee or 0)
+            - (self.quantite_utilisee or 0)
+            - (self.quantite_endommagee or 0),
+        )
+
+    @property
+    def valeur_achat(self):
+        return (
+            Decimal(self.quantite_achetee or 0)
+            * Decimal(self.prix_achat_unitaire or 0)
+        )
     
     @property
     def maintenance_requise(self):
@@ -200,6 +260,108 @@ class BienEtablissement(SyncTrackedModel):
         if self.date_prochaine_maintenance:
             return timezone.now().date() >= self.date_prochaine_maintenance
         return False
+
+
+class ContributionRamePapier(SyncTrackedModel):
+    """Contribution d'un élève en rames de papier, en argent, ou les deux."""
+
+    MODE_CHOICES = [
+        ('RAMES', 'Rames de papier'),
+        ('ARGENT', 'Paiement en argent'),
+        ('MIXTE', 'Rames et argent'),
+    ]
+
+    ecole = models.ForeignKey(
+        'eleves.Ecole',
+        on_delete=models.PROTECT,
+        related_name='contributions_rames',
+        verbose_name="Établissement",
+    )
+    eleve = models.ForeignKey(
+        'eleves.Eleve',
+        on_delete=models.CASCADE,
+        related_name='contributions_rames',
+        verbose_name="Élève",
+    )
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    mode_contribution = models.CharField(
+        max_length=10,
+        choices=MODE_CHOICES,
+        verbose_name="Mode de contribution",
+    )
+    nombre_paquets = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Nombre de paquets/rames",
+    )
+    montant_paye = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        default=Decimal('0'),
+        verbose_name="Montant payé (GNF)",
+    )
+    date_contribution = models.DateField(
+        default=timezone.localdate,
+        verbose_name="Date de contribution",
+    )
+    observations = models.TextField(blank=True, verbose_name="Observations")
+    cree_par = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='contributions_rames_creees',
+        verbose_name="Créé par",
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Contribution en rames de papier"
+        verbose_name_plural = "Contributions en rames de papier"
+        ordering = ['-date_contribution', '-date_creation']
+        indexes = [
+            models.Index(fields=['ecole', 'date_contribution'], name='dep_contr_ecole_date_idx'),
+            models.Index(fields=['eleve', 'date_contribution'], name='dep_contr_eleve_date_idx'),
+            models.Index(fields=['annee_scolaire'], name='dep_contr_annee_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.eleve.nom_complet} - {self.get_mode_contribution_display()}"
+
+    def clean(self):
+        super().clean()
+        if self.eleve_id and self.ecole_id:
+            ecole_eleve_id = getattr(
+                getattr(getattr(self.eleve, 'classe', None), 'ecole', None),
+                'id',
+                None,
+            )
+            if ecole_eleve_id != self.ecole_id:
+                raise ValidationError({'eleve': "Cet élève n'appartient pas à l'établissement."})
+
+        paquets = self.nombre_paquets or 0
+        montant = self.montant_paye or Decimal('0')
+        if paquets <= 0 and montant <= 0:
+            raise ValidationError(
+                "Saisissez au moins un paquet de papier ou un montant payé."
+            )
+        if self.mode_contribution == 'RAMES' and paquets <= 0:
+            raise ValidationError({'nombre_paquets': "Indiquez le nombre de paquets reçus."})
+        if self.mode_contribution == 'RAMES' and montant > 0:
+            raise ValidationError({'montant_paye': "Ce mode n'accepte pas de montant payé."})
+        if self.mode_contribution == 'ARGENT' and montant <= 0:
+            raise ValidationError({'montant_paye': "Indiquez le montant payé."})
+        if self.mode_contribution == 'ARGENT' and paquets > 0:
+            raise ValidationError({'nombre_paquets': "Ce mode n'accepte pas de paquets."})
+        if self.mode_contribution == 'MIXTE' and (paquets <= 0 or montant <= 0):
+            raise ValidationError("Le mode mixte exige des paquets et un montant payé.")
+
+    def save(self, *args, **kwargs):
+        if self.eleve_id:
+            self.ecole_id = self.eleve.classe.ecole_id
+            if not self.annee_scolaire:
+                self.annee_scolaire = self.eleve.classe.annee_scolaire
+        super().save(*args, **kwargs)
 
 
 class MouvementStock(SyncTrackedModel):

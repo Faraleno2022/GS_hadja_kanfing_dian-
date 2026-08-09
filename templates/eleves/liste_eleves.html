@@ -188,6 +188,41 @@
                     setTimeout(() => showMessage('PDF généré avec succès !'), 1000);
                 });
             }
+
+            // Gestion du bouton Cartes Cantine en masse
+            const btnCartesCantineMasse = zone.querySelector('#btn-cartes-cantine-masse');
+            if (btnCartesCantineMasse) {
+                const newBtn = btnCartesCantineMasse.cloneNode(true);
+                btnCartesCantineMasse.parentNode.replaceChild(newBtn, btnCartesCantineMasse);
+
+                newBtn.addEventListener('click', () => {
+                    const classeId = select.value;
+                    if (!classeId) {
+                        showMessage('Veuillez sélectionner une classe pour générer les cartes cantine.', 'error');
+                        return;
+                    }
+
+                    showMessage('Génération du PDF en cours...', 'info');
+                    const url = `{% url 'eleves:cartes_cantine_classe_pdf' 0 %}`.replace('0', classeId);
+                    window.open(url, '_blank');
+                    setTimeout(() => showMessage('PDF généré avec succès !'), 1000);
+                });
+            }
+
+            // Export Excel au modèle du template d'importation (transfert vers un autre poste)
+            const btnModeleImport = zone.querySelector('#btn-export-modele-import');
+            if (btnModeleImport) {
+                const newBtn = btnModeleImport.cloneNode(true);
+                btnModeleImport.parentNode.replaceChild(newBtn, btnModeleImport);
+
+                newBtn.addEventListener('click', () => {
+                    const classeId = select.value;
+                    const url = new URL('{% url "eleves:exporter_tous_eleves_import" %}', window.location.origin);
+                    if (classeId) url.searchParams.set('classe_id', classeId);
+                    showMessage('Génération du fichier Excel en cours...', 'info');
+                    window.location.href = url.toString();
+                });
+            }
         }
 
         const debounce = (fn, delay = 300) => {

@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1"><i class="fas fa-pen-to-square text-primary me-2"></i>{{ titre_page }}</h2>
+      <p class="text-muted mb-0">Correction d'une erreur ou d'un oubli de saisie</p>
+    </div>
+    <a href="{% url 'paiements:detail_paiement' paiement.id %}" class="btn btn-secondary">
+      <i class="fas fa-arrow-left me-1"></i>Retour au détail
+    </a>
+  </div>
+
+  <div class="alert alert-info d-flex align-items-start">
+    <i class="fas fa-clock-rotate-left me-2 mt-1"></i>
+    <div>
+      L'état actuel du paiement est archivé avant enregistrement. Vous pourrez rétablir
+      les valeurs précédentes depuis <strong>Administration → Corbeille → Modifications</strong>.
+      L'échéancier de l'élève est recalculé automatiquement.
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">Paiement concerné</h6></div>
+        <div class="card-body">
+          <dl class="row mb-0 small">
+            <dt class="col-5">Reçu</dt>
+            <dd class="col-7">{{ paiement.numero_recu }}</dd>
+
+            <dt class="col-5">Élève</dt>
+            <dd class="col-7">{{ paiement.eleve.nom_complet }}</dd>
+
+            <dt class="col-5">Matricule</dt>
+            <dd class="col-7">{{ paiement.eleve.matricule }}</dd>
+
+            <dt class="col-5">Classe</dt>
+            <dd class="col-7">{{ paiement.eleve.classe.nom }}</dd>
+
+            <dt class="col-5">Montant actuel</dt>
+            <dd class="col-7"><strong>{{ paiement.montant|floatformat:0|intcomma }} GNF</strong></dd>
+
+            <dt class="col-5">Statut</dt>
+            <dd class="col-7">{{ paiement.get_statut_display }}</dd>
+          </dl>
+          <hr>
+          <p class="text-muted small mb-0">
+            L'élève et le numéro de reçu ne sont pas modifiables : le reçu a déjà été remis
+            à la famille. Pour un paiement attribué au mauvais élève, supprimez-le et
+            ressaisissez-le.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">Valeurs à corriger</h6></div>
+        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+              <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="row g-3">
+              {% for field in form %}
+                <div class="{% if field.name == 'observations' or field.name == 'motif_modification' %}col-12{% else %}col-md-6{% endif %}">
+                  <label for="{{ field.id_for_label }}" class="form-label">
+                    {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+                  </label>
+                  {{ field }}
+                  {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                  {% endif %}
+                  {% for erreur in field.errors %}
+                    <div class="text-danger small">{{ erreur }}</div>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-1"></i>Enregistrer la correction
+              </button>
+              <a href="{% url 'paiements:detail_paiement' paiement.id %}" class="btn btn-outline-secondary">
+                Annuler
+              </a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

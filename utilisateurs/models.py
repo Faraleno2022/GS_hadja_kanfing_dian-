@@ -105,6 +105,10 @@ class Profil(models.Model):
     peut_supprimer_paiements = models.BooleanField(default=False, verbose_name="Peut supprimer les paiements")
     peut_supprimer_depenses = models.BooleanField(default=False, verbose_name="Peut supprimer les dépenses")
     peut_supprimer_abonnements = models.BooleanField(default=False, verbose_name="Peut supprimer les abonnements")
+    peut_supprimer_eleves = models.BooleanField(
+        default=True,
+        verbose_name="Peut supprimer les élèves (vers la corbeille)",
+        help_text="L'élève supprimé part dans la corbeille et reste restaurable.")
     peut_supprimer_eleves_definitivement = models.BooleanField(default=False, verbose_name="Peut supprimer les élèves définitivement")
     peut_supprimer_enseignants_definitivement = models.BooleanField(default=False, verbose_name="Peut supprimer les enseignants définitivement")
     peut_consulter_rapports = models.BooleanField(default=True, verbose_name="Peut consulter les rapports")

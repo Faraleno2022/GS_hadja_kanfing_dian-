@@ -1,6 +1,13 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Enseignant, TypeEnseignant, StatutEnseignant, AffectationClasse, PresenceEnseignant
+from .models import (
+    AffectationClasse,
+    Enseignant,
+    EtatSalaire,
+    PresenceEnseignant,
+    StatutEnseignant,
+    TypeEnseignant,
+)
 from eleves.models import Ecole, Classe
 
 
@@ -44,12 +51,14 @@ class EnseignantForm(forms.ModelForm):
             'taux_horaire': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Taux horaire en GNF',
-                'step': '0.01'
+                'step': '0.01',
+                'min': '0.01',
             }),
             'salaire_fixe': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Salaire fixe en GNF',
-                'step': '0.01'
+                'step': '0.01',
+                'min': '0.01',
             }),
             'heures_mensuelles': forms.NumberInput(attrs={
                 'class': 'form-control',
@@ -266,6 +275,7 @@ class PresenceForm(forms.ModelForm):
                 'class': 'form-control',
                 'step': '0.25',
                 'min': '0',
+                'max': '24',
                 'placeholder': 'Calculé automatiquement si vide'
             }),
             'observations': forms.Textarea(attrs={
@@ -296,15 +306,35 @@ class PresenceForm(forms.ModelForm):
                 ecole=ecole,
                 statut='ACTIF'
             ).order_by('nom', 'prenoms')
-    
+
+
+class EtatSalaireAjustementForm(forms.ModelForm):
+    """Modification contrôlée des ajustements avant validation de la paie."""
+
+    class Meta:
+        model = EtatSalaire
+        fields = ['primes', 'deductions', 'observations']
+        widgets = {
+            'primes': forms.NumberInput(attrs={
+                'class': 'form-control', 'step': '0.01', 'min': '0'
+            }),
+            'deductions': forms.NumberInput(attrs={
+                'class': 'form-control', 'step': '0.01', 'min': '0'
+            }),
+            'observations': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 3,
+                'placeholder': 'Motif des primes ou retenues',
+            }),
+        }
+
     def clean(self):
         cleaned_data = super().clean()
-        heure_arrivee = cleaned_data.get('heure_arrivee')
-        heure_depart = cleaned_data.get('heure_depart')
-        statut = cleaned_data.get('statut')
-        
-        # Si présent, les heures sont recommandées
-        if statut == 'PRESENT' and not (heure_arrivee and heure_depart):
-            self.add_warning('Heures d\'arrivée et de départ recommandées pour les présents.')
-        
+        primes = cleaned_data.get('primes') or 0
+        deductions = cleaned_data.get('deductions') or 0
+        salaire_base = self.instance.salaire_base or 0
+        if deductions > salaire_base + primes:
+            self.add_error(
+                'deductions',
+                'Les retenues ne peuvent pas dépasser le salaire brut.',
+            )
         return cleaned_data

@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from datetime import datetime
 from eleves.models import Classe, Ecole
@@ -114,17 +115,29 @@ class Enseignant(SyncTrackedModel):
         ]
     
     def clean(self):
-        from django.core.exceptions import ValidationError
-        
-        if self.est_taux_horaire and not self.taux_horaire:
-            raise ValidationError({
-                'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
-            })
-        
-        if self.est_salaire_fixe and not self.salaire_fixe:
-            raise ValidationError({
-                'salaire_fixe': f'Le salaire fixe est obligatoire pour les {self.get_type_enseignant_display().lower()}.'
-            })
+        erreurs = {}
+
+        if self.est_taux_horaire and (self.taux_horaire is None or self.taux_horaire <= 0):
+            erreurs['taux_horaire'] = (
+                'Le taux horaire doit être strictement positif pour les enseignants du secondaire.'
+            )
+
+        if self.est_salaire_fixe and (self.salaire_fixe is None or self.salaire_fixe <= 0):
+            erreurs['salaire_fixe'] = (
+                f'Le salaire fixe doit être strictement positif pour les '
+                f'{self.get_type_enseignant_display().lower()}.'
+            )
+
+        if self.heures_mensuelles is not None and self.heures_mensuelles < 0:
+            erreurs['heures_mensuelles'] = 'Les heures mensuelles ne peuvent pas être négatives.'
+
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    def save(self, *args, **kwargs):
+        exclusions = ['cree_par'] if self.cree_par_id is None else None
+        self.full_clean(exclude=exclusions)
+        return super().save(*args, **kwargs)
     
     def calculer_salaire_mensuel(self, heures_realisees=None):
         """
@@ -143,8 +156,9 @@ class Enseignant(SyncTrackedModel):
             if not self.taux_horaire:
                 return Decimal('0')
             
-            # Utiliser les heures réalisées si fournies, sinon les heures mensuelles prévues
-            heures = heures_realisees if heures_realisees is not None else (self.heures_mensuelles or Decimal('120'))
+            # Un salaire horaire repose uniquement sur le pointage réel. Sans
+            # heures réalisées, aucun montant n'est dû.
+            heures = heures_realisees if heures_realisees is not None else Decimal('0')
             return self.taux_horaire * heures
         
         elif self.est_salaire_fixe:
@@ -221,17 +235,31 @@ class AffectationClasse(SyncTrackedModel):
         return f"{self.enseignant.nom_complet} - {self.classe.nom}"
     
     def clean(self):
-        from django.core.exceptions import ValidationError
-        
-        if self.enseignant.est_taux_horaire and not self.heures_par_semaine:
-            raise ValidationError({
-                'heures_par_semaine': 'Le nombre d\'heures par semaine est obligatoire pour les enseignants du secondaire.'
-            })
-        
+        erreurs = {}
+
+        if self.enseignant_id and self.enseignant.est_taux_horaire and (
+            self.heures_par_semaine is None or self.heures_par_semaine <= 0
+        ):
+            erreurs['heures_par_semaine'] = (
+                'Le nombre d\'heures par semaine doit être strictement positif '
+                'pour les enseignants du secondaire.'
+            )
+
+        if self.heures_par_semaine is not None and self.heures_par_semaine < 0:
+            erreurs['heures_par_semaine'] = 'Les heures par semaine ne peuvent pas être négatives.'
+
         if self.date_fin and self.date_fin < self.date_debut:
-            raise ValidationError({
-                'date_fin': 'La date de fin ne peut pas être antérieure à la date de début.'
-            })
+            erreurs['date_fin'] = 'La date de fin ne peut pas être antérieure à la date de début.'
+
+        if self.classe_id and self.enseignant_id and self.classe.ecole_id != self.enseignant.ecole_id:
+            erreurs['classe'] = 'La classe doit appartenir à la même école que l\'enseignant.'
+
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class PeriodeSalaire(SyncTrackedModel):
@@ -299,6 +327,17 @@ class PeriodeSalaire(SyncTrackedModel):
         ]
         return f"{mois_noms[self.mois]} {self.annee}"
 
+    def clean(self):
+        if self.nombre_semaines is None or self.nombre_semaines <= 0:
+            raise ValidationError({
+                'nombre_semaines': 'Le nombre de semaines doit être strictement positif.'
+            })
+
+    def save(self, *args, **kwargs):
+        exclusions = ['cree_par'] if self.cree_par_id is None else None
+        self.full_clean(exclude=exclusions)
+        return super().save(*args, **kwargs)
+
 
 class EtatSalaire(SyncTrackedModel):
     """État de salaire d'un enseignant pour une période donnée"""
@@ -324,6 +363,14 @@ class EtatSalaire(SyncTrackedModel):
         blank=True,
         verbose_name="Total heures",
         help_text="Total des heures enseignées dans le mois"
+    )
+    taux_horaire_applique = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Taux horaire appliqué",
+        help_text="Taux figé au moment du calcul pour conserver l'historique de paie",
     )
     
     # Montants
@@ -395,11 +442,43 @@ class EtatSalaire(SyncTrackedModel):
     
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.periode.nom_periode}"
-    
+
+    def clean(self):
+        erreurs = {}
+        champs_positifs = {
+            'salaire_base': self.salaire_base,
+            'primes': self.primes,
+            'deductions': self.deductions,
+            'total_heures': self.total_heures,
+            'taux_horaire_applique': self.taux_horaire_applique,
+        }
+        for champ, valeur in champs_positifs.items():
+            if valeur is not None and valeur < 0:
+                erreurs[champ] = 'Cette valeur ne peut pas être négative.'
+
+        salaire_base = self.salaire_base or Decimal('0')
+        primes = self.primes or Decimal('0')
+        deductions = self.deductions or Decimal('0')
+        if deductions > salaire_base + primes:
+            erreurs['deductions'] = 'Les retenues ne peuvent pas dépasser le salaire brut.'
+
+        if self.enseignant_id and self.periode_id:
+            if self.enseignant.ecole_id != self.periode.ecole_id:
+                erreurs['enseignant'] = 'L\'enseignant et la période doivent appartenir à la même école.'
+
+        if erreurs:
+            raise ValidationError(erreurs)
+
     def save(self, *args, **kwargs):
         # Calcul automatique du salaire net
-        self.salaire_net = self.salaire_base + self.primes - self.deductions
-        super().save(*args, **kwargs)
+        self.salaire_net = (
+            (self.salaire_base or Decimal('0'))
+            + (self.primes or Decimal('0'))
+            - (self.deductions or Decimal('0'))
+        )
+        exclusions = ['calcule_par'] if self.calcule_par_id is None else None
+        self.full_clean(exclude=exclusions)
+        return super().save(*args, **kwargs)
     
     @property
     def peut_etre_valide(self):
@@ -498,7 +577,7 @@ class PresenceEnseignant(SyncTrackedModel):
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.date} - {self.get_statut_display()}"
     
-    def save(self, *args, **kwargs):
+    def _calculer_heures_depuis_pointage(self):
         # Calcul automatique des heures travaillées si arrivée et départ fournis
         if self.heure_arrivee and self.heure_depart:
             from datetime import datetime, timedelta
@@ -516,8 +595,30 @@ class PresenceEnseignant(SyncTrackedModel):
             # Si pas d'heures d'arrivée/départ, mettre à 0 si non défini
             if self.heures_travaillees is None:
                 self.heures_travaillees = Decimal('0')
-        
-        super().save(*args, **kwargs)
+
+    def clean(self):
+        erreurs = {}
+        if bool(self.heure_arrivee) != bool(self.heure_depart):
+            erreurs['heure_depart'] = (
+                "L'heure d'arrivée et l'heure de départ doivent être renseignées ensemble."
+            )
+        if self.heures_travaillees is not None:
+            if self.heures_travaillees < 0:
+                erreurs['heures_travaillees'] = 'Les heures travaillées ne peuvent pas être négatives.'
+            elif self.heures_travaillees > 24:
+                erreurs['heures_travaillees'] = 'Un pointage journalier ne peut pas dépasser 24 heures.'
+            elif self.statut not in ('PRESENT', 'RETARD') and self.heures_travaillees > 0:
+                erreurs['heures_travaillees'] = (
+                    'Un statut non travaillé ne peut pas contenir des heures réalisées.'
+                )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+    def save(self, *args, **kwargs):
+        self._calculer_heures_depuis_pointage()
+        exclusions = ['pointe_par'] if self.pointe_par_id is None else None
+        self.full_clean(exclude=exclusions)
+        return super().save(*args, **kwargs)
     
     @property
     def est_present(self):
@@ -577,8 +678,18 @@ class DetailHeuresClasse(SyncTrackedModel):
     
     def __str__(self):
         return f"{self.etat_salaire.enseignant.nom_complet} - {self.affectation_classe.classe.nom}"
-    
+
+    def clean(self):
+        erreurs = {}
+        for champ in ('heures_prevues', 'heures_realisees', 'taux_horaire_applique'):
+            valeur = getattr(self, champ)
+            if valeur is not None and valeur < 0:
+                erreurs[champ] = 'Cette valeur ne peut pas être négative.'
+        if erreurs:
+            raise ValidationError(erreurs)
+
     def save(self, *args, **kwargs):
         # Calcul automatique du montant
         self.montant = self.heures_realisees * self.taux_horaire_applique
-        super().save(*args, **kwargs)
+        self.full_clean()
+        return super().save(*args, **kwargs)

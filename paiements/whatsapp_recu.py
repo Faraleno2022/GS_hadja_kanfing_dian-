@@ -13,7 +13,9 @@ from django.urls import reverse
 from django.db.models import Sum
 from django.utils import timezone
 
-from .models import Paiement, PaiementRemise
+from .allocation import INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3
+from .models import Paiement
+from .payment_engine import situation_echeancier
 from eleves.models import Eleve
 
 logger = logging.getLogger(__name__)
@@ -222,33 +224,29 @@ class WhatsAppNoteRappelSender:
                 'prochaine_echeance': None,
             }
 
+        situation = situation_echeancier(echeancier, date_reference=today)
         postes = [
-            ("Frais d'inscription", echeancier.frais_inscription_du, echeancier.frais_inscription_paye, echeancier.date_echeance_inscription),
-            ("1ère tranche", echeancier.tranche_1_due, echeancier.tranche_1_payee, echeancier.date_echeance_tranche_1),
-            ("2ème tranche", echeancier.tranche_2_due, echeancier.tranche_2_payee, echeancier.date_echeance_tranche_2),
-            ("3ème tranche", echeancier.tranche_3_due, echeancier.tranche_3_payee, echeancier.date_echeance_tranche_3),
+            ("Frais d'inscription", INSCRIPTION, echeancier.date_echeance_inscription),
+            ("1ère tranche", TRANCHE_1, echeancier.date_echeance_tranche_1),
+            ("2ème tranche", TRANCHE_2, echeancier.date_echeance_tranche_2),
+            ("3ème tranche", TRANCHE_3, echeancier.date_echeance_tranche_3),
         ]
-        montant_total = sum((du or Decimal('0')) for _libelle, du, _paye, _date in postes)
-        montant_paye = sum((paye or Decimal('0')) for _libelle, _du, paye, _date in postes)
-        remises_total = PaiementRemise.objects.filter(
-            paiement__eleve=eleve,
-            paiement__statut='VALIDE'
-        ).aggregate(total=Sum('montant_remise'))['total'] or Decimal('0')
-
-        montant_couvert = min(montant_total, montant_paye + remises_total)
-        reste_a_payer = max(montant_total - montant_couvert, Decimal('0'))
-        exigible = sum((du or Decimal('0')) for _libelle, du, _paye, echeance in postes if echeance and echeance <= today)
-        retard_reel = max(exigible - montant_couvert, Decimal('0'))
+        montant_total = situation['total_du']
+        montant_paye = situation['total_encaisse']
+        remises_total = situation['total_remises']
+        montant_couvert = situation['total_couvert']
+        reste_a_payer = situation['solde_restant']
+        retard_reel = situation['retard_total']
 
         prochains = []
-        for libelle, du, paye, echeance in postes:
-            reste_poste = max((du or Decimal('0')) - (paye or Decimal('0')), Decimal('0'))
+        for libelle, bucket, echeance in postes:
+            reste_poste = situation['restes'][bucket]
             if reste_poste > 0:
                 prochains.append({
                     'libelle': libelle,
                     'montant': reste_poste,
                     'echeance': echeance,
-                    'en_retard': bool(echeance and echeance < today),
+                    'en_retard': bool(situation['retards'][bucket] > 0),
                 })
         prochains.sort(key=lambda item: (not item['en_retard'], item['echeance'] or today))
         prochain = prochains[0] if prochains else None

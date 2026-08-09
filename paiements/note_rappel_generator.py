@@ -126,12 +126,15 @@ def generer_note_rappel_eleve(eleve, response=None):
         ech = None
 
     if ech and ech.total_du > 0:
-        montant_total = ech.total_du
-        reste_a_payer = ech.solde_restant
+        from paiements.allocation import INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3
+        from paiements.payment_engine import situation_echeancier
+        situation = situation_echeancier(ech)
+        montant_total = situation['total_du']
+        reste_a_payer = situation['solde_restant']
 
         # Inscription
         fi_du = Decimal(str(ech.frais_inscription_du or 0))
-        fi_paye = Decimal(str(ech.frais_inscription_paye or 0))
+        fi_paye = situation['couverts'][INSCRIPTION]
         if fi_du > 0:
             fi_reste = max(Decimal('0'), fi_du - fi_paye)
             if fi_reste <= 0:
@@ -140,13 +143,13 @@ def generer_note_rappel_eleve(eleve, response=None):
                 tranches_restantes.append(f"Inscription ({fi_reste:,.0f} GNF restant)")
 
         # Tranches 1, 2, 3
-        for i, (due_field, paye_field) in enumerate([
-            ('tranche_1_due', 'tranche_1_payee'),
-            ('tranche_2_due', 'tranche_2_payee'),
-            ('tranche_3_due', 'tranche_3_payee'),
+        for i, (due_field, bucket) in enumerate([
+            ('tranche_1_due', TRANCHE_1),
+            ('tranche_2_due', TRANCHE_2),
+            ('tranche_3_due', TRANCHE_3),
         ], start=1):
             t_du = Decimal(str(getattr(ech, due_field, 0) or 0))
-            t_paye = Decimal(str(getattr(ech, paye_field, 0) or 0))
+            t_paye = situation['couverts'][bucket]
             if t_du > 0:
                 t_reste = max(Decimal('0'), t_du - t_paye)
                 if t_reste <= 0:

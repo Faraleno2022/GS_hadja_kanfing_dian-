@@ -55,6 +55,14 @@ class Paiement(SyncTrackedModel):
         verbose_name="Montant (GNF)"
     )
     date_paiement = models.DateField(verbose_name="Date de paiement", db_index=True)
+    annee_scolaire = models.CharField(
+        max_length=9,
+        blank=True,
+        default='',
+        db_index=True,
+        verbose_name="Année scolaire",
+        help_text="Année comptable à laquelle ce paiement doit être affecté.",
+    )
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut", db_index=True)
     
     # Informations complémentaires
@@ -96,6 +104,22 @@ class Paiement(SyncTrackedModel):
     
     def save(self, *args, **kwargs):
         """Génère automatiquement un numéro de reçu si non défini"""
+        # Figer l'année sur le paiement. La classe de l'élève peut changer au
+        # passage à l'année suivante ; un paiement historique ne doit jamais
+        # être rejoué dans le nouvel échéancier.
+        annee_ajoutee = False
+        if not self.annee_scolaire:
+            try:
+                self.annee_scolaire = self.eleve.classe.annee_scolaire or ''
+            except Exception:
+                self.annee_scolaire = ''
+            if not self.annee_scolaire:
+                from .payment_engine import school_year_from_date
+                self.annee_scolaire = school_year_from_date(self.date_paiement)
+            annee_ajoutee = True
+        if annee_ajoutee and kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'annee_scolaire'}
+
         if not self.numero_recu:
             from django.utils import timezone
             from django.db import transaction, IntegrityError
@@ -138,6 +162,11 @@ class Paiement(SyncTrackedModel):
 
 class EcheancierPaiement(SyncTrackedModel):
     """Modèle pour l'échéancier des paiements d'un élève"""
+
+    NATURE_FRAIS_CHOICES = [
+        ('INSCRIPTION', 'Inscription'),
+        ('REINSCRIPTION', 'Réinscription'),
+    ]
     STATUT_CHOICES = [
         ('A_PAYER', 'À payer'),
         ('PAYE_PARTIEL', 'Payé partiellement'),
@@ -147,6 +176,12 @@ class EcheancierPaiement(SyncTrackedModel):
     
     eleve = models.OneToOneField(Eleve, on_delete=models.CASCADE, related_name='echeancier')
     annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    nature_frais = models.CharField(
+        max_length=20,
+        choices=NATURE_FRAIS_CHOICES,
+        default='INSCRIPTION',
+        verbose_name="Nature des frais d'admission",
+    )
     
     # Montants dus
     frais_inscription_du = models.DecimalField(
@@ -218,17 +253,41 @@ class EcheancierPaiement(SyncTrackedModel):
         return self.frais_inscription_paye + self.tranche_1_payee + self.tranche_2_payee + self.tranche_3_payee
     
     @property
+    def total_remises_valides(self):
+        """Somme des remises valides de cette année, bornées par tranche.
+
+        Les remises réduisent le montant réellement dû sans jamais être
+        créditées dans les champs *_payee (qui ne suivent que les
+        encaissements). Il faut donc les déduire explicitement du solde,
+        exactement comme le fait le reçu PDF et le contrôle de sur-paiement
+        (paiements/views.py), pour que le montant "reste à payer" affiché
+        dans les notifications/rappels corresponde à celui du reçu.
+        """
+        from .payment_engine import situation_echeancier
+        return situation_echeancier(self)['total_remises']
+
+    @property
     def solde_restant(self):
-        """Solde restant à payer (ne peut jamais être négatif)"""
-        return max(Decimal('0'), self.total_du - self.total_paye)
+        """Solde restant à payer, remises validées déduites (ne peut jamais être négatif)"""
+        from .payment_engine import situation_echeancier
+        return situation_echeancier(self)['solde_restant']
 
     @property
     def pourcentage_paye(self):
-        """Pourcentage payé, borné entre 0 et 100"""
+        """Pourcentage couvert par encaissements et remises, borné à 100."""
         if self.total_du > 0:
-            pct = (self.total_paye / self.total_du) * 100
+            from .payment_engine import situation_echeancier
+            pct = (situation_echeancier(self)['total_couvert'] / self.total_du) * 100
             return min(pct, Decimal('100'))
         return Decimal('0')
+
+    def situation_financiere(self, date_reference=None):
+        """Situation détaillée par poste, sans compensation entre tranches."""
+        from .payment_engine import situation_echeancier
+        return situation_echeancier(self, date_reference=date_reference)
+
+    def retard_a(self, date_reference=None):
+        return self.situation_financiere(date_reference)['retard_total']
 
 class RemiseReduction(SyncTrackedModel):
     """Modèle pour les remises et réductions"""
@@ -292,21 +351,104 @@ class RemiseReduction(SyncTrackedModel):
         return max(Decimal('0'), min(remise, montant_base))
 
 class PaiementRemise(SyncTrackedModel):
-    """Modèle pour associer des remises aux paiements"""
+    """Modèle pour associer des remises aux paiements.
+
+    La remise porte toujours sur une ou plusieurs tranches de scolarité
+    (1, 2 et/ou 3). Elle ne s'applique jamais aux frais d'inscription ou de
+    réinscription. La base de calcul est soit le montant dû des tranches
+    sélectionnées, soit la part du paiement à l'échéance affectée à ces
+    tranches.
+    """
+
+    BASE_CALCUL_CHOICES = [
+        ('TRANCHE', "Montant des tranches"),
+        ('ECHEANCE', "Paiement à l'échéance"),
+    ]
+
+    # Motif justifiant la remise: obligatoire à la saisie (voir PaiementRemiseForm)
+    MOTIF_CHOICES = [
+        ('CLIENT_FIDELE', 'Client fidèle'),
+        ('PROMOTION', 'Promotion'),
+        ('ERREUR_COMMERCIALE', 'Erreur commerciale'),
+        ('PARTENAIRE', 'Partenaire'),
+        ('GESTE_COMMERCIAL', 'Geste commercial'),
+        ('NE_PAIE_RIEN', 'Ne paie rien'),
+        ('LA_MOITIE', 'La moitié'),
+    ]
+
     paiement = models.ForeignKey(Paiement, on_delete=models.CASCADE, related_name='remises')
     remise = models.ForeignKey(RemiseReduction, on_delete=models.CASCADE)
     montant_remise = models.DecimalField(
         max_digits=10, decimal_places=0,
         verbose_name="Montant de la remise (GNF)"
     )
-    
+
+    # Portée de la remise (jamais sur l'inscription / réinscription)
+    applique_tranche_1 = models.BooleanField(default=False, verbose_name="Appliquée sur la 1ère tranche")
+    applique_tranche_2 = models.BooleanField(default=False, verbose_name="Appliquée sur la 2ème tranche")
+    applique_tranche_3 = models.BooleanField(default=False, verbose_name="Appliquée sur la 3ème tranche")
+
+    base_calcul = models.CharField(
+        max_length=10, choices=BASE_CALCUL_CHOICES, default='TRANCHE',
+        verbose_name="Base de calcul"
+    )
+    montant_base = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Base de calcul retenue (GNF)"
+    )
+    montant_tranche_1 = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Remise affectée à la 1ère tranche (GNF)",
+    )
+    montant_tranche_2 = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Remise affectée à la 2ème tranche (GNF)",
+    )
+    montant_tranche_3 = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Remise affectée à la 3ème tranche (GNF)",
+    )
+
+    # blank=True uniquement pour ne pas invalider les remises enregistrées
+    # avant l'ajout du champ; le formulaire, lui, l'exige.
+    motif = models.CharField(
+        max_length=30, choices=MOTIF_CHOICES, blank=True, default='',
+        verbose_name="Motif de la remise"
+    )
+
     class Meta:
         verbose_name = "Remise appliquée"
         verbose_name_plural = "Remises appliquées"
         unique_together = ['paiement', 'remise']
-    
+
     def __str__(self):
         return f"{self.paiement.numero_recu} - {self.remise.nom} - {self.montant_remise:,.0f} GNF"
+
+    @property
+    def tranches_appliquees(self):
+        """Liste des numéros de tranches couvertes par la remise."""
+        return [
+            numero
+            for numero, applique in (
+                (1, self.applique_tranche_1),
+                (2, self.applique_tranche_2),
+                (3, self.applique_tranche_3),
+            )
+            if applique
+        ]
+
+    @property
+    def libelle_portee(self):
+        """Libellé court de la portée, ex: « T1 + T2 »."""
+        tranches = self.tranches_appliquees
+        if not tranches:
+            return "Scolarité"
+        return " + ".join(f"T{numero}" for numero in tranches)
+
+    @property
+    def libelle_motif(self):
+        """Motif lisible, ou mention explicite pour les remises antérieures."""
+        return self.get_motif_display() if self.motif else "Motif non précisé"
 
 
 class Relance(SyncTrackedModel):

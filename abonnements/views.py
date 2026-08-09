@@ -140,7 +140,7 @@ def creer_abonnement_bus(request):
                 return redirect('abonnements:liste_bus')
 
             itineraire = Itineraire.objects.get(id=itineraire_id)
-            type_bus = TypeAbonnement.objects.get(nom='BUS')
+            type_bus, _ = TypeAbonnement.objects.get_or_create(nom='BUS')
 
             # Calculer les dates et montant
             date_debut = date.today()
@@ -186,8 +186,8 @@ def creer_abonnement_bus(request):
             eleves_qs = eleves_qs.none()
     eleves = eleves_qs.order_by('nom', 'prenom')
     itineraires = Itineraire.objects.filter(actif=True)
-    type_bus = TypeAbonnement.objects.filter(nom='BUS').first()
-    
+    type_bus, _ = TypeAbonnement.objects.get_or_create(nom='BUS')
+
     context = {
         'titre_page': 'Nouvel Abonnement Bus',
         'eleves': eleves,
@@ -255,7 +255,7 @@ def creer_abonnement_cantine(request):
                 messages.error(request, "Vous ne pouvez pas créer un abonnement pour un élève d'une autre école.")
                 return redirect('abonnements:liste_cantine')
 
-            type_cantine = TypeAbonnement.objects.get(nom='CANTINE')
+            type_cantine, _ = TypeAbonnement.objects.get_or_create(nom='CANTINE')
 
             # Calculer les dates et montant
             date_debut = date.today()
@@ -298,8 +298,8 @@ def creer_abonnement_cantine(request):
         else:
             eleves_qs = eleves_qs.none()
     eleves = eleves_qs.order_by('nom', 'prenom')
-    type_cantine = TypeAbonnement.objects.filter(nom='CANTINE').first()
-    
+    type_cantine, _ = TypeAbonnement.objects.get_or_create(nom='CANTINE')
+
     context = {
         'titre_page': 'Nouvel Abonnement Cantine',
         'eleves': eleves,

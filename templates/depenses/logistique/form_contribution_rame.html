@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid"><div class="row justify-content-center"><div class="col-xl-8">
+  <div class="d-flex justify-content-between align-items-center mb-4"><div><h2 class="mb-1"><i class="fas fa-file-alt text-success me-2"></i>{{ titre_page }}</h2><p class="text-muted mb-0">Sélectionnez l'élève, puis indiquez les rames reçues ou l'argent payé.</p></div><a href="{% url 'depenses:liste_contributions_rames' %}" class="btn btn-outline-secondary">Retour</a></div>
+  <div class="card shadow-sm"><div class="card-body p-4">
+    <form method="post" novalidate>{% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="mb-3"><label class="form-label">Rechercher l'élève</label><input type="search" id="rechercheEleve" class="form-control" placeholder="Tapez le matricule, le nom ou la classe"><small class="text-muted">La liste ci-dessous se filtre automatiquement.</small></div>
+      <div class="mb-3"><label class="form-label">Élève *</label>{{ form.eleve }}{% if form.eleve.errors %}<div class="text-danger small">{{ form.eleve.errors }}</div>{% endif %}</div>
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">Contribution *</label>{{ form.mode_contribution }}{% if form.mode_contribution.errors %}<div class="text-danger small">{{ form.mode_contribution.errors }}</div>{% endif %}</div>
+        <div class="col-md-6"><label class="form-label">Date *</label>{{ form.date_contribution }}{% if form.date_contribution.errors %}<div class="text-danger small">{{ form.date_contribution.errors }}</div>{% endif %}</div>
+        <div class="col-md-6" id="blocPaquets"><label class="form-label">Nombre de paquets/rames</label>{{ form.nombre_paquets }}{% if form.nombre_paquets.errors %}<div class="text-danger small">{{ form.nombre_paquets.errors }}</div>{% endif %}</div>
+        <div class="col-md-6" id="blocMontant"><label class="form-label">Montant payé (GNF)</label>{{ form.montant_paye }}{% if form.montant_paye.errors %}<div class="text-danger small">{{ form.montant_paye.errors }}</div>{% endif %}</div>
+        <div class="col-12"><label class="form-label">Observations</label>{{ form.observations }}{% if form.observations.errors %}<div class="text-danger small">{{ form.observations.errors }}</div>{% endif %}</div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4"><a href="{% url 'depenses:liste_contributions_rames' %}" class="btn btn-outline-secondary">Annuler</a><button class="btn btn-success"><i class="fas fa-save me-1"></i>Enregistrer</button></div>
+    </form>
+  </div></div>
+</div></div></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(() => {
+  const recherche = document.getElementById('rechercheEleve');
+  const eleves = document.getElementById('id_eleve');
+  recherche?.addEventListener('input', () => {
+    const terme = recherche.value.trim().toLocaleLowerCase('fr');
+    Array.from(eleves.options).forEach((option, index) => {
+      if (index === 0) return;
+      option.hidden = terme && !option.text.toLocaleLowerCase('fr').includes(terme);
+    });
+  });
+
+  const mode = document.getElementById('id_mode_contribution');
+  const blocPaquets = document.getElementById('blocPaquets');
+  const blocMontant = document.getElementById('blocMontant');
+  const paquets = document.getElementById('id_nombre_paquets');
+  const montant = document.getElementById('id_montant_paye');
+  function actualiserMode() {
+    const valeur = mode?.value;
+    blocPaquets.style.display = valeur === 'ARGENT' ? 'none' : '';
+    blocMontant.style.display = valeur === 'RAMES' ? 'none' : '';
+    if (valeur === 'ARGENT') paquets.value = 0;
+    if (valeur === 'RAMES') montant.value = 0;
+  }
+  mode?.addEventListener('change', actualiserMode);
+  actualiserMode();
+})();
+</script>
+{% endblock %}

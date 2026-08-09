@@ -313,7 +313,7 @@
 
                 <!-- Détail du salaire -->
                 <div class="salary-breakdown">
-                    {% if etat.enseignant.est_taux_horaire and etat.total_heures and etat.enseignant.taux_horaire %}
+                    {% if etat.enseignant.est_taux_horaire %}
                     <!-- Calcul détaillé pour enseignants au taux horaire -->
                     <div class="breakdown-item calculation-detail">
                         <span><i class="fas fa-clock me-1"></i>Heures travaillées:</span>
@@ -321,11 +321,11 @@
                     </div>
                     <div class="breakdown-item calculation-detail">
                         <span><i class="fas fa-calculator me-1"></i>Taux horaire:</span>
-                        <span class="fw-bold">{{ etat.enseignant.taux_horaire|intcomma }} GNF/h</span>
+                        <span class="fw-bold">{{ etat.taux_horaire_applique|default:0|intcomma }} GNF/h</span>
                     </div>
                     <div class="breakdown-item calculation-formula">
                         <span><i class="fas fa-equals me-1"></i>Calcul:</span>
-                        <span class="text-primary fw-bold">{{ etat.total_heures }} h × {{ etat.enseignant.taux_horaire|intcomma }} GNF/h</span>
+                        <span class="text-primary fw-bold">{{ etat.total_heures|default:0 }} h × {{ etat.taux_horaire_applique|default:0|intcomma }} GNF/h</span>
                     </div>
                     <div class="breakdown-item total-line">
                         <span class="fw-bold">Salaire de base:</span>
@@ -338,22 +338,16 @@
                         <span>{{ etat.salaire_base|intcomma }} GNF</span>
                     </div>
                     {% endif %}
-                    {% if etat.prime_transport and etat.prime_transport > 0 %}
+                    {% if etat.primes > 0 %}
                     <div class="breakdown-item">
-                        <span>Prime transport:</span>
-                        <span class="text-success">+{{ etat.prime_transport|intcomma }} GNF</span>
+                        <span>Primes:</span>
+                        <span class="text-success">+{{ etat.primes|intcomma }} GNF</span>
                     </div>
                     {% endif %}
-                    {% if etat.prime_performance and etat.prime_performance > 0 %}
+                    {% if etat.deductions > 0 %}
                     <div class="breakdown-item">
-                        <span>Prime performance:</span>
-                        <span class="text-success">+{{ etat.prime_performance|intcomma }} GNF</span>
-                    </div>
-                    {% endif %}
-                    {% if etat.deduction_absence and etat.deduction_absence > 0 %}
-                    <div class="breakdown-item">
-                        <span>Déduction absence:</span>
-                        <span class="text-danger">-{{ etat.deduction_absence|intcomma }} GNF</span>
+                        <span>Retenues:</span>
+                        <span class="text-danger">-{{ etat.deductions|intcomma }} GNF</span>
                     </div>
                     {% endif %}
                     <div class="breakdown-item">
@@ -362,8 +356,22 @@
                     </div>
                 </div>
 
+                {% if etat.observations %}
+                <div class="alert alert-light border py-2 mt-2 mb-0">
+                    <i class="fas fa-comment-alt me-1"></i>{{ etat.observations }}
+                </div>
+                {% endif %}
+
                 <!-- Actions -->
                 <div class="action-buttons">
+                    {% if not etat.valide and not etat.paye and not etat.periode.cloturee %}
+                    <button type="button" class="btn btn-outline-warning btn-action"
+                            data-bs-toggle="collapse" data-bs-target="#ajustements-{{ etat.id }}"
+                            aria-expanded="false" aria-controls="ajustements-{{ etat.id }}">
+                        <i class="fas fa-edit"></i> Ajuster
+                    </button>
+                    {% endif %}
+
                     {% if not etat.valide and not etat.paye %}
                     <form method="post" action="{% url 'salaires:valider_etat_salaire' etat.id %}" class="d-inline">
                         {% csrf_token %}
@@ -394,6 +402,37 @@
                         <i class="fas fa-print"></i> Imprimer
                     </button>
                 </div>
+
+                {% if not etat.valide and not etat.paye and not etat.periode.cloturee %}
+                <div class="collapse mt-3" id="ajustements-{{ etat.id }}">
+                    <form method="post" action="{% url 'salaires:modifier_etat_salaire' etat.id %}"
+                          class="card card-body bg-light">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="primes-{{ etat.id }}">Primes (GNF)</label>
+                                <input id="primes-{{ etat.id }}" type="number" name="primes"
+                                       class="form-control" min="0" step="0.01" value="{{ etat.primes }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="deductions-{{ etat.id }}">Retenues (GNF)</label>
+                                <input id="deductions-{{ etat.id }}" type="number" name="deductions"
+                                       class="form-control" min="0" step="0.01" value="{{ etat.deductions }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="observations-{{ etat.id }}">Observations</label>
+                                <textarea id="observations-{{ etat.id }}" name="observations"
+                                          class="form-control" rows="2">{{ etat.observations }}</textarea>
+                            </div>
+                            <div class="col-12 text-end">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="fas fa-save me-1"></i>Enregistrer les ajustements
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endfor %}

@@ -1,166 +1,58 @@
 {% extends 'base.html' %}
+{% load humanize %}
 
 {% block title %}{{ titre_page }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-10 offset-md-1">
-            <!-- En-tête -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h2><i class="fas fa-building text-info"></i> {{ titre_page }}</h2>
-                </div>
-                <div>
-                    <a href="{% url 'depenses:liste_biens' %}" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> Retour
-                    </a>
-                </div>
-            </div>
+<div class="container-fluid"><div class="row justify-content-center"><div class="col-xl-9">
+  <div class="d-flex justify-content-between align-items-center mb-4"><div><h2 class="mb-1"><i class="fas fa-building text-primary me-2"></i>{{ titre_page }}</h2><p class="text-muted mb-0">Exemple : tables, chaises, marqueurs, ordinateurs.</p></div><a href="{% url 'depenses:liste_biens' %}" class="btn btn-outline-secondary">Retour</a></div>
+  <div class="card shadow-sm"><div class="card-body p-4">
+    <form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+      {% if ecoles %}<div class="mb-3"><label class="form-label">Établissement *</label><select name="ecole" class="form-select" required><option value="">Sélectionner</option>{% for ecole in ecoles %}<option value="{{ ecole.id }}" {% if ecole_selectionnee == ecole.id %}selected{% endif %}>{{ ecole.nom }}</option>{% endfor %}</select></div>{% endif %}
+      <div class="row g-3">
+        <div class="col-md-4"><label class="form-label">Code</label>{{ form.code_bien }}{{ form.code_bien.errors }}</div>
+        <div class="col-md-8"><label class="form-label">Nom / désignation *</label>{{ form.nom }}{{ form.nom.errors }}</div>
+        <div class="col-md-6"><label class="form-label">Type *</label>{{ form.type_bien }}{{ form.type_bien.errors }}</div>
+        <div class="col-md-6"><label class="form-label">Marque</label>{{ form.marque }}{{ form.marque.errors }}</div>
+      </div>
+      <hr class="my-4"><h5 class="mb-3">Achat et quantités</h5>
+      <div class="row g-3">
+        <div class="col-md-3"><label class="form-label">Quantité achetée *</label>{{ form.quantite_achetee }}{{ form.quantite_achetee.errors }}</div>
+        <div class="col-md-3"><label class="form-label">Prix unitaire (GNF) *</label>{{ form.prix_achat_unitaire }}{{ form.prix_achat_unitaire.errors }}</div>
+        <div class="col-md-3"><label class="form-label">Quantité utilisée</label>{{ form.quantite_utilisee }}{{ form.quantite_utilisee.errors }}</div>
+        <div class="col-md-3"><label class="form-label">Quantité gâtée/perdue</label>{{ form.quantite_endommagee }}{{ form.quantite_endommagee.errors }}</div>
+      </div>
+      <div class="alert alert-light border mt-3 mb-0"><div class="row"><div class="col-md-6">Disponible calculé : <strong id="disponibleCalcule">0</strong></div><div class="col-md-6">Valeur totale : <strong id="valeurCalculee">0 GNF</strong></div></div></div>
+      <hr class="my-4"><div class="row g-3">
+        <div class="col-md-4"><label class="form-label">Date d'achat</label>{{ form.date_acquisition }}{{ form.date_acquisition.errors }}</div>
+        <div class="col-md-4"><label class="form-label">Localisation</label>{{ form.localisation }}{{ form.localisation.errors }}</div>
+        <div class="col-md-4"><label class="form-label">État</label>{{ form.etat }}{{ form.etat.errors }}</div>
+        <div class="col-md-6"><label class="form-label">Photo</label>{{ form.photo }}{{ form.photo.errors }}{% if bien.photo %}<img src="{{ bien.photo.url }}" class="img-thumbnail mt-2" style="max-height:120px" alt="Photo du bien">{% endif %}</div>
+        <div class="col-md-6"><label class="form-label">Observations</label>{{ form.observations }}{{ form.observations.errors }}</div>
+      </div>
+      <div class="d-flex justify-content-end gap-2 mt-4"><a href="{% url 'depenses:liste_biens' %}" class="btn btn-outline-secondary">Annuler</a><button class="btn btn-success"><i class="fas fa-save me-1"></i>Enregistrer</button></div>
+    </form>
+  </div></div>
+</div></div></div>
+{% endblock %}
 
-            <!-- Formulaire -->
-            <div class="card">
-                <div class="card-body">
-                    <form method="post" enctype="multipart/form-data">
-                        {% csrf_token %}
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Code du bien</label>
-                                {{ form.code_bien }}
-                                <small class="text-muted">Laissez vide pour génération automatique</small>
-                                {% if form.code_bien.errors %}
-                                <div class="text-danger">{{ form.code_bien.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Nom/Désignation *</label>
-                                {{ form.nom }}
-                                {% if form.nom.errors %}
-                                <div class="text-danger">{{ form.nom.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Type de bien *</label>
-                                {{ form.type_bien }}
-                                {% if form.type_bien.errors %}
-                                <div class="text-danger">{{ form.type_bien.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">État *</label>
-                                {{ form.etat }}
-                                {% if form.etat.errors %}
-                                <div class="text-danger">{{ form.etat.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Description</label>
-                            {{ form.description }}
-                            {% if form.description.errors %}
-                            <div class="text-danger">{{ form.description.errors }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Localisation *</label>
-                                {{ form.localisation }}
-                                {% if form.localisation.errors %}
-                                <div class="text-danger">{{ form.localisation.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Superficie (m²)</label>
-                                {{ form.superficie }}
-                                {% if form.superficie.errors %}
-                                <div class="text-danger">{{ form.superficie.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Capacité</label>
-                                {{ form.capacite }}
-                                {% if form.capacite.errors %}
-                                <div class="text-danger">{{ form.capacite.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Valeur d'acquisition (GNF)</label>
-                                {{ form.valeur_acquisition }}
-                                {% if form.valeur_acquisition.errors %}
-                                <div class="text-danger">{{ form.valeur_acquisition.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Date d'acquisition</label>
-                                {{ form.date_acquisition }}
-                                {% if form.date_acquisition.errors %}
-                                <div class="text-danger">{{ form.date_acquisition.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Dernière maintenance</label>
-                                {{ form.date_derniere_maintenance }}
-                                {% if form.date_derniere_maintenance.errors %}
-                                <div class="text-danger">{{ form.date_derniere_maintenance.errors }}</div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Prochaine maintenance</label>
-                                {{ form.date_prochaine_maintenance }}
-                                {% if form.date_prochaine_maintenance.errors %}
-                                <div class="text-danger">{{ form.date_prochaine_maintenance.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Photo</label>
-                                {{ form.photo }}
-                                {% if form.photo.errors %}
-                                <div class="text-danger">{{ form.photo.errors }}</div>
-                                {% endif %}
-                                {% if bien and bien.photo %}
-                                <div class="mt-2">
-                                    <img src="{{ bien.photo.url }}" alt="Photo actuelle" class="img-thumbnail" style="max-width: 200px;">
-                                </div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Observations</label>
-                                {{ form.observations }}
-                                {% if form.observations.errors %}
-                                <div class="text-danger">{{ form.observations.errors }}</div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <hr>
-
-                        <div class="d-flex justify-content-between">
-                            <a href="{% url 'depenses:liste_biens' %}" class="btn btn-secondary">
-                                <i class="fas fa-times"></i> Annuler
-                            </a>
-                            <button type="submit" class="btn btn-success btn-lg">
-                                <i class="fas fa-save"></i> Enregistrer
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{% block extra_js %}
+<script>
+(() => {
+  const achetee = document.getElementById('id_quantite_achetee');
+  const utilisee = document.getElementById('id_quantite_utilisee');
+  const gatee = document.getElementById('id_quantite_endommagee');
+  const prix = document.getElementById('id_prix_achat_unitaire');
+  const disponible = document.getElementById('disponibleCalcule');
+  const valeur = document.getElementById('valeurCalculee');
+  function calculer() {
+    const q = Number(achetee?.value || 0), u = Number(utilisee?.value || 0), g = Number(gatee?.value || 0), p = Number(prix?.value || 0);
+    disponible.textContent = Math.max(0, q - u - g).toLocaleString('fr-FR');
+    valeur.textContent = (q * p).toLocaleString('fr-FR') + ' GNF';
+  }
+  [achetee, utilisee, gatee, prix].forEach(el => el?.addEventListener('input', calculer));
+  calculer();
+})();
+</script>
 {% endblock %}

@@ -27,5 +27,5 @@ urlpatterns = [
     
     # Corbeille et restauration
     path('corbeille/', views.corbeille_list, name='corbeille_list'),
-    path('corbeille/restaurer/<int:log_id>/', views.restaurer_element, name='restaurer_element'),
+    path('corbeille/restaurer/<int:element_id>/', views.corbeille_restaurer, name='corbeille_restaurer'),
 ]

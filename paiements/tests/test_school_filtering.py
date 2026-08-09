@@ -1,15 +1,35 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from datetime import date
+from unittest.mock import patch
 
 from eleves.models import Ecole, Classe, Eleve, Responsable
 from paiements.models import Paiement, TypePaiement, ModePaiement
+from paiements.tests.support import TEST_MIDDLEWARE
 from utilisateurs.models import Profil
 
 
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class SchoolFilteringTests(TestCase):
     def setUp(self):
+        license_patcher = patch(
+            'ecole_moderne.licence_middleware._check_license_cached',
+            return_value={
+                'valid': True,
+                'trial': False,
+                'days_left': 999,
+            },
+        )
+        integrity_patcher = patch(
+            'ecole_moderne.licence_middleware._check_integrity_cached',
+            return_value={'valid': True, 'reason': ''},
+        )
+        license_patcher.start()
+        integrity_patcher.start()
+        self.addCleanup(license_patcher.stop)
+        self.addCleanup(integrity_patcher.stop)
+
         # Schools (provide required fields)
         self.ecole1 = Ecole.objects.create(
             nom="Ecole A",
@@ -78,16 +98,32 @@ class SchoolFilteringTests(TestCase):
         User = get_user_model()
         self.user1 = User.objects.create_user(username="u1", password="pass12345")
         self.user2 = User.objects.create_user(username="u2", password="pass12345")
-        Profil.objects.create(user=self.user1, role='COMPTABLE', ecole=self.ecole1, telephone="+224620000021", peut_consulter_rapports=True)
-        Profil.objects.create(user=self.user2, role='COMPTABLE', ecole=self.ecole2, telephone="+224620000022", peut_consulter_rapports=True)
+        Profil.objects.update_or_create(
+            user=self.user1,
+            defaults={
+                'role': 'COMPTABLE',
+                'ecole': self.ecole1,
+                'telephone': "+224620000021",
+                'peut_consulter_rapports': True,
+            },
+        )
+        Profil.objects.update_or_create(
+            user=self.user2,
+            defaults={
+                'role': 'COMPTABLE',
+                'ecole': self.ecole2,
+                'telephone': "+224620000022",
+                'peut_consulter_rapports': True,
+            },
+        )
 
     def login1(self):
         self.client.logout()
-        self.client.login(username="u1", password="pass12345")
+        self.client.force_login(self.user1)
 
     def login2(self):
         self.client.logout()
-        self.client.login(username="u2", password="pass12345")
+        self.client.force_login(self.user2)
 
     def test_api_paiements_list_filtered_by_school(self):
         self.login1()
@@ -142,6 +178,26 @@ class SchoolFilteringTests(TestCase):
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 404)
 
+    def test_detail_paiement_lists_all_payments_for_same_student(self):
+        second_payment = Paiement.objects.create(
+            eleve=self.eleve1,
+            type_paiement=self.type_insc,
+            mode_paiement=self.mode_espece,
+            montant=45000,
+            statut='EN_ATTENTE',
+            date_paiement=date(2024, 10, 10),
+        )
+        self.login1()
+        url = reverse("paiements:detail_paiement", kwargs={"paiement_id": self.paiement1.id})
+        resp = self.client.get(url)
+
+        self.assertEqual(resp.status_code, 200)
+        listed_ids = list(resp.context['paiements_eleve'].values_list('id', flat=True))
+        self.assertEqual(listed_ids, [second_payment.id, self.paiement1.id])
+        self.assertNotIn(self.paiement2.id, listed_ids)
+        self.assertEqual(resp.context['historique_resume']['nombre'], 2)
+        self.assertContains(resp, second_payment.numero_recu)
+
     def test_generer_recu_pdf_other_school_is_404(self):
         self.login1()
         url = reverse("paiements:generer_recu_pdf", kwargs={"paiement_id": self.paiement2.id})
@@ -157,6 +213,8 @@ class SchoolFilteringTests(TestCase):
     def test_relancer_eleve_other_school_is_404(self):
         self.login1()
         url = reverse("paiements:relancer_eleve", kwargs={"eleve_id": self.eleve2.id})
-        # GET simple, on ne vérifie que la protection d'accès (pas les side-effects)
-        resp = self.client.get(url)
+        # La vue est réservée au POST (elle crée une relance et notifie). Un GET
+        # serait rejeté en 405 avant même le contrôle d'école : on poste donc
+        # pour vérifier réellement la protection d'accès inter-écoles.
+        resp = self.client.post(url)
         self.assertEqual(resp.status_code, 404)

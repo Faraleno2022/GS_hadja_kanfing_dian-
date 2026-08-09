@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 import os
+import sys
 import django
+
+# Le script vit dans scripts/ : la racine du projet doit etre importable.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from load_env import *
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecole_moderne.settings')
 django.setup()

@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Recouvrement salaires{% endblock %}
+
+{% block extra_css %}
+<style>
+    .module-hero {
+        border-radius: 1rem;
+        color: white;
+        background: linear-gradient(135deg, #0f9b8e, #0a6b62);
+    }
+    .metric-card { border: 0; border-radius: .9rem; box-shadow: 0 3px 14px rgba(15,23,42,.08); height: 100%; }
+    .metric-value { font-size: 1.5rem; font-weight: 700; }
+    .metric-label { color: #6c757d; font-size: .8rem; text-transform: uppercase; letter-spacing: .4px; }
+    .money { white-space: nowrap; text-align: end; font-variant-numeric: tabular-nums; }
+
+    .bar-row { display: flex; align-items: center; gap: .6rem; margin-bottom: .45rem; }
+    .bar-label { width: 6.5rem; font-size: .78rem; color: #6c757d; white-space: nowrap; }
+    .bar-track { flex: 1; background: #f1f3f5; border-radius: 4px; height: .55rem; overflow: hidden; }
+    .bar-fill { background: #0f9b8e; height: 100%; border-radius: 4px; }
+    .bar-value { width: 7.5rem; text-align: end; font-size: .78rem; font-variant-numeric: tabular-nums; }
+
+    .niveau-badge { font-size: .72rem; }
+    .table-pivot th, .table-pivot td { white-space: nowrap; }
+    .table-pivot thead th { position: sticky; top: 0; background: #f8f9fa; z-index: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <section class="module-hero p-4 mb-4 shadow-sm">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h1 class="h3 mb-1"><i class="fas fa-chalkboard-teacher me-2"></i>Recouvrement salaires</h1>
+                <p class="mb-0 opacity-75">
+                    Suivi des salaires versés aux enseignants, par mois et par niveau
+                    (Maternelle, Primaire, Collège, Lycée).
+                </p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'depenses:export_salaires_excel' %}?{{ request.GET.urlencode }}" class="btn btn-outline-light">
+                    <i class="fas fa-file-excel me-1"></i>Excel
+                </a>
+                <a href="{% url 'depenses:tableau_bord' %}" class="btn btn-outline-light">
+                    <i class="fas fa-arrow-left me-1"></i>Recouvrement
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tableau de bord -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-3">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Payé ce mois-ci</div>
+                <div class="metric-value">{{ total_mois_courant|floatformat:0|intcomma }}</div>
+                <div class="text-muted small">GNF — {{ nb_payes_mois_courant }} enseignant{{ nb_payes_mois_courant|pluralize }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Total affiché</div>
+                <div class="metric-value">{{ total_general|floatformat:0|intcomma }}</div>
+                <div class="text-muted small">GNF sur {{ colonnes_mois|length }} mois</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Enseignants actifs</div>
+                <div class="metric-value">{{ nb_enseignants_total }}</div>
+                <div class="text-muted small">{{ nb_avec_paiement }} avec au moins un paiement</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Niveaux suivis</div>
+                <div class="metric-value">{{ par_niveau|length }}</div>
+                <div class="text-muted small">Maternelle → Lycée</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-7">
+            <div class="card metric-card"><div class="card-body">
+                <h6 class="mb-3"><i class="fas fa-chart-column me-2"></i>Total par mois (période affichée)</h6>
+                {% for col in colonnes_mois %}
+                <div class="bar-row">
+                    <span class="bar-label">{{ col.libelle }}</span>
+                    <span class="bar-track"><span class="bar-fill" style="width: {{ col.part }}%"></span></span>
+                    <span class="bar-value">{{ col.total|floatformat:0|intcomma }}</span>
+                </div>
+                {% endfor %}
+                {% if not colonnes_mois %}
+                <p class="text-muted mb-0">Aucun salaire payé enregistré pour l'instant.</p>
+                {% endif %}
+            </div></div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card metric-card"><div class="card-body">
+                <h6 class="mb-3"><i class="fas fa-layer-group me-2"></i>Totaux par niveau</h6>
+                {% if par_niveau %}
+                <ul class="list-group list-group-flush">
+                    {% for niveau, total in par_niveau %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>{{ niveau }}</span>
+                        <span class="fw-bold money">{{ total|floatformat:0|intcomma }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">Aucune donnée pour l'instant.</p>
+                {% endif %}
+            </div></div>
+        </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <form method="get" class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1" for="filtre_q">Enseignant</label>
+                    <input type="text" class="form-control" id="filtre_q" name="q" value="{{ q }}"
+                           placeholder="Nom ou prénom">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small text-muted mb-1" for="filtre_niveau">Niveau</label>
+                    <select class="form-select" id="filtre_niveau" name="niveau">
+                        <option value="">Tous les niveaux</option>
+                        {% for niveau in niveaux %}
+                        <option value="{{ niveau }}" {% if niveau_filtre == niveau %}selected{% endif %}>{{ niveau }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-fill">
+                        <i class="fas fa-filter me-1"></i>Filtrer
+                    </button>
+                    <a href="{% url 'depenses:dashboard_salaires' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-rotate-left"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tableau: enseignant x mois (s'ajuste automatiquement aux mois disponibles) -->
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover table-pivot align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Prénom</th>
+                        <th>Nom</th>
+                        <th>Niveau</th>
+                        {% for col in colonnes_mois %}
+                        <th class="money">{{ col.libelle }}</th>
+                        {% endfor %}
+                        <th class="money">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ligne in lignes %}
+                    <tr>
+                        <td>{{ ligne.enseignant.prenoms }}</td>
+                        <td>{{ ligne.enseignant.nom }}</td>
+                        <td><span class="badge bg-secondary-subtle text-secondary-emphasis niveau-badge">{{ ligne.niveau }}</span></td>
+                        {% for col, montant in ligne.paires %}
+                        <td class="money">{% if montant %}{{ montant|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+                        {% endfor %}
+                        <td class="money fw-bold">{{ ligne.total|floatformat:0|intcomma }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{{ colonnes_mois|length|add:4 }}" class="text-center text-muted py-4">
+                            Aucun enseignant pour ces critères.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

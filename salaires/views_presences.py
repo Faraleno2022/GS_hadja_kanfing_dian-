@@ -1,11 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.db.models import Q, Count, Sum
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from datetime import date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import csv
 
 from .models import Enseignant, PresenceEnseignant
@@ -96,6 +97,7 @@ def pointer_presence(request):
         
         count_created = 0
         count_updated = 0
+        count_errors = 0
         
         # Valider que tous les enseignants sélectionnés appartiennent à l'école de l'utilisateur
         enseignants_valides = set(
@@ -119,49 +121,66 @@ def pointer_presence(request):
             heure_arrivee = None
             heure_depart = None
             heures_travaillees = None
-            
+
+            erreur_format = None
             if heure_arrivee_str:
                 try:
                     heure_arrivee = datetime.strptime(heure_arrivee_str, '%H:%M').time()
                 except ValueError:
-                    pass
+                    erreur_format = "heure d'arrivée invalide"
             
             if heure_depart_str:
                 try:
                     heure_depart = datetime.strptime(heure_depart_str, '%H:%M').time()
                 except ValueError:
-                    pass
+                    erreur_format = "heure de départ invalide"
             
             if heures_travaillees_str:
                 try:
                     heures_travaillees = Decimal(heures_travaillees_str)
-                except:
-                    pass
-            
+                except (InvalidOperation, TypeError):
+                    erreur_format = 'nombre d\'heures invalide'
+
+            if erreur_format:
+                count_errors += 1
+                messages.error(request, f"Pointage ignoré pour l'enseignant #{ens_id} : {erreur_format}.")
+                continue
+
             # Créer ou mettre à jour la présence
-            presence, created = PresenceEnseignant.objects.update_or_create(
-                enseignant_id=ens_id,
-                date=date_pointage,
-                defaults={
-                    'statut': statut,
-                    'heure_arrivee': heure_arrivee,
-                    'heure_depart': heure_depart,
-                    'heures_travaillees': heures_travaillees,
-                    'observations': observations,
-                    'justifie': justifie,
-                    'pointe_par': request.user,
-                }
-            )
+            try:
+                presence, created = PresenceEnseignant.objects.update_or_create(
+                    enseignant_id=ens_id,
+                    date=date_pointage,
+                    defaults={
+                        'statut': statut,
+                        'heure_arrivee': heure_arrivee,
+                        'heure_depart': heure_depart,
+                        'heures_travaillees': heures_travaillees,
+                        'observations': observations,
+                        'justifie': justifie,
+                        'pointe_par': request.user,
+                    }
+                )
+            except ValidationError as exc:
+                count_errors += 1
+                messages.error(
+                    request,
+                    f"Pointage ignoré pour l'enseignant #{ens_id} : {'; '.join(exc.messages)}",
+                )
+                continue
             
             if created:
                 count_created += 1
             else:
                 count_updated += 1
         
-        messages.success(
-            request,
-            f"Pointage enregistré: {count_created} nouveau(x), {count_updated} mis à jour."
-        )
+        if count_created or count_updated:
+            messages.success(
+                request,
+                f"Pointage enregistré: {count_created} nouveau(x), {count_updated} mis à jour."
+            )
+        if count_errors:
+            messages.warning(request, f"{count_errors} pointage(s) invalide(s) n'ont pas été enregistrés.")
         return redirect('salaires:liste_presences')
     
     # GET: Afficher le formulaire

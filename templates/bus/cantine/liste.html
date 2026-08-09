@@ -23,6 +23,9 @@
                     <a href="{% url 'bus:export_cantine_excel' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-primary">
                         <i class="fas fa-file-excel"></i> Export Excel
                     </a>
+                    <a href="{% url 'bus:cartes_cantine_planche_pdf' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-warning" title="Planche A4 de 8 cartes par feuille">
+                        <i class="fas fa-id-card"></i> Cartes (8/A4)
+                    </a>
                 </div>
             </div>
         </div>
@@ -139,7 +142,11 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{% url 'bus:modifier_abonnement_cantine' abo.id %}" 
+                                    <a href="{% url 'bus:carte_cantine_pdf' abo.id %}"
+                                       class="btn btn-warning" title="Carte cantine" target="_blank">
+                                        <i class="fas fa-id-card"></i>
+                                    </a>
+                                    <a href="{% url 'bus:modifier_abonnement_cantine' abo.id %}"
                                        class="btn btn-primary" title="Modifier">
                                         <i class="fas fa-edit"></i>
                                     </a>

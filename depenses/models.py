@@ -254,9 +254,13 @@ class HistoriqueDepense(SyncTrackedModel):
 # Importer les modèles de logistique et bibliothèque
 from .models_logistique import (
     CategorieArticle, Article, BienEtablissement, MouvementStock,
-    Inventaire, LigneInventaire
+    Inventaire, LigneInventaire, ContributionRamePapier
 )
 from .models_bibliotheque import (
     CategorieLivre, Livre, Emprunt, Reservation,
     HistoriqueLivre, ParametreBibliotheque
+)
+from .models_fournitures import FournitureScolaire, VenteFourniture
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
 )

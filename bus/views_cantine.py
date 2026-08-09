@@ -87,14 +87,13 @@ def tableau_bord_cantine(request):
     return render(request, 'bus/cantine/tableau_bord.html', context)
 
 
-@login_required
-def liste_abonnements_cantine(request):
-    """Liste des abonnements cantine avec filtres et recherche"""
+def _abonnements_cantine_filtres(request):
+    """Queryset des abonnements cantine selon les filtres de l'URL et l'école de l'utilisateur."""
     qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
-    
+
     # Recherche
     q = (request.GET.get('q') or '').strip()
     if q:
@@ -133,16 +132,52 @@ def liste_abonnements_cantine(request):
         qs = qs.filter(eleve__classe_id=classe_id)
     
     # Tri
-    qs = qs.order_by('-date_expiration', 'eleve__nom')
-    
+    return qs.order_by('-date_expiration', 'eleve__nom')
+
+
+@login_required
+def liste_abonnements_cantine(request):
+    """Liste des abonnements cantine avec filtres et recherche"""
+    qs = _abonnements_cantine_filtres(request)
+
     context = {
         'titre_page': 'Liste des Abonnements Cantine',
         'abonnements': qs,
-        'q': q,
-        'filtre': filtre,
-        'type_repas': type_repas,
+        'q': (request.GET.get('q') or '').strip(),
+        'filtre': (request.GET.get('filtre') or '').strip().lower(),
+        'type_repas': request.GET.get('type_repas'),
     }
     return render(request, 'bus/cantine/liste.html', context)
+
+
+@login_required
+def carte_cantine_pdf(request, abo_id):
+    """Carte d'abonnement cantine d'un élève (format PVC)."""
+    from .cartes_cantine import generer_carte_cantine_pdf
+
+    qs = AbonnementCantine.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    if not user_is_superadmin(request.user):
+        qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+    abonnement = get_object_or_404(qs, pk=abo_id)
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="carte_cantine_{abonnement.eleve.matricule}.pdf"'
+    return generer_carte_cantine_pdf(abonnement, response)
+
+
+@login_required
+def cartes_cantine_planche_pdf(request):
+    """Planche A4 de 8 cartes cantine par feuille, selon les filtres courants."""
+    from .cartes_cantine import generer_planche_cartes_cantine_pdf
+
+    abonnements = list(_abonnements_cantine_filtres(request))
+    if not abonnements:
+        messages.warning(request, "Aucun abonnement cantine à imprimer avec ces filtres.")
+        return redirect('bus:liste_abonnements_cantine')
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = 'attachment; filename="cartes_cantine.pdf"'
+    return generer_planche_cartes_cantine_pdf(abonnements, response)
 
 
 @login_required

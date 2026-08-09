@@ -71,16 +71,16 @@
             <div class="stat-card">
                 <div class="stat-value text-secondary">{{ totaux_du.frais_inscription_total|default:0|floatformat:0|intcomma }}</div>
                 <div class="stat-label">Frais d'inscription (échéancier)</div>
-                <small class="text-muted">Calculés depuis les échéanciers filtrés</small>
+                <small class="text-muted">Nouveaux élèves uniquement (hors réinscriptions)</small>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-primary">{{ totaux_du.frais_reinscription_total|default:0|floatformat:0|intcomma }}</div>
                 <div class="stat-label">Réinscription (échéancier)</div>
-                <small class="text-muted">Part spécifique des réinscriptions</small>
+                <small class="text-muted">Élèves qui reviennent uniquement</small>
                 {% if totaux_du.frais_reinscription_pct is not None %}
-                    <div><small class="text-muted">{{ totaux_du.frais_reinscription_pct|floatformat:2 }} % des inscriptions</small></div>
+                    <div><small class="text-muted">{{ totaux_du.frais_reinscription_pct|floatformat:2 }} % des frais d'admission</small></div>
                 {% endif %}
             </div>
         </div>

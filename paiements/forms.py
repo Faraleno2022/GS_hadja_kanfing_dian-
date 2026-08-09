@@ -364,3 +364,60 @@ class RemiseForm(forms.ModelForm):
             )
         
         return cleaned_data
+
+
+class PaiementModificationForm(forms.ModelForm):
+    """Correction d'un paiement déjà enregistré (erreur ou oubli de saisie).
+
+    L'élève et le numéro de reçu ne sont pas modifiables : corriger l'élève
+    reviendrait à créer un autre paiement, et le numéro de reçu a déjà été
+    remis à la famille.
+    """
+
+    motif_modification = forms.CharField(
+        max_length=255,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': "Ex : montant saisi à l'envers, mauvaise date, mode de paiement oublié…",
+        }),
+        label="Motif de la modification",
+        help_text="Obligatoire : conservé dans la corbeille des modifications.",
+    )
+
+    class Meta:
+        model = Paiement
+        fields = [
+            'type_paiement', 'mode_paiement', 'montant',
+            'date_paiement', 'reference_externe', 'observations',
+        ]
+        widgets = {
+            'type_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'montant': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '1000',
+            }),
+            'date_paiement': forms.DateInput(attrs={
+                'class': 'form-control', 'type': 'date',
+            }, format='%Y-%m-%d'),
+            'reference_externe': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Référence externe (optionnel)',
+            }),
+            'observations': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 3,
+                'placeholder': 'Observations (optionnel)',
+            }),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is None or montant <= 0:
+            raise forms.ValidationError("Le montant doit être supérieur à zéro.")
+        return montant
+
+    def clean_date_paiement(self):
+        date_paiement = self.cleaned_data.get('date_paiement')
+        if date_paiement and date_paiement > timezone.localdate():
+            raise forms.ValidationError("La date de paiement ne peut pas être dans le futur.")
+        return date_paiement

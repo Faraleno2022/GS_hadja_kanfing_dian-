@@ -26,6 +26,11 @@ from utilisateurs.forms import SignupInlineForm
 from utilisateurs.models import JournalActivite
 from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
 from .utils_annee import get_annee_active
+from .cartes_layout import (
+    dessiner_carte_eleve,
+    dessiner_planche_cartes,
+    enregistrer_polices,
+)
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 
@@ -692,13 +697,10 @@ def ajouter_eleve(request):
                         f'classes_ecole_{user_school_obj.id if user_school_obj else "admin"}'
                     ])
                     
-                messages.success(request, f"L'eleve {eleve.prenom} {eleve.nom} a ete ajoute avec succes (Matricule: {eleve.matricule}). Vous pouvez ajouter un autre eleve.")
-                # Rediriger vers le formulaire d'ajout en preservant la classe selectionnee
-                url = reverse('eleves:ajouter_eleve')
-                classe_id = form.cleaned_data.get('classe')
-                if classe_id:
-                    url += f'?classe_id={classe_id.id if hasattr(classe_id, "id") else classe_id}'
-                return redirect(url)
+                # Utiliser une page intermédiaire (Post/Redirect/Get) afin que
+                # l'utilisateur choisisse la prochaine action sans risquer de
+                # créer l'élève une seconde fois en actualisant la page.
+                return redirect('eleves:ajout_eleve_succes', eleve_id=eleve.id)
                 
             except Exception as e:
                 logger.exception("Erreur lors de l'enregistrement d'un élève")
@@ -771,6 +773,35 @@ def ajouter_eleve(request):
     }
     
     return render(request, 'eleves/ajouter_eleve.html', context)
+
+
+@login_required
+@never_cache
+def ajout_eleve_succes(request, eleve_id):
+    """Propose les actions suivantes après la création d'un élève."""
+    eleve_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+    eleve_qs = filter_by_user_school(
+        eleve_qs,
+        request.user,
+        'classe__ecole',
+    )
+    eleve = get_object_or_404(eleve_qs, pk=eleve_id)
+
+    continuer_url = reverse('eleves:ajouter_eleve')
+    if eleve.classe_id:
+        continuer_url += f'?classe_id={eleve.classe_id}'
+
+    context = {
+        'eleve': eleve,
+        'paiement_url': reverse(
+            'paiements:ajouter_paiement_eleve',
+            kwargs={'eleve_id': eleve.id},
+        ),
+        'continuer_url': continuer_url,
+        'titre_page': 'Élève ajouté avec succès',
+    }
+    return render(request, 'eleves/ajout_eleve_succes.html', context)
+
 
 @login_required
 def modifier_eleve(request, eleve_id):
@@ -1421,14 +1452,24 @@ def export_tous_eleves_excel(request):
 
 @login_required
 def supprimer_eleve(request, eleve_id):
-    """Vue pour supprimer un élève avec ses paiements et abonnements (avec code de vérification)"""
-    # Permettre l'accès aux utilisateurs connectés (la sécurité est assurée par le code de vérification)
-    # Les permissions spécifiques (soft delete vs suppression définitive) sont gérées dans le traitement
-    
-    qs = Eleve.objects.all()
+    """Supprime un élève après confirmation. L'élève part dans la corbeille.
+
+    Deux issues possibles :
+      - « Mettre à la corbeille » : l'élève et tout ce qui lui est rattaché
+        (paiements, abonnements, notes...) sont archivés puis retirés des
+        listes. Un administrateur peut les rétablir depuis la corbeille.
+      - « Exclure » : simple changement de statut, aucune donnée n'est retirée.
+
+    La confirmation consiste à saisir le mot SUPPRIMER : l'opération étant
+    réversible via la corbeille, l'ancien code de vérification à 9 chiffres
+    n'est plus exigé.
+    """
+    from administration.corbeille import enregistrer_suppression
+
+    qs = Eleve.objects.select_related('classe', 'classe__ecole')
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    
+
     try:
         eleve = qs.get(id=eleve_id)
     except Eleve.DoesNotExist:
@@ -1437,141 +1478,97 @@ def supprimer_eleve(request, eleve_id):
 
     nom_complet = f"{eleve.prenom} {eleve.nom}"
     matricule = eleve.matricule
-    
-    # Vérifier la permission de suppression définitive
-    peut_supprimer_definitivement = user_is_admin(request.user) or (
-        hasattr(request.user, 'profil') and 
-        request.user.profil.peut_supprimer_eleves_definitivement
+
+    profil = getattr(request.user, 'profil', None)
+    peut_supprimer = user_is_admin(request.user) or bool(
+        profil and getattr(profil, 'peut_supprimer_eleves', False)
     )
-    
+
+    if not peut_supprimer:
+        messages.error(
+            request,
+            "Vous n'avez pas la permission de supprimer un élève. "
+            "Demandez à un administrateur d'activer « Peut supprimer les élèves » sur votre compte."
+        )
+        return redirect('eleves:detail_eleve', eleve_id=eleve.id)
+
     # Compter les éléments associés
     paiements_count = eleve.paiements.count()
     abonnements_bus_count = eleve.abonnements_bus.count()
     abonnements_cantine_count = eleve.abonnements_cantine.count()
-    
+
+    contexte = {
+        'eleve': eleve,
+        'paiements_count': paiements_count,
+        'abonnements_bus_count': abonnements_bus_count,
+        'abonnements_cantine_count': abonnements_cantine_count,
+        'titre_page': f'Supprimer {nom_complet}',
+    }
+
     if request.method == 'POST':
-        # Vérifier le code de sécurité
-        code_verification = request.POST.get('code_verification', '').strip()
-        suppression_definitive = request.POST.get('suppression_definitive') == 'on'
-        
-        # Pour les admins, toujours activer la suppression définitive par défaut
-        if user_is_admin(request.user):
-            # Si l'admin n'a pas explicitement décoché, on force la suppression définitive
-            suppression_definitive = request.POST.get('suppression_definitive') != 'off'
-            # Log pour debug
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Admin {request.user.username} - Suppression définitive: {suppression_definitive}")
-        
-        from django.conf import settings as django_settings
-        expected_code = django_settings.SECURITY_VERIFICATION_CODE
-        if not expected_code or code_verification != expected_code:
-            messages.error(request, "Code de vérification incorrect. Suppression annulée.")
-            return render(request, 'eleves/confirmer_suppression.html', {
-                'eleve': eleve,
-                'paiements_count': paiements_count,
-                'titre_page': f'Supprimer {nom_complet}'
-            })
-        
-        # Vérifier la permission pour suppression définitive
-        if suppression_definitive and not peut_supprimer_definitivement:
-            messages.error(request, "Vous n'avez pas la permission de supprimer définitivement un élève.")
-            return redirect('eleves:detail_eleve', eleve_id=eleve.id)
-        
-        # Procéder à la suppression avec le code correct
-        from django.db import transaction
+        confirmation = (request.POST.get('confirmation') or '').strip().upper()
+        action = (request.POST.get('action') or 'CORBEILLE').upper()
+
+        if confirmation != 'SUPPRIMER':
+            messages.error(request, "Confirmation incorrecte : saisissez le mot SUPPRIMER pour valider.")
+            return render(request, 'eleves/confirmer_suppression.html', contexte)
+
         try:
             with transaction.atomic():
-                if suppression_definitive and peut_supprimer_definitivement:
-                    # Suppression définitive pour les utilisateurs autorisés
-                    # Collecter les informations avant suppression
-                    paiements_supprimes = []
-                    for paiement in eleve.paiements.all():
-                        paiements_supprimes.append(f"{paiement.numero_recu} - {paiement.montant} GNF")
-                    
-                    abonnements_bus_supprimes = []
-                    for abo in eleve.abonnements_bus.all():
-                        abonnements_bus_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                    
-                    abonnements_cantine_supprimes = []
-                    for abo in eleve.abonnements_cantine.all():
-                        abonnements_cantine_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                    
-                    # Créer l'entrée dans la corbeille avant suppression
-                    from administration.models import SystemLog
-                    SystemLog.objects.create(
-                        action='SUPPRESSION_DEFINITIVE',
-                        description=f"Suppression définitive de l'élève {nom_complet} (matricule: {matricule}) avec {paiements_count} paiement(s), {abonnements_bus_count} abonnement(s) bus et {abonnements_cantine_count} abonnement(s) cantine",
-                        user=request.user,
-                        ip_address=request.META.get('REMOTE_ADDR', ''),
-                        details={
-                            'eleve_id': eleve.id,
-                            'matricule': matricule,
-                            'nom_complet': nom_complet,
-                            'classe': str(eleve.classe),
-                            'paiements_supprimes': paiements_supprimes,
-                            'abonnements_bus_supprimes': abonnements_bus_supprimes,
-                            'abonnements_cantine_supprimes': abonnements_cantine_supprimes,
-                            'verification_code_used': True,
-                            'user_agent': request.META.get('HTTP_USER_AGENT', '')
-                        }
-                    )
-                    
-                    # Supprimer les paiements
-                    eleve.paiements.all().delete()
-                    
-                    # Supprimer les abonnements bus
-                    eleve.abonnements_bus.all().delete()
-                    
-                    # Supprimer les abonnements cantine
-                    eleve.abonnements_cantine.all().delete()
-                    
-                    # Supprimer l'élève définitivement
-                    eleve.delete()
-                    
-                    total_elements = paiements_count + abonnements_bus_count + abonnements_cantine_count
-                    messages.success(request, f"L'élève {nom_complet} et tous ses éléments associés ({total_elements} au total) ont été supprimés définitivement et sauvegardés dans la corbeille.")
-                else:
-                    # Soft delete - changer le statut au lieu de supprimer
+                if action == 'EXCLURE':
                     eleve.statut = 'EXCLU'
                     eleve.save()
 
-                    # Créer l'historique
                     HistoriqueEleve.objects.create(
                         eleve=eleve,
                         action='EXCLUSION',
                         description=f"Exclusion de l'élève {nom_complet} avec {paiements_count} paiement(s)",
                         utilisateur=request.user
                     )
-
-                    # Log de l'activité
                     JournalActivite.objects.create(
                         user=request.user,
                         action='SUPPRESSION',
                         type_objet='ELEVE',
                         objet_id=eleve.id,
-                        description=f"Exclusion de l'élève {nom_complet} (matricule: {matricule}) avec {paiements_count} paiement(s)",
+                        description=f"Exclusion de l'élève {nom_complet} (matricule: {matricule})",
                         adresse_ip=request.META.get('REMOTE_ADDR', ''),
                         user_agent=request.META.get('HTTP_USER_AGENT', '')
                     )
-                    
-                    messages.success(request, f"L'élève {nom_complet} a été exclu (soft delete).")
-                    
+                    messages.success(request, f"L'élève {nom_complet} a été exclu. Ses données sont conservées.")
+                    return redirect('eleves:liste_eleves')
+
+                # Mise à la corbeille : archivage complet puis suppression
+                element = enregistrer_suppression(eleve, request=request)
+                nb_archives = len(element.objets_lies or [])
+
+                JournalActivite.objects.create(
+                    user=request.user,
+                    action='SUPPRESSION',
+                    type_objet='ELEVE',
+                    objet_id=eleve.id,
+                    description=(
+                        f"Mise à la corbeille de l'élève {nom_complet} (matricule: {matricule}) "
+                        f"avec {nb_archives} élément(s) rattaché(s)"
+                    ),
+                    adresse_ip=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')
+                )
+
+                eleve.delete()
+
+            messages.success(
+                request,
+                f"L'élève {nom_complet} a été mis à la corbeille avec {nb_archives} élément(s) "
+                f"rattaché(s). La restauration reste possible depuis la corbeille."
+            )
+            return redirect('eleves:liste_eleves')
+
         except Exception as e:
+            logger.exception("Erreur lors de la suppression de l'élève")
             messages.error(request, f"Erreur lors de la suppression: {e}")
             return redirect('eleves:detail_eleve', eleve_id=eleve.id)
 
-        return redirect('eleves:liste_eleves')
-    
-    # Afficher le formulaire de confirmation
-    return render(request, 'eleves/confirmer_suppression.html', {
-        'eleve': eleve,
-        'paiements_count': paiements_count,
-        'abonnements_bus_count': abonnements_bus_count,
-        'abonnements_cantine_count': abonnements_cantine_count,
-        'peut_supprimer_definitivement': peut_supprimer_definitivement,
-        'titre_page': f'Supprimer {nom_complet}'
-    })
+    return render(request, 'eleves/confirmer_suppression.html', contexte)
 
 @login_required
 @require_http_methods(["POST"])
@@ -1665,7 +1662,11 @@ def supprimer_eleves_masse(request):
                 total_paiements += paiements_count
                 total_abonnements_bus += abonnements_bus_count
                 total_abonnements_cantine += abonnements_cantine_count
-                
+
+                # Copie complète dans la corbeille avant suppression
+                from administration.corbeille import enregistrer_suppression
+                enregistrer_suppression(eleve, request=request)
+
                 # Supprimer les éléments associés
                 eleve.paiements.all().delete()
                 eleve.abonnements_bus.all().delete()
@@ -3305,56 +3306,21 @@ def generer_tickets_retrait_classe_pdf(request, classe_id):
         messages.warning(request, "Aucun élève actif trouvé dans cette classe.")
         return redirect('eleves:liste_eleves')
     
-    # Créer le PDF avec tous les tickets (2 par page)
+    # Créer le PDF avec tous les tickets (8 par page A4)
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tickets_retrait_{classe.nom}.pdf"'
-    
-    from reportlab.lib.units import mm
-    from reportlab.lib.pagesizes import A4
-    width_page, height_page = A4
-    
+
     c = canvas.Canvas(response, pagesize=A4)
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
-    # Dimensions d'un ticket
-    ticket_width = 86*mm
-    ticket_height = 54*mm
-    margin = 10*mm
-    
-    # Position pour 2 tickets par page (un en haut, un en bas)
-    positions = [
-        (margin, height_page - margin - ticket_height),  # Haut
-        (margin, height_page - margin - 2*ticket_height - 15*mm),  # Bas
-    ]
-    
-    ticket_count = 0
-    
-    for eleve in eleves:
-        # Calculer la position du ticket
-        pos_index = ticket_count % 2
-        x_offset, y_offset = positions[pos_index]
-        
-        # Dessiner un ticket
-        _dessiner_ticket_retrait(c, eleve, x_offset, y_offset, ticket_width, ticket_height, main_font, main_font_bold)
-        
-        ticket_count += 1
-        
-        # Nouvelle page tous les 2 tickets
-        if ticket_count % 2 == 0 and ticket_count < eleves.count():
-            c.showPage()
-    
+    main_font, main_font_bold = enregistrer_polices()
+
+    def _dessiner(canvas_pdf, eleve, x, y, width, height):
+        _dessiner_ticket_retrait(canvas_pdf, eleve, x, y, width, height, main_font, main_font_bold)
+
+    dessiner_planche_cartes(c, eleves, _dessiner)
+
     c.showPage()
     c.save()
-    
+
     return response
 
 
@@ -3391,62 +3357,69 @@ def generer_tickets_bus_classe_pdf(request, classe_id):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tickets_bus_{classe.nom}.pdf"'
     
-    from reportlab.lib.units import mm
-    from reportlab.lib.pagesizes import A4
-    width_page, height_page = A4
-    
     c = canvas.Canvas(response, pagesize=A4)
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
-    # Dimensions d'un ticket
-    ticket_width = 86*mm
-    ticket_height = 54*mm
-    margin = 10*mm
-    
-    # Position pour 2 tickets par page
-    positions = [
-        (margin, height_page - margin - ticket_height),  # Haut
-        (margin, height_page - margin - 2*ticket_height - 15*mm),  # Bas
-    ]
-    
-    ticket_count = 0
-    
+    main_font, main_font_bold = enregistrer_polices()
+
+    # Un ticket par élève ayant réellement un abonnement actif
+    tickets = []
     for eleve in eleves:
-        # Récupérer l'abonnement
         abonnement = AbonnementBus.objects.filter(
             eleve=eleve,
             statut='ACTIF'
         ).order_by('-date_debut').first()
-        
-        if not abonnement:
-            continue
-        
-        # Calculer la position du ticket
-        pos_index = ticket_count % 2
-        x_offset, y_offset = positions[pos_index]
-        
-        # Dessiner un ticket
-        _dessiner_ticket_bus(c, eleve, abonnement, x_offset, y_offset, ticket_width, ticket_height, main_font, main_font_bold)
-        
-        ticket_count += 1
-        
-        # Nouvelle page tous les 2 tickets
-        if ticket_count % 2 == 0 and ticket_count < eleves.count():
-            c.showPage()
-    
+        if abonnement:
+            tickets.append((eleve, abonnement))
+
+    def _dessiner(canvas_pdf, ticket, x, y, width, height):
+        eleve, abonnement = ticket
+        _dessiner_ticket_bus(canvas_pdf, eleve, abonnement, x, y, width, height, main_font, main_font_bold)
+
+    dessiner_planche_cartes(c, tickets, _dessiner)
+
     c.showPage()
     c.save()
-    
+
     return response
+
+
+@login_required
+def generer_cartes_cantine_classe_pdf(request, classe_id):
+    """Génère les cartes d'abonnement cantine d'une classe (8 cartes par page A4)"""
+    from bus.models import AbonnementCantine
+    from bus.cartes_cantine import generer_planche_cartes_cantine_pdf
+
+    classe = get_object_or_404(Classe, id=classe_id)
+
+    # Vérifier les permissions
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cette classe.")
+            return redirect('eleves:liste_eleves')
+
+    # Un abonnement actif par élève, le plus récent
+    abonnements = []
+    eleves = Eleve.objects.filter(
+        classe=classe,
+        statut='ACTIF',
+        abonnements_cantine__statut='ACTIF',
+    ).select_related('classe', 'classe__ecole').distinct().order_by('nom', 'prenom')
+
+    for eleve in eleves:
+        abonnement = AbonnementCantine.objects.filter(
+            eleve=eleve,
+            statut='ACTIF',
+        ).order_by('-date_debut').first()
+        if abonnement:
+            abonnements.append(abonnement)
+
+    if not abonnements:
+        messages.warning(request, "Aucun élève avec abonnement cantine actif dans cette classe.")
+        return redirect('eleves:liste_eleves')
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="cartes_cantine_{classe.nom}.pdf"'
+    return generer_planche_cartes_cantine_pdf(abonnements, response)
 
 
 def _extraire_couleurs_logo(logo_path):
@@ -3571,148 +3544,11 @@ def _ticket_draw_row(c, label, value, x, y, value_width, accent_color, main_font
 
 
 def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_bold, title, accent_color, light_color, rows, serial_label):
-    c.saveState()
-    from reportlab.lib.units import mm
-
-    ecole = eleve.classe.ecole
-    primary = '#1746a2'
-    accent = accent_color or '#0f766e'
-    dark = '#0f172a'
-    muted = '#64748b'
-    line = '#dbe3ef'
-    soft = '#f5f8fc'
-    footer_soft = '#eef4fb'
-
-    margin = 2.2 * mm
-    header_h = 10.5 * mm
-    footer_h = 6.2 * mm
-    radius = 4.5
-
-    school_name = _ticket_safe_text(getattr(ecole, 'nom', '')).upper()
-    full_name = f"{_ticket_safe_text(eleve.prenom, '')} {_ticket_safe_text(eleve.nom, '')}".strip().upper()
-
-    c.setFillColor(colors.white)
-    c.setStrokeColor(colors.HexColor(line))
-    c.setLineWidth(0.7)
-    c.roundRect(x, y, width, height, radius, stroke=1, fill=1)
-
-    c.setFillColor(colors.HexColor(primary))
-    c.roundRect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h, radius, stroke=0, fill=1)
-    c.rect(x + 0.8, y + height - header_h - 0.8, width - 1.6, header_h / 2, stroke=0, fill=1)
-
-    logo_size = 7.2 * mm
-    logo_x = x + margin
-    logo_y = y + height - header_h + 1.1 * mm
-    c.setFillColor(colors.white)
-    c.circle(logo_x + logo_size / 2, logo_y + logo_size / 2, logo_size / 2, stroke=0, fill=1)
-    try:
-        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
-            c.drawImage(
-                ecole.logo.path,
-                logo_x + 0.6,
-                logo_y + 0.6,
-                width=logo_size - 1.2,
-                height=logo_size - 1.2,
-                preserveAspectRatio=True,
-                mask='auto',
-            )
-        else:
-            raise ValueError('No logo')
-    except Exception:
-        c.setFillColor(colors.HexColor(primary))
-        c.setFont(main_font_bold, 7)
-        c.drawCentredString(logo_x + logo_size / 2, logo_y + logo_size / 2 - 2, school_name[:2] or 'EC')
-
-    title_x = logo_x + logo_size + 2 * mm
-    title_w = width - (title_x - x) - margin
-    _ticket_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, '#ffffff')
-    _ticket_fit_text(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, '#dbeafe')
-
-    try:
-        c.saveState()
-        c.setFillAlpha(0.06)
-        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
-            mark = 30 * mm
-            c.drawImage(
-                ecole.logo.path,
-                x + width - mark - 4 * mm,
-                y + footer_h + 5 * mm,
-                width=mark,
-                height=mark,
-                preserveAspectRatio=True,
-                mask='auto',
-            )
-        else:
-            c.setFillColor(colors.HexColor(primary))
-            c.setFont(main_font_bold, 28)
-            c.drawCentredString(x + width * 0.70, y + height * 0.46, school_name[:3])
-        c.restoreState()
-    except Exception:
-        try:
-            c.restoreState()
-        except Exception:
-            pass
-
-    photo_w = 22.5 * mm
-    photo_h = 27.5 * mm
-    photo_x = x + margin
-    photo_y = y + footer_h + 3.2 * mm
-    c.setFillColor(colors.HexColor(soft))
-    c.setStrokeColor(colors.HexColor(line))
-    c.setLineWidth(0.7)
-    c.roundRect(photo_x, photo_y, photo_w, photo_h, 3.2, stroke=1, fill=1)
-
-    photo_drawn = False
-    try:
-        if eleve.photo and hasattr(eleve.photo, 'path') and eleve.photo.name and os.path.exists(eleve.photo.path):
-            c.drawImage(eleve.photo.path, photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, preserveAspectRatio=True, anchor='c', mask='auto')
-            photo_drawn = True
-    except Exception:
-        photo_drawn = False
-
-    if not photo_drawn:
-        initials = (_ticket_safe_text(getattr(eleve, 'prenom', 'E'), 'E')[:1] + _ticket_safe_text(getattr(eleve, 'nom', 'L'), 'L')[:1]).upper()
-        c.setFillColor(colors.HexColor('#e8eef8'))
-        c.roundRect(photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, 2.5, stroke=0, fill=1)
-        c.setFillColor(colors.HexColor(primary))
-        c.setFont(main_font_bold, 17)
-        c.drawCentredString(photo_x + photo_w / 2, photo_y + photo_h / 2 - 4, initials or 'EL')
-
-    info_x = photo_x + photo_w + 3 * mm
-    info_w = x + width - margin - info_x
-    name_y = y + height - header_h - 4.4 * mm
-    _ticket_fit_text(c, full_name, info_x, name_y, info_w, main_font_bold, 8.7, 5.8, dark)
-
-    c.setStrokeColor(colors.HexColor(accent))
-    c.setLineWidth(1.0)
-    c.line(info_x, name_y - 1.7 * mm, info_x + info_w, name_y - 1.7 * mm)
-
-    row_y = name_y - 5.3 * mm
-    label_w = 14 * mm
-    value_w = info_w - label_w
-    for label, value in rows[:5]:
-        c.setFillColor(colors.HexColor(muted))
-        c.setFont(main_font_bold, 5.6)
-        c.drawString(info_x, row_y, _ticket_safe_text(label).upper())
-        _ticket_fit_text(c, value, info_x + label_w, row_y, value_w, main_font, 6.6, 4.7, dark)
-        row_y -= 4.2 * mm
-
-    c.setFillColor(colors.HexColor(footer_soft))
-    c.rect(x + 0.8, y + 0.8, width - 1.6, footer_h, stroke=0, fill=1)
-    c.setStrokeColor(colors.HexColor(line))
-    c.setLineWidth(0.5)
-    c.line(x + 0.8, y + footer_h + 0.8, x + width - 0.8, y + footer_h + 0.8)
-
-    annee = _ticket_safe_text(getattr(eleve.classe, 'annee_scolaire', ''))
-    _ticket_fit_text(c, f'ANNEE SCOLAIRE {annee}', x + margin, y + 2.4 * mm, width * 0.55, main_font_bold, 5.8, 4.2, primary)
-    c.setFillColor(colors.HexColor(muted))
-    c.setFont(main_font, 4.6)
-    c.drawRightString(x + width - margin, y + 2.4 * mm, f'{serial_label} #{getattr(eleve, "id", 0):06d}')
-
-    c.setStrokeColor(colors.HexColor(primary))
-    c.setLineWidth(0.9)
-    c.roundRect(x, y, width, height, radius, stroke=1, fill=0)
-    c.restoreState()
+    """Rendu commun d'une carte eleve (voir eleves.cartes_layout)."""
+    return dessiner_carte_eleve(
+        c, eleve, x, y, width, height, main_font, main_font_bold,
+        title, accent_color, light_color, rows, serial_label,
+    )
 
 
 def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font_bold):
@@ -4310,7 +4146,7 @@ def generer_carte_scolaire_pdf(request, eleve_id):
 
 @login_required
 def generer_cartes_classe_pdf(request, classe_id):
-    """Génère toutes les cartes d'une classe (4 cartes par page A4)"""
+    """Génère toutes les cartes d'une classe (8 cartes par page A4)"""
     from .carte_scolaire_generator import generer_cartes_classe_moderne
     
     classe = get_object_or_404(Classe, id=classe_id)
@@ -4331,110 +4167,8 @@ def generer_cartes_classe_pdf(request, classe_id):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="cartes_scolaires_{classe.nom}.pdf"'
     
-    # Utiliser le nouveau générateur
+    # Planche A4 de 8 cartes
     return generer_cartes_classe_moderne(classe, eleves, response)
-    
-    from reportlab.lib.units import mm
-    from reportlab.lib.pagesizes import A4
-    
-    # Nouvelle taille : 105mm x 74mm
-    card_width, card_height = 105*mm, 74*mm
-    margin = 10*mm
-    spacing = 8*mm
-    
-    c = canvas.Canvas(response, pagesize=A4)
-    page_width, page_height = A4
-    
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
-    primary_color = '#2563eb'
-    positions = [
-        (margin, page_height - margin - card_height),
-        (margin, page_height - margin - (2 * card_height) - spacing),
-    ]
-    
-    card_count = 0
-    
-    for eleve in eleves:
-        pos_index = card_count % 2
-        x, y = positions[pos_index]
-        
-        # Bordure
-        c.setStrokeColor(colors.HexColor(primary_color))
-        c.setLineWidth(1.5)
-        c.roundRect(x, y, card_width, card_height, 8, stroke=1, fill=0)
-        
-        # Bande supérieure
-        c.setFillColor(colors.HexColor(primary_color))
-        c.roundRect(x+2, y+card_height-30, card_width-4, 28, 6, stroke=0, fill=1)
-        
-        # Nom école
-        c.setFillColor(colors.white)
-        c.setFont(main_font_bold, 8)
-        c.drawString(x+5, y+card_height-12, classe.ecole.nom[:40])
-        c.setFont(main_font, 6)
-        c.drawString(x+5, y+card_height-22, f"Année: {classe.annee_scolaire}")
-        
-        # Nom élève
-        c.setFillColor(colors.HexColor('#1f2937'))
-        c.setFont(main_font_bold, 10)
-        c.drawString(x+5, y+card_height-42, f"{eleve.prenom} {eleve.nom}".upper()[:25])
-        
-        # Infos
-        c.setFont(main_font, 7)
-        c.setFillColor(colors.HexColor('#4b5563'))
-        c.drawString(x+5, y+card_height-52, f"Mat: {eleve.matricule}")
-        c.drawString(x+5, y+card_height-60, f"Classe: {classe.nom}")
-        
-        # Photo
-        photo_size = 28
-        photo_x = x + card_width - photo_size - 5
-        photo_y = y + card_height/2 - photo_size/2
-        
-        c.setFillColor(colors.white)
-        c.roundRect(photo_x, photo_y, photo_size, photo_size, 4, stroke=0, fill=1)
-        c.setStrokeColor(colors.HexColor(primary_color))
-        c.setLineWidth(1)
-        c.roundRect(photo_x, photo_y, photo_size, photo_size, 4, stroke=1, fill=0)
-        
-        if eleve.photo:
-            try:
-                from PIL import Image
-                if hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
-                    img = Image.open(eleve.photo.path)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    img.thumbnail((photo_size-2, photo_size-2), Image.Resampling.LANCZOS)
-                    temp_buffer = io.BytesIO()
-                    img.save(temp_buffer, format='JPEG')
-                    temp_buffer.seek(0)
-                    c.drawImage(temp_buffer, photo_x+1, photo_y+1, 
-                              width=photo_size-2, height=photo_size-2, preserveAspectRatio=True)
-            except:
-                c.setFillColor(colors.HexColor(primary_color))
-                c.setFont(main_font_bold, 12)
-                c.drawCentredString(photo_x+photo_size/2, photo_y+photo_size/2-3, 
-                                  f"{eleve.prenom[0]}{eleve.nom[0]}")
-        else:
-            c.setFillColor(colors.HexColor(primary_color))
-            c.setFont(main_font_bold, 12)
-            c.drawCentredString(photo_x+photo_size/2, photo_y+photo_size/2-3, 
-                              f"{eleve.prenom[0]}{eleve.nom[0]}")
-        
-        card_count += 1
-        if card_count % 2 == 0 and card_count < eleves.count():
-            c.showPage()
-    
-    c.showPage()
-    c.save()
-    return response
 
 
 @login_required

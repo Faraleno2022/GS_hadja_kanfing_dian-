@@ -108,8 +108,8 @@
                                         <a href="{% url 'eleves:modifier_eleve' eleve.id %}" class="btn btn-outline-warning" title="Modifier">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        {% if eleve.statut != 'EXCLU' %}
-                                        <button type="button" class="btn btn-outline-danger" title="Supprimer" 
+                                        {% if eleve.statut != 'EXCLU' and user_permissions.can_delete_students %}
+                                        <button type="button" class="btn btn-outline-danger" title="Supprimer"
                                                 data-bs-toggle="modal" data-bs-target="#confirmDeleteModal{{ eleve.id }}">
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -208,68 +208,51 @@
                             <i class="fas fa-user"></i> <strong>{{ eleve.prenom }} {{ eleve.nom }}</strong><br>
                             <small>Matricule : {{ eleve.matricule }} - Classe : {{ eleve.classe.nom }}</small>
                         </div>
-                        
+
                         <!-- Options de suppression -->
                         <div class="mb-3">
                             <label class="form-label fw-bold">
                                 <i class="fas fa-cog me-1"></i>Type de suppression
                             </label>
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="type_suppression_{{ eleve.id }}" 
-                                       id="softDelete{{ eleve.id }}" value="soft" checked 
-                                       onchange="toggleCodeInput{{ eleve.id }}()">
-                                <label class="form-check-label" for="softDelete{{ eleve.id }}">
-                                    <strong>Désactivation (Recommandé)</strong>
+                                <input class="form-check-input" type="radio" name="action"
+                                       id="actionCorbeille{{ eleve.id }}" value="CORBEILLE" checked>
+                                <label class="form-check-label" for="actionCorbeille{{ eleve.id }}">
+                                    <strong>Mettre à la corbeille</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-trash-can-arrow-up"></i>
+                                        L'élève et ses données (paiements, abonnements, notes) sont archivés
+                                        puis retirés des listes. <strong>Restaurable depuis la corbeille.</strong>
+                                    </small>
+                                </label>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="radio" name="action"
+                                       id="actionExclure{{ eleve.id }}" value="EXCLURE">
+                                <label class="form-check-label" for="actionExclure{{ eleve.id }}">
+                                    <strong>Exclure seulement</strong>
                                     <br>
                                     <small class="text-muted">
                                         <i class="fas fa-info-circle"></i>
-                                        Change le statut vers "Exclu". Les données sont conservées.
+                                        Change le statut vers « Exclu ». Rien n'est retiré de la base.
                                     </small>
                                 </label>
                             </div>
-                            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="radio" name="type_suppression_{{ eleve.id }}" 
-                                       id="hardDelete{{ eleve.id }}" value="hard" 
-                                       onchange="toggleCodeInput{{ eleve.id }}()">
-                                <label class="form-check-label" for="hardDelete{{ eleve.id }}">
-                                    <strong class="text-danger">Suppression Définitive</strong>
-                                    <br>
-                                    <small class="text-danger">
-                                        <i class="fas fa-exclamation-triangle"></i>
-                                        Supprime définitivement l'élève et toutes ses données (paiements, notes, etc.). 
-                                        <strong>Action irréversible !</strong>
-                                    </small>
-                                </label>
-                            </div>
-                            {% endif %}
                         </div>
-                        
-                        <!-- Code de vérification (pour suppression définitive) -->
-                        <div id="codeVerificationDiv{{ eleve.id }}" style="display: none;">
-                            <div class="alert alert-danger">
-                                <i class="fas fa-shield-alt me-2"></i>
-                                <strong>Code de sécurité requis</strong>
-                            </div>
-                            <div class="mb-3">
-                                <label for="codeVerification{{ eleve.id }}" class="form-label fw-bold">
-                                    <i class="fas fa-key me-1"></i>Entrez le code de vérification
-                                </label>
-                                <input type="text" class="form-control form-control-lg text-center" 
-                                       id="codeVerification{{ eleve.id }}" 
-                                       name="code_verification"
-                                       placeholder="Code à 9 chiffres"
-                                       maxlength="9"
-                                       pattern="[0-9]{9}"
-                                       autocomplete="off">
-                                <small class="text-muted">
-                                    <i class="fas fa-info-circle"></i>
-                                    Contactez l'administrateur FARA LENO AU +224622613559 pour obtenir le code
-                                </small>
-                            </div>
-                            <input type="hidden" name="suppression_definitive" id="suppressionDefinitive{{ eleve.id }}" value="">
+
+                        <!-- Confirmation par saisie -->
+                        <div class="mb-3">
+                            <label for="confirmationInput{{ eleve.id }}" class="form-label fw-bold">
+                                <i class="fas fa-keyboard me-1"></i>Saisissez <code>SUPPRIMER</code> pour confirmer
+                            </label>
+                            <input type="text" class="form-control text-center"
+                                   id="confirmationInput{{ eleve.id }}"
+                                   name="confirmation"
+                                   placeholder="SUPPRIMER"
+                                   autocomplete="off" required>
                         </div>
-                        
+
                         <p class="text-muted small mb-0">
                             <i class="fas fa-clock me-1"></i>
                             Cette action sera enregistrée dans le journal d'activité.
@@ -279,7 +262,7 @@
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                             <i class="fas fa-times me-2"></i>Annuler
                         </button>
-                        <button type="submit" class="btn btn-danger" id="confirmBtn{{ eleve.id }}">
+                        <button type="submit" class="btn btn-danger" id="confirmBtn{{ eleve.id }}" disabled>
                             <i class="fas fa-trash me-2"></i>Confirmer la suppression
                         </button>
                     </div>
@@ -287,54 +270,19 @@
             </div>
         </div>
     </div>
-    
+
     <script>
-    function toggleCodeInput{{ eleve.id }}() {
-        const hardDelete = document.getElementById('hardDelete{{ eleve.id }}');
-        const codeDiv = document.getElementById('codeVerificationDiv{{ eleve.id }}');
-        const suppressionDef = document.getElementById('suppressionDefinitive{{ eleve.id }}');
-        const confirmBtn = document.getElementById('confirmBtn{{ eleve.id }}');
-        
-        if (hardDelete && hardDelete.checked) {
-            codeDiv.style.display = 'block';
-            suppressionDef.value = 'on';
-            confirmBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Supprimer Définitivement';
-            confirmBtn.classList.remove('btn-danger');
-            confirmBtn.classList.add('btn-dark');
-        } else {
-            codeDiv.style.display = 'none';
-            suppressionDef.value = '';
-            confirmBtn.innerHTML = '<i class="fas fa-trash me-2"></i>Confirmer la suppression';
-            confirmBtn.classList.remove('btn-dark');
-            confirmBtn.classList.add('btn-danger');
+    (function() {
+        const saisie = document.getElementById('confirmationInput{{ eleve.id }}');
+        const bouton = document.getElementById('confirmBtn{{ eleve.id }}');
+        if (!saisie || !bouton) { return; }
+
+        function verifier() {
+            bouton.disabled = saisie.value.trim().toUpperCase() !== 'SUPPRIMER';
         }
-    }
-    
-    // Validation du formulaire
-    document.getElementById('deleteForm{{ eleve.id }}').addEventListener('submit', function(e) {
-        const hardDelete = document.getElementById('hardDelete{{ eleve.id }}');
-        const codeInput = document.getElementById('codeVerification{{ eleve.id }}');
-        
-        if (hardDelete && hardDelete.checked) {
-            if (!codeInput.value || codeInput.value.length !== 9) {
-                e.preventDefault();
-                alert('⚠️ Veuillez entrer un code de vérification valide (9 chiffres)');
-                codeInput.focus();
-                return false;
-            }
-        }
-        
-        // Confirmation finale
-        const type = hardDelete && hardDelete.checked ? 'définitive' : 'simple';
-        const message = type === 'définitive' 
-            ? '⚠️ ATTENTION ! Cette action est IRRÉVERSIBLE. Toutes les données seront perdues.\n\nÊtes-vous absolument sûr de vouloir continuer ?'
-            : 'Confirmer la désactivation de cet élève ?';
-            
-        if (!confirm(message)) {
-            e.preventDefault();
-            return false;
-        }
-    });
+        saisie.addEventListener('input', verifier);
+        verifier();
+    })();
     </script>
     {% endif %}
 {% endfor %}

@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Fournitures scolaires{% endblock %}
+
+{% block extra_css %}
+<style>
+    .supply-hero {
+        background: linear-gradient(135deg, #0d6efd, #084298);
+        border-radius: 1rem;
+        color: white;
+    }
+    .metric-card {
+        border: 0;
+        border-radius: .9rem;
+        box-shadow: 0 3px 14px rgba(15, 23, 42, .08);
+        height: 100%;
+    }
+    .metric-value { font-size: 1.55rem; font-weight: 700; }
+    .metric-label { color: #6c757d; font-size: .82rem; text-transform: uppercase; }
+    .stock-table th { white-space: nowrap; }
+    .stock-number { font-weight: 700; text-align: center; }
+    .money { white-space: nowrap; text-align: end; }
+</style>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex flex-wrap gap-2">
+    <a href="{% url 'depenses:creer_fourniture' %}" class="btn btn-primary">
+        <i class="fas fa-box-open me-1"></i>Nouveau produit
+    </a>
+    <a href="{% url 'depenses:enregistrer_vente_fourniture' %}" class="btn btn-success">
+        <i class="fas fa-cart-plus me-1"></i>Nouvelle vente
+    </a>
+    <a href="{% url 'depenses:liste_ventes_fournitures' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-receipt me-1"></i>Historique des ventes
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <section class="supply-hero p-4 mb-4 shadow-sm">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h1 class="h3 mb-1"><i class="fas fa-store me-2"></i>{{ titre_page }}</h1>
+                <p class="mb-0 opacity-75">Suivi du stock, des ventes, du chiffre d’affaires et de la marge.</p>
+            </div>
+            {% if produits_alerte %}
+            <a href="?stock_bas=1" class="btn btn-warning">
+                <i class="fas fa-triangle-exclamation me-1"></i>
+                {{ produits_alerte }} produit{{ produits_alerte|pluralize }} en stock bas
+            </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Produits</div>
+                <div class="metric-value text-primary">{{ resume.total_produits|intcomma }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Quantité en stock</div>
+                <div class="metric-value">{{ resume.quantite_stock|intcomma }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Vendue</div>
+                <div class="metric-value text-success">{{ resume.quantite_vendue|intcomma }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Reste</div>
+                <div class="metric-value text-info">{{ resume.quantite_restante|intcomma }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Chiffre d’affaires</div>
+                <div class="metric-value text-success">{{ resume.chiffre_affaires|floatformat:0|intcomma }}</div>
+                <small class="text-muted">GNF</small>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="card metric-card"><div class="card-body">
+                <div class="metric-label">Solde / marge</div>
+                <div class="metric-value {% if resume.solde < 0 %}text-danger{% else %}text-primary{% endif %}">
+                    {{ resume.solde|floatformat:0|intcomma }}
+                </div>
+                <small class="text-muted">GNF</small>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-5">
+                    <label for="q" class="form-label">Rechercher</label>
+                    <input id="q" name="q" value="{{ q }}" class="form-control" placeholder="Produit ou référence">
+                </div>
+                <div class="col-lg-3">
+                    <label for="categorie" class="form-label">Catégorie</label>
+                    <select id="categorie" name="categorie" class="form-select">
+                        <option value="">Toutes les catégories</option>
+                        {% for value, label in categories %}
+                        <option value="{{ value }}" {% if categorie == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-2">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="stock_bas" name="stock_bas" value="1" {% if stock_bas %}checked{% endif %}>
+                        <label class="form-check-label" for="stock_bas">Stock bas uniquement</label>
+                    </div>
+                </div>
+                <div class="col-lg-2 d-flex gap-2">
+                    <button class="btn btn-primary flex-grow-1" type="submit"><i class="fas fa-filter me-1"></i>Filtrer</button>
+                    {% if q or categorie or stock_bas %}
+                    <a href="{% url 'depenses:dashboard_fournitures' %}" class="btn btn-outline-secondary" title="Réinitialiser">
+                        <i class="fas fa-rotate-left"></i>
+                    </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h2 class="h5 mb-0"><i class="fas fa-boxes-stacked me-2 text-primary"></i>Stock des produits</h2>
+            <small class="text-muted">Valeur d’achat du stock : {{ resume.valeur_stock|floatformat:0|intcomma }} GNF</small>
+        </div>
+        {% if page_obj.object_list %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle stock-table mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Produit</th>
+                        <th>Catégorie</th>
+                        <th class="text-center">Quantité en stock</th>
+                        <th class="text-center">Vendu</th>
+                        <th class="text-center">Reste</th>
+                        <th class="text-end">Prix achat unitaire</th>
+                        <th class="text-end">Prix vente unitaire</th>
+                        <th class="text-end">Chiffre d’affaires</th>
+                        <th class="text-end">Solde</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produit in page_obj %}
+                    <tr>
+                        <td>
+                            <strong>{{ produit.nom }}</strong><br>
+                            <small class="text-muted">{{ produit.reference }} · {{ produit.get_unite_display }}</small>
+                        </td>
+                        <td>{{ produit.get_categorie_display }}</td>
+                        <td class="stock-number">{{ produit.quantite_stock|intcomma }}</td>
+                        <td class="stock-number text-success">{{ produit.qte_vendue|intcomma }}</td>
+                        <td class="stock-number">
+                            {% if produit.reste_stock <= produit.stock_minimum %}
+                            <span class="badge bg-danger">{{ produit.reste_stock|intcomma }}</span>
+                            {% else %}
+                            <span class="badge bg-info text-dark">{{ produit.reste_stock|intcomma }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="money">{{ produit.prix_achat_unitaire|floatformat:0|intcomma }} GNF</td>
+                        <td class="money">{{ produit.prix_vente_unitaire|floatformat:0|intcomma }} GNF</td>
+                        <td class="money text-success">{{ produit.chiffre_affaires_calc|floatformat:0|intcomma }} GNF</td>
+                        <td class="money fw-bold {% if produit.solde_calc < 0 %}text-danger{% else %}text-primary{% endif %}">
+                            {{ produit.solde_calc|floatformat:0|intcomma }} GNF
+                        </td>
+                        <td class="text-end">
+                            <div class="btn-group btn-group-sm">
+                                <a href="{% url 'depenses:enregistrer_vente_fourniture' %}?produit={{ produit.pk }}" class="btn btn-outline-success" title="Vendre">
+                                    <i class="fas fa-cart-plus"></i>
+                                </a>
+                                <a href="{% url 'depenses:modifier_fourniture' produit.pk %}" class="btn btn-outline-primary" title="Modifier">
+                                    <i class="fas fa-pen"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.paginator.num_pages > 1 %}
+        <div class="card-footer bg-white">
+            <nav aria-label="Pagination des produits">
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&amp;q={{ q|urlencode }}&amp;categorie={{ categorie|urlencode }}{% if stock_bas %}&amp;stock_bas=1{% endif %}">Précédent</a></li>
+                    {% endif %}
+                    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                    {% if page_obj.has_next %}
+                    <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&amp;q={{ q|urlencode }}&amp;categorie={{ categorie|urlencode }}{% if stock_bas %}&amp;stock_bas=1{% endif %}">Suivant</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-box-open fa-3x text-muted mb-3"></i>
+            <h3 class="h5">Aucun produit trouvé</h3>
+            <p class="text-muted">Ajoutez votre premier produit pour commencer le suivi.</p>
+            <a href="{% url 'depenses:creer_fourniture' %}" class="btn btn-primary">Ajouter un produit</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+            <h2 class="h5 mb-0"><i class="fas fa-clock-rotate-left me-2 text-success"></i>Ventes récentes</h2>
+            <a href="{% url 'depenses:liste_ventes_fournitures' %}" class="btn btn-sm btn-outline-secondary">Voir tout</a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead><tr><th>Date</th><th>N° vente</th><th>Produit</th><th>Client</th><th class="text-center">Quantité</th><th class="text-end">Total</th><th class="text-end">Marge</th></tr></thead>
+                <tbody>
+                    {% for vente in ventes_recentes %}
+                    <tr>
+                        <td>{{ vente.date_vente|date:'d/m/Y' }}</td>
+                        <td>{{ vente.numero_vente }}</td>
+                        <td>{{ vente.produit.nom }}</td>
+                        <td>{{ vente.client|default:'-' }}</td>
+                        <td class="text-center">{{ vente.quantite }}</td>
+                        <td class="text-end">{{ vente.montant_total|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-end {% if vente.marge < 0 %}text-danger{% else %}text-success{% endif %}">{{ vente.marge|floatformat:0|intcomma }} GNF</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">Aucune vente enregistrée.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

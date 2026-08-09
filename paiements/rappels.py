@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 import logging
 
 from .models import EcheancierPaiement, Relance, ConfigurationPaiement
+from .allocation import INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3
+from .payment_engine import situation_echeancier
 from eleves.models import Eleve
 
 logger = logging.getLogger(__name__)
@@ -112,27 +114,17 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         aujourd_hui = timezone.now().date()
         date_limite = aujourd_hui - timedelta(days=jours_grace)
         
-        # Récupérer les échéanciers avec des impayés
-        echeanciers_retard = EcheancierPaiement.objects.filter(
-            models.Q(
-                date_echeance_inscription__lt=date_limite,
-                frais_inscription_paye__lt=models.F('frais_inscription_du')
-            ) |
-            models.Q(
-                date_echeance_tranche_1__lt=date_limite,
-                tranche_1_payee__lt=models.F('tranche_1_due')
-            ) |
-            models.Q(
-                date_echeance_tranche_2__lt=date_limite,
-                tranche_2_payee__lt=models.F('tranche_2_due')
-            ) |
-            models.Q(
-                date_echeance_tranche_3__lt=date_limite,
-                tranche_3_payee__lt=models.F('tranche_3_due')
-            )
-        ).select_related('eleve', 'eleve__classe')
-        
-        return echeanciers_retard
+        candidats = EcheancierPaiement.objects.select_related(
+            'eleve', 'eleve__classe'
+        )
+        ids = [
+            echeancier.pk
+            for echeancier in candidats
+            if situation_echeancier(
+                echeancier, date_reference=date_limite
+            )['retard_total'] > 0
+        ]
+        return candidats.filter(pk__in=ids)
     
     def calculer_niveau_rappel(self, eleve_id):
         """
@@ -159,26 +151,20 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
     def calculer_jours_retard(self, echeancier):
         """Calcule le nombre de jours de retard maximum"""
         aujourd_hui = timezone.now().date()
-        jours_retard = 0
-        
-        # Vérifier chaque échéance
-        if (echeancier.frais_inscription_paye < echeancier.frais_inscription_du and 
-            echeancier.date_echeance_inscription < aujourd_hui):
-            jours_retard = max(jours_retard, (aujourd_hui - echeancier.date_echeance_inscription).days)
-        
-        if (echeancier.tranche_1_payee < echeancier.tranche_1_due and 
-            echeancier.date_echeance_tranche_1 < aujourd_hui):
-            jours_retard = max(jours_retard, (aujourd_hui - echeancier.date_echeance_tranche_1).days)
-        
-        if (echeancier.tranche_2_payee < echeancier.tranche_2_due and 
-            echeancier.date_echeance_tranche_2 < aujourd_hui):
-            jours_retard = max(jours_retard, (aujourd_hui - echeancier.date_echeance_tranche_2).days)
-        
-        if (echeancier.tranche_3_payee < echeancier.tranche_3_due and 
-            echeancier.date_echeance_tranche_3 < aujourd_hui):
-            jours_retard = max(jours_retard, (aujourd_hui - echeancier.date_echeance_tranche_3).days)
-        
-        return jours_retard
+        situation = situation_echeancier(
+            echeancier, date_reference=aujourd_hui
+        )
+        postes = (
+            (INSCRIPTION, echeancier.date_echeance_inscription),
+            (TRANCHE_1, echeancier.date_echeance_tranche_1),
+            (TRANCHE_2, echeancier.date_echeance_tranche_2),
+            (TRANCHE_3, echeancier.date_echeance_tranche_3),
+        )
+        return max((
+            (aujourd_hui - echeance).days
+            for bucket, echeance in postes
+            if echeance and situation['retards'][bucket] > 0
+        ), default=0)
     
     def generer_message_rappel(self, eleve, echeancier, canal='SMS', niveau_rappel='PREMIER_RAPPEL'):
         """
@@ -201,14 +187,20 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         aujourd_hui = timezone.now().date()
         date_echeance = None
         
-        if (echeancier.frais_inscription_paye < echeancier.frais_inscription_du and 
-            echeancier.date_echeance_inscription < aujourd_hui):
-            date_echeance = echeancier.date_echeance_inscription
-        
-        if (echeancier.tranche_1_payee < echeancier.tranche_1_due and 
-            echeancier.date_echeance_tranche_1 < aujourd_hui):
-            if not date_echeance or echeancier.date_echeance_tranche_1 < date_echeance:
-                date_echeance = echeancier.date_echeance_tranche_1
+        situation = situation_echeancier(
+            echeancier, date_reference=aujourd_hui
+        )
+        dates_retard = [
+            echeance
+            for bucket, echeance in (
+                (INSCRIPTION, echeancier.date_echeance_inscription),
+                (TRANCHE_1, echeancier.date_echeance_tranche_1),
+                (TRANCHE_2, echeancier.date_echeance_tranche_2),
+                (TRANCHE_3, echeancier.date_echeance_tranche_3),
+            )
+            if echeance and situation['retards'][bucket] > 0
+        ]
+        date_echeance = min(dates_retard) if dates_retard else None
         
         # Données pour le template
         context = {

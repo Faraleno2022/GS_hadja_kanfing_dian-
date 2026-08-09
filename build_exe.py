@@ -121,26 +121,43 @@ def copy_extra_files():
         shutil.copytree(static_src, static_dst)
         print("  [OK] Fichiers statiques copies")
 
-    # Copier le dossier media
-    media_src = os.path.join(BASE_DIR, 'media')
-    media_dst = os.path.join(OUTPUT_DIR, 'media')
-    if os.path.exists(media_src) and not os.path.exists(media_dst):
-        shutil.copytree(media_src, media_dst)
-        print("  [OK] Dossier media copie")
+    # NE PAS copier la base de données ni la config/licence du développeur dans
+    # le build. PyInstaller >= 6 place les 'datas' dans OUTPUT_DIR/_internal/,
+    # et son hook-django.py embarque automatiquement tout fichier 'db.*' trouvé
+    # a cote de manage.py (donc le vrai db.sqlite3 du poste de dev) : il faut
+    # donc chercher dans TOUT l'arbre de sortie, pas seulement a la racine.
+    forbidden_names = {
+        'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
+        'license.dat', '.trial_start', '.secret_key', '.env',
+        '.integrity.dat', 'sync_config.json',
+    }
+    for dirpath, _dirnames, filenames in os.walk(OUTPUT_DIR):
+        for filename in filenames:
+            if filename in forbidden_names:
+                full_path = os.path.join(dirpath, filename)
+                os.remove(full_path)
+                rel_path = os.path.relpath(full_path, OUTPUT_DIR)
+                print(f"  [INFO] {rel_path} du dev supprime du build")
 
-    # NE PAS copier la base de données du développeur dans le build
-    # run_server.py créera une base vierge via 'migrate' au premier démarrage
-    db_dst = os.path.join(OUTPUT_DIR, 'db.sqlite3')
-    if os.path.exists(db_dst):
-        os.remove(db_dst)
-        print("  [INFO] db.sqlite3 du dev supprimee du build (sera creee au 1er demarrage)")
-
-    # Supprimer les fichiers de licence/essai du dev s'ils ont été copiés
-    for dev_file in ['license.dat', '.trial_start', '.secret_key', '.env']:
-        dev_dst = os.path.join(OUTPUT_DIR, dev_file)
-        if os.path.exists(dev_dst):
-            os.remove(dev_dst)
-            print(f"  [INFO] {dev_file} du dev supprime du build")
+    # Le dossier media contient les photos/documents propres a chaque ecole :
+    # il doit rester vide dans la distribution. On ne vise QUE les deux
+    # emplacements possibles de MEDIA_ROOT (racine et _internal), jamais un
+    # dossier 'media' quelconque : des bibliotheques tierces et des feuilles de
+    # style embarquent legitimement un dossier de ce nom.
+    for media_rel in ('media', os.path.join('_internal', 'media')):
+        media_dir = os.path.join(OUTPUT_DIR, media_rel)
+        if not os.path.isdir(media_dir):
+            continue
+        emptied = False
+        for entry in os.listdir(media_dir):
+            entry_path = os.path.join(media_dir, entry)
+            if os.path.isdir(entry_path):
+                shutil.rmtree(entry_path)
+            else:
+                os.remove(entry_path)
+            emptied = True
+        if emptied:
+            print(f"  [INFO] Contenu de {media_rel} vide (photos/medias du dev retires)")
 
     # Creer les dossiers necessaires
     for folder in ['logs', 'media', 'backups']:
@@ -148,6 +165,37 @@ def copy_extra_files():
         os.makedirs(folder_path, exist_ok=True)
 
     print("  [OK] Fichiers supplementaires copies")
+
+
+def verify_distribution_has_no_user_data():
+    """Bloque le build si des données d'une école ont été embarquées."""
+    step("Verification de la protection des donnees utilisateur")
+
+    forbidden_names = {
+        'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
+        'license.dat', '.trial_start', '.secret_key', '.env',
+        '.integrity.dat', 'sync_config.json',
+    }
+    errors = []
+    for dirpath, _dirnames, filenames in os.walk(OUTPUT_DIR):
+        for filename in filenames:
+            if filename in forbidden_names:
+                errors.append(os.path.relpath(os.path.join(dirpath, filename), OUTPUT_DIR))
+
+    # Seuls les emplacements possibles de MEDIA_ROOT doivent etre vides.
+    for media_rel in ('media', os.path.join('_internal', 'media')):
+        media_dir = os.path.join(OUTPUT_DIR, media_rel)
+        for mdirpath, _, mfilenames in os.walk(media_dir):
+            for mfilename in mfilenames:
+                errors.append(os.path.relpath(os.path.join(mdirpath, mfilename), OUTPUT_DIR))
+
+    if errors:
+        print("  [ERREUR] Donnees utilisateur detectees dans la distribution :")
+        for relative_path in errors:
+            print(f"    - {relative_path}")
+        raise RuntimeError("Build annule pour proteger les donnees utilisateur")
+
+    print("  [OK] Aucune base, licence, configuration ou photo utilisateur embarquee")
 
 
 def create_launcher_bat():
@@ -411,6 +459,7 @@ def main():
     collect_static()
     run_pyinstaller()
     copy_extra_files()
+    verify_distribution_has_no_user_data()
     copy_gtk_dlls()
     create_launcher_bat()
     create_stop_bat()

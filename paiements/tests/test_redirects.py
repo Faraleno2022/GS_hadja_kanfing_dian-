@@ -1,7 +1,9 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+
+from paiements.tests.support import TEST_MIDDLEWARE
 
 from eleves.models import Ecole, Classe, Responsable, Eleve
 from paiements.models import (
@@ -13,6 +15,7 @@ from paiements.models import (
 )
 
 
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class ValiderEcheancierRedirectTests(TestCase):
     def setUp(self):
         # Auth user (superuser bypasses granular permission checks)
@@ -20,7 +23,9 @@ class ValiderEcheancierRedirectTests(TestCase):
         self.user = User.objects.create_superuser(
             username="admin", email="admin@example.com", password="pass1234"
         )
-        self.client.login(username="admin", password="pass1234")
+        # force_login : django-axes exige un objet request dans authenticate(),
+        # que le client de test ne fournit pas via login().
+        self.client.force_login(self.user)
 
         # Minimal school data
         self.ecole = Ecole.objects.create(

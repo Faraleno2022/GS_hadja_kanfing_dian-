@@ -566,12 +566,58 @@ def _status_from_payload_dict(body: dict, source: str) -> dict:
 # ─── Mode démo (30 jours sans licence) ────────────────────────────────────────
 _TRIAL_FILE_NAME = '.trial_start'
 
+# Ancre d'essai dans le registre HKCU : survit à la désinstallation ET à la
+# suppression manuelle du dossier d'installation / de %APPDATA%. Clé neutre
+# volontairement distincte de celle supprimée par l'installateur.
+_TRIAL_REG_SUBKEY = r'Software\MSGNRuntime'
+_TRIAL_REG_VALUE = 'tk'
+
+
+def _read_trial_registry(current_mid: str):
+    """Lit la date d'essai depuis HKCU (retourne un datetime ou None)."""
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _TRIAL_REG_SUBKEY)
+        try:
+            val, _ = winreg.QueryValueEx(key, _TRIAL_REG_VALUE)
+        finally:
+            winreg.CloseKey(key)
+        content = str(val).strip()
+        if '|' in content:
+            stored_mid, date_str = content.split('|', 1)
+            if stored_mid == current_mid:
+                return datetime.strptime(date_str, '%Y-%m-%d')
+    except Exception:
+        pass
+    return None
+
+
+def _write_trial_registry(current_mid: str, trial_start) -> None:
+    """Écrit/ancre la date d'essai dans HKCU (silencieux en cas d'échec)."""
+    try:
+        import winreg
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, _TRIAL_REG_SUBKEY)
+        try:
+            winreg.SetValueEx(
+                key, _TRIAL_REG_VALUE, 0, winreg.REG_SZ,
+                f"{current_mid}|{trial_start.strftime('%Y-%m-%d')}",
+            )
+        finally:
+            winreg.CloseKey(key)
+    except Exception:
+        pass
+
+
 def get_or_create_trial() -> dict:
     """
     Gère une période d'essai de 30 jours sans licence.
-    L'essai est lié à la machine : si l'application est copiée sur une
-    autre machine, un nouvel essai de 30 jours démarre automatiquement.
-    Format du fichier : machine_id_16|YYYY-MM-DD
+
+    L'essai est lié à la machine (machine_id) et ancré dans PLUSIEURS
+    emplacements persistants : dossier d'installation, %APPDATA% et registre
+    HKCU. Ainsi une désinstallation/réinstallation — ou même la suppression
+    manuelle du dossier d'installation — ne réinitialise PAS l'essai : la date
+    la plus ancienne retrouvée fait foi et est resynchronisée partout.
+    Format : machine_id_16|YYYY-MM-DD
     """
     trial_paths = [
         _get_license_path().parent / _TRIAL_FILE_NAME,
@@ -579,48 +625,53 @@ def get_or_create_trial() -> dict:
     ]
 
     current_mid = get_machine_id()[:16]
-    trial_start = None
-    trial_path_used = None
-    trial_started = False
 
+    # 1) Rassembler toutes les ancres valides pour CETTE machine.
+    #    On garde la date la PLUS ANCIENNE : supprimer une seule ancre ne
+    #    permet pas de "rajeunir" l'essai tant qu'une autre subsiste.
+    found_dates = []
     for tp in trial_paths:
-        if tp.exists():
-            try:
+        try:
+            if tp.exists():
                 with open(tp, 'r') as f:
                     content = f.read().strip()
-                # Nouveau format : machine_id|date
                 if '|' in content:
                     stored_mid, date_str = content.split('|', 1)
                     if stored_mid == current_mid:
-                        trial_start = datetime.strptime(date_str, '%Y-%m-%d')
-                        trial_path_used = tp
-                        break
-                    # Machine différente → ignorer ce fichier (copie USB)
+                        found_dates.append(datetime.strptime(date_str, '%Y-%m-%d'))
+                    # Machine différente → ignorer (copie USB)
                 else:
-                    # Ancien format (date seule) → migrer pour cette machine
-                    trial_start = datetime.strptime(content, '%Y-%m-%d')
-                    trial_path_used = tp
-                    try:
-                        with open(tp, 'w') as f:
-                            f.write(f"{current_mid}|{content}")
-                    except Exception:
-                        pass
-                    break
-            except Exception:
-                continue
+                    # Ancien format (date seule) → accepter et migrer
+                    found_dates.append(datetime.strptime(content, '%Y-%m-%d'))
+        except Exception:
+            continue
 
-    if trial_start is None:
-        # Nouvelle machine ou première installation → nouvel essai de 30 jours
+    reg_date = _read_trial_registry(current_mid)
+    if reg_date is not None:
+        found_dates.append(reg_date)
+
+    trial_started = False
+    if found_dates:
+        trial_start = min(found_dates)
+    else:
+        # Aucune ancre nulle part → première installation réelle
         trial_start = _now_utc()
         trial_started = True
-        for tp in trial_paths:
-            try:
-                with open(tp, 'w') as f:
-                    f.write(f"{current_mid}|{trial_start.strftime('%Y-%m-%d')}")
+
+    # 2) Réécrire l'ancre dans TOUS les emplacements (pas de break) pour
+    #    resynchroniser ceux qui auraient été effacés.
+    stamp = f"{current_mid}|{trial_start.strftime('%Y-%m-%d')}"
+    trial_path_used = None
+    for tp in trial_paths:
+        try:
+            tp.parent.mkdir(parents=True, exist_ok=True)
+            with open(tp, 'w') as f:
+                f.write(stamp)
+            if trial_path_used is None:
                 trial_path_used = tp
-                break
-            except Exception:
-                continue
+        except Exception:
+            continue
+    _write_trial_registry(current_mid, trial_start)
 
     days_elapsed = (_now_utc() - trial_start).days
     days_left = max(0, 30 - days_elapsed)

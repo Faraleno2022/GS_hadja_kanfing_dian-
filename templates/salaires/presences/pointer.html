@@ -183,7 +183,7 @@
                                 </td>
                                 <td>
                                     <input type="number" name="heures_travaillees_{{ ens.id }}" class="form-control form-control-sm"
-                                           step="0.25" min="0" placeholder="Auto"
+                                           step="0.25" min="0" max="24" placeholder="Auto"
                                            value="{% if presence and presence.heures_travaillees %}{{ presence.heures_travaillees }}{% endif %}">
                                 </td>
                                 <td class="text-center">

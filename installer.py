@@ -4,7 +4,7 @@
 MySchoolGN - Installateur Automatique
 =======================================
 Auteur  : GS Hadja Kanfing Dian
-Version : 1.0.0
+Version : 1.2.0
 
 Cet installateur copie MySchoolGN vers C:/MySchoolGN/
 et cree un raccourci sur le Bureau.
@@ -29,17 +29,23 @@ else:
 
 INSTALL_DIR  = Path("C:/MySchoolGN")
 APP_NAME     = "MySchoolGN"
-APP_VERSION  = "1.0.0"
+APP_VERSION  = "1.2.0"
 PUBLISHER    = "GS Hadja Kanfing Dian"
 EXE_NAME     = "MySchoolGN.exe"
 ICON_NAME    = "myschool.ico"
 
 # ─── Détection mode mise à jour ───────────────────────────────────────────────
-IS_UPDATE = (INSTALL_DIR / EXE_NAME).exists()
+IS_UPDATE = any((INSTALL_DIR / name).exists() for name in (
+    EXE_NAME, 'db.sqlite3', '.secret_key', '.trial_start',
+    'license.dat', 'media',
+))
 
 # Fichiers/dossiers à NE PAS écraser lors d'une mise à jour (données utilisateur)
-UPDATE_PRESERVE_FILES = {'db.sqlite3', 'license.dat', '.trial_start',
-                          '.secret_key', '.env', '.integrity.dat'}
+UPDATE_PRESERVE_FILES = {
+    'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
+    'license.dat', '.trial_start', '.secret_key', '.env',
+    'sync_config.json',
+}
 UPDATE_PRESERVE_DIRS  = {'media', 'backups', 'logs'}
 
 
@@ -208,6 +214,11 @@ def do_install(log_func, progress_func, done_func, license_source=None):
                 progress_func(10 + int(75 * (i + 1) / total))
 
             progress_func(100)
+            if license_source:
+                log_func("Installation de la nouvelle licence sélectionnée...")
+                shutil.copy2(license_source, INSTALL_DIR / "license.dat")
+                shutil.copy2(license_source, INSTALL_DIR / Path(license_source).name)
+                log_func("  Licence installée avec succès.")
             log_func(f"\n  {updated} fichiers mis à jour, {preserved} préservés.")
             log_func("\n✓ Mise à jour terminée avec succès !")
             log_func(f"  Dossier : {INSTALL_DIR}")
@@ -225,9 +236,12 @@ def do_install(log_func, progress_func, done_func, license_source=None):
             log_func("Copie des fichiers de l'application ...")
             items = list(SRC_DIR.iterdir())
             # Exclure les fichiers d'essai/licence/données dev pour que le client parte de zéro
-            skip = {"Installer_MySchoolGN.exe", "installer.py",
-                    ".trial_start", "license.dat", ".secret_key",
-                    "db.sqlite3", ".env", ".integrity.dat"}
+            skip = {
+                "Installer_MySchoolGN.exe", "installer.py", ".trial_start",
+                "license.dat", ".secret_key", "db.sqlite3", "db.sqlite3-wal",
+                "db.sqlite3-shm", "db.sqlite3-journal", ".env",
+                "sync_config.json",
+            }
             total = len(items)
 
             for i, item in enumerate(items):
@@ -313,7 +327,7 @@ def do_install(log_func, progress_func, done_func, license_source=None):
                 except Exception as e:
                     log_func(f"  [AVERT] Licence non installee : {e}")
             else:
-                log_func("  Aucune licence fournie : essai gratuit de 30 jours au premier lancement.")
+                log_func("  Aucune licence fournie : version gratuite (essai de 30 jours) au premier lancement.")
 
             progress_func(100)
             log_func("\n✓ Installation terminée avec succès !")
@@ -504,11 +518,21 @@ class InstallerApp(tk.Tk):
             status_text = "Mise à jour en cours, veuillez patienter..."
             log_start   = "Démarrage de la mise à jour..."
         else:
+            action_text = "Installation..."
+            status_text = "Installation en cours, veuillez patienter..."
+            log_start   = "Démarrage de l'installation..."
+
+        appdata_license = Path(os.environ.get('APPDATA', '')) / APP_NAME / 'license.dat'
+        has_existing_license = (
+            (INSTALL_DIR / 'license.dat').exists()
+            or (bool(os.environ.get('APPDATA')) and appdata_license.exists())
+        )
+        if not has_existing_license:
             has_license = messagebox.askyesno(
                 "Licence MySchoolGN",
                 "Avez-vous deja une licence annuelle MySchoolGN ?\n\n"
                 "Oui : selectionnez votre fichier .lic pour l'ajouter pendant l'installation.\n"
-                "Non : l'installation continuera avec la version d'essai gratuite de 30 jours."
+                "Non : l'installation continuera avec la version gratuite (essai de 30 jours)."
             )
             if has_license:
                 license_source = filedialog.askopenfilename(
@@ -519,11 +543,8 @@ class InstallerApp(tk.Tk):
                     messagebox.showinfo(
                         "Licence non selectionnee",
                         "Aucun fichier de licence n'a ete selectionne.\n"
-                        "L'installation continuera avec l'essai gratuit de 30 jours."
+                        "L'installation continuera avec la version gratuite (essai de 30 jours)."
                     )
-            action_text = "Installation..."
-            status_text = "Installation en cours, veuillez patienter..."
-            log_start   = "Démarrage de l'installation..."
 
         self.install_btn.configure(state="disabled", text=f"  {action_text}")
         self.cancel_btn.configure(state="disabled")
