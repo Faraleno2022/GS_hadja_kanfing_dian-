@@ -1,6 +1,13 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Enseignant, TypeEnseignant, StatutEnseignant, AffectationClasse, PresenceEnseignant
+from .models import (
+    AffectationClasse,
+    Enseignant,
+    EtatSalaire,
+    PresenceEnseignant,
+    StatutEnseignant,
+    TypeEnseignant,
+)
 from eleves.models import Ecole, Classe
 
 
@@ -93,14 +100,10 @@ class EnseignantForm(forms.ModelForm):
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
         
-        # Restreindre les écoles visibles selon l'utilisateur.
-        # Seul un superadmin (is_superuser) gère plusieurs écoles: un ADMIN
-        # d'école ne doit voir/choisir que la sienne, sinon un enseignant créé
-        # par erreur sur une autre école disparaît silencieusement de son
-        # propre tableau de bord Salaires (filtré par école).
+        # Restreindre les écoles visibles selon l'utilisateur
         if self.user:
-            from utilisateurs.utils import user_is_superadmin, user_school
-            if not user_is_superadmin(self.user):
+            from utilisateurs.utils import user_is_admin, user_school
+            if not user_is_admin(self.user):
                 ecole_user = user_school(self.user)
                 if ecole_user:
                     self.fields['ecole'].queryset = Ecole.objects.filter(id=ecole_user.id)
@@ -305,10 +308,62 @@ class PresenceForm(forms.ModelForm):
         cleaned_data = super().clean()
         heure_arrivee = cleaned_data.get('heure_arrivee')
         heure_depart = cleaned_data.get('heure_depart')
+        heures_travaillees = cleaned_data.get('heures_travaillees')
         statut = cleaned_data.get('statut')
+
+        if bool(heure_arrivee) != bool(heure_depart):
+            raise ValidationError(
+                "L'heure d'arrivée et l'heure de départ doivent être renseignées ensemble."
+            )
+
+        if statut in {'PRESENT', 'RETARD'}:
+            if not (heure_arrivee and heure_depart) and not (
+                heures_travaillees is not None and heures_travaillees > 0
+            ):
+                raise ValidationError(
+                    "Renseignez les heures d'arrivée et de départ, ou le total travaillé."
+                )
+
+        if statut in {'ABSENT', 'CONGE', 'MALADIE'}:
+            if heure_arrivee or heure_depart or (
+                heures_travaillees is not None and heures_travaillees > 0
+            ):
+                raise ValidationError(
+                    'Aucune heure travaillée ne peut être enregistrée pour ce statut.'
+                )
         
-        # Si présent, les heures sont recommandées
-        if statut == 'PRESENT' and not (heure_arrivee and heure_depart):
-            self.add_warning('Heures d\'arrivée et de départ recommandées pour les présents.')
-        
+        return cleaned_data
+
+
+class EtatSalaireAjustementForm(forms.ModelForm):
+    """Modification contrôlée des primes et retenues avant validation."""
+
+    class Meta:
+        model = EtatSalaire
+        fields = ['primes', 'deductions', 'observations']
+        widgets = {
+            'primes': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.01'
+            }),
+            'deductions': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.01'
+            }),
+            'observations': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 4,
+                'placeholder': 'Motif des primes ou retenues',
+            }),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        primes = cleaned_data.get('primes') or 0
+        deductions = cleaned_data.get('deductions') or 0
+        salaire_base = self.instance.salaire_base or 0
+
+        if deductions > salaire_base + primes:
+            self.add_error(
+                'deductions',
+                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.',
+            )
+
         return cleaned_data
