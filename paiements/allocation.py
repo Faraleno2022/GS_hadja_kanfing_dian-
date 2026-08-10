@@ -146,7 +146,11 @@ def get_payment_allocation(paiement, echeancier=None):
     target_allocation = None
     validated = (
         Paiement.objects
-        .filter(eleve=paiement.eleve, statut="VALIDE")
+        .filter(
+            eleve=paiement.eleve,
+            annee_scolaire=paiement.annee_scolaire,
+            statut="VALIDE",
+        )
         .order_by("date_paiement", "date_creation", "pk")
     )
 
@@ -161,3 +165,44 @@ def get_payment_allocation(paiement, echeancier=None):
             target_allocation = allocation
 
     return target_allocation
+
+
+def allocate_discounts(echeancier, discounts, balances=None):
+    """Ventile les remises validées sur les tranches réellement concernées.
+
+    Les remises ne couvrent jamais l'inscription/réinscription. Les anciennes
+    remises sans information de tranche sont appliquées à T1, T2 puis T3 afin
+    de rester compatibles avec les données antérieures.
+    """
+    current_balances = dict(balances or {
+        key: max(
+            Decimal('0'),
+            _decimal(getattr(echeancier, due_field, 0))
+            - _decimal(getattr(echeancier, paid_field, 0)),
+        )
+        for key, due_field, paid_field in ALLOCATION_COMPONENTS
+    })
+    allocation = {
+        key: Decimal('0') for key, _due, _paid in ALLOCATION_COMPONENTS
+    }
+
+    for discount in discounts:
+        selected = [
+            f"tranche_{number}"
+            for number in getattr(discount, 'tranches_concernees_liste', [])
+            if number in (1, 2, 3)
+        ]
+        if not selected:
+            selected = ['tranche_1', 'tranche_2', 'tranche_3']
+
+        amount = max(Decimal('0'), _decimal(getattr(discount, 'montant_remise', 0)))
+        for key in selected:
+            if amount <= 0:
+                break
+            available = max(Decimal('0'), _decimal(current_balances.get(key, 0)))
+            take = min(amount, available)
+            allocation[key] += take
+            current_balances[key] = available - take
+            amount -= take
+
+    return allocation, current_balances
