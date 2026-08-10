@@ -9,6 +9,8 @@ from django.db import transaction, IntegrityError
 from django.db.models import Q, F, Sum, Count, Value, DecimalField, ExpressionWrapper, Case, When, OuterRef, Subquery
 from django.db.models.functions import Coalesce, Greatest, Least
 from django.http import JsonResponse, HttpResponse, Http404
+from django.core.exceptions import ValidationError
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.core.cache import cache
@@ -19,6 +21,7 @@ from io import BytesIO
 import os
 import logging
 import urllib.parse
+import unicodedata
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
@@ -37,6 +40,7 @@ from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, Re
 from .allocation import (
     ALLOCATION_COMPONENTS,
     allocate_amount_sequentially,
+    allocate_discounts,
     get_payment_allocation,
     payment_type_plan,
     registration_kind_for_type,
@@ -55,12 +59,179 @@ from .notifications import (
     send_retard_notification,
 )
 
+def _normalize_payment_type_name(type_name: str) -> str:
+    """Normalise les accents pour reconnaître uniformément les types de paiement."""
+    normalized = unicodedata.normalize("NFKD", (type_name or "").strip().lower())
+    return "".join(char for char in normalized if not unicodedata.combining(char))
+
+
+def _school_year_for_eleve(eleve, explicit_year=None):
+    """Retourne l'année explicitement demandée ou celle de la classe actuelle."""
+    return (
+        explicit_year
+        or getattr(getattr(eleve, 'classe', None), 'annee_scolaire', None)
+        or ''
+    )
+
+
+def _echeancier_for_eleve(eleve, annee_scolaire=None, *, for_update=False):
+    """Charge l'échéancier d'un élève sans jamais mélanger deux années."""
+    year = _school_year_for_eleve(eleve, annee_scolaire)
+    queryset = EcheancierPaiement.objects
+    if for_update:
+        queryset = queryset.select_for_update()
+    if not year:
+        return None
+    return queryset.filter(eleve=eleve, annee_scolaire=year).first()
+
+
+def _echeancier_for_payment(paiement, *, for_update=False):
+    return _echeancier_for_eleve(
+        paiement.eleve,
+        getattr(paiement, 'annee_scolaire', None),
+        for_update=for_update,
+    )
+
+
+def _enrollment_preference_from_type(type_name: str):
+    """Retourne True pour réinscription, False pour inscription, sinon None."""
+    normalized = _normalize_payment_type_name(type_name)
+    compact = "".join(char for char in normalized if char.isalnum())
+    if "reinscription" in compact:
+        return True
+    if "inscription" in compact:
+        return False
+    return None
+
+
+def _enrollment_preference_for_eleve(
+    eleve, preferred_type_name=None, annee_scolaire=None
+):
+    """Détermine le frais d'inscription utilisé par l'élève sur l'année."""
+    validated_payments = (
+        Paiement.objects.filter(
+            eleve=eleve,
+            annee_scolaire=_school_year_for_eleve(eleve, annee_scolaire),
+            statut="VALIDE",
+        )
+        .select_related("type_paiement")
+        .order_by("date_paiement", "date_creation", "id")
+    )
+    for existing_payment in validated_payments.iterator():
+        preference = _enrollment_preference_from_type(
+            getattr(existing_payment.type_paiement, "nom", "")
+        )
+        if preference is not None:
+            return preference
+    return _enrollment_preference_from_type(preferred_type_name)
+
+
+def _applicable_grille_for_eleve(eleve, annee_scolaire=None):
+    try:
+        ecole = eleve.classe.ecole
+        niveau = eleve.classe.niveau
+    except Exception:
+        return None
+
+    queryset = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau)
+    years = [annee_scolaire, getattr(eleve.classe, "annee_scolaire", None)]
+    for year in years:
+        if year:
+            grille = queryset.filter(annee_scolaire=year).first()
+            if grille:
+                return grille
+    return queryset.order_by("-annee_scolaire").first()
+
+
+def _rebalance_garde_prolongee(eleve, echeancier):
+    """Garantit que la scolarité due d'un élève en garde prolongée (les 3
+    tranches) vaut exactement le forfait annuel de son niveau.
+
+    Le forfait (2 700 000 maternelle/garderie, 2 800 000 primaire, 2 850 000
+    collège 10ème) couvre la scolarité seule : les frais d'inscription ou de
+    réinscription s'y ajoutent et ne sont jamais touchés ici. Ce contrôle
+    répare les échéanciers dont les tranches ont dérivé du forfait.
+
+    Retourne la liste des champs modifiés (vide si rien à faire).
+    """
+    if not getattr(eleve, 'garde_prolongee', False):
+        return []
+
+    from eleves.tarification import (
+        calculer_montants_garde_prolongee, montant_scolarite_garde_prolongee,
+    )
+
+    niveau = getattr(getattr(eleve, 'classe', None), 'niveau', None)
+    forfait = montant_scolarite_garde_prolongee(niveau)
+    if forfait is None:
+        return []  # niveau non concerné par la garde prolongée
+
+    t1 = Decimal(str(echeancier.tranche_1_due or 0))
+    t2 = Decimal(str(echeancier.tranche_2_due or 0))
+    t3 = Decimal(str(echeancier.tranche_3_due or 0))
+    if t1 + t2 + t3 == forfait:
+        return []  # déjà conforme
+
+    resultat = calculer_montants_garde_prolongee(niveau, t1, t2, t3)
+    if resultat is None:
+        return []
+    echeancier.tranche_1_due, echeancier.tranche_2_due, echeancier.tranche_3_due = resultat
+    return ["tranche_1_due", "tranche_2_due", "tranche_3_due"]
+
+
+def _align_enrollment_fee(eleve, echeancier, preferred_type_name=None):
+    """Aligne le frais dû sur inscription ou réinscription.
+
+    Le premier paiement d'inscription/réinscription validé fixe la nature du
+    frais. Avant le premier paiement validé, le type actuellement sélectionné
+    sert de préférence. Cela corrige les échéanciers précréés avec le tarif
+    d'inscription alors que l'élève effectue une réinscription.
+
+    Pour les élèves en garde prolongée, les tranches sont ensuite rééquilibrées
+    afin que le total global reste égal au forfait annuel.
+    """
+    update_fields = []
+    preference = _enrollment_preference_for_eleve(
+        eleve, preferred_type_name, echeancier.annee_scolaire
+    )
+
+    if preference is not None:
+        expected_nature = 'REINSCRIPTION' if preference else 'INSCRIPTION'
+        if getattr(echeancier, 'nature_frais', 'INSCRIPTION') != expected_nature:
+            echeancier.nature_frais = expected_nature
+            update_fields.append('nature_frais')
+
+        grille = _applicable_grille_for_eleve(eleve, echeancier.annee_scolaire)
+        if grille:
+            expected_fee = (
+                Decimal(str(grille.frais_reinscription or 0))
+                if preference
+                else Decimal(str(grille.frais_inscription or 0))
+            )
+            current_fee = Decimal(str(echeancier.frais_inscription_du or 0))
+            configured_fees = {
+                Decimal(str(grille.frais_inscription or 0)),
+                Decimal(str(grille.frais_reinscription or 0)),
+                Decimal("0"),
+            }
+            # Ne pas écraser un montant personnalisé saisi manuellement dans l'échéancier.
+            if current_fee in configured_fees and current_fee != expected_fee:
+                echeancier.frais_inscription_du = expected_fee
+                update_fields.append("frais_inscription_du")
+
+    # Garde prolongée : le total global doit toujours valoir exactement le
+    # forfait. Ce contrôle tourne même si le frais n'a pas bougé, pour réparer
+    # les échéanciers dont le total a déjà dérivé.
+    update_fields += _rebalance_garde_prolongee(eleve, echeancier)
+
+    if update_fields:
+        echeancier.save(update_fields=update_fields + ["date_modification"])
+    return echeancier
+
+
 def ensure_echeancier_for_eleve(
-    eleve: "Eleve",
-    *,
-    created_by=None,
-    prefer_reinscription: bool = False,
-    registration_kind: str = None,
+    eleve: "Eleve", *, created_by=None, prefer_reinscription: bool = False,
+    registration_kind: str = None, annee_scolaire=None,
 ) -> "EcheancierPaiement":
     """Crée (silencieusement) un `EcheancierPaiement` pour l'élève s'il n'existe pas.
 
@@ -69,9 +240,25 @@ def ensure_echeancier_for_eleve(
     - Retourne l'échéancier existant ou nouvellement créé
     """
     try:
-        ech = getattr(eleve, 'echeancier', None)
+        from datetime import date as _d
+        today_d = _d.today()
     except Exception:
-        ech = None
+        from datetime import date as _d
+        today_d = _d.today()
+
+    annee_scolaire_def = (
+        f"{today_d.year}-{today_d.year+1}"
+        if today_d.month >= 9
+        else f"{today_d.year-1}-{today_d.year}"
+    )
+    try:
+        annee_classe = getattr(eleve.classe, 'annee_scolaire', None)
+    except Exception:
+        annee_classe = None
+    annee_cible = annee_scolaire or annee_classe or annee_scolaire_def
+    ech = EcheancierPaiement.objects.filter(
+        eleve=eleve, annee_scolaire=annee_cible
+    ).first()
 
     # Si un échéancier existe mais semble vide (tous les dus = 0), on tentera de le renseigner via la grille.
     # Un type inscription/réinscription explicite doit néanmoins pouvoir corriger le tarif déjà initialisé.
@@ -96,20 +283,14 @@ def ensure_echeancier_for_eleve(
         ecole = None
         annee_classe = None
 
-    try:
-        from datetime import date as _d
-        today_d = _d.today()
-    except Exception:
-        from datetime import date as _d
-        today_d = _d.today()
-
-    annee_scolaire_def = f"{today_d.year}-{today_d.year+1}" if today_d.month >= 9 else f"{today_d.year-1}-{today_d.year}"
     grille = None
     try:
         if ecole and niveau:
             # 1) Grille exacte sur l'année de la classe
-            if annee_classe:
-                grille = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau, annee_scolaire=annee_classe).first()
+            if annee_cible:
+                grille = GrilleTarifaire.objects.filter(
+                    ecole=ecole, niveau=niveau, annee_scolaire=annee_cible
+                ).first()
             # 2) Sinon année scolaire par défaut
             if grille is None:
                 grille = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau, annee_scolaire=annee_scolaire_def).first()
@@ -170,7 +351,7 @@ def ensure_echeancier_for_eleve(
 
     # Préparer les champs
     if grille:
-        annee_scol = grille.annee_scolaire
+        annee_scol = annee_cible
         fi = (
             (grille.frais_reinscription or 0)
             if requested_registration_kind == 'reinscription'
@@ -180,7 +361,7 @@ def ensure_echeancier_for_eleve(
         t2 = grille.tranche_2 or 0
         t3 = grille.tranche_3 or 0
     else:
-        annee_scol = annee_classe or annee_scolaire_def
+        annee_scol = annee_cible
         fi = 0
         t1 = 0
         t2 = 0
@@ -268,12 +449,114 @@ def ensure_echeancier_for_eleve(
             logging.getLogger(__name__).info(
                 "Échéancier déjà créé par un autre processus pour l'élève %s, récupération.", eleve.id
             )
-            eleve._state.fields_cache.pop('echeancier', None)
-            return ensure_echeancier_for_eleve(
-                eleve,
-                created_by=created_by,
-                registration_kind=requested_registration_kind,
-            )
+            return EcheancierPaiement.objects.filter(
+                eleve=eleve, annee_scolaire=annee_scol
+            ).first()
+
+def _tranches_visees_par_type(type_nom):
+    """Retourne l'ensemble des tranches ({1, 2, 3}) couvertes par un type de paiement.
+
+    ``type_nom`` doit déjà être normalisé (minuscules, sans accents).
+    « Annuel » et « Scolarité » couvrent les trois tranches.
+    """
+    if 'annuel' in type_nom or 'scolarite' in type_nom:
+        return {1, 2, 3}
+    tranches = set()
+    motifs = {
+        1: ('tranche 1', 'tranche1', '1ere tranche', '1re tranche'),
+        2: ('tranche 2', 'tranche2', '2eme tranche'),
+        3: ('tranche 3', 'tranche3', '3eme tranche'),
+    }
+    for numero, variantes in motifs.items():
+        if any(variante in type_nom for variante in variantes):
+            tranches.add(numero)
+    return tranches
+
+
+def _suggestion_paiement(ech, type_nom):
+    """Calcule le montant exact restant à payer pour un type de paiement donné.
+
+    Additionne le reste dû de chacun des postes couverts par le type : frais
+    d'inscription/réinscription et/ou tranches. Retourne un dictionnaire prêt à
+    être renvoyé au formulaire de saisie.
+
+    L'analyse est additive (et non une cascade de cas) afin que les libellés
+    combinés soient tous couverts, y compris « Inscription + Tranche 1 +
+    Tranche 2 + Tranche 3 ».
+    """
+    discounts = (
+        PaiementRemise.objects
+        .filter(
+            paiement__eleve_id=ech.eleve_id,
+            paiement__annee_scolaire=ech.annee_scolaire,
+            paiement__statut='VALIDE',
+        )
+        .select_related('paiement')
+        .order_by('paiement__date_paiement', 'paiement_id', 'id')
+    )
+    _, net_balances = allocate_discounts(ech, discounts)
+    restes = {
+        'fi': int(net_balances['inscription']),
+        1: int(net_balances['tranche_1']),
+        2: int(net_balances['tranche_2']),
+        3: int(net_balances['tranche_3']),
+    }
+
+    inclut_frais = 'inscription' in type_nom  # couvre aussi « reinscription »
+    tranches = _tranches_visees_par_type(type_nom)
+
+    suggested = (restes['fi'] if inclut_frais else 0) + sum(restes[n] for n in tranches)
+
+    # Libellé lisible de ce qui est couvert
+    postes = []
+    if inclut_frais:
+        est_reinscription = 'reinscription' in type_nom.replace(' ', '')
+        postes.append("frais de réinscription" if est_reinscription else "frais d'inscription")
+    if tranches == {1, 2, 3}:
+        postes.append("scolarité annuelle (3 tranches)")
+    else:
+        for numero in sorted(tranches):
+            postes.append(f"{numero}{'ère' if numero == 1 else 'ème'} tranche")
+
+    if postes:
+        description = "Reste à payer : " + " + ".join(postes) + "."
+    else:
+        description = (
+            "Ce type de paiement ne correspond à aucun poste de l'échéancier "
+            "(cantine, transport, uniforme…) : saisissez le montant manuellement."
+        )
+
+    total_du = int(
+        (ech.frais_inscription_du or 0) + (ech.tranche_1_due or 0)
+        + (ech.tranche_2_due or 0) + (ech.tranche_3_due or 0)
+    )
+    total_paye = int(
+        (ech.frais_inscription_paye or 0) + (ech.tranche_1_payee or 0)
+        + (ech.tranche_2_payee or 0) + (ech.tranche_3_payee or 0)
+    )
+
+    return {
+        'suggested': int(suggested),
+        'couvre_frais': inclut_frais,
+        'tranches': sorted(tranches),
+        'breakdown': {
+            'fi_restant': restes['fi'],
+            't1_restant': restes[1],
+            't2_restant': restes[2],
+            't3_restant': restes[3],
+            'description': description,
+        },
+        'echeancier': {
+            'nature_frais': getattr(ech, 'nature_frais', '') or '',
+            'total_du': total_du,
+            'total_paye': total_paye,
+            'solde_restant': int(ech.solde_restant),
+            'frais_du': int(ech.frais_inscription_du or 0),
+            't1_du': int(ech.tranche_1_due or 0),
+            't2_du': int(ech.tranche_2_due or 0),
+            't3_du': int(ech.tranche_3_due or 0),
+        },
+    }
 
 @login_required
 def ajax_montant_suggere(request):
@@ -294,12 +577,8 @@ def ajax_montant_suggere(request):
         plan = payment_type_plan(type_pmt)
         kind = plan['registration_kind']
 
-        # Lire l'échéancier sans jamais le créer ni le modifier : changer un
-        # choix dans le formulaire ne doit avoir aucun effet comptable.
-        try:
-            ech = eleve.echeancier
-        except EcheancierPaiement.DoesNotExist:
-            ech = None
+        # Lecture seule: une suggestion ne doit créer ni modifier de données.
+        ech = _echeancier_for_eleve(eleve)
 
         annee_recherche = (
             getattr(ech, 'annee_scolaire', None)
@@ -374,6 +653,33 @@ def ajax_montant_suggere(request):
         rt2 = max(0, t2_due - t2_pay)
         rt3 = max(0, t3_due - t3_pay)
 
+        # Les remises validées couvrent aussi une partie de la dette, sans être
+        # ajoutées aux champs *_paye qui représentent uniquement les encaissements.
+        discounts = (
+            PaiementRemise.objects
+            .filter(
+                paiement__eleve=eleve,
+                paiement__annee_scolaire=projected_ech.annee_scolaire,
+                paiement__statut='VALIDE',
+            )
+            .select_related('paiement')
+            .order_by('paiement__date_paiement', 'paiement_id', 'id')
+        )
+        _discount_allocation, net_balances = allocate_discounts(
+            projected_ech,
+            discounts,
+            balances={
+                'inscription': Decimal(rfi),
+                'tranche_1': Decimal(rt1),
+                'tranche_2': Decimal(rt2),
+                'tranche_3': Decimal(rt3),
+            },
+        )
+        rfi = int(net_balances['inscription'])
+        rt1 = int(net_balances['tranche_1'])
+        rt2 = int(net_balances['tranche_2'])
+        rt3 = int(net_balances['tranche_3'])
+
         remaining_by_component = {
             'inscription': rfi,
             'tranche_1': rt1,
@@ -421,78 +727,70 @@ def ajax_montant_suggere(request):
         logging.getLogger(__name__).exception("ajax_montant_suggere failed")
         return JsonResponse({'ok': False, 'error': 'Erreur interne'}, status=500)
 
-def _allocate_payment_to_echeancier(paiement: "Paiement"):
-    """Affecte un paiement dans l'ordre inscription -> T1 -> T2 -> T3.
+def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
+    """Reconstruit atomiquement l'allocation de l'année du paiement.
 
-    Tout excédent d'un poste est automatiquement reporté sur le poste suivant,
-    quel que soit le libellé du type de paiement (y compris « annuel »).
+    Les erreurs sont volontairement propagées : l'appelant peut ainsi annuler
+    la validation entière au lieu de laisser un paiement validé non affecté.
     """
-    try:
-        eleve = paiement.eleve
-        type_name = getattr(paiement.type_paiement, 'nom', '') or ''
-        registration_kind = registration_kind_for_type(type_name)
+    eleve = paiement.eleve
+    type_nom = _normalize_payment_type_name(
+        getattr(paiement.type_paiement, "nom", "")
+    )
+    annee_scolaire = paiement.annee_scolaire
 
-        with transaction.atomic():
-            # L'appel applique aussi le bon tarif lorsqu'il s'agit d'une réinscription.
-            ensure_echeancier_for_eleve(
+    with transaction.atomic():
+        ech = _echeancier_for_payment(paiement, for_update=True)
+        if not ech:
+            ech = ensure_echeancier_for_eleve(
                 eleve,
                 created_by=getattr(paiement, 'cree_par', None),
-                registration_kind=registration_kind,
+                prefer_reinscription=(
+                    _enrollment_preference_from_type(type_nom) is True
+                ),
+                annee_scolaire=annee_scolaire,
             )
-            ech = EcheancierPaiement.objects.select_for_update().filter(eleve=eleve).first()
-            if not ech:
-                logging.getLogger(__name__).error(
-                    "Impossible de créer/verrouiller l'échéancier pour l'élève %s", eleve.id
-                )
-                return None
-
-            allocation, new_paid, remaining = allocate_amount_sequentially(ech, paiement.montant)
-            changed = False
-            for key, _due_field, paid_field in ALLOCATION_COMPONENTS:
-                if Decimal(str(getattr(ech, paid_field, 0) or 0)) != new_paid[key]:
-                    setattr(ech, paid_field, new_paid[key])
-                    changed = True
-
-            if changed:
-                ech.save()
-
-            if remaining > 0:
-                logging.getLogger(__name__).warning(
-                    "Allocation incomplète: %s GNF non alloués pour paiement %s (élève %s, type '%s')",
-                    remaining,
-                    paiement.id,
-                    eleve.id,
-                    type_name,
-                )
-
-            # Éviter qu'une relation OneToOne mise en cache masque les cumuls sauvés.
-            eleve._state.fields_cache.pop('echeancier', None)
-            _auto_validate_echeancier_for_eleve(
-                eleve,
-                reference_date=paiement.date_paiement,
+            ech = _echeancier_for_payment(paiement, for_update=True)
+        if not ech:
+            raise ValidationError(
+                "Impossible de créer l'échéancier correspondant au paiement."
             )
-            allocation['non_affecte'] = remaining
-            return allocation
-    except Exception:
-        logging.getLogger(__name__).exception("Erreur allocation paiement -> échéancier")
-        return None
+
+        _align_enrollment_fee(eleve, ech, type_nom)
+        _auto_validate_echeancier_for_eleve(
+            eleve,
+            reference_date=paiement.date_paiement,
+            preserve_recorded=False,
+            annee_scolaire=annee_scolaire,
+            strict=True,
+        )
 
 def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaiement" = None):
     """Compatibilité avec les anciens tests et appels internes."""
-    return _allocate_payment_to_echeancier(paiement)
+    _allocate_payment_to_echeancier(paiement)
+    echeancier = _echeancier_for_payment(paiement) or echeancier
+    return get_payment_allocation(paiement, echeancier) if echeancier else None
 
 
-def _sum_validated_payments_and_remises(eleve):
+def _sum_validated_payments_and_remises(eleve, annee_scolaire):
     """Retourne (paiements_valides, remises_valides) sans double comptage SQL."""
     paiement_total = (
         Paiement.objects
-        .filter(eleve=eleve, statut='VALIDE')
+        .filter(
+            eleve=eleve,
+            annee_scolaire=annee_scolaire,
+            statut='VALIDE',
+        )
         .aggregate(total=Sum('montant'))
         .get('total') or 0
     )
     remise_total = (
         PaiementRemise.objects
-        .filter(paiement__eleve=eleve, paiement__statut='VALIDE')
+        .filter(
+            paiement__eleve=eleve,
+            paiement__annee_scolaire=annee_scolaire,
+            paiement__statut='VALIDE',
+        )
         .aggregate(total=Sum('montant_remise'))
         .get('total') or 0
     )
@@ -502,6 +800,9 @@ def _sum_validated_payments_and_remises(eleve):
 def _auto_validate_echeancier_for_eleve(
     eleve: "Eleve",
     reference_date=None,
+    preserve_recorded=True,
+    annee_scolaire=None,
+    strict=False,
 ) -> None:
     """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
 
@@ -519,9 +820,7 @@ def _auto_validate_echeancier_for_eleve(
     """
     try:
         # Récupérer l'échéancier (sans exception si absent)
-        echeancier = getattr(eleve, 'echeancier', None)
-        if echeancier is None:
-            echeancier = EcheancierPaiement.objects.filter(eleve=eleve).first()
+        echeancier = _echeancier_for_eleve(eleve, annee_scolaire)
         if not echeancier:
             return
 
@@ -532,76 +831,93 @@ def _auto_validate_echeancier_for_eleve(
                        + (echeancier.tranche_3_due or 0))
 
         # Paiements validés et remises appliquées sur des paiements
-        sum_montant, sum_remises = _sum_validated_payments_and_remises(eleve)
+        sum_montant, sum_remises = _sum_validated_payments_and_remises(
+            eleve, echeancier.annee_scolaire
+        )
 
-        couverture = max(0, sum_montant + sum_remises)
-
-        # Déterminer le nouveau statut avec gestion du retard. Une échéance
-        # devient en retard le lendemain de sa date, pas le jour même.
+        recorded_cash = max(
+            0,
+            int(echeancier.frais_inscription_paye or 0)
+            + int(echeancier.tranche_1_payee or 0)
+            + int(echeancier.tranche_2_payee or 0)
+            + int(echeancier.tranche_3_payee or 0),
+        )
+        # Conserver les encaissements saisis/importés manuellement lorsqu'ils
+        # ne disposent pas d'un objet Paiement correspondant.
+        cash_to_allocate = max(sum_montant, recorded_cash) if preserve_recorded else sum_montant
+        # Déterminer le nouveau statut avec gestion du retard
+        # Un retard commence le lendemain de l'échéance, jamais le jour même.
         from django.utils import timezone as _tz
-        date_statut = reference_date or (
+        today = reference_date or (
             _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
         )
-        exigible = 0
-        if echeancier.date_echeance_inscription and echeancier.date_echeance_inscription < date_statut:
-            exigible += int(echeancier.frais_inscription_du or 0)
-        if echeancier.date_echeance_tranche_1 and echeancier.date_echeance_tranche_1 < date_statut:
-            exigible += int(echeancier.tranche_1_due or 0)
-        if echeancier.date_echeance_tranche_2 and echeancier.date_echeance_tranche_2 < date_statut:
-            exigible += int(echeancier.tranche_2_due or 0)
-        if echeancier.date_echeance_tranche_3 and echeancier.date_echeance_tranche_3 < date_statut:
-            exigible += int(echeancier.tranche_3_due or 0)
+        # Les champs *_paye représentent uniquement les encaissements réels.
+        # Les remises participent au statut mais ne deviennent pas un encaissement.
+        cash_allocation, cash_paid, _ = allocate_amount_sequentially(
+            echeancier,
+            cash_to_allocate,
+            initial_paid={
+                key: Decimal('0')
+                for key, _due_field, _paid_field in ALLOCATION_COMPONENTS
+            },
+        )
+        discounts = (
+            PaiementRemise.objects
+            .filter(
+                paiement__eleve=eleve,
+                paiement__annee_scolaire=echeancier.annee_scolaire,
+                paiement__statut='VALIDE',
+            )
+            .select_related('paiement')
+            .order_by('paiement__date_paiement', 'paiement_id', 'id')
+        )
+        balances_after_cash = {
+            key: max(
+                Decimal('0'),
+                Decimal(str(getattr(echeancier, due_field, 0) or 0))
+                - cash_paid[key],
+            )
+            for key, due_field, _paid_field in ALLOCATION_COMPONENTS
+        }
+        discount_allocation, _ = allocate_discounts(
+            echeancier, discounts, balances=balances_after_cash
+        )
+        couverture = sum(cash_allocation.values(), Decimal('0')) + sum(
+            discount_allocation.values(), Decimal('0')
+        )
 
-        # Allocation conservatrice sur les tranches SANS jamais réduire l'existant
-        # 1) total déjà indiqué comme payé dans l'échéancier
-        old_insc = int(echeancier.frais_inscription_paye or 0)
-        old_t1 = int(echeancier.tranche_1_payee or 0)
-        old_t2 = int(echeancier.tranche_2_payee or 0)
-        old_t3 = int(echeancier.tranche_3_payee or 0)
-        current_total_paid = max(0, old_insc + old_t1 + old_t2 + old_t3)
-
-        # 2) Les champs *_paye représentent uniquement les encaissements réels.
-        # Les remises participent à la couverture et au statut, mais ne doivent
-        # pas être enregistrées une seconde fois comme des montants encaissés.
-        increment = max(0, sum_montant - current_total_paid)
-        remaining = increment
-
-        def _alloc(due: int, paid: int, remaining_local: int):
-            due_i = int(due or 0)
-            paid_i = int(paid or 0)
-            room = max(0, due_i - paid_i)
-            take = min(room, max(0, int(remaining_local)))
-            return paid_i + take, remaining_local - take
-
+        components = (
+            ('inscription', echeancier.frais_inscription_du, echeancier.date_echeance_inscription),
+            ('tranche_1', echeancier.tranche_1_due, echeancier.date_echeance_tranche_1),
+            ('tranche_2', echeancier.tranche_2_due, echeancier.date_echeance_tranche_2),
+            ('tranche_3', echeancier.tranche_3_due, echeancier.date_echeance_tranche_3),
+        )
+        exigible = Decimal('0')
+        exigible_couvert = Decimal('0')
+        for key, amount_due, due_date in components:
+            if due_date and due_date < today:
+                exigible += Decimal(str(amount_due or 0))
+                exigible_couvert += cash_allocation[key] + discount_allocation[key]
+        paid_fields = {
+            "frais_inscription_paye": cash_paid["inscription"],
+            "tranche_1_payee": cash_paid["tranche_1"],
+            "tranche_2_payee": cash_paid["tranche_2"],
+            "tranche_3_payee": cash_paid["tranche_3"],
+        }
         changed = False
-        if remaining > 0:
-            # Ordre: inscription -> T1 -> T2 -> T3
-            new_insc, remaining = _alloc(echeancier.frais_inscription_du, old_insc, remaining)
-            new_t1, remaining = _alloc(echeancier.tranche_1_due, old_t1, remaining)
-            new_t2, remaining = _alloc(echeancier.tranche_2_due, old_t2, remaining)
-            new_t3, remaining = _alloc(echeancier.tranche_3_due, old_t3, remaining)
-
-            if new_insc != old_insc:
-                echeancier.frais_inscription_paye = new_insc
-                changed = True
-            if new_t1 != old_t1:
-                echeancier.tranche_1_payee = new_t1
-                changed = True
-            if new_t2 != old_t2:
-                echeancier.tranche_2_payee = new_t2
-                changed = True
-            if new_t3 != old_t3:
-                echeancier.tranche_3_payee = new_t3
+        for field_name, value in paid_fields.items():
+            if Decimal(str(getattr(echeancier, field_name, 0) or 0)) != value:
+                setattr(echeancier, field_name, value)
                 changed = True
 
         # Somme payée effective bornée au total dû
-        paye_effectif = min(couverture, total_du)
+        paye_effectif = min(couverture, Decimal(total_du))
 
         if total_du <= 0:
             new_statut = 'PAYE_COMPLET'
         elif paye_effectif >= total_du:
             new_statut = 'PAYE_COMPLET'
-        elif exigible > 0 and paye_effectif < exigible:
+        elif exigible > 0 and exigible_couvert < exigible:
             new_statut = 'EN_RETARD'
         elif paye_effectif <= 0:
             new_statut = 'A_PAYER'
@@ -616,7 +932,8 @@ def _auto_validate_echeancier_for_eleve(
         if changed:
             echeancier.save()
     except Exception:
-        # Ne jamais bloquer l'impression du reçu à cause de cette étape
+        if strict:
+            raise
         logging.getLogger(__name__).exception("Erreur lors de la validation automatique de l'échéancier")
 
 
@@ -920,7 +1237,13 @@ def tableau_bord_paiements(request):
         )
     )
     remises_expr = Coalesce(
-        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=Q(
+                eleve__paiements__statut='VALIDE',
+                eleve__paiements__annee_scolaire=F('annee_scolaire'),
+            ),
+        ),
         Value(0),
         output_field=DecimalField(max_digits=10, decimal_places=0),
     )
@@ -935,7 +1258,10 @@ def tableau_bord_paiements(request):
         EcheancierPaiement.objects
         .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
         .annotate(retard_db=retard_expr)
-        .filter(retard_db__gt=0)
+        .filter(
+            retard_db__gt=0,
+            annee_scolaire=F('eleve__classe__annee_scolaire'),
+        )
     )
     eleves_en_retard = filter_by_user_school(eleves_en_retard, request.user, 'eleve__classe__ecole').order_by('-retard_db')[:10]
 
@@ -946,7 +1272,13 @@ def tableau_bord_paiements(request):
         .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
         .annotate(
             remises_valides=Coalesce(
-                Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+                Sum(
+                    'eleve__paiements__remises__montant_remise',
+                    filter=Q(
+                        eleve__paiements__statut='VALIDE',
+                        eleve__paiements__annee_scolaire=F('annee_scolaire'),
+                    ),
+                ),
                 Value(0),
                 output_field=DecimalField(max_digits=12, decimal_places=0),
             )
@@ -954,7 +1286,7 @@ def tableau_bord_paiements(request):
     )
     echeanciers_direction_qs = filter_by_user_school(echeanciers_direction_qs, request.user, 'eleve__classe__ecole')
     if annee_active:
-        echeanciers_direction_qs = echeanciers_direction_qs.filter(eleve__classe__annee_scolaire=annee_active)
+        echeanciers_direction_qs = echeanciers_direction_qs.filter(annee_scolaire=annee_active)
 
     finance_direction = {
         'annee_active': annee_active or '',
@@ -1125,10 +1457,10 @@ def liste_paiements(request):
 
     # Filtre par année scolaire (via la classe de l'élève)
     if annee_filtre:
-        qs = qs.filter(eleve__classe__annee_scolaire=annee_filtre)
+        qs = qs.filter(annee_scolaire=annee_filtre)
     elif annee_active:
         # Par défaut, montrer uniquement l'année active
-        qs = qs.filter(eleve__classe__annee_scolaire=annee_active)
+        qs = qs.filter(annee_scolaire=annee_active)
 
     # Filtre recherche optimisé
     if q:
@@ -1176,9 +1508,27 @@ def liste_paiements(request):
                      + F('tranche_2_payee') + F('tranche_3_payee'))
         du_total = (F('frais_inscription_du') + F('tranche_1_due')
                     + F('tranche_2_due') + F('tranche_3_due'))
-        eche_qs = EcheancierPaiement.objects.annotate(
-            _retard=ExpressionWrapper(exig - paye_eche, output_field=DecimalField(max_digits=12, decimal_places=0)),
-            _reste=ExpressionWrapper(du_total - paye_eche, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        eche_qs = EcheancierPaiement.objects
+        situation_year = annee_filtre or annee_active
+        if situation_year:
+            eche_qs = eche_qs.filter(annee_scolaire=situation_year)
+        else:
+            eche_qs = eche_qs.filter(annee_scolaire=F('eleve__classe__annee_scolaire'))
+        eche_qs = eche_qs.annotate(
+            _remises=Coalesce(
+                Sum(
+                    'eleve__paiements__remises__montant_remise',
+                    filter=Q(
+                        eleve__paiements__statut='VALIDE',
+                        eleve__paiements__annee_scolaire=F('annee_scolaire'),
+                    ),
+                ),
+                Value(0),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
+        ).annotate(
+            _retard=ExpressionWrapper(exig - paye_eche - F('_remises'), output_field=DecimalField(max_digits=12, decimal_places=0)),
+            _reste=ExpressionWrapper(du_total - paye_eche - F('_remises'), output_field=DecimalField(max_digits=12, decimal_places=0)),
         )
         if situation == 'retard':          # en retard (échéance dépassée non soldée)
             eche_qs = eche_qs.filter(_retard__gt=0)
@@ -1229,7 +1579,10 @@ def liste_paiements(request):
     elif annee_active:
         eleves_actifs_qs = eleves_actifs_qs.filter(classe__annee_scolaire=annee_active)
     eleves_actifs_count = eleves_actifs_qs.count()
-    eche_actifs_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_actifs_qs)
+    eche_actifs_qs = EcheancierPaiement.objects.filter(
+        eleve__in=eleves_actifs_qs,
+        annee_scolaire=F('eleve__classe__annee_scolaire'),
+    )
     reste_a_payer_agg = eche_actifs_qs.aggregate(
         total_du=Coalesce(
             Sum(
@@ -1256,7 +1609,14 @@ def liste_paiements(request):
     )
     total_du_actifs = int(reste_a_payer_agg.get('total_du') or 0)
     total_paye_actifs = int(reste_a_payer_agg.get('total_paye') or 0)
-    reste_a_payer = max(total_du_actifs - total_paye_actifs, 0)
+    remises_actifs = int(
+        PaiementRemise.objects.filter(
+            paiement__eleve__in=eleves_actifs_qs,
+            paiement__statut='VALIDE',
+            paiement__annee_scolaire=F('paiement__eleve__classe__annee_scolaire'),
+        ).aggregate(total=Sum('montant_remise')).get('total') or 0
+    )
+    reste_a_payer = max(total_du_actifs - total_paye_actifs - remises_actifs, 0)
 
     # Calculs supplémentaires: Dû scolarité net après remises + frais d'inscription (réels depuis l'échéancier)
     eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').all()
@@ -1272,7 +1632,10 @@ def liste_paiements(request):
     # Toujours compter les élèves restreints à l'école de l'utilisateur
     eleves_count = eleves_qs.count()
 
-    eche_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_qs)
+    eche_qs = EcheancierPaiement.objects.filter(
+        eleve__in=eleves_qs,
+        annee_scolaire=F('eleve__classe__annee_scolaire'),
+    )
     dues_sco_expr = (
         Coalesce(
             F('tranche_1_due'),
@@ -1297,6 +1660,7 @@ def liste_paiements(request):
     remises_qs = PaiementRemise.objects.filter(
         paiement__eleve__in=eleves_qs,
         paiement__statut='VALIDE',
+        paiement__annee_scolaire=F('paiement__eleve__classe__annee_scolaire'),
     )
     remises_total = int(
         remises_qs.aggregate(
@@ -1496,7 +1860,7 @@ def export_recap_par_classe_excel(request):
     q = request.GET.get('q', '').strip()
     eche_qs = EcheancierPaiement.objects.select_related(
         'eleve', 'eleve__classe', 'eleve__classe__ecole'
-    )
+    ).filter(annee_scolaire=F('eleve__classe__annee_scolaire'))
     eche_qs = filter_by_user_school(eche_qs, request.user, 'eleve__classe__ecole')
     if q:
         eche_qs = eche_qs.filter(
@@ -1511,7 +1875,9 @@ def export_recap_par_classe_excel(request):
     eleve_ids = [echeancier.eleve_id for echeancier in echeanciers]
 
     remises_qs = PaiementRemise.objects.filter(
-        paiement__statut='VALIDE', paiement__eleve_id__in=eleve_ids
+        paiement__statut='VALIDE',
+        paiement__eleve_id__in=eleve_ids,
+        paiement__annee_scolaire=F('paiement__eleve__classe__annee_scolaire'),
     )
     remises_qs = filter_by_user_school(
         remises_qs, request.user, 'paiement__eleve__classe__ecole'
@@ -1677,6 +2043,7 @@ def ajouter_paiement(request, eleve_id:int=None):
         if form.is_valid():
             # Pré-valider la cohérence métier avant d'enregistrer
             paiement: Paiement = form.save(commit=False)
+            paiement.annee_scolaire = _school_year_for_eleve(paiement.eleve)
 
             # Vérifier que l'élève du paiement est bien dans l'école de l'utilisateur (sauf admin)
             if not user_is_admin(request.user):
@@ -1700,6 +2067,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     paiement.eleve,
                     created_by=request.user if request.user.is_authenticated else None,
                     registration_kind=type_plan['registration_kind'],
+                    annee_scolaire=paiement.annee_scolaire,
                 )
             except Exception:
                 ech = None
@@ -2160,13 +2528,15 @@ def ajouter_paiement(request, eleve_id:int=None):
                 total_du = 0
 
             try:
-                # Ne compter que les paiements VALIDE pour le plafond global afin
-                # d'éviter de bloquer des saisies lorsque des paiements sont encore EN_ATTENTE.
-                # Les contrôles de sur-paiement par tranche/groupes ci-dessus empêchent déjà
-                # les excès au niveau détaillé.
+                # Réserver aussi les paiements EN_ATTENTE. Deux encaissements en
+                # attente ne doivent pas pouvoir dépasser ensemble la dette annuelle.
                 aggs = (
                     Paiement.objects
-                    .filter(eleve=paiement.eleve, statut='VALIDE')
+                    .filter(
+                        eleve=paiement.eleve,
+                        annee_scolaire=paiement.annee_scolaire,
+                        statut__in=('EN_ATTENTE', 'VALIDE'),
+                    )
                     .aggregate(sum_montant=Sum('montant'))
                 )
                 deja_saisi = int(aggs.get('sum_montant') or 0)
@@ -2175,9 +2545,13 @@ def ajouter_paiement(request, eleve_id:int=None):
 
             try:
                 remises_valides = (
-                    Paiement.objects
-                    .filter(eleve=paiement.eleve, statut='VALIDE')
-                    .aggregate(total=Sum('remises__montant_remise'))
+                    PaiementRemise.objects
+                    .filter(
+                        paiement__eleve=paiement.eleve,
+                        paiement__annee_scolaire=paiement.annee_scolaire,
+                        paiement__statut__in=('EN_ATTENTE', 'VALIDE'),
+                    )
+                    .aggregate(total=Sum('montant_remise'))
                     .get('total') or 0
                 )
                 remises_valides = int(remises_valides)
@@ -2212,7 +2586,10 @@ def ajouter_paiement(request, eleve_id:int=None):
                 paiement.save()
                 # Auto-création de l'échéancier s'il n'existe pas, puis synchro/validation
                 try:
-                    _auto_validate_echeancier_for_eleve(paiement.eleve)
+                    _auto_validate_echeancier_for_eleve(
+                        paiement.eleve,
+                        annee_scolaire=paiement.annee_scolaire,
+                    )
                 except Exception:
                     logging.getLogger(__name__).exception("Auto-validation échéancier après enregistrement paiement")
             # Notifications: reçu paiement (WhatsApp + SMS) et, si inscription, confirmation d'inscription
@@ -2243,6 +2620,99 @@ def ajouter_paiement(request, eleve_id:int=None):
     }
     return render(request, 'paiements/form_paiement.html', context)
 
+def _assert_payment_fits_annual_balance(paiement):
+    """Verrouille l'échéancier et refuse toute couverture annuelle excessive."""
+    echeancier = _echeancier_for_payment(paiement, for_update=True)
+    if not echeancier:
+        raise ValidationError(
+            "Aucun échéancier ne correspond à l'année scolaire du paiement."
+        )
+    autres_paiements = (
+        Paiement.objects.filter(
+            eleve=paiement.eleve,
+            annee_scolaire=paiement.annee_scolaire,
+            statut='VALIDE',
+        )
+        .exclude(pk=paiement.pk)
+        .aggregate(total=Sum('montant'))['total']
+        or Decimal('0')
+    )
+    remises_couvertes = (
+        PaiementRemise.objects.filter(
+            paiement__eleve=paiement.eleve,
+            paiement__annee_scolaire=paiement.annee_scolaire,
+        )
+        .filter(Q(paiement__statut='VALIDE') | Q(paiement_id=paiement.pk))
+        .aggregate(total=Sum('montant_remise'))['total']
+        or Decimal('0')
+    )
+    total_du = Decimal(str(echeancier.total_du or 0))
+    couverture_apres = (
+        Decimal(str(autres_paiements))
+        + Decimal(str(paiement.montant or 0))
+        + Decimal(str(remises_couvertes))
+    )
+    if couverture_apres > total_du:
+        maximum = max(
+            Decimal('0'),
+            total_du - Decimal(str(autres_paiements)) - Decimal(str(remises_couvertes)),
+        )
+        raise ValidationError(
+            "Opération impossible : le paiement et les remises dépasseraient "
+            f"le solde de l'année {paiement.annee_scolaire}. "
+            f"Montant maximum autorisé : {maximum:,.0f} GNF."
+        )
+    return echeancier
+
+
+def _valider_paiement_impl(paiement: "Paiement", user) -> None:
+    """Marque ``paiement`` comme VALIDE, l'alloue à l'échéancier de l'élève puis
+    synchronise le statut de cet échéancier (incl. EN_RETARD, PAYE_COMPLET...).
+
+    Logique pure, réutilisée par la vue `valider_paiement` (validation manuelle)
+    et par `ajouter_paiement` (validation automatique enchaînée après l'ajout,
+    dans le flux d'inscription). N'envoie AUCUNE notification et ne vérifie
+    AUCUNE permission — à la charge de l'appelant.
+    """
+    with transaction.atomic():
+        paiement = (
+            Paiement.objects.select_for_update()
+            .select_related('eleve', 'eleve__classe', 'type_paiement')
+            .get(pk=paiement.pk)
+        )
+        if paiement.statut == 'VALIDE':
+            raise ValidationError("Ce paiement est déjà validé.")
+        if paiement.statut != 'EN_ATTENTE':
+            raise ValidationError(
+                "Seul un paiement en attente peut être validé."
+            )
+        ensure_echeancier_for_eleve(
+            paiement.eleve,
+            created_by=user if getattr(user, 'is_authenticated', False) else None,
+            annee_scolaire=paiement.annee_scolaire,
+            prefer_reinscription=(
+                _enrollment_preference_from_type(paiement.type_paiement.nom) is True
+            ),
+        )
+        _assert_payment_fits_annual_balance(paiement)
+
+        paiement.statut = 'VALIDE'
+        try:
+            paiement.date_validation = timezone.now()
+        except Exception:
+            from django.utils import timezone as _tz
+            paiement.date_validation = _tz.now()
+        paiement.valide_par = user
+        try:
+            paiement.date_modification = timezone.now()
+        except Exception:
+            pass
+        paiement.save()
+
+        # Toute erreur d'allocation remonte et annule aussi le statut VALIDE.
+        _allocate_payment_to_echeancier(paiement)
+
+
 @login_required
 @require_POST
 @require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
@@ -2269,67 +2739,20 @@ def valider_paiement(request, paiement_id:int):
         messages.info(request, "Ce paiement est déjà validé.")
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
-    with transaction.atomic():
-        # Verrouiller et recalculer le plafond au moment de la validation. Deux
-        # paiements en attente peuvent avoir été saisis séparément; le second ne
-        # doit jamais dépasser le solde disponible après la dernière tranche.
-        paiement = (
-            Paiement.objects
-            .select_for_update()
-            .select_related('type_paiement', 'eleve')
-            .get(pk=paiement.pk)
+    try:
+        _valider_paiement_impl(paiement, request.user)
+    except ValidationError as exc:
+        messages.error(request, ' '.join(exc.messages))
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Validation atomique du paiement %s échouée", paiement.id
         )
-        if paiement.statut == 'VALIDE':
-            messages.info(request, "Ce paiement est déjà validé.")
-            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
-        ensure_echeancier_for_eleve(
-            paiement.eleve,
-            created_by=request.user if request.user.is_authenticated else None,
-            registration_kind=registration_kind_for_type(paiement.type_paiement),
+        messages.error(
+            request,
+            "La validation a échoué. Aucune donnée n'a été modifiée.",
         )
-        echeancier = EcheancierPaiement.objects.select_for_update().filter(eleve=paiement.eleve).first()
-        if echeancier:
-            total_du = int(echeancier.total_du or 0)
-            montant_valide, remises_validees = _sum_validated_payments_and_remises(paiement.eleve)
-            remise_courante = int(
-                paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-            )
-            plafond_paiement = max(
-                0,
-                total_du - montant_valide - remises_validees - remise_courante,
-            )
-            if int(paiement.montant or 0) > plafond_paiement:
-                messages.error(
-                    request,
-                    f"Validation impossible : le solde disponible est de {plafond_paiement:,} GNF.",
-                )
-                return redirect('paiements:detail_paiement', paiement_id=paiement.id)
-
-        paiement.statut = 'VALIDE'
-        try:
-            paiement.date_validation = timezone.now()
-        except Exception:
-            from django.utils import timezone as _tz
-            paiement.date_validation = _tz.now()
-        paiement.valide_par = request.user
-        try:
-            paiement.date_modification = timezone.now()
-        except Exception:
-            pass
-        paiement.save()
-
-        # Allocation intelligente à l'échéancier
-        try:
-            _allocate_payment_to_echeancier(paiement)
-        except Exception:
-            logging.getLogger(__name__).exception("Erreur lors de l'allocation du paiement à l'échéancier")
-
-        # S'assurer que l'échéancier existe et synchroniser le statut (incl. EN_RETARD)
-        try:
-            ensure_echeancier_for_eleve(paiement.eleve, created_by=request.user if request.user.is_authenticated else None)
-            _auto_validate_echeancier_for_eleve(paiement.eleve)
-        except Exception:
-            logging.getLogger(__name__).exception("Erreur ensure/auto-validate échéancier après validation du paiement")
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
     # Envoyer le reçu de paiement après validation
     try:
@@ -2453,7 +2876,13 @@ def envoyer_notifs_retards(request):
         )
     )
     remises_expr = Coalesce(
-        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=Q(
+                eleve__paiements__statut='VALIDE',
+                eleve__paiements__annee_scolaire=F('annee_scolaire'),
+            ),
+        ),
         Value(0),
         output_field=DecimalField(max_digits=10, decimal_places=0),
     )
@@ -2467,7 +2896,10 @@ def envoyer_notifs_retards(request):
     qs = (
         EcheancierPaiement.objects.select_related('eleve', 'eleve__classe')
         .annotate(retard=retard_expr)
-        .filter(retard__gt=0)
+        .filter(
+            retard__gt=0,
+            annee_scolaire=F('eleve__classe__annee_scolaire'),
+        )
     )
     qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     envoyes = 0
@@ -2586,7 +3018,10 @@ def echeancier_eleve(request, eleve_id:int):
     paiements = (
         Paiement.objects
         .select_related('type_paiement', 'mode_paiement')
-        .filter(eleve=eleve)
+        .filter(
+            eleve=eleve,
+            annee_scolaire=getattr(echeancier, 'annee_scolaire', _school_year_for_eleve(eleve)),
+        )
         .order_by('-date_paiement', '-date_creation')
     )
 
@@ -2933,8 +3368,12 @@ def generer_recu_pdf(request, paiement_id:int):
                 paiement.eleve,
                 created_by=getattr(paiement, 'cree_par', None),
                 registration_kind=registration_kind_for_type(paiement.type_paiement),
+                annee_scolaire=paiement.annee_scolaire,
             )
-            _auto_validate_echeancier_for_eleve(paiement.eleve)
+            _auto_validate_echeancier_for_eleve(
+                paiement.eleve,
+                annee_scolaire=paiement.annee_scolaire,
+            )
     except Exception:
         logging.getLogger(__name__).exception("Validation automatique de l'échéancier avant reçu échouée")
 
@@ -2953,12 +3392,26 @@ def generer_recu_pdf(request, paiement_id:int):
     except Exception:
         pass
 
-    # Déterminer le libellé avec le même parseur que l'allocation.
-    label_insc = (
-        "Réinscription"
-        if registration_kind_for_type(paiement.type_paiement) == 'reinscription'
-        else "Inscription"
-    )
+    # Déterminer le libellé depuis la nature persistée sur l'échéancier.
+    try:
+        _type_nom = getattr(paiement.type_paiement, 'nom', '') or ''
+    except Exception:
+        _type_nom = ''
+    _echeancier_label = _echeancier_for_payment(paiement)
+    if _echeancier_label:
+        label_insc = (
+            "Réinscription"
+            if _echeancier_label.nature_frais == 'REINSCRIPTION'
+            else "Inscription"
+        )
+    else:
+        label_insc = (
+            "Réinscription"
+            if _enrollment_preference_for_eleve(
+                paiement.eleve, _type_nom, paiement.annee_scolaire
+            ) is True
+            else "Inscription"
+        )
 
     # Mise en page simple
     left = 40
@@ -3189,7 +3642,7 @@ def generer_recu_pdf(request, paiement_id:int):
             draw_line(f"Observations : {obs}")
     # Calculer le montant global annuel à payer
     try:
-        echeancier = getattr(paiement.eleve, 'echeancier', None)
+        echeancier = _echeancier_for_payment(paiement)
         if echeancier:
             montant_global_annuel = int(
                 (echeancier.frais_inscription_du or 0) +
@@ -3207,14 +3660,13 @@ def generer_recu_pdf(request, paiement_id:int):
         draw_line(f"Montant global annuel : {str(f'{montant_global_annuel:,}').replace(',', ' ')} GNF", bold=True)
         top -= 5  # Petit espace
     
-    # Afficher le montant payé
-    draw_line(f"Montant payé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
+    # L'encaissement et la remise sont deux composantes distinctes de la couverture.
+    draw_line(f"Montant encaissé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
 
     if remises_total and int(remises_total) > 0:
-        draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
-    # Montant net (jamais négatif)
-    montant_net = max(0, int(paiement.montant - (remises_total or 0)))
-    draw_line(f"Montant net payé : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
+        draw_line(f"Remise accordée : {str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
+    couverture_recu = max(0, int(paiement.montant + (remises_total or 0)))
+    draw_line(f"Dette couverte par ce reçu : {str(f'{couverture_recu:,}').replace(',', ' ')} GNF", bold=True)
 
     # Affectation réelle du paiement courant, reconstruite avec la même règle
     # séquentielle que celle utilisée lors de la validation.
@@ -3247,7 +3699,7 @@ def generer_recu_pdf(request, paiement_id:int):
 
     # Échéances (si disponibles sur l'échéancier de l'élève)
     try:
-        echeancier = getattr(paiement.eleve, 'echeancier', None)
+        echeancier = _echeancier_for_payment(paiement)
     except Exception:
         echeancier = None
     if echeancier:
@@ -3283,7 +3735,9 @@ def generer_recu_pdf(request, paiement_id:int):
                 total_du = 0
 
             try:
-                sum_montant, sum_remises = _sum_validated_payments_and_remises(paiement.eleve)
+                sum_montant, sum_remises = _sum_validated_payments_and_remises(
+                    paiement.eleve, paiement.annee_scolaire
+                )
             except Exception:
                 sum_montant = 0
                 sum_remises = 0
@@ -3688,6 +4142,7 @@ def liste_eleves_soldes(request):
             'eleve__paiements__remises__montant_remise',
             filter=(
                 Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__annee_scolaire=F('annee_scolaire')) &
                 Q(eleve__paiements__date_paiement__gte=periode_debut) &
                 Q(eleve__paiements__date_paiement__lte=periode_fin)
             ),
@@ -3926,6 +4381,7 @@ def eleves_soldes_simple(request):
             'eleve__paiements__remises__montant_remise',
             filter=(
                 Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__annee_scolaire=F('annee_scolaire')) &
                 Q(eleve__paiements__date_paiement__gte=periode_debut) &
                 Q(eleve__paiements__date_paiement__lte=periode_fin)
             ),
@@ -4126,7 +4582,22 @@ def appliquer_remise_paiement(request, paiement_id:int):
         messages.warning(request, "Seuls les paiements en attente peuvent recevoir des remises.")
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
-    ech = getattr(paiement.eleve, 'echeancier', None)
+    # Tranches de scolarité (1/2/3): montant dû restant et part de CE reçu qui les couvre.
+    # La remise ne porte jamais sur l'inscription/réinscription.
+    ech = None
+    try:
+        ech = _echeancier_for_payment(paiement)
+    except Exception:
+        ech = None
+    if ech is None:
+        try:
+            ech = ensure_echeancier_for_eleve(
+                paiement.eleve,
+                created_by=None,
+                annee_scolaire=paiement.annee_scolaire,
+            )
+        except Exception:
+            ech = None
 
     # Répartition de CE paiement (encore en attente) par poste, en cascade
     # inscription -> T1 -> T2 -> T3, à partir de l'état actuel de l'échéancier.
@@ -4265,6 +4736,49 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         montant_remise=montant_remise_pct,
                     )
                     created += 1
+
+                echeancier_verrouille = _echeancier_for_payment(
+                    paiement, for_update=True
+                )
+                if not echeancier_verrouille:
+                    transaction.set_rollback(True)
+                    messages.error(
+                        request,
+                        "Impossible d'appliquer la remise : échéancier annuel introuvable.",
+                    )
+                    return _retour_detail()
+
+                cash_reserve = (
+                    Paiement.objects.filter(
+                        eleve=paiement.eleve,
+                        annee_scolaire=paiement.annee_scolaire,
+                        statut__in=('EN_ATTENTE', 'VALIDE'),
+                    ).aggregate(total=Sum('montant'))['total']
+                    or Decimal('0')
+                )
+                discount_reserve = (
+                    PaiementRemise.objects.filter(
+                        paiement__eleve=paiement.eleve,
+                        paiement__annee_scolaire=paiement.annee_scolaire,
+                        paiement__statut__in=('EN_ATTENTE', 'VALIDE'),
+                    ).aggregate(total=Sum('montant_remise'))['total']
+                    or Decimal('0')
+                )
+                if (
+                    echeancier_verrouille.total_du > 0
+                    and cash_reserve + discount_reserve > echeancier_verrouille.total_du
+                ):
+                    transaction.set_rollback(True)
+                    disponible = max(
+                        Decimal('0'),
+                        echeancier_verrouille.total_du - cash_reserve,
+                    )
+                    messages.error(
+                        request,
+                        "Remise refusée : paiements et remises dépasseraient le "
+                        f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF.",
+                    )
+                    return _retour_detail()
             messages.success(request, f"Remises appliquées: {created}.")
             return redirect('paiements:detail_paiement', paiement_id=paiement.id)
         else:
@@ -4320,6 +4834,13 @@ def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):
         else:
             PaiementRemise.objects.filter(paiement=paiement).delete()
             messages.success(request, "Toutes les remises de ce paiement ont été supprimées.")
+        if paiement.statut == 'VALIDE':
+            _auto_validate_echeancier_for_eleve(
+                paiement.eleve,
+                preserve_recorded=False,
+                annee_scolaire=paiement.annee_scolaire,
+                strict=True,
+            )
     except Exception:
         messages.error(request, "Impossible d'annuler la remise.")
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
@@ -4399,7 +4920,13 @@ def rapport_retards(request):
         )
     )
     remises_expr = Coalesce(
-        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=Q(
+                eleve__paiements__statut='VALIDE',
+                eleve__paiements__annee_scolaire=F('annee_scolaire'),
+            ),
+        ),
         Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
     )
     remises_applicables = Least(remises_expr, exigible_expr)
@@ -4413,7 +4940,10 @@ def rapport_retards(request):
           .annotate(retard=retard_expr))
     # Sécurité: restreindre aux échéanciers de l'école de l'utilisateur
     qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
-    qs = qs.filter(retard__gt=0).order_by('-retard')
+    qs = qs.filter(
+        retard__gt=0,
+        annee_scolaire=F('eleve__classe__annee_scolaire'),
+    ).order_by('-retard')
 
     context = {'titre_page': 'Rapport des retards', 'items': qs}
     if _template_exists('rapports/liste_rapports.html'):
@@ -4562,6 +5092,60 @@ def generer_note_rappel_pdf(request, eleve_id):
     messages.success(request, f"Note de rappel générée pour {eleve.nom_complet}")
     
     return response
+
+
+def _echeanciers_impayes_utilisateur(user, classe=None, limite=None):
+    """Échéanciers non soldés visibles par l'utilisateur, remises incluses."""
+    echeanciers = (
+        EcheancierPaiement.objects
+        .select_related(
+            'eleve', 'eleve__classe', 'eleve__classe__ecole',
+            'eleve__responsable_principal',
+        )
+        .filter(
+            eleve__statut='ACTIF',
+            annee_scolaire=F('eleve__classe__annee_scolaire'),
+        )
+        .annotate(
+            remises_valides=Coalesce(
+                Sum(
+                    'eleve__paiements__remises__montant_remise',
+                    filter=Q(
+                        eleve__paiements__statut='VALIDE',
+                        eleve__paiements__annee_scolaire=F('annee_scolaire'),
+                    ),
+                    output_field=DecimalField(max_digits=12, decimal_places=0),
+                ),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            )
+        )
+    )
+    echeanciers = filter_by_user_school(
+        echeanciers, user, 'eleve__classe__ecole'
+    )
+    if classe is not None:
+        echeanciers = echeanciers.filter(eleve__classe=classe)
+    echeanciers = echeanciers.order_by(
+        'eleve__classe__nom', 'eleve__nom', 'eleve__prenom'
+    )
+    resultat = []
+    for echeancier in echeanciers:
+        total_du = Decimal(echeancier.total_du or 0)
+        couverture = min(
+            total_du,
+            Decimal(echeancier.total_paye or 0)
+            + Decimal(getattr(echeancier, 'remises_valides', 0) or 0),
+        )
+        reste = max(Decimal('0'), total_du - couverture)
+        if total_du <= 0 or reste <= 0:
+            continue
+        echeancier.couverture_calculee = couverture
+        echeancier.reste_calcule = reste
+        echeancier.pourcentage_calcule = int(couverture * 100 / total_du)
+        resultat.append(echeancier)
+        if limite and len(resultat) >= limite:
+            break
+    return resultat
 
 
 @login_required
