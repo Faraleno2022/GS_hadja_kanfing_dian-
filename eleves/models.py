@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from decimal import Decimal
 import unicodedata
+from ecole_moderne.validators import valider_annee_scolaire
 from synchronisation.mixins import SyncTrackedModel
 
 class Ecole(SyncTrackedModel):
@@ -113,7 +114,12 @@ class Classe(SyncTrackedModel):
         verbose_name="Code matricule",
         help_text="Préfixe utilisé pour les matricules (ex: PN3, CN7, L11SL)."
     )
-    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire", help_text="Format: 2024-2025")
+    annee_scolaire = models.CharField(
+        max_length=9,
+        validators=[valider_annee_scolaire],
+        verbose_name="Année scolaire",
+        help_text="Format: 2024-2025",
+    )
     capacite_max = models.PositiveIntegerField(default=30, verbose_name="Capacité maximale")
     
     class Meta:
@@ -325,7 +331,11 @@ class GrilleTarifaire(SyncTrackedModel):
     """Modèle pour les grilles tarifaires par école et niveau"""
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='grilles_tarifaires')
     niveau = models.CharField(max_length=20, choices=Classe.NIVEAUX_CHOICES, verbose_name="Niveau")
-    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    annee_scolaire = models.CharField(
+        max_length=9,
+        validators=[valider_annee_scolaire],
+        verbose_name="Année scolaire",
+    )
     
     # Frais d'inscription
     frais_inscription = models.DecimalField(

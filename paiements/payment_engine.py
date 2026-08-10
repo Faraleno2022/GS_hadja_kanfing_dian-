@@ -5,6 +5,7 @@ couverture de T2/T3 ne peut donc jamais solder l'inscription, la réinscription
 ou une tranche antérieure.
 """
 
+import logging
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -21,6 +22,8 @@ from .allocation import (
     replay_payment_allocations,
 )
 
+
+logger = logging.getLogger(__name__)
 
 ZERO = Decimal('0')
 TRANCHE_BUCKETS = {1: TRANCHE_1, 2: TRANCHE_2, 3: TRANCHE_3}
@@ -216,6 +219,29 @@ def paiements_valides_echeancier(echeancier, date_limite=None):
     return qs.order_by('date_validation', 'id')
 
 
+def paiements_annee_incoherente(echeancier, date_limite=None):
+    """Paiements validés tombant dans l'année de l'échéancier mais étiquetés autrement.
+
+    Sert de garde-fou : si l'échéancier porte « 2025-2027 » alors que les
+    paiements portent « 2025-2026 », l'appariement par année ne retient rien et
+    le solde affiché redevient le dû intégral. Plutôt que de laisser passer ce
+    zéro silencieux, on remonte les paiements concernés pour pouvoir alerter.
+    """
+    from .models import Paiement
+
+    debut, fin = school_year_bounds(echeancier.annee_scolaire)
+    if not debut or not fin:
+        return []
+    qs = Paiement.objects.filter(
+        eleve_id=echeancier.eleve_id,
+        statut='VALIDE',
+        date_paiement__range=(debut, fin),
+    ).exclude(annee_scolaire__in=('', echeancier.annee_scolaire))
+    if date_limite is not None:
+        qs = qs.filter(date_paiement__lte=date_limite)
+    return list(qs.order_by('date_paiement', 'id'))
+
+
 def _repartition_lien_remise(lien, echeancier):
     """Ventilation persistée d'une remise, avec repli pour les anciennes lignes."""
     total = max(ZERO, _decimal(lien.montant_remise))
@@ -296,6 +322,11 @@ def situation_echeancier(
         for bucket in dues
     }
     paiements = list(paiements_valides_echeancier(echeancier, date_limite=date_limite))
+    ecartes = (
+        paiements_annee_incoherente(echeancier, date_limite=date_limite)
+        if not paiements
+        else []
+    )
     if paiements:
         allocations, payes, non_alloues = replay_payment_allocations(
             paiements, dues_apres_remises
@@ -335,6 +366,17 @@ def situation_echeancier(
     total_encaisse = sum(payes.values(), ZERO)
     total_remises = sum(remises.values(), ZERO)
     total_couvert = sum(couverts.values(), ZERO)
+    if ecartes:
+        logger.warning(
+            "Échéancier %s (élève %s) en année %r : %d paiement(s) validé(s) de "
+            "la même période sont écartés car étiquetés %s. Le solde affiché "
+            "ignore ces encaissements — corriger l'année scolaire.",
+            echeancier.pk,
+            echeancier.eleve_id,
+            echeancier.annee_scolaire,
+            len(ecartes),
+            sorted({p.annee_scolaire for p in ecartes}),
+        )
     return {
         'dues': dues,
         'payes': payes,
@@ -352,6 +394,9 @@ def situation_echeancier(
         'retard_total': sum(retards.values(), ZERO),
         'non_alloue': sum(non_alloues.values(), ZERO),
         'allocations': allocations,
+        # Non vide = le solde ci-dessus est faux : des paiements de la période
+        # sont écartés par une incohérence d'année scolaire.
+        'paiements_ecartes_annee': ecartes,
     }
 
 

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from decimal import Decimal
+from ecole_moderne.validators import valider_annee_scolaire
 from eleves.models import Eleve
 from synchronisation.mixins import SyncTrackedModel
 
@@ -60,6 +61,7 @@ class Paiement(SyncTrackedModel):
         blank=True,
         default='',
         db_index=True,
+        validators=[valider_annee_scolaire],
         verbose_name="Année scolaire",
         help_text="Année comptable à laquelle ce paiement doit être affecté.",
     )
@@ -175,7 +177,11 @@ class EcheancierPaiement(SyncTrackedModel):
     ]
     
     eleve = models.OneToOneField(Eleve, on_delete=models.CASCADE, related_name='echeancier')
-    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+    annee_scolaire = models.CharField(
+        max_length=9,
+        validators=[valider_annee_scolaire],
+        verbose_name="Année scolaire",
+    )
     nature_frais = models.CharField(
         max_length=20,
         choices=NATURE_FRAIS_CHOICES,

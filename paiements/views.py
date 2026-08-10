@@ -132,15 +132,23 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
     except Exception:
         grille = None
 
-    # Préparer les champs
+    # Préparer les champs.
+    # L'année de l'échéancier vient TOUJOURS de la classe de l'élève (ou, à
+    # défaut, de la date du jour) : c'est la même source que celle utilisée par
+    # Paiement.save(), donc les deux ne peuvent plus diverger. La grille ne
+    # fournit que les montants. Elle est choisie par repli sur « la plus
+    # récente » quand aucune ne correspond à l'année de la classe : lui
+    # emprunter son année faisait porter à l'échéancier une année étrangère
+    # (ex. une grille saisie « 2025-2027 »), et le moteur d'allocation, qui
+    # apparie l'année du paiement et celle de l'échéancier, ne retenait plus
+    # aucun paiement — soldes et reçus affichaient alors le dû intégral.
+    annee_scol = annee_classe or annee_scolaire_def
     if grille:
-        annee_scol = grille.annee_scolaire
         fi = (grille.frais_reinscription or 0) if prefer_reinscription else (grille.frais_inscription or 0)
         t1 = grille.tranche_1 or 0
         t2 = grille.tranche_2 or 0
         t3 = grille.tranche_3 or 0
     else:
-        annee_scol = annee_classe or annee_scolaire_def
         fi = 0
         t1 = 0
         t2 = 0
@@ -2479,9 +2487,13 @@ def creer_echeancier(request, eleve_id:int):
             if grille:
                 messages.warning(request, f"Grille exacte introuvable. Utilisation de la plus récente: {grille.annee_scolaire}.")
 
+        # Même règle que dans ensure_echeancier_for_eleve : l'année vient de la
+        # classe, la grille ne fournit que les montants. Une grille retenue par
+        # repli peut porter une autre année, qui ne correspondrait alors plus à
+        # celle des paiements de l'élève.
+        initial['annee_scolaire'] = annee_classe or annee_scolaire_def
         if grille:
             initial.update({
-                'annee_scolaire': grille.annee_scolaire,
                 'frais_inscription_du': grille.frais_inscription,
                 'tranche_1_due': grille.tranche_1,
                 'tranche_2_due': grille.tranche_2,
