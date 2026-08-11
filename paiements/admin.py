@@ -21,9 +21,9 @@ class ModePaiementAdmin(admin.ModelAdmin):
 
 @admin.register(Paiement)
 class PaiementAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
-    list_display = ("numero_recu", "eleve", "type_paiement", "mode_paiement", "montant", "date_paiement", "statut")
+    list_display = ("numero_recu", "eleve", "annee_scolaire", "type_paiement", "mode_paiement", "montant", "date_paiement", "statut")
     search_fields = ("numero_recu", "eleve__nom", "eleve__prenom", "eleve__matricule")
-    list_filter = ("statut", "type_paiement", "mode_paiement")
+    list_filter = ("statut", "annee_scolaire", "type_paiement", "mode_paiement")
     list_select_related = ("eleve", "type_paiement", "mode_paiement")
     raw_id_fields = ("eleve",)
     date_hierarchy = "date_paiement"
