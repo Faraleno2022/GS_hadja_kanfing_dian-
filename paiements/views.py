@@ -2038,8 +2038,10 @@ def modifier_paiement(request, paiement_id: int):
         messages.error(request, "Vous n'avez pas l'autorisation de modifier un paiement.")
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
+    # 'annee_scolaire' n'est pas modifiable mais reste surveillée : le save()
+    # du modèle peut la recalculer, et cette bascule doit rester tracée.
     champs_suivis = [
-        'type_paiement', 'mode_paiement', 'montant',
+        'type_paiement', 'mode_paiement', 'montant', 'annee_scolaire',
         'date_paiement', 'reference_externe', 'observations', 'statut',
     ]
 

@@ -30,9 +30,11 @@
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle me-2"></i>
                     Élève : <strong>{{ paiement.eleve.nom_complet }}</strong>
-                    ({{ paiement.eleve.matricule }} — {{ paiement.eleve.classe.nom }}).
-                    L'élève d'un paiement ne peut pas être changé : en cas d'erreur d'élève,
-                    supprimez ce paiement et saisissez-en un nouveau.
+                    ({{ paiement.eleve.matricule }} — {{ paiement.eleve.classe.nom }}) —
+                    année scolaire <strong>{{ paiement.annee_scolaire }}</strong>.
+                    Ni l'élève ni l'année scolaire d'un paiement ne peuvent être changés :
+                    en cas d'erreur sur l'un des deux, supprimez ce paiement (il part à la
+                    corbeille) et saisissez-en un nouveau.
                 </div>
 
                 {% if paiement.statut == 'VALIDE' %}
