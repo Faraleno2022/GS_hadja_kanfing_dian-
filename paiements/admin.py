@@ -1,4 +1,7 @@
 from django.contrib import admin
+
+from administration.corbeille_admin import CorbeilleAdminMixin
+
 from .models import TypePaiement, ModePaiement, Paiement, RemiseReduction, EcheancierPaiement, TwilioInboundMessage, ConfigurationPaiement
 
 
@@ -17,25 +20,29 @@ class ModePaiementAdmin(admin.ModelAdmin):
 
 
 @admin.register(Paiement)
-class PaiementAdmin(admin.ModelAdmin):
+class PaiementAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ("numero_recu", "eleve", "type_paiement", "mode_paiement", "montant", "date_paiement", "statut")
     search_fields = ("numero_recu", "eleve__nom", "eleve__prenom", "eleve__matricule")
     list_filter = ("statut", "type_paiement", "mode_paiement")
+    list_select_related = ("eleve", "type_paiement", "mode_paiement")
+    raw_id_fields = ("eleve",)
     date_hierarchy = "date_paiement"
 
 
 @admin.register(RemiseReduction)
-class RemiseReductionAdmin(admin.ModelAdmin):
+class RemiseReductionAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ("nom", "type_remise", "valeur", "motif", "actif")
     search_fields = ("nom",)
     list_filter = ("type_remise", "motif", "actif")
 
 
 @admin.register(EcheancierPaiement)
-class EcheancierPaiementAdmin(admin.ModelAdmin):
+class EcheancierPaiementAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ("eleve", "annee_scolaire", "nature_frais", "statut", "total_du", "total_paye")
     list_filter = ("nature_frais", "statut", "annee_scolaire")
     search_fields = ("eleve__nom", "eleve__prenom", "eleve__matricule")
+    list_select_related = ("eleve",)
+    raw_id_fields = ("eleve",)
 
 
 @admin.register(TwilioInboundMessage)

@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'paiements:detail_paiement' paiement.id %}">{{ paiement.numero_recu }}</a></li>
+    <li class="breadcrumb-item active">Modifier</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div>
+        <a href="{% url 'paiements:detail_paiement' paiement.id %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Retour au paiement
+        </a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header bg-warning-subtle">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-pen me-2"></i>Corriger le paiement {{ paiement.numero_recu }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Élève : <strong>{{ paiement.eleve.nom_complet }}</strong>
+                    ({{ paiement.eleve.matricule }} — {{ paiement.eleve.classe.nom }}).
+                    L'élève d'un paiement ne peut pas être changé : en cas d'erreur d'élève,
+                    supprimez ce paiement et saisissez-en un nouveau.
+                </div>
+
+                {% if paiement.statut == 'VALIDE' %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Ce paiement est <strong>validé</strong>. Si vous corrigez le montant, il repassera
+                    en attente et devra être validé de nouveau.
+                </div>
+                {% endif %}
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="{{ form.type_paiement.id_for_label }}" class="form-label">Type de paiement</label>
+                            {{ form.type_paiement }}
+                            {% for error in form.type_paiement.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.mode_paiement.id_for_label }}" class="form-label">Mode de paiement</label>
+                            {{ form.mode_paiement }}
+                            {% for error in form.mode_paiement.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.montant.id_for_label }}" class="form-label">Montant (GNF)</label>
+                            {{ form.montant }}
+                            {% for error in form.montant.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-6">
+                            <label for="{{ form.date_paiement.id_for_label }}" class="form-label">Date de paiement</label>
+                            {{ form.date_paiement }}
+                            {% for error in form.date_paiement.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-12">
+                            <label for="{{ form.reference_externe.id_for_label }}" class="form-label">Référence externe</label>
+                            {{ form.reference_externe }}
+                            {% for error in form.reference_externe.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-12">
+                            <label for="{{ form.observations.id_for_label }}" class="form-label">Observations</label>
+                            {{ form.observations }}
+                            {% for error in form.observations.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-12">
+                            <label for="{{ form.motif_modification.id_for_label }}" class="form-label">
+                                Motif de la modification <span class="text-danger">*</span>
+                            </label>
+                            {{ form.motif_modification }}
+                            <div class="form-text">{{ form.motif_modification.help_text }}</div>
+                            {% for error in form.motif_modification.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{% url 'paiements:detail_paiement' paiement.id %}" class="btn btn-secondary">
+                            <i class="fas fa-times me-1"></i>Annuler
+                        </a>
+                        <button type="submit" class="btn btn-warning">
+                            <i class="fas fa-save me-1"></i>Enregistrer la correction
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-history me-2"></i>Corbeille mémoire — modifications
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                {% if historique_modifications %}
+                    <ul class="list-group list-group-flush">
+                        {% for entree in historique_modifications %}
+                            <li class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <strong>{{ entree.get_action_display }}</strong>
+                                    <small class="text-muted">{{ entree.date_modification|date:"d/m/Y H:i" }}</small>
+                                </div>
+                                <div class="small text-muted">
+                                    par {{ entree.utilisateur|default:"Système" }}
+                                </div>
+                                {% if entree.commentaire %}
+                                    <div class="small fst-italic">« {{ entree.commentaire }} »</div>
+                                {% endif %}
+                                {% for changement in entree.liste_changements %}
+                                    <div class="small">
+                                        <span class="badge bg-light text-dark">{{ changement.champ }}</span>
+                                        <span class="text-danger">{{ changement.avant|default:"—" }}</span>
+                                        <i class="fas fa-arrow-right mx-1 text-muted"></i>
+                                        <span class="text-success">{{ changement.apres|default:"—" }}</span>
+                                    </div>
+                                {% endfor %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="p-3 text-muted small">
+                        Aucune modification enregistrée pour ce paiement.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

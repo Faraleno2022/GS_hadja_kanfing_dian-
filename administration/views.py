@@ -556,6 +556,255 @@ def restaurer_element(request, log_id):
         })
 
 
+def peut_gerer_corbeille(user):
+    """Superutilisateurs et administrateurs d'école accèdent à la corbeille."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profil = getattr(user, 'profil', None)
+    return bool(profil and getattr(profil, 'role', None) == 'ADMIN')
+
+
+def _restreindre_a_l_ecole(queryset, user, champ='ecole_nom'):
+    """Limite un queryset de corbeille à l'école de l'utilisateur."""
+    if user.is_superuser:
+        return queryset
+    profil = getattr(user, 'profil', None)
+    ecole = getattr(profil, 'ecole', None) if profil else None
+    if ecole is None:
+        return queryset.none()
+    return queryset.filter(**{champ: ecole.nom})
+
+
+@login_required
+@user_passes_test(peut_gerer_corbeille, login_url='home')
+def corbeille_eleves(request):
+    """Liste les élèves placés dans la corbeille et permet de les restaurer."""
+    from .models import CorbeilleEleve
+
+    entrees = _restreindre_a_l_ecole(
+        CorbeilleEleve.objects.select_related('supprime_par', 'restaure_par'),
+        request.user,
+    )
+
+    recherche = (request.GET.get('q') or '').strip()
+    if recherche:
+        entrees = entrees.filter(
+            Q(matricule__icontains=recherche)
+            | Q(nom__icontains=recherche)
+            | Q(prenom__icontains=recherche)
+            | Q(classe_nom__icontains=recherche)
+        )
+
+    etat = request.GET.get('etat') or 'a_restaurer'
+    if etat == 'a_restaurer':
+        entrees = entrees.filter(restaure=False)
+    elif etat == 'restaures':
+        entrees = entrees.filter(restaure=True)
+
+    paginator = Paginator(entrees, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    base = _restreindre_a_l_ecole(CorbeilleEleve.objects.all(), request.user)
+    stats = {
+        'total': base.count(),
+        'a_restaurer': base.filter(restaure=False).count(),
+        'restaures': base.filter(restaure=True).count(),
+    }
+
+    return render(request, 'administration/corbeille_eleves.html', {
+        'titre_page': 'Corbeille des élèves',
+        'page_obj': page_obj,
+        'stats': stats,
+        'recherche': recherche,
+        'etat': etat,
+    })
+
+
+@login_required
+@user_passes_test(peut_gerer_corbeille, login_url='home')
+@require_POST
+@csrf_protect
+def restaurer_eleve_corbeille(request, corbeille_id):
+    """Restaure un élève archivé dans la corbeille."""
+    from .audit import restaurer_eleve
+    from .models import CorbeilleEleve
+
+    entrees = _restreindre_a_l_ecole(CorbeilleEleve.objects.all(), request.user)
+    entree = get_object_or_404(entrees, pk=corbeille_id)
+
+    try:
+        _, message = restaurer_eleve(entree, request=request)
+        messages.success(request, message)
+    except Exception as exc:
+        logger.exception("Erreur lors de la restauration de la corbeille %s", corbeille_id)
+        messages.error(request, f"Restauration impossible : {exc}")
+
+    return redirect('administration:corbeille_eleves')
+
+
+@login_required
+@user_passes_test(is_super_admin, login_url='admin:login')
+@require_POST
+@csrf_protect
+def purger_eleve_corbeille(request, corbeille_id):
+    """Supprime définitivement une entrée de la corbeille (superadmin)."""
+    from .models import CorbeilleEleve
+
+    entree = get_object_or_404(CorbeilleEleve, pk=corbeille_id)
+    libelle = str(entree)
+    log_admin_action(
+        'SUPPRESSION_DEFINITIVE',
+        f"Purge de la corbeille : {libelle}",
+        user=request.user,
+        ip_address=request.META.get('REMOTE_ADDR'),
+        details={'corbeille_id': corbeille_id, 'matricule': entree.matricule},
+    )
+    entree.delete()
+    messages.warning(request, f"« {libelle} » a été définitivement supprimé de la corbeille.")
+    return redirect('administration:corbeille_eleves')
+
+
+@login_required
+@user_passes_test(peut_gerer_corbeille, login_url='home')
+def corbeille_elements(request):
+    """Corbeille des paiements, échéanciers, abonnements et autres éléments."""
+    from .models import CorbeilleElement
+
+    entrees = _restreindre_a_l_ecole(
+        CorbeilleElement.objects.select_related('supprime_par', 'restaure_par'),
+        request.user,
+    )
+
+    recherche = (request.GET.get('q') or '').strip()
+    if recherche:
+        entrees = entrees.filter(
+            Q(objet_repr__icontains=recherche)
+            | Q(contexte__icontains=recherche)
+            | Q(motif__icontains=recherche)
+        )
+
+    type_objet = (request.GET.get('type') or '').strip()
+    if type_objet:
+        entrees = entrees.filter(model_name=type_objet)
+
+    etat = request.GET.get('etat') or 'a_restaurer'
+    if etat == 'a_restaurer':
+        entrees = entrees.filter(restaure=False)
+    elif etat == 'restaures':
+        entrees = entrees.filter(restaure=True)
+
+    paginator = Paginator(entrees, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    base = _restreindre_a_l_ecole(CorbeilleElement.objects.all(), request.user)
+    stats = {
+        'total': base.count(),
+        'a_restaurer': base.filter(restaure=False).count(),
+        'restaures': base.filter(restaure=True).count(),
+    }
+    types = base.values_list('model_name', flat=True).distinct().order_by('model_name')
+
+    return render(request, 'administration/corbeille_elements.html', {
+        'titre_page': 'Corbeille des éléments supprimés',
+        'page_obj': page_obj,
+        'stats': stats,
+        'recherche': recherche,
+        'etat': etat,
+        'type_objet': type_objet,
+        'types': types,
+    })
+
+
+@login_required
+@user_passes_test(peut_gerer_corbeille, login_url='home')
+@require_POST
+@csrf_protect
+def restaurer_element_corbeille(request, corbeille_id):
+    """Restaure un paiement, un échéancier ou un abonnement archivé."""
+    from .audit import restaurer_element
+    from .models import CorbeilleElement
+
+    entrees = _restreindre_a_l_ecole(CorbeilleElement.objects.all(), request.user)
+    entree = get_object_or_404(entrees, pk=corbeille_id)
+
+    try:
+        _, message = restaurer_element(entree, request=request)
+        messages.success(request, message)
+    except Exception as exc:
+        logger.exception("Erreur lors de la restauration de l'élément %s", corbeille_id)
+        messages.error(request, f"Restauration impossible : {exc}")
+
+    return redirect('administration:corbeille_elements')
+
+
+@login_required
+@user_passes_test(is_super_admin, login_url='admin:login')
+@require_POST
+@csrf_protect
+def purger_element_corbeille(request, corbeille_id):
+    """Supprime définitivement une entrée de la corbeille générique."""
+    from .models import CorbeilleElement
+
+    entree = get_object_or_404(CorbeilleElement, pk=corbeille_id)
+    libelle = str(entree)
+    log_admin_action(
+        'SUPPRESSION_DEFINITIVE',
+        f"Purge de la corbeille : {libelle}",
+        user=request.user,
+        ip_address=request.META.get('REMOTE_ADDR'),
+        details={'corbeille_id': corbeille_id, 'modele': entree.libelle_modele
+                 if hasattr(entree, 'libelle_modele') else entree.model_name},
+    )
+    entree.delete()
+    messages.warning(request, f"« {libelle} » a été définitivement supprimé de la corbeille.")
+    return redirect('administration:corbeille_elements')
+
+
+@login_required
+@user_passes_test(peut_gerer_corbeille, login_url='home')
+def journal_modifications(request):
+    """Corbeille mémoire : historique détaillé de toutes les modifications."""
+    from .models import JournalModification
+
+    entrees = JournalModification.objects.select_related('utilisateur')
+
+    recherche = (request.GET.get('q') or '').strip()
+    if recherche:
+        entrees = entrees.filter(
+            Q(objet_repr__icontains=recherche)
+            | Q(commentaire__icontains=recherche)
+            | Q(utilisateur__username__icontains=recherche)
+        )
+
+    modele = (request.GET.get('modele') or '').strip()
+    if modele:
+        entrees = entrees.filter(model_name=modele)
+
+    action = (request.GET.get('action') or '').strip()
+    if action:
+        entrees = entrees.filter(action=action)
+
+    paginator = Paginator(entrees, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    modeles = (
+        JournalModification.objects.values_list('model_name', flat=True)
+        .distinct().order_by('model_name')
+    )
+
+    return render(request, 'administration/journal_modifications.html', {
+        'titre_page': 'Corbeille mémoire des modifications',
+        'page_obj': page_obj,
+        'recherche': recherche,
+        'modele': modele,
+        'action': action,
+        'modeles': modeles,
+        'actions': JournalModification.ACTION_CHOICES,
+    })
+
+
 @login_required
 @user_passes_test(is_super_admin, login_url='admin:login')
 @require_POST

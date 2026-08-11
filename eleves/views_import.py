@@ -60,6 +60,130 @@ def importer_eleves(request):
     return render(request, 'eleves/importer_eleves.html', context)
 
 
+def _ecole_utilisateur(request):
+    """École de l'utilisateur (None pour un superutilisateur multi-écoles)."""
+    if request.user.is_superuser:
+        return None
+    from utilisateurs.utils import user_school
+    return user_school(request.user)
+
+
+def _resoudre_ecole_ligne(nom_ecole, ecole_utilisateur, cache):
+    """Trouve l'école d'une ligne d'import à partir de son nom.
+
+    Un utilisateur rattaché à une école importe toujours dans la sienne ;
+    seul un superutilisateur peut répartir sur plusieurs écoles.
+    """
+    from eleves.models import Ecole
+
+    if ecole_utilisateur is not None:
+        return ecole_utilisateur
+
+    nom = (nom_ecole or '').strip()
+    if not nom:
+        return Ecole.objects.order_by('id').first()
+    if nom in cache:
+        return cache[nom]
+
+    ecole = Ecole.objects.filter(nom__iexact=nom).first() or Ecole.objects.filter(nom__icontains=nom).first()
+    cache[nom] = ecole
+    return ecole
+
+
+def _importer_multi_classes(request, df, generer_matricules):
+    """Importe un fichier contenant les colonnes École / Classe / Année scolaire.
+
+    Les lignes sont regroupées par classe, puis chaque groupe est confié à
+    l'importateur existant. Les classes absentes sont créées.
+    """
+    from eleves.import_eleves import (
+        ImportElevesError,
+        ImportElevesProcessor,
+        ImportElevesValidator,
+        resoudre_classe,
+    )
+
+    ecole_utilisateur = _ecole_utilisateur(request)
+    cache_ecoles = {}
+
+    totaux = {'total': 0, 'crees': 0, 'modifies': 0, 'erreurs': 0, 'matricules_generes': 0}
+    classes_creees = []
+    classes_traitees = []
+    echecs = []
+
+    colonnes_groupe = ['Classe']
+    if 'École' in df.columns:
+        colonnes_groupe.insert(0, 'École')
+    if 'Année scolaire' in df.columns:
+        colonnes_groupe.append('Année scolaire')
+
+    df = df.copy()
+    for colonne in colonnes_groupe:
+        df[colonne] = df[colonne].fillna('').astype(str).str.strip()
+
+    for cles, groupe in df.groupby(colonnes_groupe, dropna=False, sort=False):
+        if not isinstance(cles, tuple):
+            cles = (cles,)
+        valeurs = dict(zip(colonnes_groupe, cles))
+        nom_classe = valeurs.get('Classe', '')
+        nom_ecole = valeurs.get('École', '')
+        annee = valeurs.get('Année scolaire', '')
+
+        if not nom_classe:
+            echecs.append("Des lignes sans nom de classe ont été ignorées.")
+            totaux['erreurs'] += len(groupe)
+            continue
+
+        try:
+            ecole = _resoudre_ecole_ligne(nom_ecole, ecole_utilisateur, cache_ecoles)
+            classe, creee = resoudre_classe(nom_classe, annee, ecole)
+        except ImportElevesError as exc:
+            echecs.append(str(exc))
+            totaux['erreurs'] += len(groupe)
+            continue
+
+        if creee:
+            classes_creees.append(f"{classe.nom} ({classe.annee_scolaire})")
+
+        # Les lignes fautives sont écartées, les autres sont importées :
+        # une seule ligne incomplète ne doit pas bloquer toute une classe.
+        validator = ImportElevesValidator(groupe, classe.id)
+        validator.valider()
+        if validator.erreurs:
+            for erreur in validator.erreurs[:3]:
+                echecs.append(f"{classe.nom} — {erreur}")
+            totaux['erreurs'] += len(validator.lignes_invalides)
+
+        groupe_valide = validator.lignes_valides()
+        if groupe_valide.empty:
+            continue
+
+        processor = ImportElevesProcessor(
+            df=groupe_valide, classe_id=classe.id, user=request.user,
+            generer_matricules=generer_matricules,
+        )
+        stats = processor.importer()
+        for cle in totaux:
+            totaux[cle] += stats.get(cle, 0)
+        classes_traitees.append(classe.nom)
+
+    messages.success(
+        request,
+        f"✅ Importation terminée : {len(classes_traitees)} classe(s) traitée(s), "
+        f"{totaux['crees']} élève(s) créé(s), {totaux['modifies']} mis à jour."
+    )
+    if classes_creees:
+        messages.info(request, "🏫 Classes créées : " + ", ".join(classes_creees))
+    if totaux['matricules_generes']:
+        messages.info(request, f"🔢 {totaux['matricules_generes']} matricule(s) généré(s) automatiquement")
+    for echec in echecs[:5]:
+        messages.warning(request, echec)
+    if len(echecs) > 5:
+        messages.warning(request, f"... et {len(echecs) - 5} autre(s) avertissement(s)")
+
+    return redirect('eleves:gestion_classes')
+
+
 def _traiter_import_eleves(request):
     """
     Traite l'importation d'élèves
@@ -69,32 +193,50 @@ def _traiter_import_eleves(request):
         ImportElevesValidator,
         ImportElevesProcessor,
         lire_fichier_eleves,
+        normaliser_colonnes_localisation,
     )
 
     try:
         # Récupérer les paramètres
         classe_id = request.POST.get('classe_id')
         generer_matricules = request.POST.get('generer_matricules') == 'on'
+        repartir_auto = request.POST.get('repartition_auto') == 'on'
         fichier = request.FILES.get('fichier')
-        
-        if not classe_id:
-            messages.error(request, "Veuillez sélectionner une classe.")
-            return redirect('eleves:importer_eleves')
-        
+
         if not fichier:
             messages.error(request, "Veuillez sélectionner un fichier.")
             return redirect('eleves:importer_eleves')
-        
+
+        if not classe_id and not repartir_auto:
+            messages.error(
+                request,
+                "Veuillez sélectionner une classe, ou cocher « Répartir automatiquement » "
+                "si le fichier contient les colonnes École / Classe / Année scolaire."
+            )
+            return redirect('eleves:importer_eleves')
+
         # Sauvegarder temporairement le fichier
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(fichier.name)[1]) as tmp_file:
             for chunk in fichier.chunks():
                 tmp_file.write(chunk)
             tmp_path = tmp_file.name
-        
+
         try:
             # Lire le fichier
             df = lire_fichier_eleves(tmp_path)
-            
+            df = normaliser_colonnes_localisation(df)
+
+            # Fichier exporté depuis un autre poste : répartition par classe
+            if repartir_auto or (not classe_id and 'Classe' in df.columns):
+                if 'Classe' not in df.columns:
+                    messages.error(
+                        request,
+                        "Le fichier ne contient pas de colonne « Classe » : "
+                        "sélectionnez une classe de destination."
+                    )
+                    return redirect('eleves:importer_eleves')
+                return _importer_multi_classes(request, df, generer_matricules)
+
             # Valider les données
             validator = ImportElevesValidator(df, classe_id)
             
@@ -293,6 +435,81 @@ def telecharger_template_eleves(request):
     except Exception as e:
         messages.error(request, f"Erreur lors de la génération du template: {e}")
         return redirect('eleves:importer_eleves')
+
+
+# Colonnes à conserver en texte : Excel transformerait sinon un numéro de
+# téléphone ou un matricule numérique en nombre, cassant le réimport.
+COLONNES_TEXTE = {
+    'Matricule', 'Téléphone Principal', 'Téléphone Secondaire', 'Date de Naissance',
+}
+
+
+def _ecrire_feuille_template(writer, df, nom_feuille):
+    """Écrit un DataFrame au format template avec un en-tête mis en forme."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    df.to_excel(writer, sheet_name=nom_feuille, index=False)
+    worksheet = writer.sheets[nom_feuille]
+
+    for idx, colonne in enumerate(df.columns, start=1):
+        lettre = get_column_letter(idx)
+        worksheet.column_dimensions[lettre].width = 20
+        if colonne in COLONNES_TEXTE:
+            for cellule in worksheet[lettre][1:]:
+                cellule.number_format = '@'
+
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="1746A2", end_color="1746A2", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center")
+
+    worksheet.freeze_panes = "A2"
+
+
+@login_required
+def exporter_tous_eleves_template(request):
+    """Exporte tous les élèves dans un fichier Excel unique et réimportable.
+
+    Colonnes : École, Classe, Année scolaire, puis les 14 colonnes du modèle
+    d'importation. Le fichier peut être importé tel quel sur un autre poste :
+    la répartition dans les classes est déduite des trois premières colonnes.
+    """
+    import io
+
+    import pandas as pd
+
+    from eleves.import_eleves import exporter_tous_les_eleves
+
+    try:
+        ecole = None
+        if not request.user.is_superuser:
+            from utilisateurs.utils import user_school
+            ecole = user_school(request.user)
+
+        inclure_inactifs = request.GET.get('inclure_inactifs') == '1'
+        df = exporter_tous_les_eleves(ecole=ecole, inclure_inactifs=inclure_inactifs)
+
+        if df.empty:
+            messages.warning(request, "Aucun élève à exporter.")
+            return redirect('eleves:liste_eleves')
+
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            _ecrire_feuille_template(writer, df, 'Eleves')
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        nom = f"export_eleves_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{nom}"'
+        response['X-Eleves-Exportes'] = str(len(df))
+        return response
+
+    except Exception as e:
+        messages.error(request, f"Erreur lors de l'export: {e}")
+        return redirect('eleves:liste_eleves')
 
 
 @login_required

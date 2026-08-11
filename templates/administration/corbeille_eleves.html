@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active">Corbeille des élèves</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-users me-1"></i>Liste des élèves
+        </a>
+        <a href="{% url 'administration:journal_modifications' %}" class="btn btn-outline-info">
+            <i class="fas fa-history me-1"></i>Corbeille mémoire
+        </a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-4">
+        <div class="card card-stats">
+            <div class="card-body d-flex justify-content-between">
+                <div>
+                    <h6 class="text-muted mb-1">Éléments en corbeille</h6>
+                    <h4 class="mb-0">{{ stats.total }}</h4>
+                </div>
+                <i class="fas fa-trash fa-2x text-muted align-self-center"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-stats warning">
+            <div class="card-body d-flex justify-content-between">
+                <div>
+                    <h6 class="text-muted mb-1">À restaurer</h6>
+                    <h4 class="text-warning mb-0">{{ stats.a_restaurer }}</h4>
+                </div>
+                <i class="fas fa-trash-restore fa-2x text-warning align-self-center"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-stats success">
+            <div class="card-body d-flex justify-content-between">
+                <div>
+                    <h6 class="text-muted mb-1">Déjà restaurés</h6>
+                    <h4 class="text-success mb-0">{{ stats.restaures }}</h4>
+                </div>
+                <i class="fas fa-user-check fa-2x text-success align-self-center"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label for="q" class="form-label">Rechercher</label>
+                <input type="text" class="form-control" id="q" name="q" value="{{ recherche }}"
+                       placeholder="Matricule, nom, prénom ou classe">
+            </div>
+            <div class="col-md-4">
+                <label for="etat" class="form-label">État</label>
+                <select class="form-select" id="etat" name="etat">
+                    <option value="a_restaurer" {% if etat == 'a_restaurer' %}selected{% endif %}>À restaurer</option>
+                    <option value="restaures" {% if etat == 'restaures' %}selected{% endif %}>Déjà restaurés</option>
+                    <option value="tous" {% if etat == 'tous' %}selected{% endif %}>Tous</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-1"></i>Filtrer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0"><i class="fas fa-trash me-2"></i>Élèves supprimés</h5>
+        <small class="text-muted">{{ page_obj.paginator.count }} élément(s)</small>
+    </div>
+    <div class="card-body p-0">
+        {% if page_obj %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Supprimé le</th>
+                        <th>Élève</th>
+                        <th>Classe</th>
+                        <th>Données archivées</th>
+                        <th>Supprimé par</th>
+                        <th>Motif</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entree in page_obj %}
+                    <tr>
+                        <td><small>{{ entree.date_suppression|date:"d/m/Y H:i" }}</small></td>
+                        <td>
+                            <strong>{{ entree.nom_complet }}</strong><br>
+                            <small class="text-muted">{{ entree.matricule }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-info">{{ entree.classe_nom|default:"—" }}</span><br>
+                            <small class="text-muted">{{ entree.ecole_nom }}</small>
+                        </td>
+                        <td>
+                            <small>
+                                {{ entree.nb_paiements }} paiement{{ entree.nb_paiements|pluralize }},
+                                {{ entree.nb_abonnements }} abonnement{{ entree.nb_abonnements|pluralize }}
+                            </small>
+                        </td>
+                        <td><small>{{ entree.supprime_par|default:"—" }}</small></td>
+                        <td><small class="fst-italic">{{ entree.motif|default:"—" }}</small></td>
+                        <td class="text-end">
+                            {% if entree.restaure %}
+                                <span class="badge bg-success">
+                                    Restauré le {{ entree.date_restauration|date:"d/m/Y" }}
+                                </span>
+                            {% else %}
+                                <form method="post" action="{% url 'administration:restaurer_eleve_corbeille' entree.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-success"
+                                            onclick="return confirm('Restaurer {{ entree.nom_complet|escapejs }} ainsi que ses données archivées ?');">
+                                        <i class="fas fa-trash-restore me-1"></i>Restaurer
+                                    </button>
+                                </form>
+                                {% if user.is_superuser %}
+                                <form method="post" action="{% url 'administration:purger_eleve_corbeille' entree.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            onclick="return confirm('Supprimer DÉFINITIVEMENT {{ entree.nom_complet|escapejs }} de la corbeille ? Cette action est irréversible.');">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer">
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ recherche }}&etat={{ etat }}">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                    <li class="page-item active">
+                        <span class="page-link">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ recherche }}&etat={{ etat }}">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-trash fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">La corbeille est vide</h5>
+            <p class="text-muted mb-0">Les élèves supprimés apparaîtront ici et pourront être restaurés.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
