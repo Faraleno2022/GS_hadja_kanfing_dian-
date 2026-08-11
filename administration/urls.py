@@ -28,4 +28,17 @@ urlpatterns = [
     # Corbeille et restauration
     path('corbeille/', views.corbeille_list, name='corbeille_list'),
     path('corbeille/restaurer/<int:log_id>/', views.restaurer_element, name='restaurer_element'),
+
+    # Corbeille des élèves supprimés
+    path('corbeille/eleves/', views.corbeille_eleves, name='corbeille_eleves'),
+    path('corbeille/eleves/<int:corbeille_id>/restaurer/', views.restaurer_eleve_corbeille, name='restaurer_eleve_corbeille'),
+    path('corbeille/eleves/<int:corbeille_id>/purger/', views.purger_eleve_corbeille, name='purger_eleve_corbeille'),
+
+    # Corbeille des paiements, échéanciers, abonnements...
+    path('corbeille/elements/', views.corbeille_elements, name='corbeille_elements'),
+    path('corbeille/elements/<int:corbeille_id>/restaurer/', views.restaurer_element_corbeille, name='restaurer_element_corbeille'),
+    path('corbeille/elements/<int:corbeille_id>/purger/', views.purger_element_corbeille, name='purger_element_corbeille'),
+
+    # Corbeille mémoire des modifications
+    path('journal-modifications/', views.journal_modifications, name='journal_modifications'),
 ]

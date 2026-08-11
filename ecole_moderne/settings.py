@@ -172,6 +172,8 @@ MIDDLEWARE = [
     'axes.middleware.AxesMiddleware',
     # Mode lecture seule : bloque toute action pour les comptes en consultation
     'utilisateurs.middleware.LectureSeuleMiddleware',
+    # Rend la requête courante accessible aux signaux de la corbeille mémoire
+    'administration.middleware.audit.AuditContextMiddleware',
 ]
 
 # Ajouter middlewares d'optimisation images

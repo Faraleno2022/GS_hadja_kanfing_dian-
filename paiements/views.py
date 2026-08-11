@@ -48,7 +48,7 @@ from .allocation import (
 )
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from eleves.utils_annee import get_annee_active
-from .forms import PaiementForm, EcheancierForm, RechercheForm
+from .forms import PaiementForm, EcheancierForm, ModifierPaiementForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
 from utilisateurs.permissions import has_permission, get_user_permissions, can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
@@ -2014,6 +2014,96 @@ def detail_paiement(request, paiement_id:int):
         'remises_total': int(remises_total or 0),
     }
     return render(request, 'paiements/detail_paiement.html', context)
+
+
+@login_required
+def modifier_paiement(request, paiement_id: int):
+    """Corrige un paiement déjà enregistré (oubli, erreur de saisie).
+
+    Chaque changement est conservé dans la corbeille mémoire
+    (`administration.JournalModification`) avec la valeur avant et après.
+    """
+    from administration.audit import (
+        capturer_etat, comparer_etats, enregistrer_modification, suspendre_journal,
+    )
+
+    paiement_qs = Paiement.objects.select_related(
+        'eleve', 'type_paiement', 'mode_paiement',
+        'eleve__classe', 'eleve__classe__ecole',
+    )
+    paiement_qs = filter_by_user_school(paiement_qs, request.user, 'eleve__classe__ecole')
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
+
+    if not (user_is_admin(request.user) or can_modify_payments(request.user)):
+        messages.error(request, "Vous n'avez pas l'autorisation de modifier un paiement.")
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+
+    # 'annee_scolaire' n'est pas modifiable mais reste surveillée : le save()
+    # du modèle peut la recalculer, et cette bascule doit rester tracée.
+    champs_suivis = [
+        'type_paiement', 'mode_paiement', 'montant', 'annee_scolaire',
+        'date_paiement', 'reference_externe', 'observations', 'statut',
+    ]
+
+    if request.method == 'POST':
+        form = ModifierPaiementForm(request.POST, instance=paiement)
+        if form.is_valid():
+            avant = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
+            motif = form.cleaned_data['motif_modification']
+
+            try:
+                # Le journal automatique est suspendu : une entrée unique et
+                # motivée est écrite ci-dessous pour l'ensemble de la correction.
+                with transaction.atomic(), suspendre_journal():
+                    paiement = form.save()
+
+                    # Un paiement corrigé après validation doit être revalidé
+                    if paiement.statut == 'VALIDE' and 'montant' in form.changed_data:
+                        paiement.statut = 'EN_ATTENTE'
+                        paiement.date_validation = None
+                        paiement.valide_par = None
+                        paiement.save(update_fields=['statut', 'date_validation', 'valide_par'])
+            except Exception as exc:
+                logger.exception("Erreur lors de la modification du paiement %s", paiement_id)
+                messages.error(request, f"Erreur lors de la modification : {exc}")
+                return redirect('paiements:detail_paiement', paiement_id=paiement_id)
+
+            apres = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
+            changements = comparer_etats(avant, apres)
+
+            enregistrer_modification(
+                paiement, changements, request=request, commentaire=motif,
+            )
+
+            if changements:
+                messages.success(
+                    request,
+                    f"Paiement {paiement.numero_recu} modifié ({len(changements)} champ(s)). "
+                    "L'ancienne version est conservée dans la corbeille mémoire des modifications."
+                )
+            else:
+                messages.info(request, "Aucun changement n'a été enregistré.")
+            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+    else:
+        form = ModifierPaiementForm(instance=paiement)
+
+    historique = []
+    try:
+        from administration.models import JournalModification
+        historique = JournalModification.objects.filter(
+            app_label='paiements', model_name='Paiement', objet_id=paiement.pk,
+        ).select_related('utilisateur')[:20]
+    except Exception:
+        historique = []
+
+    context = {
+        'titre_page': f"Modifier le paiement {paiement.numero_recu}",
+        'paiement': paiement,
+        'form': form,
+        'historique_modifications': historique,
+    }
+    return render(request, 'paiements/modifier_paiement.html', context)
+
 
 @login_required
 def ajouter_paiement(request, eleve_id:int=None):

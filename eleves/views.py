@@ -1479,26 +1479,63 @@ def supprimer_eleve(request, eleve_id):
         # Vérifier le code de sécurité
         code_verification = request.POST.get('code_verification', '').strip()
         suppression_definitive = request.POST.get('suppression_definitive') == 'on'
-        
-        # Pour les admins, toujours activer la suppression définitive par défaut
+        mise_en_corbeille = request.POST.get('mise_en_corbeille') == 'on'
+
+        # Mise à la corbeille : simple confirmation, aucune donnée n'est perdue
+        if mise_en_corbeille and not suppression_definitive:
+            from administration.audit import mettre_eleve_en_corbeille
+            try:
+                mettre_eleve_en_corbeille(
+                    eleve,
+                    request=request,
+                    motif=request.POST.get('motif', '').strip() or "Suppression depuis la liste des élèves",
+                )
+            except Exception as e:
+                messages.error(request, f"Erreur lors de la mise à la corbeille : {e}")
+                return redirect('eleves:detail_eleve', eleve_id=eleve_id)
+
+            try:
+                JournalActivite.objects.create(
+                    user=request.user,
+                    action='SUPPRESSION',
+                    type_objet='ELEVE',
+                    objet_id=eleve_id,
+                    description=f"Mise à la corbeille de l'élève {nom_complet} (matricule: {matricule})",
+                    adresse_ip=request.META.get('REMOTE_ADDR', ''),
+                    user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]
+                )
+            except Exception:
+                pass
+
+            messages.success(
+                request,
+                f"L'élève {nom_complet} a été placé dans la corbeille. "
+                "Vous pouvez le restaurer depuis Administration › Corbeille des élèves."
+            )
+            return redirect('eleves:liste_eleves')
+
         if user_is_admin(request.user):
-            # Si l'admin n'a pas explicitement décoché, on force la suppression définitive
-            suppression_definitive = request.POST.get('suppression_definitive') != 'off'
-            # Log pour debug
             import logging
             logger = logging.getLogger(__name__)
             logger.info(f"Admin {request.user.username} - Suppression définitive: {suppression_definitive}")
-        
-        from django.conf import settings as django_settings
-        expected_code = django_settings.SECURITY_VERIFICATION_CODE
-        if not expected_code or code_verification != expected_code:
-            messages.error(request, "Code de vérification incorrect. Suppression annulée.")
-            return render(request, 'eleves/confirmer_suppression.html', {
-                'eleve': eleve,
-                'paiements_count': paiements_count,
-                'titre_page': f'Supprimer {nom_complet}'
-            })
-        
+
+
+        # Le code de sécurité n'est exigé que pour la suppression définitive
+        if suppression_definitive:
+            from django.conf import settings as django_settings
+            expected_code = django_settings.SECURITY_VERIFICATION_CODE
+            if not expected_code or code_verification != expected_code:
+                messages.error(request, "Code de vérification incorrect. Suppression annulée.")
+                return render(request, 'eleves/confirmer_suppression.html', {
+                    'eleve': eleve,
+                    'paiements_count': paiements_count,
+                    'abonnements_bus_count': abonnements_bus_count,
+                    'abonnements_cantine_count': abonnements_cantine_count,
+                    'peut_supprimer_definitivement': peut_supprimer_definitivement,
+                    'titre_page': f'Supprimer {nom_complet}'
+                })
+
+
         # Vérifier la permission pour suppression définitive
         if suppression_definitive and not peut_supprimer_definitivement:
             messages.error(request, "Vous n'avez pas la permission de supprimer définitivement un élève.")
@@ -2994,485 +3031,254 @@ def generer_ticket_bus_pdf(request, eleve_id):
 
     return response
 
-    # Extraire les couleurs du logo (thème orange pour bus)
-    primary_color = '#f59e0b'
-    light_color = '#fef3c7'
-    
-    try:
-        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
-            logo_path = eleve.classe.ecole.logo.path
-            if os.path.exists(logo_path):
-                primary_color, light_color = _extraire_couleurs_logo(logo_path)
-    except:
-        pass
-    
-    # Fond blanc
-    c.setFillColor(colors.white)
-    c.rect(0, 0, width, height, stroke=0, fill=1)
-    
-    # Ajouter le logo en filigrane au centre
-    c.saveState()
-    try:
-        logo_path = None
-        
-        # Récupérer le logo de l'école
-        if eleve.classe and eleve.classe.ecole and eleve.classe.ecole.logo:
-            try:
-                if hasattr(eleve.classe.ecole.logo, 'path'):
-                    if os.path.exists(eleve.classe.ecole.logo.path):
-                        logo_path = eleve.classe.ecole.logo.path
-            except Exception:
-                pass
-        
-        if logo_path and os.path.exists(logo_path):
-            # Centrer le logo
-            c.translate(width/2, height/2)
-            c.rotate(25)  # Rotation légère
-            
-            # Taille du filigrane
-            watermark_size = min(width, height) * 0.7
-            
-            # Dessiner le logo en filigrane avec opacité visible
-            c.setFillAlpha(0.12)
-            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2, 
-                      watermark_size, watermark_size, preserveAspectRatio=True)
-    except Exception:
-        pass
-    c.restoreState()
-    
-    # Formes géométriques décoratives en arrière-plan (cercles)
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.15)
-    c.circle(width - 20, height - 20, 40, stroke=0, fill=1)
-    c.circle(15, 15, 30, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Bordure avec coins arrondis
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2.5)
-    c.roundRect(2, 2, width-4, height-4, 10, stroke=1, fill=0)
-    
-    # Bande diagonale décorative en haut à gauche
-    c.saveState()
-    c.translate(0, height)
-    c.rotate(-25)
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFillAlpha(0.1)
-    c.rect(-10, -15, 60, 25, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    c.restoreState()
-    
-    # En-tête rempli avec couleur (rectangle plein)
-    c.setFillColor(colors.HexColor(primary_color))
-    c.roundRect(5, height-45, width-10, 40, 8, stroke=0, fill=1)
-    
-    # Logo de l'école en haut à droite (petit format visible)
-    try:
-        logo_path_visible = None
-        if eleve.classe and eleve.classe.ecole and eleve.classe.ecole.logo:
-            try:
-                if hasattr(eleve.classe.ecole.logo, 'path'):
-                    if os.path.exists(eleve.classe.ecole.logo.path):
-                        logo_path_visible = eleve.classe.ecole.logo.path
-            except Exception:
-                pass
-        
-        if logo_path_visible and os.path.exists(logo_path_visible):
-            from PIL import Image, ImageDraw
-            
-            # Position et taille du logo
-            logo_size = 25
-            logo_x = width - logo_size - 8
-            logo_y = height - logo_size - 10
-            
-            # Ouvrir et traiter l'image
-            img = Image.open(logo_path_visible)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Créer une image circulaire
-            size = (logo_size, logo_size)
-            img = img.resize(size, Image.Resampling.LANCZOS)
-            
-            # Créer un masque circulaire
-            mask = Image.new('L', size, 0)
-            draw = ImageDraw.Draw(mask)
-            draw.ellipse((0, 0) + size, fill=255)
-            
-            # Appliquer le masque
-            output = Image.new('RGB', size, (255, 255, 255))
-            output.paste(img, (0, 0))
-            output.putalpha(mask)
-            
-            # Sauvegarder temporairement
-            temp_buffer = io.BytesIO()
-            output.save(temp_buffer, format='PNG')
-            temp_buffer.seek(0)
-            
-            # Cercle blanc derrière le logo
-            c.setFillColor(colors.white)
-            c.circle(logo_x + logo_size/2, logo_y + logo_size/2, logo_size/2 + 2, stroke=0, fill=1)
-            
-            # Dessiner le logo
-            c.drawImage(temp_buffer, logo_x, logo_y, width=logo_size, height=logo_size, mask='auto')
-    except Exception:
-        pass
-    
-    # Titre
-    c.setFillColor(colors.white)
-    c.setFont(main_font_bold, 13)
-    c.drawCentredString(width/2, height-20, "ABONNEMENT BUS")
-    
-    # Sous-titre école
-    c.setFont(main_font, 7)
-    c.setFillAlpha(0.9)
-    c.drawCentredString(width/2, height-32, eleve.classe.ecole.nom[:50])
-    c.setFillAlpha(1)
-    
-    # Photo de l'élève (côté droit) - affichage direct uniquement si disponible
-    photo_x = width - 45
-    photo_y = height/2 - 8
-    photo_radius = 30
-    
-    # Afficher la photo UNIQUEMENT si elle existe
-    if eleve.photo:
-        try:
-            from PIL import Image, ImageDraw
-            photo_path = eleve.photo.path
-            if os.path.exists(photo_path):
-                # Ombre de la photo
-                c.setFillColor(colors.HexColor('#000000'))
-                c.setFillAlpha(0.1)
-                c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
-                c.setFillAlpha(1)
-                
-                # Cercle de fond blanc avec double bordure
-                c.setFillColor(colors.white)
-                c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
-                c.setStrokeColor(colors.HexColor(primary_color))
-                c.setLineWidth(3)
-                c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-                
-                # Ouvrir l'image avec PIL
-                img = Image.open(photo_path)
-                
-                # Convertir en RGB si nécessaire
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    background = Image.new('RGB', img.size, (255, 255, 255))
-                    if img.mode == 'P':
-                        img = img.convert('RGBA')
-                    background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
-                    img = background
-                elif img.mode != 'RGB':
-                    img = img.convert('RGB')
-                
-                # Calculer la taille en pixels
-                from reportlab.lib.units import cm
-                pixel_size = int(photo_radius * 2 * 28.35)
-                size = (pixel_size, pixel_size)
-                
-                # Redimensionner
-                img = img.resize(size, Image.Resampling.LANCZOS)
-                
-                # Créer un masque circulaire
-                mask = Image.new('L', size, 0)
-                draw = ImageDraw.Draw(mask)
-                draw.ellipse((0, 0, size[0], size[1]), fill=255)
-                
-                # Appliquer le masque
-                output = Image.new('RGBA', size, (255, 255, 255, 0))
-                output.paste(img, (0, 0))
-                output.putalpha(mask)
-                
-                # Sauvegarder temporairement
-                temp_buffer = io.BytesIO()
-                output.save(temp_buffer, format='PNG')
-                temp_buffer.seek(0)
-                
-                # Dessiner sur le PDF avec ImageReader
-                from reportlab.lib.utils import ImageReader
-                img_reader = ImageReader(temp_buffer)
-                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius, 
-                           width=photo_radius * 2, height=photo_radius * 2, mask='auto')
-        except Exception as e:
-            # Ne rien afficher en cas d'erreur
-            print(f"Erreur photo bus: {e}")
-            pass
-    # Si pas de photo, on n'affiche rien (pas de cercle ni de placeholder)
-    
-    # Carte d'information avec fond coloré (style moderne)
-    info_box_x = 8
-    info_box_y = 8
-    info_box_width = width - 50
-    info_box_height = height - 52
-    
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.08)
-    c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Informations de l'élève (poussées vers la droite)
-    x_start = 12
-    y_start = height/2 + 5
-    
-    # Nom complet (taille encore réduite)
-    c.setFillColor(colors.HexColor('#1f2937'))
-    c.setFont(main_font_bold, 9)
-    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
-    if len(nom_complet) > 18:
-        nom_complet = nom_complet[:15] + "..."
-    c.drawString(x_start, y_start, nom_complet)
-    
-    # Ligne décorative sous le nom (ajustée à la longueur du nom)
-    nom_width = c.stringWidth(nom_complet, main_font_bold, 9)
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2)
-    c.line(x_start, y_start - 2, x_start + nom_width, y_start - 2)
-    
-    # Informations détaillées avec espacement
-    y = y_start - 16
-    c.setFillColor(colors.HexColor('#374151'))
-    
-    # Matricule avec espacement
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y, "N° :  ")
-    c.setFont(main_font, 9)
-    c.drawString(x_start + 25, y, eleve.matricule or "N/A")
-    
-    y -= 12
-    # Classe avec espacement
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y, "Classe :  ")
-    c.setFont(main_font, 9)
-    c.drawString(x_start + 35, y, eleve.classe.nom)
-    
-    y -= 12
-    # Zone avec espacement
-    zone_text = abonnement.zone or "Non spécifiée"
-    if len(zone_text) > 16:
-        zone_text = zone_text[:13] + "..."
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y, "Zone :  ")
-    c.setFont(main_font, 8)
-    c.drawString(x_start + 28, y, zone_text)
-    
-    y -= 12
-    # Point d'arrêt avec espacement
-    point_arret = abonnement.point_arret or "Non spécifié"
-    if len(point_arret) > 16:
-        point_arret = point_arret[:13] + "..."
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y, "Arrêt :  ")
-    c.setFont(main_font, 7)
-    c.drawString(x_start + 28, y, point_arret)
-    
-    y -= 12
-    # Période de validité avec espacement
-    validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y, "Validité :  ")
-    c.setFont(main_font, 6)
-    c.drawString(x_start + 35, y, validite)
-    
-    # Pied de page moderne
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFillAlpha(0.05)
-    c.roundRect(6, 4, width-12, 9, 4, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    c.setFont(main_font, 6)
-    c.setFillColor(colors.HexColor('#6b7280'))
-    c.drawCentredString(width/2, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
+
+@login_required
+def generer_ticket_cantine_pdf(request, eleve_id):
+    """Génère la carte d'abonnement cantine d'un élève"""
+    from bus.models import AbonnementCantine
+
+    eleve = get_object_or_404(
+        Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
+        id=eleve_id
+    )
+
+    # Vérifier les permissions
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or eleve.classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cet élève.")
+            return redirect('eleves:liste_eleves')
+
+    abonnement = AbonnementCantine.objects.filter(
+        eleve=eleve,
+        statut='ACTIF'
+    ).order_by('-date_debut').first()
+
+    if not abonnement:
+        messages.warning(request, "Cet élève n'a pas d'abonnement cantine actif.")
+        return redirect('eleves:detail_eleve', eleve_id=eleve_id)
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="carte_cantine_{eleve.matricule}.pdf"'
+
+    # Format carte bancaire standard (86mm x 54mm)
+    from reportlab.lib.units import mm
+    width, height = 86 * mm, 54 * mm
+
+    c = canvas.Canvas(response, pagesize=(width, height))
+    main_font, main_font_bold = _polices_cartes()
+
+    _dessiner_ticket_cantine(c, eleve, abonnement, 0, 0, width, height, main_font, main_font_bold)
     c.showPage()
     c.save()
-    
+
     # Log de l'action
     try:
         JournalActivite.objects.create(
             user=request.user,
             action='GENERATION_PDF',
-            type_objet='TICKET_BUS',
-            description=f"Ticket bus généré pour {eleve.prenom} {eleve.nom} ({eleve.matricule})",
+            type_objet='TICKET_CANTINE',
+            description=f"Carte cantine generee pour {eleve.prenom} {eleve.nom} ({eleve.matricule})",
             adresse_ip=request.META.get('REMOTE_ADDR', ''),
             user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]
         )
-    except:
+    except Exception:
         pass
-    
+
+    return response
+
+
+# Mise en page commune des cartes en série : 8 cartes CR80 par feuille A4
+CARTES_PAR_PAGE_A4 = 8
+CARTE_COLONNES_A4 = 2
+CARTE_LIGNES_A4 = 4
+
+
+def _grille_cartes_a4():
+    """Retourne (largeur, hauteur, positions) pour 8 cartes CR80 sur une A4.
+
+    Les cartes sont au format bancaire standard (85,6 x 53,98 mm) et la
+    grille 2 colonnes x 4 lignes est centrée sur la feuille.
+    """
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+
+    page_width, page_height = A4
+    card_width = 85.6 * mm
+    card_height = 53.98 * mm
+    h_spacing = 5 * mm
+    v_spacing = 5 * mm
+
+    margin_x = (page_width - CARTE_COLONNES_A4 * card_width - (CARTE_COLONNES_A4 - 1) * h_spacing) / 2
+    margin_y = (page_height - CARTE_LIGNES_A4 * card_height - (CARTE_LIGNES_A4 - 1) * v_spacing) / 2
+
+    positions = []
+    for row in range(CARTE_LIGNES_A4):
+        for col in range(CARTE_COLONNES_A4):
+            x = margin_x + col * (card_width + h_spacing)
+            y = page_height - margin_y - (row + 1) * card_height - row * v_spacing
+            positions.append((x, y))
+
+    return card_width, card_height, positions
+
+
+def _polices_cartes():
+    """Retourne (police, police grasse) en privilégiant Arial si disponible."""
+    try:
+        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
+        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
+        return 'Arial', 'Arial-Bold'
+    except Exception:
+        return 'Helvetica', 'Helvetica-Bold'
+
+
+def _generer_planche_cartes(response, elements, dessiner):
+    """Dessine une planche de cartes (8 par page A4).
+
+    ``elements`` est une liste d'éléments quelconques ; ``dessiner`` reçoit
+    ``(canvas, element, x, y, largeur, hauteur, police, police_grasse)``.
+    """
+    from reportlab.lib.pagesizes import A4
+
+    card_width, card_height, positions = _grille_cartes_a4()
+    main_font, main_font_bold = _polices_cartes()
+
+    c = canvas.Canvas(response, pagesize=A4)
+    total = len(elements)
+
+    for index, element in enumerate(elements):
+        x, y = positions[index % CARTES_PAR_PAGE_A4]
+        dessiner(c, element, x, y, card_width, card_height, main_font, main_font_bold)
+
+        if (index + 1) % CARTES_PAR_PAGE_A4 == 0 and (index + 1) < total:
+            c.showPage()
+
+    c.showPage()
+    c.save()
     return response
 
 
 @login_required
 def generer_tickets_retrait_classe_pdf(request, classe_id):
-    """Génère tous les tickets de retrait pour une classe (primaire/maternelle) en un seul PDF"""
+    """Génère toutes les cartes de retrait d'une classe (8 par page A4)"""
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:liste_eleves')
-    
+
     # Vérifier que c'est une classe du primaire/maternelle
     niveau = classe.niveau.upper() if classe.niveau else ''
     if not any(x in niveau for x in ['PRIMAIRE', 'PN', 'MATERNELLE', 'GARDERIE']):
         messages.warning(request, "Les tickets de retrait sont réservés aux classes du primaire et de la maternelle.")
         return redirect('eleves:liste_eleves')
-    
+
     # Récupérer tous les élèves actifs de la classe
-    eleves = Eleve.objects.filter(
+    eleves = list(Eleve.objects.filter(
         classe=classe,
         statut='ACTIF'
-    ).select_related('classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
-    
-    if not eleves.exists():
+    ).select_related('classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom'))
+
+    if not eleves:
         messages.warning(request, "Aucun élève actif trouvé dans cette classe.")
         return redirect('eleves:liste_eleves')
-    
-    # Créer le PDF avec tous les tickets (2 par page)
+
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="tickets_retrait_{classe.nom}.pdf"'
-    
-    from reportlab.lib.units import mm
-    from reportlab.lib.pagesizes import A4
-    width_page, height_page = A4
-    
-    c = canvas.Canvas(response, pagesize=A4)
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
-    # Dimensions d'un ticket
-    ticket_width = 86*mm
-    ticket_height = 54*mm
-    margin = 10*mm
-    
-    # Position pour 2 tickets par page (un en haut, un en bas)
-    positions = [
-        (margin, height_page - margin - ticket_height),  # Haut
-        (margin, height_page - margin - 2*ticket_height - 15*mm),  # Bas
-    ]
-    
-    ticket_count = 0
-    
-    for eleve in eleves:
-        # Calculer la position du ticket
-        pos_index = ticket_count % 2
-        x_offset, y_offset = positions[pos_index]
-        
-        # Dessiner un ticket
-        _dessiner_ticket_retrait(c, eleve, x_offset, y_offset, ticket_width, ticket_height, main_font, main_font_bold)
-        
-        ticket_count += 1
-        
-        # Nouvelle page tous les 2 tickets
-        if ticket_count % 2 == 0 and ticket_count < eleves.count():
-            c.showPage()
-    
-    c.showPage()
-    c.save()
-    
-    return response
+    response['Content-Disposition'] = f'attachment; filename="cartes_retrait_{classe.nom}.pdf"'
+
+    return _generer_planche_cartes(
+        response, eleves,
+        lambda c, eleve, x, y, w, h, f, fb: _dessiner_ticket_retrait(c, eleve, x, y, w, h, f, fb),
+    )
 
 
 @login_required
 def generer_tickets_bus_classe_pdf(request, classe_id):
-    """Génère tous les tickets bus pour une classe en un seul PDF"""
+    """Génère toutes les cartes bus d'une classe (8 par page A4)"""
     from bus.models import AbonnementBus
-    
+
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:liste_eleves')
-    
-    # Récupérer les élèves avec abonnement bus actif
-    eleves_ids = AbonnementBus.objects.filter(
+
+    # Un couple (élève, abonnement actif) par carte
+    abonnements = AbonnementBus.objects.filter(
         eleve__classe=classe,
-        statut='ACTIF'
-    ).values_list('eleve_id', flat=True)
-    
-    eleves = Eleve.objects.filter(
-        id__in=eleves_ids,
-        statut='ACTIF'
-    ).select_related('classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
-    
-    if not eleves.exists():
+        eleve__statut='ACTIF',
+        statut='ACTIF',
+    ).select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'eleve__responsable_principal'
+    ).order_by('eleve__nom', 'eleve__prenom', '-date_debut')
+
+    cartes = []
+    deja_vus = set()
+    for abonnement in abonnements:
+        if abonnement.eleve_id in deja_vus:
+            continue
+        deja_vus.add(abonnement.eleve_id)
+        cartes.append((abonnement.eleve, abonnement))
+
+    if not cartes:
         messages.warning(request, "Aucun élève avec abonnement bus actif trouvé dans cette classe.")
         return redirect('eleves:liste_eleves')
-    
-    # Créer le PDF avec tous les tickets (2 par page)
+
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="tickets_bus_{classe.nom}.pdf"'
-    
-    from reportlab.lib.units import mm
-    from reportlab.lib.pagesizes import A4
-    width_page, height_page = A4
-    
-    c = canvas.Canvas(response, pagesize=A4)
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
-    # Dimensions d'un ticket
-    ticket_width = 86*mm
-    ticket_height = 54*mm
-    margin = 10*mm
-    
-    # Position pour 2 tickets par page
-    positions = [
-        (margin, height_page - margin - ticket_height),  # Haut
-        (margin, height_page - margin - 2*ticket_height - 15*mm),  # Bas
-    ]
-    
-    ticket_count = 0
-    
-    for eleve in eleves:
-        # Récupérer l'abonnement
-        abonnement = AbonnementBus.objects.filter(
-            eleve=eleve,
-            statut='ACTIF'
-        ).order_by('-date_debut').first()
-        
-        if not abonnement:
+    response['Content-Disposition'] = f'attachment; filename="cartes_bus_{classe.nom}.pdf"'
+
+    return _generer_planche_cartes(
+        response, cartes,
+        lambda c, item, x, y, w, h, f, fb: _dessiner_ticket_bus(c, item[0], item[1], x, y, w, h, f, fb),
+    )
+
+
+@login_required
+def generer_tickets_cantine_classe_pdf(request, classe_id):
+    """Génère toutes les cartes d'abonnement cantine d'une classe (8 par page A4)"""
+    from bus.models import AbonnementCantine
+
+    classe = get_object_or_404(Classe, id=classe_id)
+
+    if not user_is_admin(request.user):
+        user_school_obj = user_school(request.user)
+        if not user_school_obj or classe.ecole != user_school_obj:
+            messages.error(request, "Vous n'avez pas accès à cette classe.")
+            return redirect('eleves:liste_eleves')
+
+    abonnements = AbonnementCantine.objects.filter(
+        eleve__classe=classe,
+        eleve__statut='ACTIF',
+        statut='ACTIF',
+    ).select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'eleve__responsable_principal'
+    ).order_by('eleve__nom', 'eleve__prenom', '-date_debut')
+
+    cartes = []
+    deja_vus = set()
+    for abonnement in abonnements:
+        if abonnement.eleve_id in deja_vus:
             continue
-        
-        # Calculer la position du ticket
-        pos_index = ticket_count % 2
-        x_offset, y_offset = positions[pos_index]
-        
-        # Dessiner un ticket
-        _dessiner_ticket_bus(c, eleve, abonnement, x_offset, y_offset, ticket_width, ticket_height, main_font, main_font_bold)
-        
-        ticket_count += 1
-        
-        # Nouvelle page tous les 2 tickets
-        if ticket_count % 2 == 0 and ticket_count < eleves.count():
-            c.showPage()
-    
-    c.showPage()
-    c.save()
-    
-    return response
+        deja_vus.add(abonnement.eleve_id)
+        cartes.append((abonnement.eleve, abonnement))
+
+    if not cartes:
+        messages.warning(request, "Aucun élève avec abonnement cantine actif trouvé dans cette classe.")
+        return redirect('eleves:liste_eleves')
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="cartes_cantine_{classe.nom}.pdf"'
+
+    return _generer_planche_cartes(
+        response, cartes,
+        lambda c, item, x, y, w, h, f, fb: _dessiner_ticket_cantine(c, item[0], item[1], x, y, w, h, f, fb),
+    )
 
 
 def _extraire_couleurs_logo(logo_path):
@@ -3764,161 +3570,6 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
         'CARTE DE RETRAIT', '#0f766e', '#dbeafe', rows, 'RETRAIT'
     )
 
-    c.saveState()
-    
-    # Extraire les couleurs du logo
-    primary_color = '#6366f1'
-    light_color = '#e0e7ff'
-    
-    try:
-        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
-            logo_path = eleve.classe.ecole.logo.path
-            if os.path.exists(logo_path):
-                primary_color, light_color = _extraire_couleurs_logo(logo_path)
-    except:
-        pass
-    
-    # Fond avec dégradé simulé
-    c.setFillColor(colors.white)
-    c.rect(x, y, width, height, stroke=0, fill=1)
-    
-    # Forme géométrique décorative en arrière-plan (cercles)
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.15)
-    c.circle(x + width - 20, y + height - 20, 40, stroke=0, fill=1)
-    c.circle(x + 15, y + 15, 30, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Bordure avec coins arrondis et ombre
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2.5)
-    c.roundRect(x+2, y+2, width-4, height-4, 10, stroke=1, fill=0)
-    
-    # Bande diagonale décorative en haut à gauche
-    c.saveState()
-    c.translate(x, y + height)
-    c.rotate(-25)
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFillAlpha(0.1)
-    c.rect(-10, -15, 60, 25, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    c.restoreState()
-    
-    # En-tête moderne avec forme ondulée
-    c.setFillColor(colors.HexColor(primary_color))
-    path = c.beginPath()
-    path.moveTo(x+5, y+height-5)
-    path.lineTo(x+width-5, y+height-5)
-    path.lineTo(x+width-5, y+height-42)
-    # Courbe ondulée
-    path.curveTo(x+width*0.75, y+height-38, x+width*0.5, y+height-46, x+width*0.25, y+height-42)
-    path.curveTo(x+width*0.15, y+height-40, x+5, y+height-38, x+5, y+height-42)
-    path.close()
-    c.drawPath(path, fill=1, stroke=0)
-    
-    # Titre avec effet
-    c.setFillColor(colors.white)
-    c.setFont(main_font_bold, 14)
-    c.drawCentredString(x+width/2, y+height-20, "TICKET DE RETRAIT")
-    
-    # Sous-titre école
-    c.setFont(main_font, 7)
-    c.setFillAlpha(0.9)
-    c.drawCentredString(x+width/2, y+height-32, eleve.classe.ecole.nom[:50])
-    c.setFillAlpha(1)
-    
-    # Photo avec cadre moderne hexagonal simulé
-    photo_x = x + width - 28
-    photo_y = y + 26
-    photo_radius = 18
-    
-    # Ombre de la photo
-    c.setFillColor(colors.HexColor('#000000'))
-    c.setFillAlpha(0.1)
-    c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Cercle de la photo avec double bordure
-    c.setFillColor(colors.white)
-    c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(3)
-    c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
-    # Placeholder photo
-    c.setFillColor(colors.HexColor(light_color))
-    c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFont(main_font, 7)
-    c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    
-    # Carte d'information avec fond coloré
-    info_box_x = x + 8
-    info_box_y = y + 8
-    info_box_width = width - 50
-    info_box_height = height - 52
-    
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.08)
-    c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Nom de l'élève avec style moderne
-    x_start = x + 12
-    y_start = y + height - 50
-    
-    c.setFillColor(colors.HexColor('#1f2937'))
-    c.setFont(main_font_bold, 12)
-    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
-    if len(nom_complet) > 24:
-        nom_complet = nom_complet[:21] + "..."
-    c.drawString(x_start, y_start, nom_complet)
-    
-    # Ligne décorative sous le nom
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2)
-    c.line(x_start, y_start - 2, x_start + 55, y_start - 2)
-    
-    # Informations avec icônes et style moderne
-    y_info = y_start - 16
-    c.setFillColor(colors.HexColor('#374151'))
-    
-    # Matricule
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y_info, "N°")
-    c.setFont(main_font, 9)
-    c.drawString(x_start + 12, y_info, eleve.matricule or "N/A")
-    
-    y_info -= 12
-    # Classe
-    c.setFont(main_font_bold, 9)
-    c.drawString(x_start, y_info, "Classe")
-    c.setFont(main_font, 9)
-    c.drawString(x_start + 25, y_info, eleve.classe.nom)
-    
-    y_info -= 12
-    # Responsable
-    if eleve.responsable_principal:
-        c.setFont(main_font_bold, 9)
-        c.drawString(x_start, y_info, "Parent")
-        resp_nom = f"{eleve.responsable_principal.prenom} {eleve.responsable_principal.nom}"
-        if len(resp_nom) > 24:
-            resp_nom = resp_nom[:21] + "..."
-        c.setFont(main_font, 8)
-        c.drawString(x_start + 25, y_info, resp_nom)
-    
-    # Pied de page moderne
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFillAlpha(0.05)
-    c.roundRect(x+6, y+4, width-12, 9, 4, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    c.setFont(main_font, 6)
-    c.setFillColor(colors.HexColor('#6b7280'))
-    c.drawCentredString(x+width/2, y+6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
-    c.restoreState()
-
 
 def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, main_font_bold):
     """Fonction helper pour dessiner un ticket bus avec design moderne"""
@@ -3938,185 +3589,39 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
         'CARTE BUS', '#0f766e', '#fef3c7', rows, 'BUS'
     )
 
-    c.saveState()
-    
-    # Extraire les couleurs du logo (version orange pour bus)
-    primary_color = '#f59e0b'
-    light_color = '#fef3c7'
-    
+
+def _dessiner_ticket_cantine(c, eleve, abonnement, x, y, width, height, main_font, main_font_bold):
+    """Dessine une carte d'abonnement cantine (même gabarit que la carte bus)"""
+    validite = '-'
+    if getattr(abonnement, 'date_debut', None) and getattr(abonnement, 'date_expiration', None):
+        validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
+
     try:
-        if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
-            logo_path = eleve.classe.ecole.logo.path
-            if os.path.exists(logo_path):
-                extracted_primary, extracted_light = _extraire_couleurs_logo(logo_path)
-                # Garder une teinte orange/jaune pour le bus
-                primary_color = extracted_primary
-                light_color = extracted_light
-    except:
-        pass
-    
-    # Fond avec motif géométrique
-    c.setFillColor(colors.white)
-    c.rect(x, y, width, height, stroke=0, fill=1)
-    
-    # Motif de lignes diagonales en arrière-plan
-    c.setStrokeColor(colors.HexColor(light_color))
-    c.setLineWidth(15)
-    c.setStrokeAlpha(0.1)
-    for i in range(0, int(width + height), 25):
-        c.line(x + i, y, x + i - height, y + height)
-    c.setStrokeAlpha(1)
-    
-    # Bordure moderne avec double ligne
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2.5)
-    c.roundRect(x+2, y+2, width-4, height-4, 10, stroke=1, fill=0)
-    
-    # Accent coins
-    corner_size = 8
-    c.setFillColor(colors.HexColor(primary_color))
-    # Coin haut gauche
-    c.rect(x+2, y+height-corner_size-2, corner_size, corner_size, stroke=0, fill=1)
-    # Coin bas droit
-    c.rect(x+width-corner_size-2, y+2, corner_size, corner_size, stroke=0, fill=1)
-    
-    # En-tête avec forme moderne
-    c.setFillColor(colors.HexColor(primary_color))
-    path = c.beginPath()
-    path.moveTo(x+5, y+height-5)
-    path.lineTo(x+width-5, y+height-5)
-    path.lineTo(x+width-5, y+height-44)
-    # Forme en vague
-    path.curveTo(x+width*0.8, y+height-40, x+width*0.6, y+height-48, x+width*0.4, y+height-44)
-    path.curveTo(x+width*0.2, y+height-40, x+5, y+height-42, x+5, y+height-44)
-    path.close()
-    c.drawPath(path, fill=1, stroke=0)
-    
-    # Icône bus stylisée
-    c.setFillColor(colors.white)
-    c.setFillAlpha(0.3)
-    c.roundRect(x+width-45, y+height-32, 18, 22, 3, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Titre
-    c.setFillColor(colors.white)
-    c.setFont(main_font_bold, 13)
-    c.drawCentredString(x+width/2, y+height-20, "ABONNEMENT BUS")
-    
-    # Sous-titre
-    c.setFont(main_font, 7)
-    c.setFillAlpha(0.9)
-    c.drawCentredString(x+width/2, y+height-33, eleve.classe.ecole.nom[:50])
-    c.setFillAlpha(1)
-    
-    # Photo avec style moderne
-    photo_x = x + width - 28
-    photo_y = y + 26
-    photo_radius = 18
-    
-    # Ombre
-    c.setFillColor(colors.HexColor('#000000'))
-    c.setFillAlpha(0.15)
-    c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Photo avec double bordure
-    c.setFillColor(colors.white)
-    c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(3)
-    c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
-    # Placeholder
-    c.setFillColor(colors.HexColor(light_color))
-    c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFont(main_font, 7)
-    c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    
-    # Zone d'information avec fond subtil
-    info_box_x = x + 8
-    info_box_y = y + 8
-    info_box_width = width - 50
-    info_box_height = height - 52
-    
-    c.setFillColor(colors.HexColor(light_color))
-    c.setFillAlpha(0.1)
-    c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    # Nom élève
-    x_start = x + 12
-    y_start = y + height - 52
-    
-    c.setFillColor(colors.HexColor('#1f2937'))
-    c.setFont(main_font_bold, 11)
-    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
-    if len(nom_complet) > 22:
-        nom_complet = nom_complet[:19] + "..."
-    c.drawString(x_start, y_start, nom_complet)
-    
-    # Ligne décorative
-    c.setStrokeColor(colors.HexColor(primary_color))
-    c.setLineWidth(2)
-    c.line(x_start, y_start - 2, x_start + 50, y_start - 2)
-    
-    # Informations détaillées
-    y_info = y_start - 15
-    c.setFillColor(colors.HexColor('#374151'))
-    
-    # Matricule
-    c.setFont(main_font_bold, 8)
-    c.drawString(x_start, y_info, "N°")
-    c.setFont(main_font, 8)
-    c.drawString(x_start + 10, y_info, eleve.matricule or "N/A")
-    
-    y_info -= 10
-    # Classe
-    c.setFont(main_font_bold, 8)
-    c.drawString(x_start, y_info, "Classe")
-    c.setFont(main_font, 8)
-    c.drawString(x_start + 22, y_info, eleve.classe.nom)
-    
-    y_info -= 10
-    # Zone
-    zone_text = abonnement.zone or "Non spécifiée"
-    if len(zone_text) > 22:
-        zone_text = zone_text[:19] + "..."
-    c.setFont(main_font_bold, 8)
-    c.drawString(x_start, y_info, "Zone")
-    c.setFont(main_font, 8)
-    c.drawString(x_start + 18, y_info, zone_text)
-    
-    y_info -= 10
-    # Arrêt
-    point_arret = abonnement.point_arret or "Non spécifié"
-    if len(point_arret) > 22:
-        point_arret = point_arret[:19] + "..."
-    c.setFont(main_font_bold, 8)
-    c.drawString(x_start, y_info, "Arrêt")
-    c.setFont(main_font, 7)
-    c.drawString(x_start + 18, y_info, point_arret)
-    
-    y_info -= 10
-    # Validité
-    validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
-    c.setFont(main_font_bold, 8)
-    c.drawString(x_start, y_info, "Validité")
-    c.setFont(main_font, 6)
-    c.drawString(x_start + 25, y_info, validite)
-    
-    # Pied de page moderne
-    c.setFillColor(colors.HexColor(primary_color))
-    c.setFillAlpha(0.05)
-    c.roundRect(x+6, y+4, width-12, 9, 4, stroke=0, fill=1)
-    c.setFillAlpha(1)
-    
-    c.setFont(main_font, 6)
-    c.setFillColor(colors.HexColor('#6b7280'))
-    c.drawCentredString(x+width/2, y+6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
-    c.restoreState()
+        repas = abonnement.get_type_repas_display()
+    except Exception:
+        repas = getattr(abonnement, 'type_repas', None)
+
+    try:
+        formule = abonnement.get_periodicite_display()
+    except Exception:
+        formule = getattr(abonnement, 'periodicite', None)
+
+    regime = getattr(abonnement, 'regime_alimentaire', '') or ''
+    allergies = getattr(abonnement, 'allergies', '') or ''
+    particularite = regime or (f"Allergies: {allergies}" if allergies else 'Aucune')
+
+    rows = [
+        ('Matricule', getattr(eleve, 'matricule', None)),
+        ('Classe', getattr(eleve.classe, 'nom', None)),
+        ('Repas', repas),
+        ('Formule', formule),
+        ('Regime', particularite),
+        ('Validite', validite),
+    ]
+    return _dessiner_ticket_carte(
+        c, eleve, x, y, width, height, main_font, main_font_bold,
+        'CARTE CANTINE', '#b45309', '#fef3c7', rows, 'CANTINE'
+    )
 
 
 @login_required

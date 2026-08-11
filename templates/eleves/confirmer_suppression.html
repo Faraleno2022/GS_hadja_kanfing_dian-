@@ -87,8 +87,12 @@
             <!-- Zone de danger -->
             <div class="danger-zone">
                 <div class="text-center mb-4">
-                    <i class="fas fa-skull-crossbones text-danger" style="font-size: 3rem;"></i>
-                    <h3 class="text-danger mt-2">⚠️ ATTENTION - ACTION IRRÉVERSIBLE ⚠️</h3>
+                    <i class="fas fa-triangle-exclamation text-danger" style="font-size: 3rem;"></i>
+                    <h3 class="text-danger mt-2">Suppression d'un élève</h3>
+                    <p class="text-muted mb-0">
+                        Choisissez ci-dessous le type de suppression. Par défaut, l'élève est placé
+                        dans la corbeille et reste restaurable.
+                    </p>
                 </div>
 
                 <!-- Informations de l'élève -->
@@ -148,84 +152,102 @@
 
                 <!-- Avertissements -->
                 <div class="warning-card">
-                    <h5><i class="fas fa-exclamation-triangle text-warning"></i> Conséquences de cette action :</h5>
+                    <h5><i class="fas fa-exclamation-triangle text-warning"></i> Conséquences selon l'option choisie :</h5>
                     <ul class="mb-0">
-                        <li>L'élève sera <strong>définitivement supprimé</strong> de la base de données</li>
-                        {% if paiements_count > 0 %}
-                        <li>Tous ses <strong>{{ paiements_count }} paiement{{ paiements_count|pluralize }}</strong> seront supprimés</li>
-                        {% endif %}
-                        {% if abonnements_bus_count > 0 %}
-                        <li>Tous ses <strong>{{ abonnements_bus_count }} abonnement{{ abonnements_bus_count|pluralize }} bus</strong> seront supprimés</li>
-                        {% endif %}
-                        {% if abonnements_cantine_count > 0 %}
-                        <li>Tous ses <strong>{{ abonnements_cantine_count }} abonnement{{ abonnements_cantine_count|pluralize }} cantine</strong> seront supprimés</li>
-                        {% endif %}
-                        <li>Cette action sera <strong>enregistrée dans la corbeille</strong> pour audit</li>
-                        <li>Cette action est <strong>IRRÉVERSIBLE</strong></li>
+                        <li><strong>Mise à la corbeille</strong> : l'élève et ses données associées
+                            ({{ paiements_count }} paiement{{ paiements_count|pluralize }},
+                            {{ abonnements_bus_count }} abonnement{{ abonnements_bus_count|pluralize }} bus,
+                            {{ abonnements_cantine_count }} abonnement{{ abonnements_cantine_count|pluralize }} cantine)
+                            sont archivés et peuvent être restaurés.</li>
+                        <li><strong>Désactivation</strong> : l'élève passe au statut « Exclu », rien n'est supprimé.</li>
+                        <li><strong>Suppression définitive</strong> : l'élève et toutes ses données sont effacés.
+                            Cette action est <strong>IRRÉVERSIBLE</strong>.</li>
+                        <li>Toutes ces actions sont <strong>enregistrées dans le journal</strong> pour audit.</li>
                     </ul>
                 </div>
 
                 <!-- Formulaire de confirmation -->
                 <form method="post" class="mt-4">
                     {% csrf_token %}
-                    
-                    <!-- Code de vérification (ne pas afficher la valeur attendue) -->
+
+                    <!-- Type de suppression -->
                     <div class="mb-4">
+                        <label class="form-label"><strong>Type de suppression :</strong></label>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="type_suppression"
+                                   id="type_corbeille" value="corbeille" checked>
+                            <label class="form-check-label" for="type_corbeille">
+                                <strong>Supprimer (mise à la corbeille) — recommandé</strong><br>
+                                <small class="text-muted">
+                                    L'élève et ses données sont archivés dans la corbeille : restauration possible à tout moment.
+                                </small>
+                            </label>
+                        </div>
+
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="radio" name="type_suppression"
+                                   id="type_soft" value="soft">
+                            <label class="form-check-label" for="type_soft">
+                                <strong>Désactiver l'élève</strong><br>
+                                <small class="text-muted">
+                                    Le statut passe à « Exclu ». L'élève reste visible dans les listes.
+                                </small>
+                            </label>
+                        </div>
+
+                        {% if peut_supprimer_definitivement %}
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="radio" name="type_suppression"
+                                   id="type_definitif" value="definitif">
+                            <label class="form-check-label text-danger" for="type_definitif">
+                                <strong>Suppression définitive</strong><br>
+                                <small class="text-danger">
+                                    Supprime l'élève et tous ses éléments associés. Action irréversible.
+                                </small>
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <input type="hidden" name="mise_en_corbeille" id="mise_en_corbeille" value="on">
+                    <input type="hidden" name="suppression_definitive" id="suppression_definitive" value="">
+
+                    <div class="mb-3">
+                        <label for="motif" class="form-label"><strong>Motif (facultatif) :</strong></label>
+                        <input type="text" class="form-control" id="motif" name="motif"
+                               maxlength="200" placeholder="Ex. : départ de l'établissement, doublon...">
+                    </div>
+
+                    <!-- Code de vérification (uniquement pour la suppression définitive) -->
+                    <div class="mb-4" id="bloc_code" style="display:none;">
                         <label for="code_verification" class="form-label">
                             <strong>Code de vérification requis :</strong>
                         </label>
                         <div class="text-center">
-                            <input type="password" 
-                                   id="code_verification" 
-                                   name="code_verification" 
-                                   class="form-control code-input w-50 mx-auto" 
+                            <input type="password"
+                                   id="code_verification"
+                                   name="code_verification"
+                                   class="form-control code-input w-50 mx-auto"
                                    placeholder="Code de vérification (9 chiffres)"
                                    maxlength="9"
                                    inputmode="numeric"
-                                   autocomplete="off"
-                                   required>
+                                   autocomplete="off">
                             <small class="text-info mt-2 d-block">
-                                <i class="fas fa-info-circle"></i> 
+                                <i class="fas fa-info-circle"></i>
                                 Saisissez le code de vérification. Il sera contrôlé côté serveur.
                             </small>
                         </div>
                     </div>
-
-                    <!-- Option suppression définitive -->
-                    {% if peut_supprimer_definitivement %}
-                    <div class="mb-4">
-                        <div class="form-check">
-                            <input class="form-check-input" 
-                                   type="checkbox" 
-                                   id="suppression_definitive" 
-                                   name="suppression_definitive"
-                                   checked>
-                            <label class="form-check-label text-danger" for="suppression_definitive">
-                                <strong>Suppression définitive</strong> (supprime l'élève et tous ses éléments associés)
-                            </label>
-                        </div>
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle"></i>
-                            Si décoché, l'élève sera marqué comme "EXCLU" (soft delete) et ses données seront conservées.
-                        </small>
-                    </div>
-                    {% else %}
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <strong>Suppression douce (Soft Delete)</strong><br>
-                        L'élève sera marqué comme "EXCLU" et ses données seront conservées.<br>
-                        <small>Vous n'avez pas la permission de supprimer définitivement un élève. Contactez un administrateur si nécessaire.</small>
-                    </div>
-                    {% endif %}
 
                     <!-- Boutons d'action -->
                     <div class="d-flex justify-content-between align-items-center">
                         <a href="{% url 'eleves:detail_eleve' eleve.id %}" class="btn btn-secondary btn-lg">
                             <i class="fas fa-times"></i> Annuler
                         </a>
-                        
-                        <button type="submit" class="btn btn-danger btn-danger-custom btn-lg" id="btn-confirmer" disabled>
-                            <i class="fas fa-trash-alt"></i> 
+
+                        <button type="submit" class="btn btn-danger btn-danger-custom btn-lg" id="btn-confirmer">
+                            <i class="fas fa-trash-alt"></i>
                             Confirmer la suppression
                         </button>
                     </div>
@@ -238,71 +260,71 @@
 
 {% block extra_js %}
 <script>
-// Version JavaScript pur (compatible sans jQuery)
 document.addEventListener('DOMContentLoaded', function() {
     const codeInput = document.getElementById('code_verification');
+    const blocCode = document.getElementById('bloc_code');
     const btnConfirmer = document.getElementById('btn-confirmer');
-    
-    // Activer le bouton quand 9 chiffres sont saisis (validation finale côté serveur)
-    codeInput.addEventListener('input', function() {
-        const code = this.value.trim();
-        const onlyDigits = code.replace(/\D+/g, '');
-        const validLength = onlyDigits.length === 9;
-        if (validLength) {
-            this.classList.remove('is-invalid');
-            this.classList.add('is-valid');
-            btnConfirmer.disabled = false;
-            btnConfirmer.classList.remove('btn-secondary');
-            btnConfirmer.classList.add('btn-danger', 'btn-danger-custom');
+    const champCorbeille = document.getElementById('mise_en_corbeille');
+    const champDefinitif = document.getElementById('suppression_definitive');
+    const radios = document.querySelectorAll('input[name="type_suppression"]');
+
+    function typeChoisi() {
+        const coche = document.querySelector('input[name="type_suppression"]:checked');
+        return coche ? coche.value : 'corbeille';
+    }
+
+    function majFormulaire() {
+        const type = typeChoisi();
+        champCorbeille.value = (type === 'corbeille') ? 'on' : '';
+        champDefinitif.value = (type === 'definitif') ? 'on' : '';
+        blocCode.style.display = (type === 'definitif') ? 'block' : 'none';
+
+        if (type === 'definitif') {
+            btnConfirmer.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Supprimer définitivement';
+        } else if (type === 'corbeille') {
+            btnConfirmer.innerHTML = '<i class="fas fa-trash-alt"></i> Supprimer (corbeille)';
         } else {
-            this.classList.remove('is-valid');
-            this.classList.add('is-invalid');
-            btnConfirmer.disabled = true;
-            btnConfirmer.classList.remove('btn-danger', 'btn-danger-custom');
-            btnConfirmer.classList.add('btn-secondary');
+            btnConfirmer.innerHTML = '<i class="fas fa-user-slash"></i> Désactiver l\'élève';
         }
+    }
+
+    radios.forEach(function(radio) {
+        radio.addEventListener('change', majFormulaire);
     });
-    
-    // Confirmation finale avant soumission (la vérification du code se fait côté serveur)
+    majFormulaire();
+
     document.querySelector('form').addEventListener('submit', function(e) {
-        const nomComplet = '{{ eleve.prenom }} {{ eleve.nom }}';
+        const nomComplet = '{{ eleve.prenom|escapejs }} {{ eleve.nom|escapejs }}';
         const paiementsCount = {{ paiements_count }};
-        
-        let message = `Êtes-vous absolument certain de vouloir supprimer l'élève "${nomComplet}" ?`;
-        
-        if (paiementsCount > 0) {
-            message += `\n\nCela supprimera également ${paiementsCount} paiement(s) associé(s).`;
-        }
-        
-        message += '\n\nCette action est IRRÉVERSIBLE !';
-        
-        if (!confirm(message)) {
+        const type = typeChoisi();
+
+        if (type === 'definitif') {
+            const chiffres = (codeInput.value || '').replace(/\D+/g, '');
+            if (chiffres.length !== 9) {
+                e.preventDefault();
+                alert('Veuillez saisir le code de vérification (9 chiffres).');
+                codeInput.focus();
+                return false;
+            }
+            let message = `Êtes-vous absolument certain de vouloir supprimer définitivement l'élève "${nomComplet}" ?`;
+            if (paiementsCount > 0) {
+                message += `\n\nCela supprimera également ${paiementsCount} paiement(s) associé(s).`;
+            }
+            message += '\n\nCette action est IRRÉVERSIBLE !';
+            if (!confirm(message)) {
+                e.preventDefault();
+                return false;
+            }
+        } else if (type === 'corbeille') {
+            if (!confirm(`Confirmer la suppression de "${nomComplet}" ?\n\nIl sera placé dans la corbeille et pourra être restauré.`)) {
+                e.preventDefault();
+                return false;
+            }
+        } else if (!confirm(`Confirmer la désactivation de "${nomComplet}" ?`)) {
             e.preventDefault();
             return false;
         }
     });
-    
-    // Focus automatique sur le champ code
-    codeInput.focus();
-    
-    // État initial
-    btnConfirmer.disabled = true;
-    btnConfirmer.classList.add('btn-secondary');
-    
-    // Debug - afficher l'état initial
-    console.log('Code input trouvé:', codeInput);
-    console.log('Bouton confirmer trouvé:', btnConfirmer);
-    // Ne pas exposer le code attendu dans le client
-    console.log('Bouton initialement désactivé:', btnConfirmer.disabled);
 });
-
-// Version jQuery en fallback si disponible
-if (typeof $ !== 'undefined') {
-    $(document).ready(function() {
-        console.log('jQuery disponible - Version alternative activée');
-    });
-} else {
-    console.log('jQuery non disponible - Version JavaScript pur activée');
-}
 </script>
 {% endblock %}

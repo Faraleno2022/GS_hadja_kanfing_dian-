@@ -97,6 +97,72 @@ class PaiementForm(forms.ModelForm):
                 self.add_error('remise_pourcentage', "Valeur de remise invalide.")
         return cleaned
 
+class ModifierPaiementForm(forms.ModelForm):
+    """Formulaire de correction d'un paiement déjà enregistré.
+
+    L'élève n'est pas modifiable : corriger un oubli porte sur le montant, le
+    type, le mode, la date ou les observations. Un motif est exigé afin d'être
+    conservé dans la corbeille mémoire des modifications.
+    """
+
+    motif_modification = forms.CharField(
+        required=True,
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': "Ex. : montant saisi en double, tranche oubliée...",
+        }),
+        label="Motif de la modification",
+        help_text="Ce motif est conservé dans la corbeille mémoire des modifications.",
+    )
+
+    class Meta:
+        model = Paiement
+        fields = [
+            'type_paiement', 'mode_paiement', 'montant',
+            'date_paiement', 'reference_externe', 'observations',
+        ]
+        widgets = {
+            'type_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'montant': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '0',
+                'step': '1000',
+            }),
+            'date_paiement': forms.DateInput(attrs={
+                'class': 'form-control',
+                'type': 'date',
+            }, format='%Y-%m-%d'),
+            'reference_externe': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Référence externe (optionnel)',
+            }),
+            'observations': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
+        self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True)
+        self.fields['date_paiement'].input_formats = ['%Y-%m-%d', '%d/%m/%Y']
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise forms.ValidationError("Le montant doit être supérieur à zéro.")
+        return montant
+
+    def clean_motif_modification(self):
+        motif = (self.cleaned_data.get('motif_modification') or '').strip()
+        if len(motif) < 5:
+            raise forms.ValidationError("Merci d'indiquer un motif d'au moins 5 caractères.")
+        return motif
+
+
 class EcheancierForm(forms.ModelForm):
     """Formulaire pour créer/modifier un échéancier"""
     

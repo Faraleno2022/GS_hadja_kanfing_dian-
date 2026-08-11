@@ -1,15 +1,20 @@
 from django.contrib import admin
+
+from administration.corbeille_admin import CorbeilleAdminMixin
+
 from .models import AbonnementBus, AbonnementCantine
 
 @admin.register(AbonnementBus)
-class AbonnementBusAdmin(admin.ModelAdmin):
+class AbonnementBusAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ('eleve', 'montant', 'periodicite', 'date_debut', 'date_expiration', 'statut', 'zone', 'point_arret')
     list_filter = ('statut', 'periodicite', 'zone')
     search_fields = ('eleve__nom', 'eleve__prenom', 'eleve__matricule', 'zone', 'point_arret', 'contact_parent')
+    list_select_related = ('eleve',)
+    raw_id_fields = ('eleve',)
 
 
 @admin.register(AbonnementCantine)
-class AbonnementCantineAdmin(admin.ModelAdmin):
+class AbonnementCantineAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ('eleve', 'type_repas', 'montant', 'periodicite', 'date_debut', 'date_expiration', 'statut', 'jours_restants')
     list_filter = ('statut', 'periodicite', 'type_repas', 'regime_alimentaire')
     search_fields = ('eleve__nom', 'eleve__prenom', 'eleve__matricule', 'contact_parent', 'regime_alimentaire')

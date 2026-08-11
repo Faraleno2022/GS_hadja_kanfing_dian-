@@ -487,6 +487,18 @@
                                 </a></li>
                                 {% endif %}
 
+                                {% if user.is_superuser or user.profil.role == 'ADMIN' %}
+                                <li><a class="dropdown-item" href="{% url 'administration:corbeille_eleves' %}">
+                                    <i class="fas fa-trash-restore me-1"></i>Corbeille des élèves
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'administration:corbeille_elements' %}">
+                                    <i class="fas fa-box-archive me-1"></i>Corbeille (paiements, abonnements)
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'administration:journal_modifications' %}">
+                                    <i class="fas fa-history me-1"></i>Corbeille mémoire (modifications)
+                                </a></li>
+                                {% endif %}
+
                                 {% if user.is_superuser %}
                                 <li><hr class="dropdown-divider"></li>
                                 <!-- Section Super Admin -->

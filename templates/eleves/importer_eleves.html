@@ -205,8 +205,24 @@
         <div class="import-card">
             <h4 class="mb-4"><i class="fas fa-cog me-2"></i>Configuration de l'importation</h4>
             
+            <!-- Transfert depuis un autre poste -->
+            <div class="feature-box">
+                <h5><i class="fas fa-exchange-alt me-2"></i>Transfert depuis un autre poste</h5>
+                <div class="form-check">
+                    <input class="form-check-input checkbox-custom" type="checkbox"
+                           name="repartition_auto" id="repartition_auto">
+                    <label class="form-check-label checkbox-label" for="repartition_auto">
+                        Répartir automatiquement selon les colonnes <strong>École / Classe / Année scolaire</strong> du fichier
+                    </label>
+                </div>
+                <small class="text-muted">
+                    À cocher pour réimporter le fichier produit par « Exporter tous les élèves ».
+                    Les classes absentes sont créées automatiquement et il n'y a pas de classe de destination à choisir.
+                </small>
+            </div>
+
             <!-- Sélection de la classe -->
-            <div class="mb-4">
+            <div class="mb-4" id="bloc_classe">
                 <label for="classe_id" class="form-label fw-bold">
                     <i class="fas fa-school me-2"></i>Classe de destination *
                 </label>
@@ -378,6 +394,28 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileInfo = document.getElementById('fileInfo');
     const fileName = document.getElementById('fileName');
     const steps = document.querySelectorAll('.step');
+    const repartitionAuto = document.getElementById('repartition_auto');
+    const blocClasse = document.getElementById('bloc_classe');
+
+    // Le fichier exporté porte lui-même la classe : plus besoin d'en choisir une
+    function majRepartitionAuto() {
+        const auto = repartitionAuto && repartitionAuto.checked;
+        blocClasse.style.display = auto ? 'none' : '';
+        classeSelect.required = !auto;
+        if (auto) {
+            btnTemplate.disabled = true;
+            steps[0].classList.add('active');
+            steps[1].classList.add('active');
+            btnImport.disabled = !(fileInput.files && fileInput.files[0]);
+        } else {
+            btnTemplate.disabled = !classeSelect.value;
+            btnImport.disabled = !(classeSelect.value && fileInput.files && fileInput.files[0]);
+        }
+    }
+
+    if (repartitionAuto) {
+        repartitionAuto.addEventListener('change', majRepartitionAuto);
+    }
 
     // Activer le bouton template quand une classe est sélectionnée
     classeSelect.addEventListener('change', function() {
@@ -405,7 +443,7 @@ document.addEventListener('DOMContentLoaded', function() {
     fileInput.addEventListener('change', function() {
         if (this.files && this.files[0]) {
             showFileInfo(this.files[0]);
-            if (classeSelect.value) {
+            if (classeSelect.value || (repartitionAuto && repartitionAuto.checked)) {
                 btnImport.disabled = false;
                 steps[2].classList.add('active');
             }
@@ -458,14 +496,18 @@ document.addEventListener('DOMContentLoaded', function() {
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
+    // État initial (le navigateur peut restaurer la case cochée)
+    majRepartitionAuto();
+
     // Validation avant soumission
     document.getElementById('importForm').addEventListener('submit', function(e) {
-        if (!classeSelect.value) {
+        const auto = repartitionAuto && repartitionAuto.checked;
+        if (!auto && !classeSelect.value) {
             e.preventDefault();
             alert('Veuillez sélectionner une classe');
             return false;
         }
-        
+
         if (!fileInput.files || !fileInput.files[0]) {
             e.preventDefault();
             alert('Veuillez sélectionner un fichier à importer');

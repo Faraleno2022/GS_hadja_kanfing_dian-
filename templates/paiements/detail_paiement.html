@@ -40,6 +40,11 @@
                 </form>
             {% endif %}
         {% endif %}
+        {% if is_admin or user_permissions.can_modify_payments %}
+            <a href="{% url 'paiements:modifier_paiement' paiement.id %}" class="btn btn-outline-warning">
+                <i class="fas fa-pen me-1"></i>Modifier le paiement
+            </a>
+        {% endif %}
         <!-- Nouveau paiement en tête de page -->
         <a href="{% url 'paiements:ajouter_paiement_eleve' paiement.eleve.id %}" class="btn btn-outline-success">
             <i class="fas fa-plus me-1"></i>Nouveau paiement

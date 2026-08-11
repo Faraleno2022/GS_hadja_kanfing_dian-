@@ -34,11 +34,28 @@
       <div class="col-12">
         <div class="btn-group" role="group">
           <button type="button" id="btn-tickets-retrait-masse" class="btn btn-outline-info">
-            <i class="fas fa-ticket-alt me-1"></i>Tickets Retrait (Classe)
+            <i class="fas fa-ticket-alt me-1"></i>Cartes Retrait (Classe)
           </button>
           <button type="button" id="btn-tickets-bus-masse" class="btn btn-outline-warning">
-            <i class="fas fa-bus me-1"></i>Tickets Bus (Classe)
+            <i class="fas fa-bus me-1"></i>Cartes Bus (Classe)
           </button>
+          <button type="button" id="btn-cartes-cantine-masse" class="btn btn-outline-danger">
+            <i class="fas fa-utensils me-1"></i>Cartes Cantine (Classe)
+          </button>
+        </div>
+        <div class="form-text mt-1">
+          <i class="fas fa-print me-1"></i>Toutes les planches de cartes sont imprimées à raison de 8 cartes par feuille A4.
+        </div>
+      </div>
+    </div>
+    <div class="row g-3 mt-2">
+      <div class="col-12">
+        <a href="{% url 'eleves:exporter_tous_eleves_template' %}" class="btn btn-outline-secondary">
+          <i class="fas fa-file-export me-1"></i>Exporter tous les élèves (pour un autre poste)
+        </a>
+        <div class="form-text mt-1">
+          <i class="fas fa-info-circle me-1"></i>Fichier Excel unique : École, Classe, Année scolaire puis les colonnes du
+          modèle d'importation. Il s'importe tel quel sur un autre poste, chaque élève retrouvant sa classe.
         </div>
       </div>
     </div>
