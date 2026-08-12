@@ -1570,19 +1570,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Calcul du montant final après remise (aperçu)
     function updateFinalAmount() {
         try {
-            const montant = Number((montantInput && montantInput.value) ? montantInput.value : 0) || 0;
+            const montant = lireMontant();
             const remiseEl = document.getElementById('id_remise_pourcentage');
             const pct = Number(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
             const tuition = getTuitionBase();
             let base_remise = tuition ? tuition.rest : montant;
             if (base_remise < 0) base_remise = 0;
             const remise_montant = Math.max(0, (base_remise * pct) / 100.0);
-            const final_montant = Math.max(0, montant - remise_montant);
-            const final_disp = roundNearest1000(final_montant);
+            // Le montant encaissé n'est pas forcément un multiple de 1 000
+            // (1 130 500 GNF) : l'aperçu affiche la valeur exacte.
+            const final_disp = Math.max(0, montant - remise_montant);
             const info = document.getElementById('remiseInfo');
             if (info) {
                 info.style.display = 'inline';
-                info.textContent = 'Base remise: ' + fmtGNF(roundNearest1000(base_remise)) + ' • Remise: ' + fmtGNF(roundNearest1000(remise_montant));
+                info.textContent = 'Base remise: ' + fmtGNF(base_remise) + ' • Remise: ' + fmtGNF(remise_montant);
             }
             const finalDisplay = document.getElementById('finalAmountDisplay');
             if (finalDisplay) finalDisplay.textContent = fmtGNF(final_disp);
