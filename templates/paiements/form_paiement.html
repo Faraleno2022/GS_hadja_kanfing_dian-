@@ -364,6 +364,7 @@
                                     <i class="fas fa-magic me-1"></i>Remplir le montant suggéré
                                 </button>
                             </div>
+                            <div class="form-text">{{ form.montant.help_text }}</div>
                             {% if form.montant.errors %}
                                 <div class="text-danger small">{{ form.montant.errors.0 }}</div>
                             {% endif %}
@@ -383,12 +384,20 @@
                                             <div><span class="text-muted">T2 restant:</span> <strong id="sbT2">0 GNF</strong></div>
                                             <div><span class="text-muted">T3 restant:</span> <strong id="sbT3">0 GNF</strong></div>
                                         </div>
+                                        <div id="sbCalcul" class="small mt-1" style="display:none;">
+                                            <i class="fas fa-calculator me-1 text-info"></i>
+                                            <span id="sbCalculTexte"></span>
+                                        </div>
                                         <div class="small text-muted mt-1">
                                             <i class="fas fa-info-circle me-1"></i>
                                             <span id="sbDesc">Suggestion calculée selon le type sélectionné.</span>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                            <div id="montantAvertissement" class="alert alert-warning py-2 px-3 mt-2 small" style="display:none;">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <span id="montantAvertissementTexte"></span>
                             </div>
                         </div>
                         
@@ -694,7 +703,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialiser l'affichage du montant au chargement
     if (montantDisplay) {
         try {
-            const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+            const initVal = lireMontant();
             const init = (isNaN(initVal) ? 0 : initVal).toLocaleString('fr-FR') + ' GNF';
             montantDisplay.textContent = init;
             if (stickyMontant) stickyMontant.textContent = init;
@@ -711,6 +720,47 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function fmtGNF(v) {
         try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; }
+    }
+
+    // Solde encaissable sur l'année, renvoyé par la suggestion serveur.
+    let soldeAnnuel = null;
+
+    // Le champ montant accepte « 175 000 GNF » : le serveur nettoie la saisie,
+    // l'affichage doit lire exactement la même valeur que lui.
+    function lireMontant() {
+        if (!montantInput) return 0;
+        const brut = String(montantInput.value || '')
+            .replace(/[\s   ]/g, '')
+            .replace(/gnf|fg/gi, '')
+            .replace(',', '.');
+        const groupes = brut.split('.');
+        let nettoye = brut;
+        if (groupes.length > 1 && groupes.every(g => /^\d*$/.test(g))) {
+            const reste = groupes.slice(1);
+            if (reste.every(g => g.length === 3)) {
+                nettoye = groupes.join('');
+            } else if (reste.length === 1 && /^0+$/.test(reste[0])) {
+                nettoye = groupes[0];
+            }
+        }
+        const valeur = parseFloat(nettoye);
+        return isFinite(valeur) ? valeur : 0;
+    }
+
+    // Prévenir dès la saisie : au-delà du solde, la validation refusera.
+    function verifierMontantSaisi() {
+        const zone = document.getElementById('montantAvertissement');
+        const texte = document.getElementById('montantAvertissementTexte');
+        if (!zone || !texte) return;
+        const saisi = lireMontant();
+        if (soldeAnnuel !== null && soldeAnnuel >= 0 && saisi > soldeAnnuel) {
+            texte.textContent =
+                "Ce montant dépasse le solde restant de l'année (" + fmtGNF(soldeAnnuel)
+                + "). La validation du paiement sera refusée au-delà de ce plafond.";
+            zone.style.display = '';
+        } else {
+            zone.style.display = 'none';
+        }
     }
 
     function roundNearest1000(v) {
@@ -740,10 +790,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (montantInput) {
         montantInput.addEventListener('input', function(){
             try {
-                const v = parseFloat(montantInput.value || 0) || 0;
-                const txt = v.toLocaleString('fr-FR') + ' GNF';
+                const txt = lireMontant().toLocaleString('fr-FR') + ' GNF';
                 if (montantDisplay) montantDisplay.textContent = txt;
                 if (stickyMontant) stickyMontant.textContent = txt;
+                verifierMontantSaisi();
             } catch(_) {}
         });
         montantInput.addEventListener('change', function(){});
@@ -871,6 +921,92 @@ document.addEventListener('DOMContentLoaded', function() {
         return false;
     }
 
+    // Lecture d'un libellé de type de paiement, calquée sur payment_type_plan()
+    // de paiements/allocation.py. Le serveur fait foi ; ce miroir ne sert que
+    // lorsque son appel échoue, et doit donc donner exactement le même plan.
+    function analyserTypePaiement(libelle) {
+        const TRANCHE = '(?:tranches?|trimestres?|versements?|echeances?)';
+        const SEPARATEURS = /[+,;\/&]|\bet\b|\bplus\b/;
+        const EXCLUSION = /\b(?:sans|hors|sauf|exceptees|exceptee|exceptes|excepte|hormis)\b/;
+
+        let texte = String(libelle || '');
+        [[/\bpremiere\b|\bpremier\b|\b1ere\b|\b1er\b|\b1re\b|\b1e\b/g, '1'],
+         [/\bdeuxieme\b|\bseconde\b|\bsecond\b|\b2eme\b|\b2e\b|\b2nd\b/g, '2'],
+         [/\btroisieme\b|\b3eme\b|\b3e\b/g, '3']].forEach(function(regle) {
+            texte = texte.replace(regle[0], regle[1]);
+        });
+        // « tranche deux », « deux tranches » : nombres écrits en lettres.
+        [['un', '1'], ['une', '1'], ['deux', '2'], ['trois', '3']].forEach(function(paire) {
+            texte = texte.replace(new RegExp('\\b(' + TRANCHE + ')\\s+' + paire[0] + '\\b', 'g'), '$1 ' + paire[1]);
+            texte = texte.replace(new RegExp('\\b' + paire[0] + '\\s+(' + TRANCHE + ')\\b', 'g'), paire[1] + ' $1');
+        });
+        // Plages : « tranches 1 à 3 », « T1-T3 ».
+        texte = texte.replace(/\b(?:t\s*)?([123])\s*(?:-|a|au|jusqu\s*'?\s*au?)\s*(?:t\s*)?([123])\b/g,
+            function(tout, debut, fin) {
+                if (Number(debut) >= Number(fin)) return tout;
+                const sortie = [];
+                for (let n = Number(debut); n <= Number(fin); n++) sortie.push('t' + n);
+                return sortie.join(' ');
+            });
+
+        const mentionneTranche = new RegExp('\\b' + TRANCHE + '\\b').test(texte);
+        function lirePostes(fragment) {
+            const tranches = new Set();
+            (fragment.match(/\bt\s*[123]\b/g) || []).forEach(function(m) {
+                tranches.add(Number(m.replace(/[^123]/g, '')));
+            });
+            fragment.split(SEPARATEURS).forEach(function(segment) {
+                segment = (segment || '').trim();
+                if (!segment) return;
+                if (new RegExp('\\b' + TRANCHE + '\\b').test(segment)) {
+                    (segment.match(/\b[123]\b/g) || []).forEach(function(n) { tranches.add(Number(n)); });
+                } else if (mentionneTranche && /^[123]$/.test(segment)) {
+                    // « Tranches 1, 2 et 3 » : le mot n'est écrit qu'une fois.
+                    tranches.add(Number(segment));
+                }
+            });
+            return {
+                tranches: tranches,
+                admission: /\b(?:re)?inscriptions?\b|\badmissions?\b/.test(fragment)
+            };
+        }
+
+        const demandes = [], retraits = [];
+        texte.split(SEPARATEURS).forEach(function(segment) {
+            segment = segment || '';
+            const coupure = segment.search(EXCLUSION);
+            if (coupure < 0) { demandes.push(segment); retraits.push(''); return; }
+            const mot = (segment.match(EXCLUSION) || [''])[0];
+            demandes.push(segment.slice(0, coupure));
+            retraits.push(segment.slice(coupure + mot.length));
+        });
+        const texteDemande = demandes.join(' , ');
+        const retires = lirePostes(retraits.join(' , '));
+        const postes = lirePostes(texteDemande);
+
+        const tranches = postes.tranches;
+        let admission = postes.admission;
+        const kind = /reinscription/.test(texteDemande) ? 'reinscription'
+                   : (/inscription/.test(texteDemande) ? 'inscription' : null);
+        const estSolde = /\bsolde\b|\bsolder\b|\breliquat\b|\bcomplement\b|\breste\s*a\s*payer\b|\btotalite\b|\bintegralite\b|\bintegral(?:e|ement)?\b|\bpaiement\s+total\b|\btout\s+le\s+reste\b/.test(texteDemande);
+        // « Solde tranche 2 » vise cette seule tranche : un poste nommé prime
+        // sur l'élargissement au reste de l'année.
+        const couvreTout = estSolde && !(tranches.size || admission);
+        if (texteDemande.includes('annuel') || couvreTout
+            || (texteDemande.includes('scolarite') && tranches.size === 0)) {
+            [1, 2, 3].forEach(function(n) { tranches.add(n); });
+        }
+        if (couvreTout) admission = true;
+        retires.tranches.forEach(function(n) { tranches.delete(n); });
+
+        return {
+            kind: kind,
+            admission: (admission || kind !== null) && !retires.admission,
+            tranches: Array.from(tranches).sort(function(a, b) { return a - b; }),
+            couvreTout: couvreTout
+        };
+    }
+
     function updateMontantSuggestion() {
         console.log('updateMontantSuggestion called');
         if (!typeSelect || !montantInput) {
@@ -914,45 +1050,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
         console.log('Selected type text:', selectedText);
 
-        var amount = 0;
-
-        const hasIns = selectedText.includes('inscription') || selectedText.includes('insc');
-        const hasReins = selectedText.includes('reinscription');
+        // Le calcul est additif, comme côté serveur : chaque poste nommé dans
+        // le libellé ajoute son reste. La cascade de « sinon » précédente se
+        // trompait dès que le type combinait trois postes (« Inscription +
+        // Tranche 1 + Tranche 3 » ne facturait pas la 3ème tranche).
+        const plan = analyserTypePaiement(selectedText);
         const sbFiLabel = document.getElementById('sbFiLabel');
         if (sbFiLabel) {
-            sbFiLabel.textContent = hasReins ? 'Réinscription restante:' : 'Inscription restante:';
-        }
-        const hasAnn = selectedText.includes('annuel') || selectedText.includes('annuelle');
-        var nearTranche = function(n) { 
-            return new RegExp('(tranche\\\\D{0,8}' + n + '|' + n + '\\\\D{0,8}tranche)').test(selectedText);
-        };
-        const hasT1 = /tranche\s*1|1ere|1er|premiere|\bt1\b/.test(selectedText) || nearTranche(1);
-        const hasT2 = /tranche\s*2|2eme|deuxieme|\bt2\b/.test(selectedText) || nearTranche(2);
-        const hasT3 = /tranche\s*3|3eme|troisieme|\bt3\b/.test(selectedText) || nearTranche(3);
-
-        console.log('Type detection - Ins:', hasIns, 'Ann:', hasAnn, 'T1:', hasT1, 'T2:', hasT2, 'T3:', hasT3);
-
-        if (hasIns && hasT1 && hasT2) {
-            amount = remIns + rem1 + rem2;
-        } else if (hasIns && hasT1) {
-            amount = remIns + rem1;
-        } else if (hasIns && hasAnn) {
-            amount = reste;
-        } else if (hasAnn) {
-            amount = reste;
-        } else if (hasT1) {
-            amount = rem1;
-        } else if (hasT2) {
-            amount = rem2;
-        } else if (hasT3) {
-            amount = rem3;
-        } else if (hasIns) {
-            amount = remIns;
-        } else {
-            amount = reste;
+            sbFiLabel.textContent = (plan.kind === 'reinscription' ? 'Réinscription' : 'Inscription') + ' restante:';
         }
 
-        console.log('Calculated amount:', amount);
+        console.log('Plan local:', plan);
+
+        if (!plan.admission && !plan.tranches.length) {
+            // Cantine, transport, uniforme… : aucun poste de l'échéancier.
+            // Proposer le solde annuel serait un montant inventé.
+            if (badge) badge.style.display = 'none';
+            return;
+        }
+
+        const restesParTranche = { 1: rem1, 2: rem2, 3: rem3 };
+        var amount = (plan.admission ? remIns : 0)
+            + plan.tranches.reduce((total, n) => total + (restesParTranche[n] || 0), 0);
+
+        console.log('Calculated amount:', amount, '(solde annuel:', reste, ')');
 
         // Toujours renseigner le champ
         var suggested = Math.floor(amount);
@@ -999,9 +1120,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!data || !data.ok) return false;
 
             const suggested = Number(data.suggested || 0);
+            soldeAnnuel = Number(data.solde_total || 0);
             if (suggested > 0) {
                 montantInput.value = suggested;
                 montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+                if (badge && badgeValue) {
+                    badgeValue.textContent = suggested.toLocaleString('fr-FR');
+                    badge.style.display = 'inline-flex';
+                }
             }
 
             const bd = data.breakdown || {};
@@ -1020,8 +1146,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
                 if (sbT3) sbT3.textContent = fmt(bd.t3_restant);
                 if (sbDesc) sbDesc.textContent = bd.description || '';
+
+                // Détail du calcul : « Réinscription 20 000 + Tranche 1 300 000 = 320 000 GNF »
+                const sbCalcul = document.getElementById('sbCalcul');
+                const sbCalculTexte = document.getElementById('sbCalculTexte');
+                const lignes = Array.isArray(bd.lignes) ? bd.lignes : [];
+                if (sbCalcul && sbCalculTexte) {
+                    if (lignes.length) {
+                        const detail = lignes
+                            .map(l => l.libelle + ' ' + Number(l.reste || 0).toLocaleString('fr-FR'))
+                            .join(' + ');
+                        sbCalculTexte.textContent =
+                            detail + ' = ' + suggested.toLocaleString('fr-FR') + ' GNF';
+                        sbCalcul.style.display = '';
+                    } else {
+                        sbCalcul.style.display = 'none';
+                    }
+                }
                 sb.style.display = '';
             }
+            verifierMontantSaisi();
             return true;
         } catch (e) {
             console.warn('Suggestion serveur indisponible, conservation du calcul local.', e);
@@ -1029,23 +1173,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Le serveur fait foi : il connaît le tarif d'admission projeté, les
+    // remises validées et la lecture exacte du libellé du type. Le calcul
+    // local ne sert plus que de secours si l'appel n'aboutit pas.
+    async function suggererMontant() {
+        const okServeur = await updateServerSuggestion();
+        if (!okServeur) {
+            updateMontantSuggestion();
+        }
+    }
+
     // Écouteurs d'événements
     if (typeSelect) {
-        typeSelect.addEventListener('change', function() {
-            updateMontantSuggestion();
-            updateServerSuggestion();
-        });
-        // Déclencher aussi sur focus pour s'assurer que ça marche
-        typeSelect.addEventListener('focus', updateMontantSuggestion);
+        typeSelect.addEventListener('change', suggererMontant);
     }
 
     // Bouton pour remplir le montant suggéré à la demande
     const btnFillSuggested = document.getElementById('btnFillSuggested');
     if (btnFillSuggested) {
-        btnFillSuggested.addEventListener('click', function() {
-            updateMontantSuggestion();
-            updateServerSuggestion();
-        });
+        btnFillSuggested.addEventListener('click', suggererMontant);
     }
 
     // Auto-sélection d'un type par défaut si aucun n'est choisi
@@ -1086,96 +1232,18 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(autoSelectDefaultType, 0);
     {% endif %}
 
-    // Déclenchement immédiat et répété pour s'assurer que ça marche
+    // Déclenchement immédiat : la suggestion serveur suffit dans le cas normal.
+    // L'échéancier AJAX et le calcul local ne servent que si elle n'aboutit pas.
     async function tryUpdateMontant() {
-        console.log('tryUpdateMontant called');
-        
-        // Si pas d'échéancier, essayer de le charger via AJAX
+        if (await updateServerSuggestion()) return;
+
         if (!getEcheancier()) {
-            console.log('No echeancier found, trying AJAX...');
             const loaded = await ensureEcheancierLoaded();
-            if (!loaded) {
-                console.log('Failed to load echeancier via AJAX');
-                return;
-            }
+            if (!loaded) return;
         }
-        
+
+        if (await updateServerSuggestion()) return;
         updateMontantSuggestion();
-        await updateServerSuggestion();
-        
-        // Réessayer dans 500ms si le montant n'est toujours pas rempli
-        setTimeout(async () => {
-            if (montantInput && !montantInput.value) {
-                console.log('Retrying montant update...');
-                if (!getEcheancier()) {
-                    await ensureEcheancierLoaded();
-                }
-                updateMontantSuggestion();
-                // Fallback: si toujours vide, appeler le serveur pour une suggestion exacte
-                setTimeout(async () => {
-                    if (montantInput && !montantInput.value) {
-                        console.log('Fallback to server ajax_montant_suggere');
-                        try {
-                            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
-                            const eleveHidden = document.getElementById('id_eleve');
-                            const typeSelectEl = document.getElementById('id_type_paiement');
-                            const eleveId = eleveHidden && eleveHidden.value ? eleveHidden.value : null;
-                            const typeId = typeSelectEl && typeSelectEl.value ? typeSelectEl.value : null;
-                            if (!eleveId || !typeId) return;
-                            const resp = await fetch('{% url "paiements:ajax_montant_suggere" %}', {
-                                method: 'POST',
-                                headers: {
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                    'X-CSRFToken': csrfInput ? csrfInput.value : ''
-                                },
-                                body: new URLSearchParams({ eleve_id: eleveId, type_id: typeId }).toString()
-                            });
-                            const data = await resp.json();
-                            if (data && data.ok) {
-                                const suggested = Number(data.suggested || 0);
-                                if (suggested > 0) {
-                                    montantInput.value = suggested;
-                                    const txt = suggested.toLocaleString('fr-FR') + ' GNF';
-                                    if (montantDisplay) montantDisplay.textContent = txt;
-                                    const stickyMontant = document.getElementById('stickyMontant');
-                                    if (stickyMontant) stickyMontant.textContent = txt;
-                                    const finalDisp = document.getElementById('finalAmountDisplay');
-                                    const stickyFinal = document.getElementById('stickyFinal');
-                                    if (finalDisp) finalDisp.textContent = txt;
-                                    if (stickyFinal) stickyFinal.textContent = txt;
-                                    if (badge && badgeValue) {
-                                        badge.style.display = 'inline-flex';
-                                        badgeValue.textContent = Number(suggested).toLocaleString('fr-FR');
-                                    }
-                                    // Mettre à jour le breakdown si disponible
-                                    const bd = data.breakdown || {};
-                                    const sb = document.getElementById('suggestionBreakdown');
-                                    const fmt = (v) => { try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; } };
-                                    if (sb) {
-                                        const sbFi = document.getElementById('sbFi');
-                                        const sbFiLabel = document.getElementById('sbFiLabel');
-                                        const sbT1 = document.getElementById('sbT1');
-                                        const sbT2 = document.getElementById('sbT2');
-                                        const sbT3 = document.getElementById('sbT3');
-                                        const sbDesc = document.getElementById('sbDesc');
-                                        if (sbFi) sbFi.textContent = fmt(bd.fi_restant);
-                                        if (sbFiLabel) sbFiLabel.textContent = (bd.frais_admission_label || 'Inscription') + ' restante:';
-                                        if (sbT1) sbT1.textContent = fmt(bd.t1_restant);
-                                        if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
-                                        if (sbT3) sbT3.textContent = fmt(bd.t3_restant);
-                                        if (sbDesc) sbDesc.textContent = bd.description || '';
-                                        sb.style.display = '';
-                                    }
-                                }
-                            }
-                        } catch(e) {
-                            console.warn('ajax_montant_suggere fallback failed', e);
-                        }
-                    }
-                }, 400);
-            }
-        }, 500);
     }
     
     // Déclencher immédiatement
@@ -1190,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateFinalAmount() {
-        const v = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const v = lireMontant();
         const remiseEl = document.getElementById('id_remise_pourcentage');
         const pct = parseFloat(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
         const remise = Math.max(0, Math.min(100, pct));
@@ -1219,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Formatage du montant en temps réel et maj badge (toujours visible)
     montantInput.addEventListener('input', function() {
-        const value = parseFloat(this.value);
+        const value = lireMontant();
         const v = isNaN(value) ? 0 : Math.max(0, value);
         try {
             montantDisplay.textContent = v.toLocaleString('fr-FR') + ' GNF';
@@ -1239,6 +1307,7 @@ document.addEventListener('DOMContentLoaded', function() {
             catch(_) { stickyMontant.textContent = String(v) + ' GNF'; }
         }
         updateFinalAmount();
+        verifierMontantSaisi();
     })
 
     // Mise à jour quand la remise change
@@ -1252,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateFinalAmount();
     // Init sticky avec les valeurs actuelles
     (function initSticky() {
-        const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const initVal = lireMontant();
         const stickyMontant = document.getElementById('stickyMontant');
         const stickyFinal = document.getElementById('stickyFinal');
         if (stickyMontant) {
@@ -1396,7 +1465,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Mettre à jour la suggestion de montant en fonction du type choisi
-        updateMontantSuggestion();
+        suggererMontant();
     }
     
     // Fonction pour réinitialiser la sélection

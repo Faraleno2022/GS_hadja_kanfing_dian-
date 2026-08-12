@@ -59,6 +59,9 @@ from .notifications import (
     send_retard_notification,
 )
 
+logger = logging.getLogger(__name__)
+
+
 def _normalize_payment_type_name(type_name: str) -> str:
     """Normalise les accents pour reconnaître uniformément les types de paiement."""
     normalized = unicodedata.normalize("NFKD", (type_name or "").strip().lower())
@@ -83,6 +86,44 @@ def _echeancier_for_eleve(eleve, annee_scolaire=None, *, for_update=False):
     if not year:
         return None
     return queryset.filter(eleve=eleve, annee_scolaire=year).first()
+
+
+def _annee_scolaire_est_valide(valeur) -> bool:
+    """Vérifie le format AAAA-AAAA exigé par le modèle Paiement."""
+    from .models import ANNEE_SCOLAIRE_VALIDATOR
+
+    if not valeur:
+        return False
+    try:
+        ANNEE_SCOLAIRE_VALIDATOR(valeur)
+    except ValidationError:
+        return False
+    return True
+
+
+def _annee_scolaire_reparee(paiement):
+    """Année à écrire quand celle du paiement est absente ou mal formée.
+
+    Renvoie une chaîne vide si l'année en place est déjà correcte (rien à
+    réparer) ou si aucune année fiable n'est disponible : le modèle refusera
+    alors l'enregistrement avec un message explicite.
+    """
+    if _annee_scolaire_est_valide(getattr(paiement, 'annee_scolaire', '')):
+        return ''
+
+    eleve = getattr(paiement, 'eleve', None)
+    candidats = [getattr(getattr(eleve, 'classe', None), 'annee_scolaire', '')]
+    if eleve is not None:
+        candidats.extend(
+            EcheancierPaiement.objects
+            .filter(eleve=eleve)
+            .order_by('-annee_scolaire')
+            .values_list('annee_scolaire', flat=True)[:1]
+        )
+    for candidat in candidats:
+        if _annee_scolaire_est_valide(candidat):
+            return candidat
+    return ''
 
 
 def _echeancier_for_payment(paiement, *, for_update=False):
@@ -454,23 +495,12 @@ def ensure_echeancier_for_eleve(
             ).first()
 
 def _tranches_visees_par_type(type_nom):
-    """Retourne l'ensemble des tranches ({1, 2, 3}) couvertes par un type de paiement.
+    """Retourne l'ensemble des tranches ({1, 2, 3}) couvertes par un type.
 
-    ``type_nom`` doit déjà être normalisé (minuscules, sans accents).
-    « Annuel » et « Scolarité » couvrent les trois tranches.
+    Simple façade sur ``payment_type_plan`` : le décodage des libellés est
+    centralisé pour que la suggestion et l'allocation ne divergent jamais.
     """
-    if 'annuel' in type_nom or 'scolarite' in type_nom:
-        return {1, 2, 3}
-    tranches = set()
-    motifs = {
-        1: ('tranche 1', 'tranche1', '1ere tranche', '1re tranche'),
-        2: ('tranche 2', 'tranche2', '2eme tranche'),
-        3: ('tranche 3', 'tranche3', '3eme tranche'),
-    }
-    for numero, variantes in motifs.items():
-        if any(variante in type_nom for variante in variantes):
-            tranches.add(numero)
-    return tranches
+    return set(payment_type_plan(type_nom)['tranches'])
 
 
 def _suggestion_paiement(ech, type_nom):
@@ -502,15 +532,16 @@ def _suggestion_paiement(ech, type_nom):
         3: int(net_balances['tranche_3']),
     }
 
-    inclut_frais = 'inscription' in type_nom  # couvre aussi « reinscription »
-    tranches = _tranches_visees_par_type(type_nom)
+    plan = payment_type_plan(type_nom)
+    inclut_frais = plan['include_registration']  # inscription, réinscription ou solde
+    tranches = set(plan['tranches'])
 
     suggested = (restes['fi'] if inclut_frais else 0) + sum(restes[n] for n in tranches)
 
     # Libellé lisible de ce qui est couvert
     postes = []
     if inclut_frais:
-        est_reinscription = 'reinscription' in type_nom.replace(' ', '')
+        est_reinscription = plan['registration_kind'] == 'reinscription'
         postes.append("frais de réinscription" if est_reinscription else "frais d'inscription")
     if tranches == {1, 2, 3}:
         postes.append("scolarité annuelle (3 tranches)")
@@ -690,14 +721,44 @@ def ajax_montant_suggere(request):
         labels = []
         if plan['include_registration']:
             requested_components.append('inscription')
-            labels.append('Réinscription' if kind == 'reinscription' else 'Inscription')
+            if kind == 'reinscription':
+                labels.append('Réinscription')
+            elif kind == 'inscription':
+                labels.append('Inscription')
+            else:
+                labels.append("Frais d'admission")
         for tranche in plan['tranches']:
             requested_components.append(f'tranche_{tranche}')
             labels.append(f'Tranche {tranche}')
         suggested = sum(remaining_by_component[key] for key in requested_components)
-        description = ' + '.join(labels)
-        if description:
-            description += ' (reste)'
+
+        # Détail poste par poste : le caissier voit d'où sort le montant.
+        lignes = [
+            {'libelle': libelle, 'reste': remaining_by_component[key]}
+            for key, libelle in zip(requested_components, labels)
+        ]
+        solde_total = sum(remaining_by_component.values())
+        deja_solde = bool(requested_components) and suggested <= 0
+        if not requested_components:
+            description = (
+                "Ce type ne correspond à aucun poste de l'échéancier "
+                "(cantine, transport, uniforme…) : saisissez le montant à la main."
+            )
+        elif deja_solde:
+            # Suggérer 0 sans explication laisserait croire à une panne.
+            postes = ' + '.join(labels)
+            if solde_total > 0:
+                reste_lisible = f"{solde_total:,}".replace(',', ' ')
+                description = (
+                    f"{postes} : déjà soldé. Il reste {reste_lisible} GNF "
+                    "sur l'année, sur d'autres postes."
+                )
+            else:
+                description = f"{postes} : déjà soldé, l'année entière est réglée."
+        elif plan['covers_balance']:
+            description = "Solde restant sur l'année : " + ' + '.join(labels)
+        else:
+            description = ' + '.join(labels) + ' (reste)'
 
         projected_nature = getattr(
             projected_ech,
@@ -721,8 +782,17 @@ def ajax_montant_suggere(request):
             't2_restant': rt2,
             't3_restant': rt3,
             'description': description,
+            'lignes': lignes,
+            'postes_reconnus': bool(requested_components),
+            'deja_solde': deja_solde,
         }
-        return JsonResponse({'ok': True, 'suggested': int(suggested or 0), 'breakdown': breakdown})
+        return JsonResponse({
+            'ok': True,
+            'suggested': int(suggested or 0),
+            # Plafond encaissable sur l'année : au-delà, la validation refuse.
+            'solde_total': int(solde_total or 0),
+            'breakdown': breakdown,
+        })
     except Exception:
         logging.getLogger(__name__).exception("ajax_montant_suggere failed")
         return JsonResponse({'ok': False, 'error': 'Erreur interne'}, status=500)
@@ -2050,7 +2120,16 @@ def modifier_paiement(request, paiement_id: int):
         if form.is_valid():
             avant = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
             motif = form.cleaned_data['motif_modification']
+            montant_modifie = 'montant' in form.changed_data
+            etait_valide = paiement.statut == 'VALIDE'
 
+            # Un paiement ancien peut porter une année absente ou mal formée :
+            # sans réparation, le save() du modèle refuserait toute correction.
+            annee_reparee = _annee_scolaire_reparee(form.instance)
+            if annee_reparee:
+                form.instance.annee_scolaire = annee_reparee
+
+            erreur = None
             try:
                 # Le journal automatique est suspendu : une entrée unique et
                 # motivée est écrite ci-dessous pour l'ensemble de la correction.
@@ -2058,32 +2137,62 @@ def modifier_paiement(request, paiement_id: int):
                     paiement = form.save()
 
                     # Un paiement corrigé après validation doit être revalidé
-                    if paiement.statut == 'VALIDE' and 'montant' in form.changed_data:
+                    if paiement.statut == 'VALIDE' and montant_modifie:
                         paiement.statut = 'EN_ATTENTE'
                         paiement.date_validation = None
                         paiement.valide_par = None
                         paiement.save(update_fields=['statut', 'date_validation', 'valide_par'])
+
+                    # L'échéancier gardait l'ancien montant : on le reconstruit
+                    # à partir des seuls paiements validés de l'année.
+                    if montant_modifie:
+                        _auto_validate_echeancier_for_eleve(
+                            paiement.eleve,
+                            reference_date=paiement.date_paiement,
+                            preserve_recorded=False,
+                            annee_scolaire=paiement.annee_scolaire,
+                            strict=True,
+                        )
+            except ValidationError as exc:
+                logger.warning(
+                    "Modification refusée pour le paiement %s : %s",
+                    paiement_id, '; '.join(exc.messages),
+                )
+                erreur = ' '.join(exc.messages)
             except Exception as exc:
                 logger.exception("Erreur lors de la modification du paiement %s", paiement_id)
-                messages.error(request, f"Erreur lors de la modification : {exc}")
-                return redirect('paiements:detail_paiement', paiement_id=paiement_id)
+                erreur = str(exc)
 
-            apres = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
-            changements = comparer_etats(avant, apres)
-
-            enregistrer_modification(
-                paiement, changements, request=request, commentaire=motif,
-            )
-
-            if changements:
-                messages.success(
-                    request,
-                    f"Paiement {paiement.numero_recu} modifié ({len(changements)} champ(s)). "
-                    "L'ancienne version est conservée dans la corbeille mémoire des modifications."
-                )
+            if erreur:
+                # La saisie reste affichée : le comptable corrige sans tout ressaisir.
+                form.add_error(None, f"La correction n'a pas pu être enregistrée : {erreur}")
+                try:
+                    paiement.refresh_from_db()
+                except Exception:
+                    pass
             else:
-                messages.info(request, "Aucun changement n'a été enregistré.")
-            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+                apres = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
+                changements = comparer_etats(avant, apres)
+
+                enregistrer_modification(
+                    paiement, changements, request=request, commentaire=motif,
+                )
+
+                if changements:
+                    messages.success(
+                        request,
+                        f"Paiement {paiement.numero_recu} modifié ({len(changements)} champ(s)). "
+                        "L'ancienne version est conservée dans la corbeille mémoire des modifications."
+                    )
+                    if etait_valide and montant_modifie:
+                        messages.warning(
+                            request,
+                            "Le montant ayant changé, le paiement est repassé en attente : "
+                            "validez-le de nouveau pour l'imputer à l'échéancier.",
+                        )
+                else:
+                    messages.info(request, "Aucun changement n'a été enregistré.")
+                return redirect('paiements:detail_paiement', paiement_id=paiement.id)
     else:
         form = ModifierPaiementForm(instance=paiement)
 

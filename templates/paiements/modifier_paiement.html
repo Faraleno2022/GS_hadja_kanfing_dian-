@@ -66,6 +66,7 @@
                         <div class="col-md-6">
                             <label for="{{ form.montant.id_for_label }}" class="form-label">Montant (GNF)</label>
                             {{ form.montant }}
+                            <div class="form-text">{{ form.montant.help_text }}</div>
                             {% for error in form.montant.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                         </div>
                         <div class="col-md-6">
