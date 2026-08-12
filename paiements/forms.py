@@ -1,5 +1,6 @@
 from django import forms
 from django.core.validators import MinValueValidator
+from django.db.models import Q
 from decimal import Decimal
 from datetime import date, datetime
 from django.utils import timezone
@@ -7,9 +8,78 @@ from django.utils import timezone
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from eleves.models import Eleve, Ecole
 
+
+class MontantGNFField(forms.DecimalField):
+    """Montant en francs guinéens tolérant la saisie humaine.
+
+    Les comptables saisissent (ou collent) « 175 000 », « 175.000 » ou
+    « 175000,00 ». Sans nettoyage, Django répond « Saisissez un nombre. » et la
+    correction est refusée alors que le montant est correct.
+    """
+
+    ESPACES = (' ', ' ', ' ', ' ')
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            value = self.nettoyer(value)
+        return super().to_python(value)
+
+    @classmethod
+    def nettoyer(cls, valeur: str) -> str:
+        """Enlève espaces, sigle GNF et séparateurs de milliers.
+
+        Le montant est stocké en entier (0 décimale) : une partie décimale
+        nulle est supprimée (« 175000,00 ») et des groupes de 3 chiffres sont
+        traités comme des milliers (« 175.000 »). Toute autre écriture est
+        laissée telle quelle pour que le formulaire affiche une vraie erreur.
+        """
+        nettoye = valeur.strip()
+        for espace in cls.ESPACES:
+            nettoye = nettoye.replace(espace, '')
+        for sigle in ('GNF', 'gnf', 'Gnf', 'FG', 'fg'):
+            nettoye = nettoye.replace(sigle, '')
+        nettoye = nettoye.strip()
+        if not nettoye:
+            return nettoye
+
+        signe = ''
+        if nettoye[0] in '+-':
+            signe, nettoye = nettoye[0], nettoye[1:]
+
+        groupes = nettoye.replace(',', '.').split('.')
+        if len(groupes) > 1 and all(groupe.isdigit() for groupe in groupes):
+            tete, reste = groupes[0], groupes[1:]
+            if all(len(groupe) == 3 for groupe in reste):
+                # Séparateurs de milliers : 175.000 ou 1.750.000 -> 1750000.
+                # Un montant en GNF n'ayant jamais de décimales, trois chiffres
+                # après le séparateur sont toujours des milliers.
+                nettoye = tete + ''.join(reste)
+            elif len(reste) == 1 and set(reste[0]) == {'0'}:
+                # Décimales nulles : 175000,00 -> 175000
+                nettoye = tete
+        return signe + nettoye
+
+
 class PaiementForm(forms.ModelForm):
     """Formulaire pour créer/modifier un paiement"""
     
+    # Même liberté de saisie qu'à la correction : un montant hors multiple de
+    # 1 000 (1 130 500 GNF) ne doit plus être bloqué par le navigateur.
+    montant = MontantGNFField(
+        max_digits=10,
+        decimal_places=0,
+        min_value=Decimal('1'),
+        localize=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': 'Montant en GNF',
+        }),
+        label="Montant (GNF)",
+        help_text="Les espaces et le sigle GNF sont acceptés (1 130 500 GNF).",
+    )
+
     # Pourcentage de remise saisi par le comptable (optionnel)
     remise_pourcentage = forms.DecimalField(
         required=False,
@@ -41,12 +111,6 @@ class PaiementForm(forms.ModelForm):
             }),
             'mode_paiement': forms.Select(attrs={
                 'class': 'form-select'
-            }),
-            'montant': forms.NumberInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Montant en GNF',
-                'min': '0',
-                'step': '1000'
             }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control',
@@ -105,6 +169,21 @@ class ModifierPaiementForm(forms.ModelForm):
     conservé dans la corbeille mémoire des modifications.
     """
 
+    montant = MontantGNFField(
+        max_digits=10,
+        decimal_places=0,
+        min_value=Decimal('1'),
+        localize=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': 'Ex. : 175000',
+        }),
+        label="Montant (GNF)",
+        help_text="Les espaces et le sigle GNF sont acceptés (175 000 GNF).",
+    )
+
     motif_modification = forms.CharField(
         required=True,
         max_length=255,
@@ -125,11 +204,6 @@ class ModifierPaiementForm(forms.ModelForm):
         widgets = {
             'type_paiement': forms.Select(attrs={'class': 'form-select'}),
             'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
-            'montant': forms.NumberInput(attrs={
-                'class': 'form-control',
-                'min': '0',
-                'step': '1000',
-            }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control',
                 'type': 'date',
@@ -146,9 +220,22 @@ class ModifierPaiementForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
-        self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True)
+        # Un type ou un mode désactivé depuis la saisie doit rester proposé :
+        # sinon corriger le seul montant devient impossible.
+        self.fields['type_paiement'].queryset = self._choix_avec_valeur_actuelle(
+            TypePaiement, 'type_paiement_id',
+        )
+        self.fields['mode_paiement'].queryset = self._choix_avec_valeur_actuelle(
+            ModePaiement, 'mode_paiement_id',
+        )
         self.fields['date_paiement'].input_formats = ['%Y-%m-%d', '%d/%m/%Y']
+
+    def _choix_avec_valeur_actuelle(self, modele, champ_id):
+        actuel = getattr(self.instance, champ_id, None)
+        filtre = Q(actif=True)
+        if actuel:
+            filtre |= Q(pk=actuel)
+        return modele.objects.filter(filtre)
 
     def clean_montant(self):
         montant = self.cleaned_data.get('montant')

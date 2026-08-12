@@ -38,6 +38,39 @@ class PaymentTypePlanTests(SimpleTestCase):
                 self.assertEqual(plan["registration_kind"], kind)
                 self.assertEqual(plan["tranches"], tranches)
 
+    def test_libelles_combines_et_plages_sont_additifs(self):
+        """Chaque poste nommé s'ajoute : rien n'est perdu ni inventé."""
+        scenarios = (
+            # (libellé, admission facturée, tranches facturées)
+            ("Inscription + Tranche 1 + Tranche 3", True, (1, 3)),
+            ("Tranches 1 à 3", False, (1, 2, 3)),
+            ("T1-T3", False, (1, 2, 3)),
+            ("Réinscription + tranches 1 et 2", True, (1, 2)),
+            ("Tranche deux", False, (2,)),
+            ("2ème trimestre", False, (2,)),
+            ("Frais d'admission", True, ()),
+            # Un poste nommé prime sur l'élargissement au reste de l'année.
+            ("Solde tranche 2", False, (2,)),
+            # Les retraits explicites enlèvent un poste au lieu d'en ajouter.
+            ("Scolarité sans inscription", False, (1, 2, 3)),
+            ("Annuel sauf tranche 3", False, (1, 2)),
+            # Aucun poste de l'échéancier : la saisie reste manuelle.
+            ("Cantine", False, ()),
+            ("Transport scolaire mensuel", False, ()),
+        )
+        for label, admission, tranches in scenarios:
+            with self.subTest(label=label):
+                plan = payment_type_plan(label)
+                self.assertEqual(plan["include_registration"], admission)
+                self.assertEqual(plan["tranches"], tranches)
+
+    def test_solde_seul_couvre_toute_l_annee(self):
+        plan = payment_type_plan("Solde")
+
+        self.assertTrue(plan["covers_balance"])
+        self.assertTrue(plan["include_registration"])
+        self.assertEqual(plan["tranches"], (1, 2, 3))
+
 
 @override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class InscriptionReinscriptionIntegrationTests(TestCase):
