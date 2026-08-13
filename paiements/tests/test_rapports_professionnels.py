@@ -182,7 +182,46 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(data['by_status']['EN_ATTENTE']['count'], 1)
         self.assertEqual(data['by_status']['REMBOURSE']['amount'], Decimal('30000'))
         self.assertEqual(data['by_mode']['Mobile Money rapport']['amount'], Decimal('400000'))
+        self.assertEqual(
+            data['by_mode']['Mobile Money rapport']['reference_missing'], 0,
+        )
         self.assertEqual(data['discount_by_reason']['Réduction sociale'], Decimal('10000'))
+        self.assertEqual(data['by_component']['inscription']['amount'], Decimal('40000'))
+        self.assertEqual(data['by_component']['tranche_1']['amount'], Decimal('160000'))
+        self.assertEqual(data['by_component']['tranche_2']['amount'], Decimal('100000'))
+        self.assertEqual(data['by_component']['tranche_3']['amount'], Decimal('100000'))
+        self.assertEqual(data['unallocated_total'], Decimal('0'))
+
+    def test_periode_future_est_automatiquement_arretee_aujourdhui(self):
+        future = timezone.localdate().replace(year=timezone.localdate().year + 1)
+
+        data = collect_accounting_data(self._request(au=future.isoformat()))
+
+        self.assertTrue(data['period_adjusted'])
+        self.assertEqual(data['end'], timezone.localdate())
+        self.assertEqual(data['cutoff'], timezone.localdate())
+        self.assertIn(timezone.localdate().strftime('%d/%m/%Y'), data['period_label'])
+
+    def test_ventilation_separe_reinscription_et_tranches(self):
+        reinscription_type = TypePaiement.objects.create(
+            nom='Réinscription + Tranche 1 rapport',
+        )
+        schedule = EcheancierPaiement.objects.get(eleve=self.students[1])
+        schedule.nature_frais = EcheancierPaiement.NATURE_REINSCRIPTION
+        schedule.save(update_fields=['nature_frais'])
+        self._payment(
+            self.students[1], 'RAP-REC-005', '80000', 'VALIDE', date(2026, 1, 25),
+        )
+        payment = Paiement.objects.get(numero_recu='RAP-REC-005')
+        payment.type_paiement = reinscription_type
+        payment.save(update_fields=['type_paiement'])
+
+        data = collect_accounting_data(self._request())
+
+        row = next(item for item in data['payment_rows'] if item['receipt'] == 'RAP-REC-005')
+        self.assertEqual(row['allocation']['reinscription'], Decimal('20000'))
+        self.assertEqual(row['allocation']['inscription'], Decimal('0'))
+        self.assertEqual(row['allocation']['tranche_1'], Decimal('60000'))
 
     def test_recouvrement_est_reconstruit_a_la_date_arret(self):
         data = collect_recovery_data(self._request())
@@ -225,7 +264,18 @@ class ProfessionalReportsTests(TestCase):
         )
         self.assertEqual(
             accounting_workbook.sheetnames,
-            ['Synthèse', 'Journal validé', 'Statuts', 'Rapprochements', 'Remises'],
+            [
+                'Synthèse', 'Journal validé', 'Affectations', 'Statuts',
+                'Ventilations', 'Remises',
+            ],
+        )
+        self.assertEqual(
+            accounting_workbook['Journal validé'].cell(5, 12).value,
+            'Inscription',
+        )
+        self.assertEqual(
+            accounting_workbook['Affectations'].cell(12, 3).value,
+            400000,
         )
 
         recovery_excel = self.client.get(
