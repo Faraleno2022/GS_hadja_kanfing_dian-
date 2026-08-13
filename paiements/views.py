@@ -1795,6 +1795,7 @@ def liste_paiements(request):
         'statut': statut,
         'annee_filtre': annee_filtre or (annee_active or ''),
         'annee_active': annee_active or '',
+        'can_view_reports': has_permission(request.user, 'peut_consulter_rapports'),
         'paiements': page_obj.object_list,
         'page_obj': page_obj,
         # Totaux pour l'UI (utilisés par _paiements_resultats.html)
