@@ -9,7 +9,14 @@ from django.urls import reverse
 from openpyxl import load_workbook
 
 from eleves.models import Classe, Ecole, Eleve, Responsable
-from paiements.models import EcheancierPaiement
+from paiements.models import (
+    EcheancierPaiement,
+    ModePaiement,
+    Paiement,
+    PaiementRemise,
+    RemiseReduction,
+    TypePaiement,
+)
 
 
 class ExportTranchesParClasseTests(TestCase):
@@ -64,6 +71,40 @@ class ExportTranchesParClasseTests(TestCase):
             date_echeance_tranche_3=date(2026, 5, 5),
         )
 
+    def _appliquer_remise_et_solder(self):
+        schedule = EcheancierPaiement.objects.get(eleve=self.eleve)
+        schedule.tranche_1_payee = Decimal('500000')
+        schedule.tranche_2_payee = Decimal('500000')
+        schedule.tranche_3_payee = Decimal('400000')
+        schedule.save()
+        payment_type = TypePaiement.objects.create(nom='Scolarité avec remise export')
+        payment_mode = ModePaiement.objects.create(nom='Espèces export')
+        payment = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=payment_type,
+            mode_paiement=payment_mode,
+            numero_recu='EXP-REM-001',
+            montant=Decimal('1430000'),
+            annee_scolaire='2025-2026',
+            date_paiement=date(2026, 2, 15),
+            statut='VALIDE',
+            cree_par=self.user,
+            valide_par=self.user,
+        )
+        discount = RemiseReduction.objects.create(
+            nom='Remise fratrie export',
+            type_remise='POURCENTAGE',
+            valeur=Decimal('6.54'),
+            motif='FRATRIE',
+            date_debut=date(2025, 9, 1),
+            date_fin=date(2026, 8, 31),
+        )
+        PaiementRemise.objects.create(
+            paiement=payment,
+            remise=discount,
+            montant_remise=Decimal('100000'),
+        )
+
     @property
     def filtres(self):
         return {'classe': self.classe.pk, 'annee_scolaire': '2025-2026'}
@@ -83,6 +124,24 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertEqual(sheet.cell(3, 2).value, 0)
         self.assertEqual(sheet.cell(3, 3).value, 30000)
         self.assertEqual(sheet.cell(3, 8).value, 130000)
+
+    def test_excel_affiche_montant_taux_remise_et_statut_solde(self):
+        self._appliquer_remise_et_solder()
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            self.filtres,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook.worksheets[1]
+        self.assertEqual(sheet.cell(2, 9).value, 'Remise')
+        self.assertEqual(sheet.cell(2, 10).value, 'Remise (%)')
+        self.assertEqual(sheet.cell(3, 9).value, 100000)
+        self.assertEqual(sheet.cell(3, 10).value, 6.5)
+        self.assertEqual(sheet.cell(3, 11).value, 0)
+        self.assertEqual(sheet.cell(3, 12).value, 'Soldé - remise appliquée au paiement')
 
     def test_pdf_contient_la_colonne_reinscription(self):
         from reportlab.platypus import Table as ReportLabTable
@@ -104,3 +163,26 @@ class ExportTranchesParClasseTests(TestCase):
         header = [cell.getPlainText() for cell in tables[0][0]]
         self.assertEqual(header[1:3], ['Inscription payée', 'Réinscription payée'])
         self.assertEqual(tables[0][1][1:3], ['0', '30 000'])
+
+    def test_pdf_affiche_montant_taux_remise_et_statut_solde(self):
+        from reportlab.platypus import Table as ReportLabTable
+
+        self._appliquer_remise_et_solder()
+        tables = []
+
+        def capture_table(data, *args, **kwargs):
+            tables.append(data)
+            return ReportLabTable(data, *args, **kwargs)
+
+        with patch('reportlab.platypus.Table', side_effect=capture_table):
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                self.filtres,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        header = [cell.getPlainText() for cell in tables[0][0]]
+        row = [cell.getPlainText() if hasattr(cell, 'getPlainText') else cell for cell in tables[0][1]]
+        self.assertEqual(header[8:12], ['Remise', 'Remise (%)', 'Reste', 'Situation / précision'])
+        self.assertEqual(row[8:11], ['100 000', '6.5 %', '0'])
+        self.assertEqual(row[11], 'Soldé - remise appliquée au paiement')

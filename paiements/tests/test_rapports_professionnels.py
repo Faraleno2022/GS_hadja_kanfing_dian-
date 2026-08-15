@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase, override_settings
@@ -245,6 +246,48 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(data['priority_rows'][0]['reminder_count'], 1)
         self.assertEqual(data['reminder_by_channel']['WhatsApp']['sent'], 1)
 
+    def test_eleve_solde_par_paiement_et_remise_est_explicitement_identifie(self):
+        self._payment(
+            self.students[0], 'RAP-REC-005', '230000', 'VALIDE', date(2026, 2, 10),
+        )
+
+        data = collect_recovery_data(self._request())
+        row = next(item for item in data['student_rows'] if item['matricule'] == 'RAP-001')
+
+        self.assertEqual(row['cash'], Decimal('310000'))
+        self.assertEqual(row['discount'], Decimal('10000'))
+        self.assertEqual(row['balance'], Decimal('0'))
+        self.assertEqual(row['status'], 'Soldé (remise appliquée)')
+        self.assertEqual(row['discount_precision'], 'Soldé avec remise appliquée au paiement')
+        self.assertAlmostEqual(float(row['discount_rate']), 3.125)
+
+    def test_pdf_recouvrement_contient_le_detail_des_remises_eleves(self):
+        from reportlab.platypus import Table as ReportLabTable
+
+        tables = []
+
+        def capture_table(rows, *args, **kwargs):
+            tables.append(rows)
+            return ReportLabTable(rows, *args, **kwargs)
+
+        with patch('reportlab.platypus.Table', side_effect=capture_table):
+            response = self.client.get(
+                reverse('paiements:export_recouvrement_pdf'),
+                {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        discount_table = next(
+            rows for rows in tables
+            if rows and all(hasattr(cell, 'getPlainText') for cell in rows[0])
+            and 'Remise %' in [cell.getPlainText() for cell in rows[0]]
+        )
+        header = [cell.getPlainText() for cell in discount_table[0]]
+        detail = [[cell.getPlainText() for cell in row] for row in discount_table[1:]]
+        self.assertIn('Remise', header)
+        self.assertIn('Précision', header)
+        self.assertTrue(any('10 000' in row and '3.1 %' in row for row in detail))
+
     def test_exports_pdf_et_excel_sont_disponibles(self):
         params = {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()}
         for route in ('export_comptabilite_pdf', 'export_recouvrement_pdf'):
@@ -286,11 +329,16 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(
             workbook.sheetnames,
             [
-                'Synthèse', 'Portefeuille élèves', 'Classes', 'Balance âgée',
+                'Synthèse', 'Portefeuille élèves', 'Remises élèves', 'Classes', 'Balance âgée',
                 'Priorités', 'Relances', 'Journal relances',
             ],
         )
         self.assertEqual(workbook['Portefeuille élèves'].cell(5, 1).value, 'Matricule')
+        self.assertEqual(workbook['Portefeuille élèves'].cell(5, 9).value, 'Remise (%)')
+        self.assertEqual(workbook['Portefeuille élèves'].cell(6, 8).value, 10000)
+        self.assertEqual(workbook['Portefeuille élèves'].cell(6, 9).value, 3.1)
+        self.assertEqual(workbook['Remises élèves'].cell(6, 6).value, 10000)
+        self.assertEqual(workbook['Remises élèves'].cell(6, 7).value, 3.1)
         self.assertEqual(workbook['Portefeuille élèves'].max_row, 8)
         self.assertEqual(workbook['Journal relances'].max_row, 6)
 
