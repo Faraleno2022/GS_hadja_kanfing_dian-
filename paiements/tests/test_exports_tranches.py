@@ -164,6 +164,34 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertEqual(header[1:3], ['Inscription payée', 'Réinscription payée'])
         self.assertEqual(tables[0][1][1:3], ['0', '30 000'])
 
+    def test_pdf_tranches_utilise_le_logo_de_ecole_filtree(self):
+        with patch('paiements.views_tranches._draw_header_and_watermark') as entete:
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                self.filtres,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(entete.called)
+        self.assertTrue(all(
+            appel.kwargs['ecole'] == self.ecole
+            for appel in entete.call_args_list
+        ))
+
+    def test_pdf_paiements_filtres_utilise_le_logo_de_ecole_filtree(self):
+        with patch('paiements.export_paiements_filtres._draw_header_and_watermark') as entete:
+            response = self.client.get(
+                reverse('paiements:export_paiements_filtres_pdf'),
+                {'classe_id': self.classe.pk, 'annee': '2025-2026'},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(entete.called)
+        self.assertTrue(all(
+            appel.kwargs['ecole'] == self.ecole
+            for appel in entete.call_args_list
+        ))
+
     def test_pdf_affiche_montant_taux_remise_et_statut_solde(self):
         from reportlab.platypus import Table as ReportLabTable
 

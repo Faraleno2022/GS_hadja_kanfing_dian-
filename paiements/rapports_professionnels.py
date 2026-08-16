@@ -696,6 +696,36 @@ def collect_recovery_data(request):
     return data
 
 
+def _draw_logo_watermark(canvas, logo_path, page_width, page_height):
+    """Dessine le logo de l'école en filigrane discret au centre de la page."""
+    if not logo_path:
+        return
+
+    canvas.saveState()
+    try:
+        try:
+            canvas.setFillAlpha(0.06)
+        except Exception:
+            pass
+        watermark_width = page_width * 0.46
+        watermark_height = page_height * 0.46
+        canvas.drawImage(
+            logo_path,
+            (page_width - watermark_width) / 2,
+            (page_height - watermark_height) / 2,
+            width=watermark_width,
+            height=watermark_height,
+            preserveAspectRatio=True,
+            mask='auto',
+            anchor='c',
+        )
+    except Exception:
+        # Un fichier de logo illisible ne doit jamais bloquer l'export.
+        pass
+    finally:
+        canvas.restoreState()
+
+
 def _pdf_primitives(data, title):
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -801,6 +831,7 @@ def _pdf_primitives(data, title):
     logo_path = _get_logo_path(data['school']) if data.get('school') else ''
 
     def draw_page_chrome(canvas, page_number, page_count):
+        _draw_logo_watermark(canvas, logo_path, page_width, page_height)
         canvas.saveState()
         canvas.setTitle(title)
         canvas.setAuthor(data['generated_by'])
