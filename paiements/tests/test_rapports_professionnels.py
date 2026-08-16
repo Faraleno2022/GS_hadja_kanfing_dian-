@@ -342,6 +342,31 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(workbook['Portefeuille élèves'].max_row, 8)
         self.assertEqual(workbook['Journal relances'].max_row, 6)
 
+    def test_rapports_pdf_utilisent_le_logo_de_ecole_filtree(self):
+        params = {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()}
+
+        with patch(
+            'paiements.rapports_professionnels._get_logo_path',
+            return_value='logo-ecole.png',
+        ) as get_logo_path, patch(
+            'paiements.rapports_professionnels._draw_logo_watermark',
+        ) as draw_watermark:
+            for route in ('export_comptabilite_pdf', 'export_recouvrement_pdf'):
+                with self.subTest(route=route):
+                    response = self.client.get(reverse(f'paiements:{route}'), params)
+                    self.assertEqual(response.status_code, 200)
+
+        self.assertGreaterEqual(get_logo_path.call_count, 2)
+        self.assertTrue(all(
+            appel.args == (self.ecole,)
+            for appel in get_logo_path.call_args_list
+        ))
+        self.assertGreaterEqual(draw_watermark.call_count, 2)
+        self.assertTrue(all(
+            appel.args[1] == 'logo-ecole.png'
+            for appel in draw_watermark.call_args_list
+        ))
+
     def test_filtres_invalides_retournent_une_erreur_400(self):
         response = self.client.get(
             reverse('paiements:export_recouvrement_pdf'),

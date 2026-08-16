@@ -17,8 +17,9 @@ from django.db.models import (
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 
-from eleves.models import Classe
-from utilisateurs.utils import filter_by_user_school
+from eleves.models import Classe, Ecole
+from utilisateurs.utils import filter_by_user_school, user_school
+from rapports.utils import _draw_header_and_watermark
 from .models import Paiement, EcheancierPaiement, ModePaiement, TypePaiement
 
 
@@ -27,6 +28,31 @@ def _fmt_gnf(v):
         return f"{int(v):,}".replace(',', ' ')
     except (TypeError, ValueError):
         return '0'
+
+
+def _ecole_du_pdf(request, qs):
+    """Identifie l'école du PDF sans sortir du périmètre autorisé."""
+    ecole = user_school(request.user)
+    if ecole:
+        return ecole
+
+    classe_id = (request.GET.get('classe_id') or '').strip()
+    if classe_id.isdigit():
+        classes_autorisees = filter_by_user_school(
+            Classe.objects.select_related('ecole'),
+            request.user,
+            'ecole',
+        )
+        classe = classes_autorisees.filter(pk=int(classe_id)).first()
+        if classe:
+            return classe.ecole
+
+    school_ids = list(
+        qs.order_by().values_list('eleve__classe__ecole_id', flat=True).distinct()[:2]
+    )
+    if len(school_ids) == 1 and school_ids[0]:
+        return Ecole.objects.filter(pk=school_ids[0]).first()
+    return None
 
 
 def filtrer_paiements(request):
@@ -217,10 +243,11 @@ def export_paiements_filtres_pdf(request):
     from reportlab.lib.enums import TA_CENTER
 
     qs, libelles = filtrer_paiements(request)
+    ecole = _ecole_du_pdf(request, qs)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
-                            topMargin=0.8 * cm, bottomMargin=0.8 * cm,
+                            topMargin=2.6 * cm, bottomMargin=0.8 * cm,
                             leftMargin=0.8 * cm, rightMargin=0.8 * cm)
     styles = getSampleStyleSheet()
     titre = ParagraphStyle('T', parent=styles['Heading1'], fontSize=13,
@@ -274,7 +301,19 @@ def export_paiements_filtres_pdf(request):
     elements.append(Paragraph(
         f"Total : {len(data) - 2} paiement(s) — {_fmt_gnf(total)} GNF", styles['Normal']))
 
-    doc.build(elements)
+    def dessiner_entete(canvas, document):
+        _draw_header_and_watermark(
+            canvas,
+            document,
+            ecole=ecole,
+            titre_override='Liste des paiements',
+        )
+
+    doc.build(
+        elements,
+        onFirstPage=dessiner_entete,
+        onLaterPages=dessiner_entete,
+    )
     buffer.seek(0)
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = (

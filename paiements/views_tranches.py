@@ -4,7 +4,7 @@ from django.db.models import Sum
 from datetime import datetime
 from decimal import Decimal
 
-from eleves.models import Classe
+from eleves.models import Classe, Ecole
 from eleves.utils_annee import get_annee_active
 from paiements.models import EcheancierPaiement, Paiement, PaiementRemise
 from paiements.allocation import registration_kind_for_type
@@ -165,7 +165,16 @@ def export_tranches_par_classe_pdf(request):
         classes = classes.filter(annee_scolaire=annee_scolaire)
 
     # Anti-abus: limiter le nombre de classes exportées en une requête
-    classes = classes.order_by('ecole__nom', 'niveau', 'nom')[:200]
+    classes = list(classes.order_by('ecole__nom', 'niveau', 'nom')[:200])
+    school_ids = {classe.ecole_id for classe in classes if classe.ecole_id}
+    if len(school_ids) == 1:
+        ecole_pdf = classes[0].ecole
+    elif ecole_user:
+        ecole_pdf = ecole_user
+    elif ecole_id:
+        ecole_pdf = Ecole.objects.filter(pk=ecole_id).first()
+    else:
+        ecole_pdf = None
 
     # Préparer réponse PDF
     response = HttpResponse(content_type='application/pdf')
@@ -185,7 +194,7 @@ def export_tranches_par_classe_pdf(request):
     doc = SimpleDocTemplate(
         response,
         pagesize=landscape(A4),
-        rightMargin=20, leftMargin=20, topMargin=60, bottomMargin=30
+        rightMargin=20, leftMargin=20, topMargin=80, bottomMargin=30
     )
     elements = []
     styles = getSampleStyleSheet()
@@ -262,8 +271,21 @@ def export_tranches_par_classe_pdf(request):
         elements.append(table)
         elements.append(Spacer(1, 0.6*cm))
 
-    # Construire le document avec en-tête + filigrane logo
-    doc.build(elements, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
+    # Construire le document avec le logo de l'école filtrée. La fermeture
+    # transmet explicitement l'école au callback ReportLab sur chaque page.
+    def dessiner_entete(canvas, document):
+        _draw_header_and_watermark(
+            canvas,
+            document,
+            ecole=ecole_pdf,
+            titre_override='Tranches par classe',
+        )
+
+    doc.build(
+        elements,
+        onFirstPage=dessiner_entete,
+        onLaterPages=dessiner_entete,
+    )
     return response
 
 @login_required
