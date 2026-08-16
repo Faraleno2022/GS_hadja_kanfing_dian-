@@ -52,6 +52,11 @@
                 <li><hr class="dropdown-divider"></li>
                 {% if can_view_reports %}
                 <li>
+                    <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportModesEncaissementModal">
+                        <i class="fas fa-cash-register me-2"></i>Montants par mode d'encaissement…
+                    </a>
+                </li>
+                <li>
                     <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
                         <i class="fas fa-book me-2"></i>Rapport comptable complet…
                     </a>
@@ -66,6 +71,58 @@
         </div>
 
         {% if can_view_reports %}
+        <!-- Modal Encaissements par mode -->
+        <div class="modal fade" id="rapportModesEncaissementModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-cash-register me-2"></i>Montants par mode d'encaissement
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Export des paiements validés par mode : montant total,
+                            part du total, montant moyen, références à contrôler et
+                            journal détaillé.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Classe (vide = tout l'établissement)</label>
+                            <select id="rmClasse" class="form-select">
+                                <option value="">— Tout l'établissement —</option>
+                                {% for classe in classes_rapport %}
+                                <option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.annee_scolaire }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Du (optionnel)</label>
+                                <input type="date" id="rmDu" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Au (optionnel)</label>
+                                <input type="date" id="rmAu" class="form-control">
+                            </div>
+                        </div>
+                        <input type="hidden" id="rmAnnee" value="{{ annee_active }}">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary me-auto" onclick="ouvrirTableauModesEncaissement()">
+                            <i class="fas fa-table me-1"></i>Afficher les soldes et élèves
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="ouvrirRapportModesEncaissement('pdf')">
+                            <i class="fas fa-file-pdf me-1"></i>PDF
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="ouvrirRapportModesEncaissement('excel')">
+                            <i class="fas fa-file-excel me-1"></i>Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal Rapport comptable complet -->
         <div class="modal fade" id="rapportComptableModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
@@ -545,6 +602,31 @@ function exportFiltresExcel() {
 }
 function exportFiltresPdf() {
     window.open(_urlExportFiltres('{% url "paiements:export_paiements_filtres_pdf" %}'), '_blank');
+}
+
+// Tableau et rapports des montants par mode d'encaissement
+function _urlModesEncaissement(base) {
+    const out = new URL(base, window.location.origin);
+    const classe = document.getElementById('rmClasse').value;
+    const du = document.getElementById('rmDu').value;
+    const au = document.getElementById('rmAu').value;
+    const annee = document.getElementById('rmAnnee').value;
+    if (classe) out.searchParams.set('classe_id', classe);
+    if (!classe && annee) out.searchParams.set('annee_scolaire', annee);
+    if (du) out.searchParams.set('du', du);
+    if (au) out.searchParams.set('au', au);
+    return out.toString();
+}
+
+function ouvrirTableauModesEncaissement() {
+    window.location.href = _urlModesEncaissement('{% url "paiements:modes_encaissement_tableau" %}');
+}
+
+function ouvrirRapportModesEncaissement(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_modes_encaissement_pdf" %}'
+        : '{% url "paiements:export_modes_encaissement_excel" %}';
+    window.open(_urlModesEncaissement(base), '_blank');
 }
 
 // Rapport comptable professionnel
