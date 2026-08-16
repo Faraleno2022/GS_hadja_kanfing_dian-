@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h3 class="mb-1"><i class="fas fa-cash-register text-primary me-2"></i>Soldes et élèves par mode d'encaissement</h3>
+            <p class="text-muted mb-0">{{ data.school_name }} · {{ data.period_label }}</p>
+        </div>
+        <div class="d-flex flex-wrap justify-content-end align-items-center gap-2">
+            <span class="badge bg-light text-dark border p-2">Année scolaire : {{ data.school_year|default:'Toutes' }}</span>
+            <button type="button" class="btn btn-sm btn-danger" data-export-url="{% url 'paiements:export_modes_encaissement_pdf' %}">
+                <i class="fas fa-file-pdf me-1"></i>PDF
+            </button>
+            <button type="button" class="btn btn-sm btn-success" data-export-url="{% url 'paiements:export_modes_encaissement_excel' %}">
+                <i class="fas fa-file-excel me-1"></i>Excel
+            </button>
+            <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-list me-1"></i>Paiements
+            </a>
+        </div>
+    </div>
+
+    <form id="modesFilters" method="get" class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modeAnnee">Année scolaire</label>
+                    <select class="form-select modes-filter" id="modeAnnee" name="annee_scolaire">
+                        <option value="">Année active</option>
+                        {% for annee in annees_filtre %}
+                        <option value="{{ annee }}" {% if annee == filtre_annee %}selected{% endif %}>{{ annee }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modeClasse">Classe</label>
+                    <select class="form-select modes-filter" id="modeClasse" name="classe_id">
+                        <option value="">Toutes les classes</option>
+                        {% for classe in classes_filtre %}
+                        <option value="{{ classe.id }}" data-year="{{ classe.annee_scolaire }}" {% if filtre_classe_id == classe.id|stringformat:'s' %}selected{% endif %}>{{ classe.nom }} · {{ classe.annee_scolaire }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modePaiement">Mode</label>
+                    <select class="form-select modes-filter" id="modePaiement" name="mode_id">
+                        <option value="">Tous les modes</option>
+                        {% for mode in modes_filtre %}
+                        <option value="{{ mode.id }}" {% if filtre_mode_id == mode.id|stringformat:'s' %}selected{% endif %}>{{ mode.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modeSituation">Situation</label>
+                    <select class="form-select modes-filter" id="modeSituation" name="situation">
+                        <option value="">Toutes</option>
+                        <option value="solde" {% if filtre_situation == 'solde' %}selected{% endif %}>Soldé</option>
+                        <option value="reste" {% if filtre_situation == 'reste' %}selected{% endif %}>Reste à payer</option>
+                        <option value="sans_echeancier" {% if filtre_situation == 'sans_echeancier' %}selected{% endif %}>Échéancier absent</option>
+                    </select>
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modeDu">Du</label>
+                    <input class="form-control modes-filter" type="date" id="modeDu" name="du" value="{{ filtre_du|date:'Y-m-d' }}">
+                </div>
+                <div class="col-sm-6 col-lg-2">
+                    <label class="form-label" for="modeAu">Au</label>
+                    <input class="form-control modes-filter" type="date" id="modeAu" name="au" value="{{ filtre_au|date:'Y-m-d' }}">
+                </div>
+                <div class="col-lg-10">
+                    <label class="form-label" for="modeRecherche">Élève, matricule, reçu ou référence</label>
+                    <input class="form-control" type="search" id="modeRecherche" name="q" value="{{ filtre_q }}" placeholder="Commencez à saisir pour filtrer…" autocomplete="off">
+                </div>
+                <div class="col-lg-2 d-grid">
+                    <a href="{% url 'paiements:modes_encaissement_tableau' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-undo me-1"></i>Réinitialiser
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer bg-white small text-muted">
+            <i class="fas fa-bolt text-warning me-1"></i>Les résultats se mettent à jour automatiquement sans recharger la page.
+        </div>
+    </form>
+
+    <div id="modesLoading" class="text-center py-3 d-none" aria-live="polite">
+        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Chargement…</span></div>
+    </div>
+    <div id="modesResults">
+        {% include 'paiements/_modes_encaissement_resultats.html' %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('modesFilters');
+    const results = document.getElementById('modesResults');
+    const loading = document.getElementById('modesLoading');
+    const search = document.getElementById('modeRecherche');
+    let timer;
+    let requestController;
+
+    function buildUrl(page) {
+        const url = new URL('{% url "paiements:modes_encaissement_tableau" %}', window.location.origin);
+        for (const [key, rawValue] of new FormData(form).entries()) {
+            const value = rawValue.toString().trim();
+            if (value) url.searchParams.set(key, value);
+        }
+        if (page) url.searchParams.set('page', page);
+        return url;
+    }
+
+    async function refresh(page) {
+        if (requestController) requestController.abort();
+        requestController = new AbortController();
+        const url = buildUrl(page);
+        loading.classList.remove('d-none');
+        try {
+            const response = await fetch(url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                signal: requestController.signal
+            });
+            const body = await response.text();
+            if (!response.ok) throw new Error(body || 'Impossible de charger les résultats.');
+            results.innerHTML = body;
+            history.replaceState({}, '', url);
+            wirePagination();
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                results.replaceChildren();
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-danger';
+                alert.textContent = error.message;
+                results.appendChild(alert);
+            }
+        } finally {
+            loading.classList.add('d-none');
+        }
+    }
+
+    function wirePagination() {
+        results.querySelectorAll('.pagination a.page-link').forEach(function (link) {
+            link.addEventListener('click', function (event) {
+                event.preventDefault();
+                if (link.closest('.page-item').classList.contains('disabled')) return;
+                const page = new URL(link.href, window.location.origin).searchParams.get('page');
+                refresh(page);
+            });
+        });
+    }
+
+    const yearField = document.getElementById('modeAnnee');
+    const classField = document.getElementById('modeClasse');
+    function updateClassOptions() {
+        const year = yearField.value;
+        Array.from(classField.options).forEach(function (option) {
+            if (!option.value) return;
+            option.hidden = Boolean(year && option.dataset.year !== year);
+        });
+        const selected = classField.options[classField.selectedIndex];
+        if (selected && selected.hidden) classField.value = '';
+    }
+
+    form.querySelectorAll('.modes-filter').forEach(function (field) {
+        if (field !== yearField) {
+            field.addEventListener('change', function () { refresh(); });
+        }
+    });
+    yearField.addEventListener('change', function () {
+        updateClassOptions();
+        refresh();
+    });
+    search.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () { refresh(); }, 300);
+    });
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        refresh();
+    });
+
+    document.querySelectorAll('[data-export-url]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const exportUrl = new URL(button.dataset.exportUrl, window.location.origin);
+            for (const [key, rawValue] of new FormData(form).entries()) {
+                const value = rawValue.toString().trim();
+                if (value) exportUrl.searchParams.set(key, value);
+            }
+            window.open(exportUrl.toString(), '_blank');
+        });
+    });
+    updateClassOptions();
+    wirePagination();
+});
+</script>
+{% endblock %}

@@ -4,6 +4,9 @@ from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_
 from .rapports_professionnels import (
     export_comptabilite_excel,
     export_comptabilite_pdf,
+    export_modes_encaissement_excel,
+    export_modes_encaissement_pdf,
+    modes_encaissement_tableau,
     export_recouvrement_excel,
     export_recouvrement_pdf,
 )
@@ -45,6 +48,9 @@ urlpatterns = [
     path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
     path('export/comptabilite/pdf/', export_comptabilite_pdf, name='export_comptabilite_pdf'),
     path('export/comptabilite/excel/', export_comptabilite_excel, name='export_comptabilite_excel'),
+    path('export/modes-encaissement/pdf/', export_modes_encaissement_pdf, name='export_modes_encaissement_pdf'),
+    path('export/modes-encaissement/excel/', export_modes_encaissement_excel, name='export_modes_encaissement_excel'),
+    path('modes-encaissement/', modes_encaissement_tableau, name='modes_encaissement_tableau'),
     path('export/recouvrement/pdf/', export_recouvrement_pdf, name='export_recouvrement_pdf'),
     path('export/recouvrement/excel/', export_recouvrement_excel, name='export_recouvrement_excel'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
@@ -102,4 +108,3 @@ urlpatterns = [
     path('recu-public/<int:paiement_id>/', recu_public_pdf, name='recu_public_pdf'),
     path('note-rappel-public/<int:eleve_id>/', note_rappel_public_pdf, name='note_rappel_public_pdf'),
 ]
-

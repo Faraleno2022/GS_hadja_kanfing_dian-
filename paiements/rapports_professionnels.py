@@ -8,8 +8,10 @@ from datetime import date, timedelta
 from decimal import Decimal
 from xml.sax.saxutils import escape
 
-from django.db.models import Sum
+from django.core.paginator import Paginator
+from django.db.models import Q, Sum
 from django.http import HttpResponse
+from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -25,7 +27,13 @@ from .allocation import (
     allocate_discounts,
     registration_kind_for_type,
 )
-from .models import EcheancierPaiement, Paiement, PaiementRemise, Relance
+from .models import (
+    EcheancierPaiement,
+    ModePaiement,
+    Paiement,
+    PaiementRemise,
+    Relance,
+)
 
 
 ZERO = Decimal('0')
@@ -138,6 +146,20 @@ def _parse_filters(request):
     if school_year:
         classes = [item for item in classes if item.annee_scolaire == school_year]
 
+    mode_id = (request.GET.get('mode_id') or '').strip()
+    selected_mode = None
+    if mode_id:
+        if not mode_id.isdigit():
+            raise ValueError("Le mode d'encaissement sélectionné est invalide.")
+        selected_mode = ModePaiement.objects.filter(pk=int(mode_id)).first()
+        if selected_mode is None:
+            raise ValueError("Le mode d'encaissement sélectionné est introuvable.")
+
+    search = (request.GET.get('q') or '').strip()[:100]
+    situation = (request.GET.get('situation') or '').strip()
+    if situation not in {'', 'solde', 'reste', 'sans_echeancier'}:
+        raise ValueError("La situation de paiement est invalide.")
+
     class_ids = [item.pk for item in classes]
     school_ids = sorted({item.ecole_id for item in classes})
     if len(classes) == 1:
@@ -165,6 +187,9 @@ def _parse_filters(request):
             school.nom if school and len(school_ids) <= 1 else 'ÉTABLISSEMENTS AUTORISÉS'
         ),
         'school_year': school_year,
+        'selected_mode': selected_mode,
+        'search': search,
+        'situation': situation,
         'scope_label': scope_label,
         'start': start,
         'end': end,
@@ -203,6 +228,16 @@ def _payments_queryset(scope):
         queryset = queryset.filter(date_paiement__gte=scope['start'])
     if scope['end']:
         queryset = queryset.filter(date_paiement__lte=scope['end'])
+    if scope['selected_mode']:
+        queryset = queryset.filter(mode_paiement=scope['selected_mode'])
+    if scope['search']:
+        queryset = queryset.filter(
+            Q(eleve__nom__icontains=scope['search'])
+            | Q(eleve__prenom__icontains=scope['search'])
+            | Q(eleve__matricule__icontains=scope['search'])
+            | Q(numero_recu__icontains=scope['search'])
+            | Q(reference_externe__icontains=scope['search'])
+        )
     return queryset
 
 
@@ -348,6 +383,8 @@ def collect_accounting_data(request):
         cashier = _display_user(payment.cree_par)
         validator = _display_user(payment.valide_par)
         payment_rows.append({
+            'student_id': payment.eleve_id,
+            'school_year': payment.annee_scolaire,
             'date': payment.date_paiement,
             'receipt': payment.numero_recu,
             'student': payment.eleve.nom_complet,
@@ -393,6 +430,203 @@ def collect_accounting_data(request):
             (item['reference_missing_amount'] for item in by_mode.values()), ZERO
         ),
         'unallocated_total': by_component['non_affecte']['amount'],
+    })
+    return data
+
+
+def collect_payment_modes_data(request):
+    """Prépare le rapport dédié aux encaissements validés par mode."""
+    data = collect_accounting_data(request)
+    student_keys = {
+        (item['student_id'], item['school_year'])
+        for item in data['payment_rows']
+    }
+    student_ids = {key[0] for key in student_keys}
+
+    schedules = EcheancierPaiement.objects.filter(eleve_id__in=student_ids)
+    if data['school_year']:
+        schedules = schedules.filter(annee_scolaire=data['school_year'])
+    schedules_by_key = {
+        (item.eleve_id, item.annee_scolaire): item
+        for item in schedules
+    }
+
+    payment_history = Paiement.objects.filter(
+        eleve_id__in=student_ids,
+        statut='VALIDE',
+        date_paiement__lte=data['cutoff'],
+    )
+    if data['school_year']:
+        payment_history = payment_history.filter(annee_scolaire=data['school_year'])
+    paid_by_key = {
+        (item['eleve_id'], item['annee_scolaire']): item['total'] or ZERO
+        for item in payment_history.values('eleve_id', 'annee_scolaire').annotate(
+            total=Sum('montant')
+        )
+    }
+
+    discount_history = PaiementRemise.objects.filter(
+        paiement__eleve_id__in=student_ids,
+        paiement__statut='VALIDE',
+        paiement__date_paiement__lte=data['cutoff'],
+    )
+    if data['school_year']:
+        discount_history = discount_history.filter(
+            paiement__annee_scolaire=data['school_year']
+        )
+    discount_by_key = {
+        (
+            item['paiement__eleve_id'],
+            item['paiement__annee_scolaire'],
+        ): item['total'] or ZERO
+        for item in discount_history.values(
+            'paiement__eleve_id', 'paiement__annee_scolaire'
+        ).annotate(total=Sum('montant_remise'))
+    }
+
+    balances = {}
+    for key in student_keys:
+        schedule = schedules_by_key.get(key)
+        amount_due = schedule.total_du if schedule else ZERO
+        amount_paid = paid_by_key.get(key, ZERO)
+        discount = discount_by_key.get(key, ZERO)
+        balance = max(ZERO, amount_due - amount_paid - discount)
+        balances[key] = {
+            'amount_due': amount_due,
+            'amount_paid': amount_paid,
+            'discount': discount,
+            'balance': balance,
+            'status': (
+                'Échéancier absent' if schedule is None
+                else ('Soldé' if balance <= ZERO else 'Reste à payer')
+            ),
+        }
+
+    if data['situation']:
+        expected_status = {
+            'solde': 'Soldé',
+            'reste': 'Reste à payer',
+            'sans_echeancier': 'Échéancier absent',
+        }[data['situation']]
+        allowed_keys = {
+            key for key, values in balances.items()
+            if values['status'] == expected_status
+        }
+        data['payment_rows'] = [
+            item for item in data['payment_rows']
+            if (item['student_id'], item['school_year']) in allowed_keys
+        ]
+        balances = {
+            key: values for key, values in balances.items()
+            if key in allowed_keys
+        }
+        student_keys = allowed_keys
+
+    by_mode = defaultdict(lambda: {
+        'count': 0,
+        'amount': ZERO,
+        'reference_required': 0,
+        'reference_present': 0,
+        'reference_missing': 0,
+        'reference_missing_amount': ZERO,
+    })
+    daily = defaultdict(lambda: {'count': 0, 'amount': ZERO})
+    for item in data['payment_rows']:
+        mode_values = by_mode[item['mode']]
+        mode_values['count'] += 1
+        mode_values['amount'] += item['amount']
+        if item['reference_status'] != 'Non requise':
+            mode_values['reference_required'] += 1
+            if item['reference_status'] == 'Complète':
+                mode_values['reference_present'] += 1
+            else:
+                mode_values['reference_missing'] += 1
+                mode_values['reference_missing_amount'] += item['amount']
+        daily_key = (item['date'], item['mode'])
+        daily[daily_key]['count'] += 1
+        daily[daily_key]['amount'] += item['amount']
+
+    grouped_students = {}
+    for item in data['payment_rows']:
+        key = (item['mode'], item['student_id'], item['school_year'])
+        row = grouped_students.setdefault(key, {
+            'mode': item['mode'],
+            'student_id': item['student_id'],
+            'school_year': item['school_year'],
+            'student': item['student'],
+            'matricule': item['matricule'],
+            'class': item['class'],
+            'operation_count': 0,
+            'collected': ZERO,
+            'last_date': item['date'],
+            'last_receipt': item['receipt'],
+        })
+        row['operation_count'] += 1
+        row['collected'] += item['amount']
+        if item['date'] >= row['last_date']:
+            row['last_date'] = item['date']
+            row['last_receipt'] = item['receipt']
+        row.update(balances[(item['student_id'], item['school_year'])])
+
+    student_mode_rows = sorted(
+        grouped_students.values(),
+        key=lambda item: (
+            item['mode'].casefold(), item['class'].casefold(),
+            item['student'].casefold(),
+        ),
+    )
+    unique_balances = list(balances.values())
+    total_validated = sum(
+        (item['amount'] for item in data['payment_rows']), ZERO
+    )
+    total_discounts = sum(
+        (item['discount'] for item in data['payment_rows']), ZERO
+    )
+    by_mode = dict(sorted(by_mode.items()))
+
+    data.update({
+        'report_reference': _make_report_reference('EM', data['generated_at']),
+        'by_mode': by_mode,
+        'mode_count': len(by_mode),
+        'validated_count': len(data['payment_rows']),
+        'payment_count': len(data['payment_rows']),
+        'total_validated': total_validated,
+        'total_discounts': total_discounts,
+        'total_coverage': total_validated + total_discounts,
+        'reference_missing_count': sum(
+            item['reference_missing'] for item in by_mode.values()
+        ),
+        'reference_missing_amount': sum(
+            (item['reference_missing_amount'] for item in by_mode.values()), ZERO
+        ),
+        'student_count': len(student_keys),
+        'student_mode_rows': student_mode_rows,
+        'student_total_due': sum(
+            (item['amount_due'] for item in unique_balances), ZERO
+        ),
+        'student_total_paid': sum(
+            (item['amount_paid'] for item in unique_balances), ZERO
+        ),
+        'student_total_discount': sum(
+            (item['discount'] for item in unique_balances), ZERO
+        ),
+        'student_total_balance': sum(
+            (item['balance'] for item in unique_balances), ZERO
+        ),
+        'settled_student_count': sum(
+            1 for item in unique_balances if item['status'] == 'Soldé'
+        ),
+        'daily_modes': [
+            {
+                'date': key[0],
+                'mode': key[1],
+                'count': values['count'],
+                'amount': values['amount'],
+            }
+            for key, values in sorted(
+                daily.items(), key=lambda item: (item[0][0], item[0][1])
+            )
+        ],
     })
     return data
 
@@ -1066,6 +1300,149 @@ def build_accounting_pdf(data):
     return buffer
 
 
+def build_payment_modes_pdf(data):
+    """Construit un PDF autonome de rapprochement par mode d'encaissement."""
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+    title = "RAPPORT DES ENCAISSEMENTS PAR MODE"
+    styles, _p, table, kpis, on_page, numbered_canvas = _pdf_primitives(
+        data, title
+    )
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        topMargin=1.65 * cm,
+        bottomMargin=1.05 * cm,
+        leftMargin=0.8 * cm,
+        rightMargin=0.8 * cm,
+        title=title,
+        author=data['generated_by'],
+    )
+    elements = _title_elements(data, styles, title, data['period_label'])
+    if data['period_adjusted']:
+        elements.append(Paragraph(
+            escape(
+                "La date de fin demandée "
+                f"({data['requested_end'].strftime('%d/%m/%Y')}) était future : "
+                f"le rapport est arrêté au {data['end'].strftime('%d/%m/%Y')}."
+            ),
+            styles['Note'],
+        ))
+
+    elements.append(kpis([
+        ('Total encaissé', f"{_money(data['total_validated'])} GNF", GREEN),
+        ('Opérations validées', str(data['validated_count']), BLUE),
+        ('Modes utilisés', str(data['mode_count']), BLUE),
+        ('Montant à justifier', f"{_money(data['reference_missing_amount'])} GNF", ORANGE),
+    ]))
+
+    elements.append(Paragraph(
+        "1. SYNTHÈSE PAR MODE D'ENCAISSEMENT", styles['SectionTitle']
+    ))
+    mode_rows = [[
+        'Mode', 'Opérations', 'Montant encaissé (GNF)', 'Part du total',
+        'Montant moyen (GNF)', 'Réf. manquantes', 'Montant à justifier (GNF)',
+    ]]
+    for label, item in data['by_mode'].items():
+        share = _percentage(item['amount'], data['total_validated'])
+        average = item['amount'] / item['count'] if item['count'] else ZERO
+        mode_rows.append([
+            label, item['count'], _money(item['amount']), f"{share:.1f} %",
+            _money(average), item['reference_missing'],
+            _money(item['reference_missing_amount']),
+        ])
+    if len(mode_rows) == 1:
+        mode_rows.append([
+            'Aucun encaissement validé', 0, '0', '0 %', '0', 0, '0'
+        ])
+    mode_rows.append([
+        'TOTAL', data['validated_count'], _money(data['total_validated']),
+        '100 %' if data['total_validated'] else '0 %',
+        _money(
+            data['total_validated'] / data['validated_count']
+            if data['validated_count'] else ZERO
+        ),
+        data['reference_missing_count'],
+        _money(data['reference_missing_amount']),
+    ])
+    elements.append(table(
+        mode_rows,
+        widths=[4.8*cm, 2.4*cm, 4.2*cm, 2.6*cm, 3.8*cm, 3.2*cm, 4.2*cm],
+        numeric_from=1,
+        total_row=True,
+    ))
+    elements.append(Paragraph(
+        "Seuls les paiements au statut « Validé » sont comptabilisés. Les références "
+        "externes sont contrôlées pour les modes hors espèces.",
+        styles['Note'],
+    ))
+
+    elements.append(Paragraph(
+        "2. RAPPROCHEMENT JOURNALIER PAR MODE", styles['SectionTitle']
+    ))
+    daily_rows = [['Date', 'Mode', 'Opérations', 'Montant encaissé (GNF)']]
+    for item in data['daily_modes']:
+        daily_rows.append([
+            item['date'].strftime('%d/%m/%Y'), item['mode'], item['count'],
+            _money(item['amount']),
+        ])
+    if len(daily_rows) == 1:
+        daily_rows.append(['-', 'Aucun encaissement validé', 0, '0'])
+    daily_rows.append([
+        'TOTAL', '', data['validated_count'], _money(data['total_validated'])
+    ])
+    elements.append(table(
+        daily_rows,
+        widths=[4*cm, 8*cm, 4*cm, 6*cm],
+        numeric_from=2,
+        total_row=True,
+    ))
+
+    elements.append(Paragraph(
+        "3. JOURNAL DÉTAILLÉ DES ENCAISSEMENTS", styles['SectionTitle']
+    ))
+    detail_rows = [[
+        'Mode', 'Date', 'Reçu', 'Matricule / Élève', 'Classe', 'Type',
+        'Montant (GNF)', 'Référence', 'Contrôle',
+    ]]
+    for item in sorted(
+        data['payment_rows'], key=lambda row: (row['mode'], row['date'], row['receipt'])
+    ):
+        detail_rows.append([
+            item['mode'], item['date'].strftime('%d/%m/%Y'), item['receipt'],
+            f"{item['matricule']}\n{item['student']}", item['class'], item['type'],
+            _money(item['amount']), item['reference'], item['reference_status'],
+        ])
+    if len(detail_rows) == 1:
+        detail_rows.append([
+            '-', '-', '-', 'Aucun encaissement validé', '-', '-', '0', '-', '-'
+        ])
+    elements.append(table(
+        detail_rows,
+        widths=[3*cm, 2.2*cm, 2.5*cm, 4.8*cm, 3.2*cm, 3.6*cm, 3*cm, 3.2*cm, 3.2*cm],
+        numeric_columns=(6,),
+    ))
+    elements.extend([
+        Spacer(1, 0.3 * cm),
+        Paragraph(
+            "Rapprochement recommandé : comparer chaque total avec le journal de "
+            "caisse, les relevés Mobile Money et les relevés bancaires correspondants.",
+            styles['Note'],
+        ),
+    ])
+    doc.build(
+        elements,
+        onFirstPage=on_page,
+        onLaterPages=on_page,
+        canvasmaker=numbered_canvas,
+    )
+    buffer.seek(0)
+    return buffer
+
+
 def build_recovery_pdf(data):
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.units import cm
@@ -1308,7 +1685,102 @@ def _excel_workbook(data, report_kind):
             elif isinstance(cell.value, float):
                 cell.number_format = '0.0'
 
-    if report_kind == 'accounting':
+    if report_kind == 'modes':
+        from openpyxl.chart import BarChart, Reference
+
+        ws = sheet(
+            'Synthèse par mode',
+            "ENCAISSEMENTS PAR MODE",
+            [
+                'Mode', 'Opérations', 'Montant encaissé (GNF)', 'Part du total',
+                'Montant moyen (GNF)', 'Réf. manquantes',
+                'Montant à justifier (GNF)',
+            ],
+        )
+        first_mode_row = 6
+        for label, item in data['by_mode'].items():
+            append(ws, [
+                label, item['count'], int(item['amount']), None, None,
+                item['reference_missing'], int(item['reference_missing_amount']),
+            ])
+        if not data['by_mode']:
+            append(ws, ['Aucun encaissement validé', 0, 0, 0, 0, 0, 0])
+        last_mode_row = ws.max_row
+        total_row = last_mode_row + 1
+        append(ws, [
+            'TOTAL', f'=SUM(B{first_mode_row}:B{last_mode_row})',
+            f'=SUM(C{first_mode_row}:C{last_mode_row})',
+            f'=IF(C{total_row}>0,1,0)',
+            f'=IFERROR(C{total_row}/B{total_row},0)',
+            f'=SUM(F{first_mode_row}:F{last_mode_row})',
+            f'=SUM(G{first_mode_row}:G{last_mode_row})',
+        ], total=True)
+        for row in range(first_mode_row, last_mode_row + 1):
+            ws.cell(row, 4, f'=IFERROR(C{row}/$C${total_row},0)')
+            ws.cell(row, 5, f'=IFERROR(C{row}/B{row},0)')
+        for row in range(first_mode_row, total_row + 1):
+            ws.cell(row, 3).number_format = '#,##0 "GNF"'
+            ws.cell(row, 4).number_format = '0.0%'
+            ws.cell(row, 5).number_format = '#,##0 "GNF"'
+            ws.cell(row, 7).number_format = '#,##0 "GNF"'
+
+        if data['by_mode']:
+            chart = BarChart()
+            chart.type = 'bar'
+            chart.style = 10
+            chart.title = "Montants encaissés par mode"
+            chart.y_axis.title = "Mode"
+            chart.x_axis.title = "Montant (GNF)"
+            chart.height = 7
+            chart.width = 13
+            chart.add_data(
+                Reference(ws, min_col=3, min_row=5, max_row=last_mode_row),
+                titles_from_data=True,
+            )
+            chart.set_categories(
+                Reference(ws, min_col=1, min_row=first_mode_row, max_row=last_mode_row)
+            )
+            chart.legend = None
+            ws.add_chart(chart, 'I5')
+
+        ws = sheet(
+            'Rapprochement journalier',
+            "ENCAISSEMENTS JOURNALIERS PAR MODE",
+            ['Date', 'Mode', 'Opérations', 'Montant encaissé (GNF)'],
+        )
+        for item in data['daily_modes']:
+            append(ws, [
+                item['date'], item['mode'], item['count'], int(item['amount'])
+            ])
+        if not data['daily_modes']:
+            append(ws, [None, 'Aucun encaissement validé', 0, 0])
+        for row in range(6, ws.max_row + 1):
+            ws.cell(row, 1).number_format = 'dd/mm/yyyy'
+            ws.cell(row, 4).number_format = '#,##0 "GNF"'
+
+        ws = sheet(
+            'Détail encaissements',
+            "JOURNAL DÉTAILLÉ PAR MODE",
+            [
+                'Mode', 'Date', 'Reçu', 'Matricule', 'Élève', 'Classe', 'Type',
+                'Montant (GNF)', 'Référence', 'Contrôle référence',
+                'Caissier', 'Validateur',
+            ],
+        )
+        for item in sorted(
+            data['payment_rows'],
+            key=lambda row: (row['mode'], row['date'], row['receipt']),
+        ):
+            append(ws, [
+                item['mode'], item['date'], item['receipt'], item['matricule'],
+                item['student'], item['class'], item['type'], int(item['amount']),
+                item['reference'], item['reference_status'], item['cashier'],
+                item['validator'],
+            ])
+        for row in range(6, ws.max_row + 1):
+            ws.cell(row, 2).number_format = 'dd/mm/yyyy'
+            ws.cell(row, 8).number_format = '#,##0 "GNF"'
+    elif report_kind == 'accounting':
         ws = sheet('Synthèse', 'RAPPORT COMPTABLE DES ENCAISSEMENTS', ['Indicateur', 'Nombre', 'Montant (GNF)'])
         append(ws, ['Paiements validés', data['validated_count'], int(data['total_validated'])])
         append(ws, ['Remises accordées', len(data['discount_by_reason']), int(data['total_discounts'])])
@@ -1491,6 +1963,99 @@ def _excel_response(workbook, prefix, data):
 
 
 @can_view_reports
+def modes_encaissement_tableau(request):
+    """Affiche les encaissements et le solde des élèves dans un tableau filtrable."""
+    try:
+        data = collect_payment_modes_data(request)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    situation = data['situation']
+
+    rows = data['student_mode_rows']
+    unique_students = {
+        (item['student_id'], item['school_year']): item
+        for item in rows
+    }
+    mode_summary = defaultdict(lambda: {
+        'students': set(), 'operations': 0, 'collected': ZERO, 'balance': ZERO,
+    })
+    for item in rows:
+        summary = mode_summary[item['mode']]
+        summary['students'].add((item['student_id'], item['school_year']))
+        summary['operations'] += item['operation_count']
+        summary['collected'] += item['collected']
+        summary['balance'] += item['balance']
+    mode_rows = [
+        {
+            'mode': mode,
+            'student_count': len(values['students']),
+            'operations': values['operations'],
+            'collected': values['collected'],
+            'balance': values['balance'],
+            'share': _percentage(
+                values['collected'],
+                sum((item['collected'] for item in rows), ZERO),
+            ),
+        }
+        for mode, values in sorted(mode_summary.items())
+    ]
+
+    all_classes = filter_by_user_school(
+        Classe.objects.select_related('ecole').order_by('ecole__nom', 'niveau', 'nom'),
+        request.user,
+        'ecole',
+    )
+    year_options = list(
+        all_classes.exclude(annee_scolaire='')
+        .values_list('annee_scolaire', flat=True)
+        .distinct()
+        .order_by('-annee_scolaire')
+    )
+    paginator = Paginator(rows, 25)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    context = {
+        'data': data,
+        'page_obj': page_obj,
+        'mode_rows': mode_rows,
+        'classes_filtre': all_classes,
+        'modes_filtre': ModePaiement.objects.order_by('nom'),
+        'annees_filtre': year_options,
+        'filtre_annee': data['school_year'],
+        'filtre_classe_id': (request.GET.get('classe_id') or '').strip(),
+        'filtre_mode_id': (
+            str(data['selected_mode'].pk) if data['selected_mode'] else ''
+        ),
+        'filtre_du': data['start'],
+        'filtre_au': data['requested_end'],
+        'filtre_q': data['search'],
+        'filtre_situation': situation,
+        'filtered_student_count': len(unique_students),
+        'filtered_total_collected': sum(
+            (item['collected'] for item in rows), ZERO
+        ),
+        'filtered_total_due': sum(
+            (item['amount_due'] for item in unique_students.values()), ZERO
+        ),
+        'filtered_total_paid': sum(
+            (item['amount_paid'] for item in unique_students.values()), ZERO
+        ),
+        'filtered_total_discount': sum(
+            (item['discount'] for item in unique_students.values()), ZERO
+        ),
+        'filtered_total_balance': sum(
+            (item['balance'] for item in unique_students.values()), ZERO
+        ),
+    }
+    is_ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
+    template = (
+        'paiements/_modes_encaissement_resultats.html'
+        if is_ajax else 'paiements/modes_encaissement.html'
+    )
+    return render(request, template, context)
+
+
+@can_view_reports
 def export_comptabilite_pdf(request):
     try:
         data = collect_accounting_data(request)
@@ -1506,6 +2071,28 @@ def export_comptabilite_excel(request):
     except ValueError as exc:
         return _bad_request(exc)
     return _excel_response(_excel_workbook(data, 'accounting'), 'rapport_comptable', data)
+
+
+@can_view_reports
+def export_modes_encaissement_pdf(request):
+    try:
+        data = collect_payment_modes_data(request)
+    except ValueError as exc:
+        return _bad_request(exc)
+    return _pdf_response(
+        build_payment_modes_pdf(data), 'encaissements_par_mode', data
+    )
+
+
+@can_view_reports
+def export_modes_encaissement_excel(request):
+    try:
+        data = collect_payment_modes_data(request)
+    except ValueError as exc:
+        return _bad_request(exc)
+    return _excel_response(
+        _excel_workbook(data, 'modes'), 'encaissements_par_mode', data
+    )
 
 
 @can_view_reports

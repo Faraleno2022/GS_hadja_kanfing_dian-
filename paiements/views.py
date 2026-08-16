@@ -1421,6 +1421,12 @@ def tableau_bord_paiements(request):
         'finance_direction': finance_direction,
         'classes_a_risque': classes_a_risque,
         'modes_encaissement': modes_encaissement,
+        'modes_date_debut': today.replace(day=1),
+        'modes_date_fin': today,
+        'annee_active': annee_active or '',
+        'can_view_reports': has_permission(
+            request.user, 'peut_consulter_rapports'
+        ),
     }
     return render(request, 'paiements/tableau_bord.html', context)
 
