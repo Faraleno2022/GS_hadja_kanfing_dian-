@@ -25,6 +25,13 @@ class StatutEnseignant(models.TextChoices):
     DEMISSIONNAIRE = 'DEMISSIONNAIRE', 'Démissionnaire'
 
 
+class ModeCalculHoraire(models.TextChoices):
+    """Source des heures utilisées pour payer un enseignant du secondaire."""
+
+    POINTAGE = 'POINTAGE', 'Pointage arrivée / départ'
+    MENSUEL = 'MENSUEL', 'Total mensuel global'
+
+
 class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
     
@@ -59,6 +66,16 @@ class Enseignant(SyncTrackedModel):
         help_text="Pour les enseignants du secondaire uniquement",
         validators=[MinValueValidator(Decimal('0'))],
     )
+    mode_calcul_horaire = models.CharField(
+        max_length=10,
+        choices=ModeCalculHoraire.choices,
+        default=ModeCalculHoraire.POINTAGE,
+        verbose_name="Mode de calcul des heures",
+        help_text=(
+            "Pour le secondaire : utiliser les pointages quotidiens ou un total "
+            "mensuel saisi globalement."
+        ),
+    )
     salaire_fixe = models.DecimalField(
         max_digits=12, 
         decimal_places=2, 
@@ -74,7 +91,7 @@ class Enseignant(SyncTrackedModel):
         null=True, 
         blank=True,
         verbose_name="Heures mensuelles",
-        help_text="Nombre d'heures de travail prévues par mois (pour calcul précis du salaire)",
+        help_text="Total mensuel global utilisé pour calculer le salaire horaire",
         validators=[
             MinValueValidator(Decimal('0')),
             MaxValueValidator(Decimal('200')),
@@ -128,6 +145,17 @@ class Enseignant(SyncTrackedModel):
             raise ValidationError({
                 'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
             })
+
+        if (
+            self.est_taux_horaire
+            and self.mode_calcul_horaire == ModeCalculHoraire.MENSUEL
+            and not self.heures_mensuelles
+        ):
+            raise ValidationError({
+                'heures_mensuelles': (
+                    "Le total d'heures mensuelles est obligatoire pour le mode mensuel global."
+                )
+            })
         
         if self.est_salaire_fixe and not self.salaire_fixe:
             raise ValidationError({
@@ -157,8 +185,15 @@ class Enseignant(SyncTrackedModel):
             if not self.taux_horaire:
                 return Decimal('0')
             
-            # Utiliser les heures réalisées si fournies, sinon les heures mensuelles prévues
-            heures = heures_realisees if heures_realisees is not None else (self.heures_mensuelles or Decimal('120'))
+            # Un pointage absent ne doit jamais être remplacé silencieusement
+            # par un forfait. Le total mensuel n'est utilisé que si ce mode a
+            # été explicitement sélectionné sur le dossier de l'enseignant.
+            if heures_realisees is not None:
+                heures = heures_realisees
+            elif self.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
+                heures = self.heures_mensuelles or Decimal('0')
+            else:
+                heures = Decimal('0')
             return self.taux_horaire * heures
         
         elif self.est_salaire_fixe:
@@ -362,6 +397,14 @@ class EtatSalaire(SyncTrackedModel):
         blank=True,
         verbose_name="Total heures",
         help_text="Total des heures enseignées dans le mois"
+    )
+    mode_calcul_heures = models.CharField(
+        max_length=10,
+        choices=ModeCalculHoraire.choices,
+        blank=True,
+        default='',
+        verbose_name="Source des heures",
+        help_text="Mode conservé au moment du calcul pour l'historique",
     )
     taux_horaire_applique = models.DecimalField(
         max_digits=10,
