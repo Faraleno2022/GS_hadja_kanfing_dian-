@@ -9,9 +9,27 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import csv
 
-from .models import Enseignant, PresenceEnseignant
+from .models import Enseignant, PeriodeSalaire, PresenceEnseignant
 from .forms import PresenceForm
+from .services import recalculer_salaire_enseignant
 from utilisateurs.utils import user_school, user_is_admin
+
+
+def _actualiser_salaire_ouvert(enseignant, date_pointage, utilisateur):
+    """Répercute un pointage sur la paie horaire lorsque la période existe."""
+    if not enseignant.est_taux_horaire:
+        return False
+    periode = PeriodeSalaire.objects.filter(
+        ecole=enseignant.ecole,
+        mois=date_pointage.month,
+        annee=date_pointage.year,
+        cloturee=False,
+    ).first()
+    if periode is None:
+        return False
+    return recalculer_salaire_enseignant(
+        enseignant, periode, utilisateur
+    ) is not None
 
 
 @login_required
@@ -98,6 +116,7 @@ def pointer_presence(request):
         count_created = 0
         count_updated = 0
         count_errors = 0
+        count_salaires_actualises = 0
         
         # Valider que tous les enseignants sélectionnés appartiennent à l'école de l'utilisateur
         enseignants_valides = set(
@@ -173,6 +192,18 @@ def pointer_presence(request):
                 count_created += 1
             else:
                 count_updated += 1
+
+            try:
+                if _actualiser_salaire_ouvert(
+                    presence.enseignant, date_pointage, request.user
+                ):
+                    count_salaires_actualises += 1
+            except ValidationError as exc:
+                messages.warning(
+                    request,
+                    f"Pointage enregistré, mais salaire non recalculé pour "
+                    f"{presence.enseignant.nom_complet} : {'; '.join(exc.messages)}",
+                )
         
         if count_created or count_updated:
             messages.success(
@@ -181,6 +212,11 @@ def pointer_presence(request):
             )
         if count_errors:
             messages.warning(request, f"{count_errors} pointage(s) invalide(s) n'ont pas été enregistrés.")
+        if count_salaires_actualises:
+            messages.info(
+                request,
+                f"{count_salaires_actualises} salaire(s) horaire(s) actualisé(s) automatiquement.",
+            )
         return redirect('salaires:liste_presences')
     
     # GET: Afficher le formulaire
@@ -275,6 +311,15 @@ def modifier_presence(request, presence_id):
             presence = form.save(commit=False)
             presence.pointe_par = request.user
             presence.save()
+            try:
+                _actualiser_salaire_ouvert(
+                    presence.enseignant, presence.date, request.user
+                )
+            except ValidationError as exc:
+                messages.warning(
+                    request,
+                    f"Présence enregistrée, mais salaire non recalculé : {'; '.join(exc.messages)}",
+                )
             messages.success(request, "Présence modifiée avec succès.")
             return redirect('salaires:liste_presences')
     else:
@@ -299,9 +344,19 @@ def supprimer_presence(request, presence_id):
     )
     
     if request.method == 'POST':
+        enseignant = presence.enseignant
         enseignant_nom = presence.enseignant.nom_complet
         date_presence = presence.date
         presence.delete()
+        try:
+            _actualiser_salaire_ouvert(
+                enseignant, date_presence, request.user
+            )
+        except ValidationError as exc:
+            messages.warning(
+                request,
+                f"Présence supprimée, mais salaire non recalculé : {'; '.join(exc.messages)}",
+            )
         messages.success(
             request,
             f"Présence de {enseignant_nom} du {date_presence} supprimée."

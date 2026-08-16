@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load humanize %}
+{% load humanize l10n %}
 
 {% block title %}États de Salaire{% endblock %}
 
@@ -320,6 +320,10 @@
                         <span class="fw-bold">{{ etat.total_heures }} h</span>
                     </div>
                     <div class="breakdown-item calculation-detail">
+                        <span><i class="fas fa-database me-1"></i>Mode de calcul:</span>
+                        <span class="fw-bold">{{ etat.libelle_source_heures }}</span>
+                    </div>
+                    <div class="breakdown-item calculation-detail">
                         <span><i class="fas fa-calculator me-1"></i>Taux horaire:</span>
                         <span class="fw-bold">{{ etat.taux_horaire_applique|default:0|intcomma }} GNF/h</span>
                     </div>
@@ -409,6 +413,21 @@
                           class="card card-body bg-light">
                         {% csrf_token %}
                         <div class="row g-3">
+                            {% if etat.enseignant.est_taux_horaire %}
+                            <div class="col-12">
+                                <label class="form-label" for="heures-mensuelles-{{ etat.id }}">
+                                    Total réel du mois (heures)
+                                </label>
+                                <input id="heures-mensuelles-{{ etat.id }}" type="number"
+                                       name="heures_mensuelles_saisies" class="form-control"
+                                       min="0" max="744" step="0.25"
+                                       value="{% if etat.heures_mensuelles_saisies is not None %}{{ etat.heures_mensuelles_saisies|unlocalize }}{% endif %}"
+                                       placeholder="Laisser vide pour utiliser les pointages arrivée / départ">
+                                <div class="form-text">
+                                    Cette valeur globale remplace les pointages pour cette période. Effacez-la pour revenir au calcul automatique par pointage.
+                                </div>
+                            </div>
+                            {% endif %}
                             <div class="col-md-4">
                                 <label class="form-label" for="primes-{{ etat.id }}">Primes (GNF)</label>
                                 <input id="primes-{{ etat.id }}" type="number" name="primes"

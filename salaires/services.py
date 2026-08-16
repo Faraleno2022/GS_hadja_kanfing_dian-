@@ -38,6 +38,13 @@ def _heures_reelles(enseignant, debut, fin):
     return arrondir_montant(total or Decimal('0'))
 
 
+def _heures_a_remunerer(etat, enseignant, debut, fin):
+    """Utilise la saisie mensuelle lorsqu'elle existe, sinon les pointages."""
+    if etat.heures_mensuelles_saisies is not None:
+        return arrondir_montant(etat.heures_mensuelles_saisies)
+    return _heures_reelles(enseignant, debut, fin)
+
+
 def _affectations_de_la_periode(enseignant, debut, fin):
     """Inclut les affectations historiques qui chevauchent le mois de paie."""
     return list(
@@ -101,7 +108,9 @@ def _calculer_etat_enseignant(etat, enseignant, periode, debut, fin, utilisateur
         etat.salaire_base = _salaire_fixe_proratise(enseignant, debut, fin)
     else:
         debut_effectif = max(debut, enseignant.date_embauche)
-        total_heures = _heures_reelles(enseignant, debut_effectif, fin)
+        total_heures = _heures_a_remunerer(
+            etat, enseignant, debut_effectif, fin
+        )
         taux_horaire = enseignant.taux_horaire or Decimal('0')
         affectations = _affectations_de_la_periode(enseignant, debut_effectif, fin)
 
@@ -130,6 +139,41 @@ def _calculer_etat_enseignant(etat, enseignant, periode, debut, fin, utilisateur
     etat.calcule_par = utilisateur
     etat.save()
     return etat
+
+
+@transaction.atomic
+def recalculer_salaire_enseignant(
+    enseignant, periode, utilisateur, etat=None
+):
+    """Actualise un seul salaire ouvert après un pointage ou une saisie mensuelle."""
+    debut, fin = bornes_periode(periode)
+    if (
+        periode.cloturee
+        or enseignant.ecole_id != periode.ecole_id
+        or enseignant.date_embauche > fin
+    ):
+        return None
+
+    if etat is None:
+        etat, _ = EtatSalaire.objects.get_or_create(
+            enseignant=enseignant,
+            periode=periode,
+            defaults={
+                'calcule_par': utilisateur,
+                'salaire_base': Decimal('0'),
+                'salaire_net': Decimal('0'),
+            },
+        )
+    elif etat.enseignant_id != enseignant.id or etat.periode_id != periode.id:
+        raise ValueError("L'état de salaire ne correspond pas à l'enseignant et à la période.")
+
+    # Les montants validés ou déjà payés constituent un historique immuable.
+    if etat.valide or etat.paye:
+        return None
+
+    return _calculer_etat_enseignant(
+        etat, enseignant, periode, debut, fin, utilisateur
+    )
 
 
 @transaction.atomic
@@ -162,7 +206,7 @@ def calculer_salaires_periode(periode, utilisateur):
                 'salaire_net': Decimal('0'),
             },
         )
-        if not cree and etat.valide:
+        if not cree and (etat.valide or etat.paye):
             continue
 
         _calculer_etat_enseignant(

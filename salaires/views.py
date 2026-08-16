@@ -28,7 +28,7 @@ from .forms import (
     EtatSalaireAjustementForm,
     PresenceForm,
 )
-from .services import calculer_salaires_periode
+from .services import calculer_salaires_periode, recalculer_salaire_enseignant
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
@@ -732,7 +732,8 @@ def export_etats_salaire_csv(request):
     writer = csv.writer(response)
     writer.writerow([
         'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Salaire Base', 'Salaire Net', 'Total Heures', 'Mode de calcul',
+        'Taux horaire', 'Date Calcul'
     ])
 
     for e in etats:
@@ -746,6 +747,8 @@ def export_etats_salaire_csv(request):
             e.salaire_base,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
+            e.libelle_source_heures,
+            e.taux_horaire_applique if e.taux_horaire_applique is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
 
@@ -801,7 +804,8 @@ def export_etats_salaire_pdf(request):
     # Table
     data = [[
         'École', 'Période', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Salaire Base', 'Salaire Net', 'Total Heures', 'Mode de calcul',
+        'Taux horaire', 'Date Calcul'
     ]]
     for e in etats:
         data.append([
@@ -814,6 +818,8 @@ def export_etats_salaire_pdf(request):
             e.salaire_base,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
+            e.libelle_source_heures,
+            e.taux_horaire_applique if e.taux_horaire_applique is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
 
@@ -913,7 +919,7 @@ def calculer_salaires(request, periode_id):
 @login_required
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def modifier_etat_salaire(request, etat_id):
-    """Modifier primes, retenues et observations avant validation."""
+    """Modifier les heures mensuelles et les ajustements avant validation."""
     etat = get_object_or_404(EtatSalaire, id=etat_id)
     if request.method != 'POST':
         messages.error(request, "La modification d'un salaire nécessite une requête POST.")
@@ -925,8 +931,17 @@ def modifier_etat_salaire(request, etat_id):
 
     form = EtatSalaireAjustementForm(request.POST, instance=etat)
     if form.is_valid():
-        form.save()
-        messages.success(request, f"Ajustements de {etat.enseignant.nom_complet} enregistrés.")
+        etat_modifie = form.save(commit=False)
+        recalculer_salaire_enseignant(
+            etat.enseignant,
+            etat.periode,
+            request.user,
+            etat=etat_modifie,
+        )
+        messages.success(
+            request,
+            f"Salaire de {etat.enseignant.nom_complet} recalculé et enregistré.",
+        )
     else:
         erreurs = ' '.join(
             message
@@ -1103,8 +1118,9 @@ def fiche_paie_pdf(request, etat_id):
         ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
     ]
     
-    if etat.total_heures:
+    if etat.total_heures is not None:
         data.append(['Heures travaillées', f"{etat.total_heures}h"])
+        data.append(['Mode de calcul', etat.libelle_source_heures])
         data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
     
     if etat.primes:

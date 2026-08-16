@@ -262,11 +262,13 @@
 
                 <div class="period-actions">
                     {% if not periode.cloturee %}
-                    <a href="{% url 'salaires:calculer_salaires' periode.id %}" 
-                       class="btn btn-success btn-action"
-                       onclick="return confirm('Calculer les salaires pour {{ periode }} ?')">
-                        <i class="fas fa-calculator"></i> Calculer Salaires
-                    </a>
+                    <form method="post" action="{% url 'salaires:calculer_salaires' periode.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success btn-action"
+                                onclick="return confirm('Calculer les salaires pour {{ periode }} ?')">
+                            <i class="fas fa-calculator"></i> Calculer Salaires
+                        </button>
+                    </form>
                     
                     <form method="post" action="{% url 'salaires:cloturer_periode' periode.id %}" class="d-inline">
                         {% csrf_token %}

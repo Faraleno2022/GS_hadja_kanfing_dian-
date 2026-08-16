@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from eleves.models import Classe, Ecole
 from synchronisation.mixins import SyncTrackedModel
@@ -13,7 +13,7 @@ class TypeEnseignant(models.TextChoices):
     MATERNELLE = 'MATERNELLE', 'Maternelle'
     PRIMAIRE = 'PRIMAIRE', 'Primaire'
     SECONDAIRE = 'SECONDAIRE', 'Secondaire (taux horaire)'
-    ADMINISTRATEUR = 'ADMINISTRATEUR', 'Administrateur'
+    ADMINISTRATEUR = 'ADMINISTRATEUR', 'Cadre / Administrateur'
 
 
 class StatutEnseignant(models.TextChoices):
@@ -364,6 +364,17 @@ class EtatSalaire(SyncTrackedModel):
         verbose_name="Total heures",
         help_text="Total des heures enseignées dans le mois"
     )
+    heures_mensuelles_saisies = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Heures mensuelles saisies",
+        help_text=(
+            "Total réel saisi globalement pour ce mois. Laisser vide pour "
+            "utiliser les pointages d'arrivée et de départ."
+        ),
+    )
     taux_horaire_applique = models.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -450,11 +461,19 @@ class EtatSalaire(SyncTrackedModel):
             'primes': self.primes,
             'deductions': self.deductions,
             'total_heures': self.total_heures,
+            'heures_mensuelles_saisies': self.heures_mensuelles_saisies,
             'taux_horaire_applique': self.taux_horaire_applique,
         }
         for champ, valeur in champs_positifs.items():
             if valeur is not None and valeur < 0:
                 erreurs[champ] = 'Cette valeur ne peut pas être négative.'
+        if (
+            self.heures_mensuelles_saisies is not None
+            and self.heures_mensuelles_saisies > 744
+        ):
+            erreurs['heures_mensuelles_saisies'] = (
+                'Le total mensuel ne peut pas dépasser 744 heures.'
+            )
 
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
@@ -489,6 +508,15 @@ class EtatSalaire(SyncTrackedModel):
     def peut_etre_paye(self):
         """Vérifie si l'état de salaire peut être marqué comme payé"""
         return self.valide and not self.paye
+
+    @property
+    def libelle_source_heures(self):
+        """Indique clairement la donnée qui a servi au calcul de la paie."""
+        if self.enseignant.est_salaire_fixe:
+            return "Salaire fixe"
+        if self.heures_mensuelles_saisies is not None:
+            return "Saisie mensuelle globale"
+        return "Pointages arrivée / départ"
 
 
 class PresenceEnseignant(SyncTrackedModel):
@@ -690,6 +718,8 @@ class DetailHeuresClasse(SyncTrackedModel):
 
     def save(self, *args, **kwargs):
         # Calcul automatique du montant
-        self.montant = self.heures_realisees * self.taux_horaire_applique
+        self.montant = (
+            self.heures_realisees * self.taux_horaire_applique
+        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         self.full_clean()
         return super().save(*args, **kwargs)

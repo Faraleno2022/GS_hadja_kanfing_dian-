@@ -81,13 +81,16 @@ class EnseignantForm(forms.ModelForm):
             'statut': 'Statut',
             'taux_horaire': 'Taux horaire (GNF)',
             'salaire_fixe': 'Salaire fixe (GNF)',
-            'heures_mensuelles': 'Heures mensuelles',
+            'heures_mensuelles': 'Heures mensuelles prévues (facultatif)',
             'date_embauche': 'Date d\'embauche *',
         }
         help_texts = {
             'taux_horaire': 'Pour les enseignants du secondaire uniquement',
-            'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
-            'heures_mensuelles': 'Nombre d\'heures de travail prévues par mois (pour calcul précis du salaire)',
+            'salaire_fixe': 'Pour garderie, maternelle, primaire, cadres et administrateurs',
+            'heures_mensuelles': (
+                "Volume indicatif du contrat. Les heures réellement payées sont "
+                "issues des pointages ou de la saisie globale de la période."
+            ),
             'date_embauche': 'Date d\'entrée en fonction',
         }
 
@@ -127,10 +130,6 @@ class EnseignantForm(forms.ModelForm):
             if not taux_horaire:
                 raise ValidationError({
                     'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
-                })
-            if not heures_mensuelles:
-                raise ValidationError({
-                    'heures_mensuelles': 'Le nombre d\'heures mensuelles est obligatoire pour les enseignants du secondaire.'
                 })
             if salaire_fixe:
                 cleaned_data['salaire_fixe'] = None  # Effacer le salaire fixe
@@ -313,8 +312,14 @@ class EtatSalaireAjustementForm(forms.ModelForm):
 
     class Meta:
         model = EtatSalaire
-        fields = ['primes', 'deductions', 'observations']
+        fields = [
+            'heures_mensuelles_saisies', 'primes', 'deductions', 'observations'
+        ]
         widgets = {
+            'heures_mensuelles_saisies': forms.NumberInput(attrs={
+                'class': 'form-control', 'step': '0.25', 'min': '0', 'max': '744',
+                'placeholder': 'Vide = calcul depuis les pointages',
+            }),
             'primes': forms.NumberInput(attrs={
                 'class': 'form-control', 'step': '0.01', 'min': '0'
             }),
@@ -326,12 +331,46 @@ class EtatSalaireAjustementForm(forms.ModelForm):
                 'placeholder': 'Motif des primes ou retenues',
             }),
         }
+        labels = {
+            'heures_mensuelles_saisies': 'Total réel du mois',
+        }
+        help_texts = {
+            'heures_mensuelles_saisies': (
+                "Renseignez le total global du mois, ou laissez vide pour calculer "
+                "depuis les heures d'arrivée et de départ."
+            ),
+        }
 
     def clean(self):
         cleaned_data = super().clean()
         primes = cleaned_data.get('primes') or 0
         deductions = cleaned_data.get('deductions') or 0
+        heures_saisies = cleaned_data.get('heures_mensuelles_saisies')
+        if heures_saisies is not None and heures_saisies > 744:
+            self.add_error(
+                'heures_mensuelles_saisies',
+                'Le total mensuel ne peut pas dépasser 744 heures.',
+            )
+
         salaire_base = self.instance.salaire_base or 0
+        if self.instance.enseignant.est_taux_horaire:
+            if heures_saisies is None:
+                from .services import _heures_reelles, bornes_periode
+
+                debut, fin = bornes_periode(self.instance.periode)
+                debut = max(debut, self.instance.enseignant.date_embauche)
+                heures_calculees = _heures_reelles(
+                    self.instance.enseignant, debut, fin
+                )
+            else:
+                heures_calculees = heures_saisies
+            salaire_base = (
+                heures_calculees * (self.instance.enseignant.taux_horaire or 0)
+            )
+            # ModelForm exécutera ensuite la validation du modèle. Lui fournir
+            # dès maintenant le salaire projeté évite de comparer les retenues
+            # au montant antérieur à la nouvelle saisie d'heures.
+            self.instance.salaire_base = salaire_base
         if deductions > salaire_base + primes:
             self.add_error(
                 'deductions',
