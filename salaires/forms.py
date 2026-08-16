@@ -4,6 +4,7 @@ from .models import (
     AffectationClasse,
     Enseignant,
     EtatSalaire,
+    ModeCalculHoraire,
     PresenceEnseignant,
     StatutEnseignant,
     TypeEnseignant,
@@ -19,7 +20,8 @@ class EnseignantForm(forms.ModelForm):
         fields = [
             'nom', 'prenoms', 'telephone', 'adresse',
             'ecole', 'type_enseignant', 'statut', 
-            'taux_horaire', 'salaire_fixe', 'heures_mensuelles', 'date_embauche'
+            'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe',
+            'heures_mensuelles', 'date_embauche'
         ]
         widgets = {
             'nom': forms.TextInput(attrs={
@@ -53,6 +55,9 @@ class EnseignantForm(forms.ModelForm):
                 'placeholder': 'Taux horaire en GNF',
                 'step': '0.01'
             }),
+            'mode_calcul_horaire': forms.Select(attrs={
+                'class': 'form-select'
+            }),
             'salaire_fixe': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Salaire fixe en GNF',
@@ -78,14 +83,20 @@ class EnseignantForm(forms.ModelForm):
             'type_enseignant': 'Type d\'enseignant *',
             'statut': 'Statut',
             'taux_horaire': 'Taux horaire (GNF)',
+            'mode_calcul_horaire': 'Calcul des heures',
             'salaire_fixe': 'Salaire fixe (GNF)',
             'heures_mensuelles': 'Heures mensuelles',
             'date_embauche': 'Date d\'embauche *',
         }
         help_texts = {
             'taux_horaire': 'Pour les enseignants du secondaire uniquement',
+            'mode_calcul_horaire': (
+                "Choisissez le pointage arrivée/départ ou la saisie d'un total mensuel."
+            ),
             'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
-            'heures_mensuelles': 'Nombre d\'heures de travail prévues par mois (pour calcul précis du salaire)',
+            'heures_mensuelles': (
+                "Total global du mois multiplié par le taux horaire."
+            ),
             'date_embauche': 'Date d\'entrée en fonction',
         }
 
@@ -119,6 +130,9 @@ class EnseignantForm(forms.ModelForm):
         taux_horaire = cleaned_data.get('taux_horaire')
         salaire_fixe = cleaned_data.get('salaire_fixe')
         heures_mensuelles = cleaned_data.get('heures_mensuelles')
+        mode_calcul = cleaned_data.get(
+            'mode_calcul_horaire', ModeCalculHoraire.POINTAGE
+        )
 
         # Validation selon le type d'enseignant
         if type_enseignant == TypeEnseignant.SECONDAIRE:
@@ -126,27 +140,36 @@ class EnseignantForm(forms.ModelForm):
                 raise ValidationError({
                     'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
                 })
-            if not heures_mensuelles:
+            if (
+                mode_calcul == ModeCalculHoraire.MENSUEL
+                and not heures_mensuelles
+            ):
                 raise ValidationError({
-                    'heures_mensuelles': 'Le nombre d\'heures mensuelles est obligatoire pour les enseignants du secondaire.'
+                    'heures_mensuelles': (
+                        "Le total d'heures mensuelles est obligatoire pour le mode mensuel global."
+                    )
                 })
             if salaire_fixe:
                 cleaned_data['salaire_fixe'] = None  # Effacer le salaire fixe
-        else:
+            if mode_calcul == ModeCalculHoraire.POINTAGE:
+                cleaned_data['heures_mensuelles'] = None
+        elif type_enseignant:
             if not salaire_fixe:
                 raise ValidationError({
                     'salaire_fixe': f'Le salaire fixe est obligatoire pour les enseignants de type {type_enseignant}.'
                 })
             if taux_horaire:
                 cleaned_data['taux_horaire'] = None  # Effacer le taux horaire
+            cleaned_data['mode_calcul_horaire'] = ModeCalculHoraire.POINTAGE
+            cleaned_data['heures_mensuelles'] = None
         
         # Validation des heures mensuelles
-        if heures_mensuelles and heures_mensuelles <= 0:
+        if heures_mensuelles is not None and heures_mensuelles <= 0:
             raise ValidationError({
                 'heures_mensuelles': 'Le nombre d\'heures mensuelles doit être supérieur à 0.'
             })
         
-        if heures_mensuelles and heures_mensuelles > 200:
+        if heures_mensuelles is not None and heures_mensuelles > 200:
             raise ValidationError({
                 'heures_mensuelles': 'Le nombre d\'heures mensuelles ne peut pas dépasser 200 heures par mois.'
             })

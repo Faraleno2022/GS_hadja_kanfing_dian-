@@ -316,6 +316,12 @@
                     {% if etat.enseignant.est_taux_horaire %}
                     <!-- Calcul détaillé pour enseignants au taux horaire -->
                     <div class="breakdown-item calculation-detail">
+                        <span><i class="fas fa-database me-1"></i>Source des heures:</span>
+                        <span class="fw-bold">
+                            {{ etat.get_mode_calcul_heures_display|default:"Pointage arrivée / départ" }}
+                        </span>
+                    </div>
+                    <div class="breakdown-item calculation-detail">
                         <span><i class="fas fa-clock me-1"></i>Heures travaillées:</span>
                         <span class="fw-bold">{{ etat.total_heures }} h</span>
                     </div>

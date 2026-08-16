@@ -15,6 +15,7 @@ from .models import (
     AffectationClasse,
     Enseignant,
     EtatSalaire,
+    ModeCalculHoraire,
     PeriodeSalaire,
     PresenceEnseignant,
     TypeEnseignant,
@@ -138,8 +139,35 @@ class MoteurPaieTests(TestCase):
 
         etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
         self.assertEqual(etat.total_heures, Decimal('40.00'))
+        self.assertEqual(etat.mode_calcul_heures, ModeCalculHoraire.POINTAGE)
         self.assertEqual(etat.taux_horaire_applique, Decimal('10000.00'))
         self.assertEqual(etat.salaire_base, Decimal('400000.00'))
+
+    def test_total_mensuel_global_calcule_le_salaire_sans_pointage(self):
+        enseignant = self.creer_secondaire()
+        enseignant.mode_calcul_horaire = ModeCalculHoraire.MENSUEL
+        enseignant.heures_mensuelles = Decimal('75.50')
+        enseignant.save()
+
+        self.calculer()
+
+        etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
+        self.assertEqual(etat.total_heures, Decimal('75.50'))
+        self.assertEqual(etat.mode_calcul_heures, ModeCalculHoraire.MENSUEL)
+        self.assertEqual(etat.salaire_base, Decimal('755000.00'))
+
+    def test_mode_mensuel_ignore_les_pointages_pour_eviter_le_double_compte(self):
+        enseignant = self.creer_secondaire()
+        enseignant.mode_calcul_horaire = ModeCalculHoraire.MENSUEL
+        enseignant.heures_mensuelles = Decimal('60')
+        enseignant.save()
+        self.pointer(enseignant, range(1, 6))
+
+        self.calculer()
+
+        etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
+        self.assertEqual(etat.total_heures, Decimal('60.00'))
+        self.assertEqual(etat.salaire_base, Decimal('600000.00'))
 
     def test_secondaire_sans_affectation_ne_plante_pas(self):
         enseignant = self.creer_secondaire()
@@ -160,6 +188,28 @@ class MoteurPaieTests(TestCase):
         etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
         self.assertEqual(etat.total_heures, Decimal('0.00'))
         self.assertEqual(etat.salaire_base, Decimal('0.00'))
+
+    def test_pointage_arrivee_depart_recalcule_immediatement_le_salaire(self):
+        enseignant = self.creer_secondaire()
+
+        with patch(
+            'salaires.views_presences.user_school', return_value=self.ecole
+        ):
+            response = self.client.post(
+                reverse('salaires:pointer_presence'),
+                {
+                    'date': '2026-07-01',
+                    'enseignants': [str(enseignant.id)],
+                    f'statut_{enseignant.id}': 'PRESENT',
+                    f'heure_arrivee_{enseignant.id}': '08:00',
+                    f'heure_depart_{enseignant.id}': '16:30',
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
+        self.assertEqual(etat.total_heures, Decimal('8.50'))
+        self.assertEqual(etat.salaire_base, Decimal('85000.00'))
 
     def test_repartition_respecte_les_heures_hebdomadaires(self):
         enseignant = self.creer_secondaire()
@@ -211,6 +261,17 @@ class MoteurPaieTests(TestCase):
         etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
         self.assertEqual(etat.salaire_base, Decimal('1600000.00'))
 
+    def test_salaire_fixe_ne_depend_pas_des_heures_pointees(self):
+        enseignant = self.creer_fixe(salaire='1000000')
+        self.pointer(enseignant, range(1, 6))
+
+        self.calculer()
+
+        etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
+        self.assertIsNone(etat.total_heures)
+        self.assertEqual(etat.mode_calcul_heures, '')
+        self.assertEqual(etat.salaire_base, Decimal('1000000.00'))
+
     def test_embauche_apres_periode_est_exclue(self):
         enseignant = self.creer_fixe(embauche=date(2026, 8, 1))
 
@@ -255,6 +316,69 @@ class MoteurPaieTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn('salaire_fixe', form.errors)
+
+    def test_formulaire_pointage_accepte_des_heures_mensuelles_vides(self):
+        form = EnseignantForm(
+            data={
+                'nom': 'Horaire',
+                'prenoms': 'Pointage',
+                'ecole': self.ecole.id,
+                'type_enseignant': TypeEnseignant.SECONDAIRE,
+                'statut': 'ACTIF',
+                'taux_horaire': '10000',
+                'mode_calcul_horaire': ModeCalculHoraire.POINTAGE,
+                'heures_mensuelles': '',
+                'date_embauche': '2025-01-01',
+            },
+            user=self.user,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_formulaire_mensuel_exige_le_total_global(self):
+        form = EnseignantForm(
+            data={
+                'nom': 'Horaire',
+                'prenoms': 'Mensuel',
+                'ecole': self.ecole.id,
+                'type_enseignant': TypeEnseignant.SECONDAIRE,
+                'statut': 'ACTIF',
+                'taux_horaire': '10000',
+                'mode_calcul_horaire': ModeCalculHoraire.MENSUEL,
+                'heures_mensuelles': '',
+                'date_embauche': '2025-01-01',
+            },
+            user=self.user,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn('heures_mensuelles', form.errors)
+
+    @patch('salaires.views.timezone.localdate', return_value=date(2026, 7, 15))
+    def test_modification_du_total_mensuel_recalcule_le_salaire(
+        self, _localdate
+    ):
+        enseignant = self.creer_secondaire()
+
+        response = self.client.post(
+            reverse('salaires:modifier_enseignant', args=[enseignant.id]),
+            {
+                'nom': enseignant.nom,
+                'prenoms': enseignant.prenoms,
+                'ecole': self.ecole.id,
+                'type_enseignant': TypeEnseignant.SECONDAIRE,
+                'statut': 'ACTIF',
+                'taux_horaire': '10000',
+                'mode_calcul_horaire': ModeCalculHoraire.MENSUEL,
+                'heures_mensuelles': '80',
+                'date_embauche': '2025-01-01',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
+        self.assertEqual(etat.total_heures, Decimal('80.00'))
+        self.assertEqual(etat.salaire_base, Decimal('800000.00'))
 
     def test_salaire_negatif_est_refuse_hors_formulaire(self):
         with self.assertRaises(ValidationError):
