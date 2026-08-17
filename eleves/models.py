@@ -87,7 +87,11 @@ class Classe(SyncTrackedModel):
     """Modèle pour représenter une classe"""
     NIVEAUX_CHOICES = [
         ('GARDERIE', 'Garderie'),
-        ('MATERNELLE', 'Maternelle'),
+        ('TOUTE_PETITE_SECTION', 'Toute petite section'),
+        ('PETITE_SECTION', 'Petite section'),
+        ('MOYENNE_SECTION', 'Moyenne section'),
+        ('GRANDE_SECTION', 'Grande section'),
+        ('MATERNELLE', 'Maternelle (ancienne appellation)'),
         ('PRIMAIRE_1', 'Primaire 1ère'),
         ('PRIMAIRE_2', 'Primaire 2ème'),
         ('PRIMAIRE_3', 'Primaire 3ème'),
