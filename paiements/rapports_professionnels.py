@@ -2056,6 +2056,63 @@ def modes_encaissement_tableau(request):
 
 
 @can_view_reports
+def apercu_rapport_comptable(request):
+    """Affiche exactement les données utilisées par les exports comptables."""
+    try:
+        data = collect_accounting_data(request)
+    except ValueError as exc:
+        return _bad_request(exc)
+
+    status_rows = []
+    for code, _label in Paiement.STATUT_CHOICES:
+        item = data['by_status'][code]
+        status_rows.append({
+            **item,
+            'code': code,
+            'share': _percentage(item['count'], data['payment_count']),
+        })
+
+    mode_rows = [
+        {
+            **item,
+            'label': label,
+            'share': _percentage(item['amount'], data['total_validated']),
+        }
+        for label, item in data['by_mode'].items()
+    ]
+    component_rows = [
+        item
+        for item in data['by_component'].values()
+        if item['amount'] > 0 or item['label'] != 'Non affecté / à contrôler'
+    ]
+    context = {
+        'data': data,
+        'status_rows': status_rows,
+        'mode_rows': mode_rows,
+        'type_rows': [
+            {**item, 'label': label}
+            for label, item in data['by_type'].items()
+        ],
+        'component_rows': component_rows,
+        'component_total': sum(
+            (item['amount'] for item in data['by_component'].values()), ZERO
+        ),
+        'class_rows': [
+            {**item, 'label': label, 'coverage': item['amount'] + item['discount']}
+            for label, item in data['by_class'].items()
+        ],
+        'discount_rows': [
+            {'label': label, 'amount': amount}
+            for label, amount in data['discount_by_reason'].items()
+        ],
+        'all_payments_total': sum(
+            (payment.montant or ZERO for payment in data['payments']), ZERO
+        ),
+    }
+    return render(request, 'paiements/apercu_rapport_comptable.html', context)
+
+
+@can_view_reports
 def export_comptabilite_pdf(request):
     try:
         data = collect_accounting_data(request)

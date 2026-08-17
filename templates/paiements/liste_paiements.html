@@ -17,6 +17,11 @@
         <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
             <i class="fas fa-filter me-1"></i>Filtres
         </button>
+        {% if can_view_reports %}
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
+            <i class="fas fa-book-open me-1"></i>Rapport comptable
+        </button>
+        {% endif %}
         <div class="btn-group">
             <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-download me-1"></i>Exporter
@@ -158,6 +163,9 @@
                         <input type="hidden" id="rcAnnee" value="{{ annee_active }}">
                     </div>
                     <div class="modal-footer">
+                        <button type="button" class="btn btn-primary me-auto" onclick="ouvrirApercuRapportComptable()">
+                            <i class="fas fa-eye me-1"></i>Afficher l'aperçu complet
+                        </button>
                         <button type="button" class="btn btn-danger" onclick="ouvrirRapportComptable('pdf')">
                             <i class="fas fa-file-pdf me-1"></i>PDF
                         </button>
@@ -630,10 +638,7 @@ function ouvrirRapportModesEncaissement(format) {
 }
 
 // Rapport comptable professionnel
-function ouvrirRapportComptable(format) {
-    const base = format === 'pdf'
-        ? '{% url "paiements:export_comptabilite_pdf" %}'
-        : '{% url "paiements:export_comptabilite_excel" %}';
+function _urlRapportComptable(base) {
     const out = new URL(base, window.location.origin);
     const classe = document.getElementById('rcClasse').value;
     const du = document.getElementById('rcDu').value;
@@ -643,7 +648,18 @@ function ouvrirRapportComptable(format) {
     if (!classe && annee) out.searchParams.set('annee_scolaire', annee);
     if (du) out.searchParams.set('du', du);
     if (au) out.searchParams.set('au', au);
-    window.open(out.toString(), '_blank');
+    return out.toString();
+}
+
+function ouvrirApercuRapportComptable() {
+    window.location.href = _urlRapportComptable('{% url "paiements:apercu_rapport_comptable" %}');
+}
+
+function ouvrirRapportComptable(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_comptabilite_pdf" %}'
+        : '{% url "paiements:export_comptabilite_excel" %}';
+    window.open(_urlRapportComptable(base), '_blank');
 }
 
 // Rapport professionnel regroupant les modules du recouvrement

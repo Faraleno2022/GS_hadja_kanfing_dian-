@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
 from .rapports_professionnels import (
+    apercu_rapport_comptable,
     export_comptabilite_excel,
     export_comptabilite_pdf,
     export_modes_encaissement_excel,
@@ -48,6 +49,7 @@ urlpatterns = [
     path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
     path('export/comptabilite/pdf/', export_comptabilite_pdf, name='export_comptabilite_pdf'),
     path('export/comptabilite/excel/', export_comptabilite_excel, name='export_comptabilite_excel'),
+    path('rapport/comptabilite/apercu/', apercu_rapport_comptable, name='apercu_rapport_comptable'),
     path('export/modes-encaissement/pdf/', export_modes_encaissement_pdf, name='export_modes_encaissement_pdf'),
     path('export/modes-encaissement/excel/', export_modes_encaissement_excel, name='export_modes_encaissement_excel'),
     path('rapport/modes-encaissement/', modes_encaissement_tableau, name='modes_encaissement_tableau'),

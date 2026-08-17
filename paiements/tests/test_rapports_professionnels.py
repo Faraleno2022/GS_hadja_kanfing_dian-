@@ -342,6 +342,42 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(workbook['Portefeuille élèves'].max_row, 8)
         self.assertEqual(workbook['Journal relances'].max_row, 6)
 
+    def test_apercu_comptable_affiche_toutes_les_sections_du_pdf(self):
+        response = self.client.get(
+            reverse('paiements:apercu_rapport_comptable'),
+            {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(
+            response, 'paiements/apercu_rapport_comptable.html',
+        )
+        self.assertEqual(response.context['data']['validated_count'], 2)
+        self.assertEqual(
+            response.context['data']['total_validated'], Decimal('400000'),
+        )
+        self.assertEqual(
+            response.context['data']['total_discounts'], Decimal('10000'),
+        )
+        for section in (
+            'Synthèse par statut',
+            'Ventilation et contrôle des justificatifs',
+            'Synthèse par classe',
+            'Remises et réductions',
+            'Journal détaillé des encaissements validés',
+        ):
+            with self.subTest(section=section):
+                self.assertContains(response, section)
+        self.assertContains(response, 'RAP-REC-001')
+        self.assertContains(response, 'RAP-REC-002')
+        self.assertNotContains(response, 'RAP-REC-003')
+        self.assertContains(
+            response, reverse('paiements:export_comptabilite_pdf'),
+        )
+        self.assertContains(
+            response, reverse('paiements:export_comptabilite_excel'),
+        )
+
     def test_rapports_pdf_utilisent_le_logo_de_ecole_filtree(self):
         params = {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()}
 
@@ -376,6 +412,12 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('date de début', response.content.decode('utf-8'))
 
+        preview_response = self.client.get(
+            reverse('paiements:apercu_rapport_comptable'),
+            {'classe_id': self.classe.pk, 'du': '2026-03-01', 'au': '2026-02-01'},
+        )
+        self.assertEqual(preview_response.status_code, 400)
+
     def test_les_rapports_sont_proteges_par_la_permission(self):
         simple_user = get_user_model().objects.create_user(
             username='sans-permission-rapport',
@@ -385,6 +427,7 @@ class ProfessionalReportsTests(TestCase):
         simple_user.profil.save(update_fields=['peut_consulter_rapports'])
         self.client.force_login(simple_user)
 
-        response = self.client.get(reverse('paiements:export_recouvrement_pdf'))
-
-        self.assertEqual(response.status_code, 403)
+        for route in ('export_recouvrement_pdf', 'apercu_rapport_comptable'):
+            with self.subTest(route=route):
+                response = self.client.get(reverse(f'paiements:{route}'))
+                self.assertEqual(response.status_code, 403)
