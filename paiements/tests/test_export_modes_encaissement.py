@@ -176,6 +176,10 @@ class ExportModesEncaissementTests(TestCase):
         self.assertEqual(len(data['student_mode_rows']), 2)
 
     def test_tableau_affiche_les_eleves_et_soldes_avec_filtres(self):
+        self.assertEqual(
+            reverse('paiements:modes_encaissement_tableau'),
+            '/paiements/rapport/modes-encaissement/',
+        )
         response = self.client.get(
             reverse('paiements:modes_encaissement_tableau'), self.params
         )
@@ -207,6 +211,12 @@ class ExportModesEncaissementTests(TestCase):
         self.assertEqual(settled.status_code, 200)
         self.assertEqual(settled.context['page_obj'].paginator.count, 0)
         self.assertEqual(settled.context['filtered_total_collected'], Decimal('0'))
+
+        legacy = self.client.get(
+            reverse('paiements:modes_encaissement_tableau_legacy'), self.params
+        )
+        self.assertEqual(legacy.status_code, 200)
+        self.assertTemplateUsed(legacy, 'paiements/modes_encaissement.html')
 
     def test_tableau_ajax_retourne_uniquement_les_resultats(self):
         response = self.client.get(
