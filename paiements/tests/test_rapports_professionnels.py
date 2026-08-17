@@ -344,7 +344,7 @@ class ProfessionalReportsTests(TestCase):
 
     def test_apercu_comptable_affiche_toutes_les_sections_du_pdf(self):
         response = self.client.get(
-            reverse('paiements:apercu_rapport_comptable'),
+            reverse('paiements:rapport_comptabilite'),
             {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()},
         )
 
@@ -376,6 +376,21 @@ class ProfessionalReportsTests(TestCase):
         )
         self.assertContains(
             response, reverse('paiements:export_comptabilite_excel'),
+        )
+
+    def test_tableau_bord_ouvre_la_page_detaillee_du_rapport_comptable(self):
+        response = self.client.get(reverse('paiements:tableau_bord'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Rapport comptable', count=2)
+        self.assertContains(
+            response,
+            reverse('paiements:rapport_comptabilite'),
+            count=2,
+        )
+        self.assertNotContains(
+            response,
+            f'href="{reverse("paiements:export_comptabilite_pdf")}"',
         )
 
     def test_rapports_pdf_utilisent_le_logo_de_ecole_filtree(self):
@@ -413,7 +428,7 @@ class ProfessionalReportsTests(TestCase):
         self.assertIn('date de début', response.content.decode('utf-8'))
 
         preview_response = self.client.get(
-            reverse('paiements:apercu_rapport_comptable'),
+            reverse('paiements:rapport_comptabilite'),
             {'classe_id': self.classe.pk, 'du': '2026-03-01', 'au': '2026-02-01'},
         )
         self.assertEqual(preview_response.status_code, 400)
@@ -427,7 +442,7 @@ class ProfessionalReportsTests(TestCase):
         simple_user.profil.save(update_fields=['peut_consulter_rapports'])
         self.client.force_login(simple_user)
 
-        for route in ('export_recouvrement_pdf', 'apercu_rapport_comptable'):
+        for route in ('export_recouvrement_pdf', 'rapport_comptabilite'):
             with self.subTest(route=route):
                 response = self.client.get(reverse(f'paiements:{route}'))
                 self.assertEqual(response.status_code, 403)
