@@ -49,6 +49,7 @@ urlpatterns = [
     path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
     path('export/comptabilite/pdf/', export_comptabilite_pdf, name='export_comptabilite_pdf'),
     path('export/comptabilite/excel/', export_comptabilite_excel, name='export_comptabilite_excel'),
+    path('rapport/comptabilite/', apercu_rapport_comptable, name='rapport_comptabilite'),
     path('rapport/comptabilite/apercu/', apercu_rapport_comptable, name='apercu_rapport_comptable'),
     path('export/modes-encaissement/pdf/', export_modes_encaissement_pdf, name='export_modes_encaissement_pdf'),
     path('export/modes-encaissement/excel/', export_modes_encaissement_excel, name='export_modes_encaissement_excel'),

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static humanize %}
 
-{% block title %}Aperçu du rapport comptable - myschool{% endblock %}
+{% block title %}Rapport comptable - myschool{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -56,7 +56,7 @@
 
 {% block breadcrumb_items %}
 <li class="breadcrumb-item"><a href="{% url 'paiements:liste_paiements' %}">Paiements</a></li>
-<li class="breadcrumb-item active">Aperçu du rapport comptable</li>
+<li class="breadcrumb-item active">Rapport comptable</li>
 {% endblock %}
 
 {% block content %}
@@ -78,7 +78,7 @@
 
     <div class="alert alert-info preview-notice d-flex align-items-start" role="status">
         <i class="fas fa-eye me-2 mt-1"></i>
-        <div><strong>Aperçu complet.</strong> Les filtres, totaux, remises et opérations ci-dessous sont ceux utilisés pour générer le PDF et le fichier Excel.</div>
+        <div><strong>Rapport détaillé.</strong> Les filtres, totaux, remises et opérations ci-dessous sont ceux utilisés pour générer le PDF et le fichier Excel.</div>
     </div>
 
     <header class="report-header shadow-sm p-4 mb-4">

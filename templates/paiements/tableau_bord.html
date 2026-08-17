@@ -25,6 +25,11 @@
         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
             <i class="fas fa-bell me-1"></i>Relances
         </a>
+        {% if can_view_reports %}
+        <a href="{% url 'paiements:rapport_comptabilite' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
+            <i class="fas fa-book-open me-1"></i>Rapport comptable
+        </a>
+        {% endif %}
         {% if user.is_superuser %}
         <a href="{% url 'administration:system_logs' %}" class="btn btn-outline-danger">
             <i class="fas fa-exclamation-triangle me-1"></i>Logs système
@@ -425,6 +430,11 @@
                         <a href="{% url 'paiements:liste_eleves_soldes' %}" class="btn btn-outline-success">
                             <i class="fas fa-check-circle me-2"></i>Élèves soldés
                         </a>
+                        {% if can_view_reports %}
+                        <a href="{% url 'paiements:rapport_comptabilite' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
+                            <i class="fas fa-book-open me-2"></i>Rapport comptable
+                        </a>
+                        {% endif %}
                         <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-info">
                             <i class="fas fa-users me-2"></i>Gérer les Élèves
                         </a>
