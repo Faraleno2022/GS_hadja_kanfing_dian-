@@ -1,6 +1,16 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
-from .views import comptable_create_view, comptable_list_view, comptes_en_attente_view, valider_compte_view, rejeter_compte_view
+from .views import (
+    comptable_create_view,
+    comptable_list_view,
+    comptes_en_attente_view,
+    valider_compte_view,
+    rejeter_compte_view,
+    sous_utilisateur_create_view,
+    sous_utilisateur_delete_view,
+    sous_utilisateur_list_view,
+    sous_utilisateur_update_view,
+)
 from .activation_views import (
     activation_page, activer_licence, creer_compte,
     changer_mdp_admin, supprimer_compte, toggle_lecture_seule,
@@ -30,6 +40,10 @@ urlpatterns = [
     path('verify-phone/', verify_phone, name='verify_phone'),
     path('comptables/ajouter/', comptable_create_view, name='comptable_create'),
     path('comptables/', comptable_list_view, name='comptable_list'),
+    path('sous-utilisateurs/', sous_utilisateur_list_view, name='sous_utilisateur_list'),
+    path('sous-utilisateurs/ajouter/', sous_utilisateur_create_view, name='sous_utilisateur_create'),
+    path('sous-utilisateurs/<int:profil_id>/modifier/', sous_utilisateur_update_view, name='sous_utilisateur_update'),
+    path('sous-utilisateurs/<int:profil_id>/supprimer/', sous_utilisateur_delete_view, name='sous_utilisateur_delete'),
 
     # Validation des comptes
     path('comptes-en-attente/', comptes_en_attente_view, name='comptes_en_attente'),

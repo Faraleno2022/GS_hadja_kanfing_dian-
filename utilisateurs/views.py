@@ -3,8 +3,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_POST
 
-from .forms import ComptableCreationForm
+from .forms import (
+    ComptableCreationForm,
+    SousUtilisateurCreationForm,
+    SousUtilisateurModificationForm,
+)
 from .models import Profil
 from eleves.models import Ecole
 
@@ -19,10 +25,108 @@ def _est_admin(user):
     return bool(profil and profil.role == 'ADMIN' and profil.peut_gerer_utilisateurs)
 
 
+def _est_compte_principal_ecole(user):
+    if not user.is_authenticated or user.is_superuser:
+        return False
+    profil = getattr(user, 'profil', None)
+    return bool(profil and profil.est_compte_principal and profil.ecole_id)
+
+
+@login_required
+@user_passes_test(_est_compte_principal_ecole)
+def sous_utilisateur_list_view(request):
+    """Liste exclusivement les sous-utilisateurs du compte principal connecté."""
+    principal = request.user.profil
+    profils = (
+        Profil.objects
+        .filter(compte_principal=principal, ecole=principal.ecole)
+        .select_related('user')
+        .order_by('user__first_name', 'user__last_name', 'user__username')
+    )
+    return render(request, 'utilisateurs/sous_utilisateur_list.html', {
+        'profils': profils,
+        'principal': principal,
+        'title': "Sous-utilisateurs",
+    })
+
+
+@login_required
+@user_passes_test(_est_compte_principal_ecole)
+def sous_utilisateur_create_view(request):
+    principal = request.user.profil
+    if request.method == 'POST':
+        form = SousUtilisateurCreationForm(request.POST, principal_profil=principal)
+        if form.is_valid():
+            user = form.save()
+            messages.success(request, f"Sous-utilisateur « {user.username} » créé avec succès.")
+            return redirect('utilisateurs:sous_utilisateur_list')
+        messages.error(request, "Veuillez corriger les erreurs du formulaire.")
+    else:
+        form = SousUtilisateurCreationForm(principal_profil=principal)
+    return render(request, 'utilisateurs/sous_utilisateur_form.html', {
+        'form': form,
+        'title': "Créer un sous-utilisateur",
+        'ecole': principal.ecole,
+        'editing': False,
+    })
+
+
+@login_required
+@user_passes_test(_est_compte_principal_ecole)
+def sous_utilisateur_update_view(request, profil_id):
+    principal = request.user.profil
+    profil = get_object_or_404(
+        Profil.objects.select_related('user'),
+        pk=profil_id,
+        compte_principal=principal,
+        ecole=principal.ecole,
+        est_compte_principal=False,
+    )
+    if request.method == 'POST':
+        form = SousUtilisateurModificationForm(request.POST, profil=profil)
+        if form.is_valid():
+            user = form.save()
+            messages.success(request, f"Sous-utilisateur « {user.username} » modifié avec succès.")
+            return redirect('utilisateurs:sous_utilisateur_list')
+        messages.error(request, "Veuillez corriger les erreurs du formulaire.")
+    else:
+        form = SousUtilisateurModificationForm(profil=profil)
+    return render(request, 'utilisateurs/sous_utilisateur_form.html', {
+        'form': form,
+        'title': f"Modifier {profil.nom_complet}",
+        'ecole': principal.ecole,
+        'editing': True,
+        'profil_modifie': profil,
+    })
+
+
+@login_required
+@user_passes_test(_est_compte_principal_ecole)
+@require_POST
+def sous_utilisateur_delete_view(request, profil_id):
+    principal = request.user.profil
+    profil = get_object_or_404(
+        Profil.objects.select_related('user'),
+        pk=profil_id,
+        compte_principal=principal,
+        ecole=principal.ecole,
+        est_compte_principal=False,
+    )
+    username = profil.user.username
+    profil.user.delete()
+    messages.success(request, f"Sous-utilisateur « {username} » supprimé.")
+    return redirect('utilisateurs:sous_utilisateur_list')
+
+
 @login_required
 @user_passes_test(_est_admin)
 def comptable_create_view(request):
     """Création d'un compte Comptable (User + Profil) via formulaire dédié."""
+    # Ancienne URL conservée pour les favoris : le superadministrateur crée
+    # désormais seulement les comptes principaux depuis l'écran d'activation.
+    if request.user.is_superuser:
+        messages.info(request, "Créez ici le compte principal de l'école.")
+        return redirect('utilisateurs:activation')
     # Si ce n'est pas un superuser, il doit avoir une école définie
     if not request.user.is_superuser:
         profil_user = getattr(request.user, 'profil', None)
@@ -53,6 +157,8 @@ def comptable_create_view(request):
 @user_passes_test(_est_admin)
 def comptable_list_view(request):
     """Liste paginée des comptes Comptables, filtrable par école et recherche."""
+    if request.user.is_superuser:
+        return redirect('utilisateurs:activation')
     qs = Profil.objects.select_related('user', 'ecole').filter(role='COMPTABLE')
 
     ecole_id = request.GET.get('ecole')

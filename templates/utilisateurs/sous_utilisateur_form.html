@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="mb-1"><i class="fas fa-user-shield me-2"></i>{{ title }}</h2>
+      <div class="text-muted">École : <strong>{{ ecole.nom }}</strong></div>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'utilisateurs:sous_utilisateur_list' %}">
+      <i class="fas fa-arrow-left me-1"></i>Retour
+    </a>
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-header fw-bold">Identité et connexion</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">{{ form.username.label_tag }}{{ form.username }}{{ form.username.errors }}</div>
+          <div class="col-md-6">{{ form.role.label_tag }}{{ form.role }}{{ form.role.errors }}</div>
+          <div class="col-md-6">{{ form.first_name.label_tag }}{{ form.first_name }}{{ form.first_name.errors }}</div>
+          <div class="col-md-6">{{ form.last_name.label_tag }}{{ form.last_name }}{{ form.last_name.errors }}</div>
+          <div class="col-md-6">{{ form.email.label_tag }}{{ form.email }}{{ form.email.errors }}</div>
+          <div class="col-md-6">{{ form.telephone.label_tag }}{{ form.telephone }}{{ form.telephone.errors }}</div>
+          {% if editing %}
+          <div class="col-md-6">
+            {{ form.nouveau_mot_de_passe.label_tag }}{{ form.nouveau_mot_de_passe }}{{ form.nouveau_mot_de_passe.errors }}
+            <div class="form-text">{{ form.nouveau_mot_de_passe.help_text }}</div>
+          </div>
+          <div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ form.actif }} {{ form.actif.label_tag }}</div></div>
+          {% else %}
+          <div class="col-md-6">{{ form.password1.label_tag }}{{ form.password1 }}{{ form.password1.errors }}</div>
+          <div class="col-md-6">{{ form.password2.label_tag }}{{ form.password2 }}{{ form.password2.errors }}</div>
+          {% endif %}
+          <div class="col-md-3 d-flex align-items-end"><div class="form-check">{{ form.lecture_seule }} {{ form.lecture_seule.label_tag }}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header fw-bold"><i class="fas fa-bars me-2"></i>Menus visibles</div>
+          <div class="card-body">
+            <p class="text-muted small">Cochez uniquement les modules que cet utilisateur doit voir et ouvrir.</p>
+            {{ form.allowed_menus.errors }}
+            {% for choice in form.allowed_menus %}
+              <div class="form-check mb-2">{{ choice.tag }} <label class="form-check-label" for="{{ choice.id_for_label }}">{{ choice.choice_label }}</label></div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-header fw-bold"><i class="fas fa-key me-2"></i>Droits d'action</div>
+          <div class="card-body">
+            <p class="text-muted small">Les menus donnent la visibilité ; ces droits autorisent les opérations sensibles.</p>
+            {% for field in form.action_permission_fields %}
+              <div class="form-check mb-2">{{ field }} {{ field.label_tag }} {{ field.errors }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mt-4">
+      <a class="btn btn-outline-secondary" href="{% url 'utilisateurs:sous_utilisateur_list' %}">Annuler</a>
+      <button class="btn btn-primary" type="submit"><i class="fas fa-save me-1"></i>Enregistrer</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

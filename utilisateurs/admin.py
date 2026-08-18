@@ -37,10 +37,10 @@ class LicenceServeurAdmin(admin.ModelAdmin):
 
 @admin.register(Profil)
 class ProfilAdmin(admin.ModelAdmin):
-    list_display = ('user', 'role', 'telephone', 'ecole', 'actif')
-    list_filter = ('role', 'ecole', 'actif')
+    list_display = ('user', 'role', 'ecole', 'est_compte_principal', 'compte_principal', 'actif')
+    list_filter = ('est_compte_principal', 'role', 'ecole', 'actif')
     search_fields = ('user__username', 'user__first_name', 'user__last_name', 'telephone')
-    autocomplete_fields = ('user', 'ecole')
+    autocomplete_fields = ('user', 'ecole', 'compte_principal')
 
     def get_readonly_fields(self, request, obj=None):
         """Empêche la modification du téléphone pour les non-superusers."""
