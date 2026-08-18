@@ -31,6 +31,8 @@ urlpatterns = [
     
     # Gestion des classes
     path('classes/', views.gestion_classes, name='gestion_classes'),
+    path('classes/<int:classe_id>/modifier-configuration/', views.modifier_classe_configuration, name='modifier_classe_configuration'),
+    path('grilles/<int:grille_id>/modifier/', views.modifier_grille_tarifaire, name='modifier_grille_tarifaire'),
 
     # Nouvelle année scolaire
     path('annees/', gestion_annees, name='gestion_annees'),
@@ -80,4 +82,3 @@ urlpatterns = [
     path('exporter/classe/<int:classe_id>/', exporter_eleves_classe, name='exporter_eleves_classe'),
     path('exporter/tous/modele-import/', exporter_tous_eleves_template, name='exporter_tous_eleves_template'),
 ]
-

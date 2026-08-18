@@ -7,6 +7,7 @@ Auteur : GS Hadja Kanfing Dian
 
 import json
 import os
+import re
 from pathlib import Path
 
 from django.shortcuts import render, redirect
@@ -15,6 +16,10 @@ from django.contrib.auth import get_user_model, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
+from django.db import transaction
+
+from eleves.models import Ecole
+from .models import MENUS, Profil
 
 User = get_user_model()
 
@@ -44,7 +49,14 @@ def activation_page(request):
 
     context = {
         'license_status': license_status,
-        'users': User.objects.all().order_by('-is_superuser', 'username'),
+        'users': User.objects.select_related('profil', 'profil__ecole').all().order_by('-is_superuser', 'username'),
+        'ecoles': (
+            Ecole.objects
+            .filter(etat='VALIDE')
+            .exclude(profils__est_compte_principal=True)
+            .distinct()
+            .order_by('nom')
+        ),
         'page_title': 'Activation & Comptes',
     }
     return render(request, 'utilisateurs/activation.html', context)
@@ -92,7 +104,7 @@ def activer_licence(request):
 @login_required
 @require_http_methods(["POST"])
 def creer_compte(request):
-    """Crée un nouvel utilisateur (admin ou comptable)."""
+    """Crée le compte principal d'une école ; les sous-comptes sont ensuite délégués."""
     if not request.user.is_superuser:
         messages.error(request, "Accès réservé à l'administrateur principal.")
         return redirect('utilisateurs:activation')
@@ -103,19 +115,24 @@ def creer_compte(request):
     first_name = request.POST.get('first_name', '').strip()
     last_name  = request.POST.get('last_name', '').strip()
     email      = request.POST.get('email', '').strip()
-    role       = request.POST.get('role', 'user')
+    telephone  = request.POST.get('telephone', '').strip()
+    ecole_id   = request.POST.get('ecole', '').strip()
 
     # Validations
-    if not username or not password:
-        messages.error(request, "Nom d'utilisateur et mot de passe sont obligatoires.")
+    if not username or not password or not telephone or not ecole_id:
+        messages.error(request, "Nom d'utilisateur, téléphone, école et mot de passe sont obligatoires.")
         return redirect('utilisateurs:activation')
 
     if password != password2:
         messages.error(request, "Les mots de passe ne correspondent pas.")
         return redirect('utilisateurs:activation')
 
-    if len(password) < 6:
-        messages.error(request, "Le mot de passe doit contenir au moins 6 caractères.")
+    if len(password) < 12:
+        messages.error(request, "Le mot de passe doit contenir au moins 12 caractères.")
+        return redirect('utilisateurs:activation')
+
+    if not re.fullmatch(r'\+224\d{8,9}', telephone):
+        messages.error(request, "Le téléphone doit respecter le format +224XXXXXXXXX.")
         return redirect('utilisateurs:activation')
 
     if User.objects.filter(username=username).exists():
@@ -123,24 +140,46 @@ def creer_compte(request):
         return redirect('utilisateurs:activation')
 
     try:
-        user = User.objects.create_user(
-            username=username,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-        )
-        if role == 'admin':
-            user.is_staff = True
-            user.is_superuser = True
-            user.save()
-            messages.success(request,
-                f"✓ Compte administrateur « {username} » créé avec succès.")
-        else:
-            user.is_staff = True
-            user.save()
-            messages.success(request,
-                f"✓ Compte utilisateur « {username} » créé avec succès.")
+        ecole = Ecole.objects.get(pk=ecole_id, etat='VALIDE')
+    except (Ecole.DoesNotExist, ValueError):
+        messages.error(request, "École invalide ou non validée.")
+        return redirect('utilisateurs:activation')
+
+    if Profil.objects.filter(ecole=ecole, est_compte_principal=True).exists():
+        messages.error(request, f"L'école « {ecole.nom} » possède déjà un compte principal.")
+        return redirect('utilisateurs:activation')
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                is_staff=False,
+                is_active=True,
+            )
+            profil, _created = Profil.objects.get_or_create(user=user)
+            profil.role = 'DIRECTEUR'
+            profil.telephone = telephone
+            profil.ecole = ecole
+            profil.est_compte_principal = True
+            profil.compte_principal = None
+            profil.peut_gerer_utilisateurs = True
+            profil.peut_gerer_classes = True
+            profil.peut_gerer_grilles_tarifaires = True
+            profil.peut_generer_rapports = True
+            profil.peut_consulter_rapports = True
+            profil.peut_gerer_notes = True
+            profil.allowed_menus = [key for key, _label in MENUS]
+            profil.is_validated = True
+            profil.actif = True
+            profil.save()
+            if not ecole.created_by_id:
+                ecole.created_by = user
+                ecole.save(update_fields=['created_by'])
+        messages.success(request, f"✓ Compte principal « {username} » créé pour l'école « {ecole.nom} ».")
     except Exception as e:
         messages.error(request, f"Erreur lors de la création : {e}")
 

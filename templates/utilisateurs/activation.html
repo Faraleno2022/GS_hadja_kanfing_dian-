@@ -146,7 +146,7 @@
       <!-- Créer un nouveau compte -->
       <div class="card shadow-sm mb-4">
         <div class="card-header fw-bold bg-primary text-white">
-          <i class="fas fa-user-plus me-2"></i>Créer un Compte Utilisateur
+          <i class="fas fa-user-plus me-2"></i>Créer un Compte Principal d'École
         </div>
         <div class="card-body">
           <form method="post" action="{% url 'utilisateurs:creer_compte' %}">
@@ -158,10 +158,10 @@
                        placeholder="Ex: prof.diallo" required>
               </div>
               <div class="col-sm-6">
-                <label class="form-label small fw-bold">Rôle *</label>
-                <select name="role" class="form-select form-select-sm">
-                  <option value="user">Utilisateur (staff)</option>
-                  <option value="admin">Administrateur</option>
+                <label class="form-label small fw-bold">École *</label>
+                <select name="ecole" class="form-select form-select-sm" required>
+                  <option value="">— Sélectionnez —</option>
+                  {% for ecole in ecoles %}<option value="{{ ecole.id }}">{{ ecole.nom }}</option>{% endfor %}
                 </select>
               </div>
               <div class="col-sm-6">
@@ -180,14 +180,18 @@
                        placeholder="Ex: m.diallo@ecole.gn">
               </div>
               <div class="col-sm-6">
+                <label class="form-label small fw-bold">Téléphone *</label>
+                <input type="text" name="telephone" class="form-control form-control-sm" placeholder="+224622000000" required>
+              </div>
+              <div class="col-sm-6">
                 <label class="form-label small fw-bold">Mot de passe *</label>
                 <input type="password" name="password" class="form-control form-control-sm"
-                       minlength="6" required>
+                       minlength="12" required>
               </div>
               <div class="col-sm-6">
                 <label class="form-label small fw-bold">Confirmer le mot de passe *</label>
                 <input type="password" name="password2" class="form-control form-control-sm"
-                       minlength="6" required>
+                       minlength="12" required>
               </div>
               <div class="col-12 mt-2">
                 <button type="submit" class="btn btn-primary fw-bold">
@@ -230,6 +234,10 @@
                   <td>
                     {% if u.is_superuser %}
                       <span class="badge bg-warning text-dark">Admin</span>
+                    {% elif u.profil.est_compte_principal %}
+                      <span class="badge bg-primary">Principal · {{ u.profil.ecole.nom|default:"Sans école" }}</span>
+                    {% elif u.profil.compte_principal_id %}
+                      <span class="badge bg-info text-dark">Sous-utilisateur</span>
                     {% elif u.is_staff %}
                       <span class="badge bg-info text-dark">Staff</span>
                     {% else %}

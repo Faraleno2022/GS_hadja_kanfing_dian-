@@ -178,6 +178,62 @@ class SchoolAccessMixin:
         return obj
 
 
+class MenuPermissionMiddleware:
+    """Empêche un sous-utilisateur d'ouvrir directement un module non autorisé.
+
+    Le masquage du menu dans le template ne constitue pas une protection : ce
+    middleware applique la même règle côté serveur aux URL des modules.
+    """
+    MODULE_PATHS = (
+        ('/eleves/', 'eleves', 'Élèves'),
+        ('/paiements/', 'paiements', 'Paiements'),
+        ('/depenses/', 'depenses', 'Dépenses et recouvrement'),
+        ('/salaires/', 'salaires', 'Salaires'),
+        ('/bus/', 'bus', 'Transport et cantine'),
+        ('/abonnements/', 'bus', 'Transport et cantine'),
+        ('/notes/', 'notes', 'Notes'),
+        ('/presence/', 'notes', 'Présence et notes'),
+        ('/chatbot/', 'notes', 'Notes et chatbot'),
+        ('/rapports/', 'rapports', 'Rapports'),
+        ('/administration/', 'administration', 'Administration'),
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated or user.is_superuser:
+            return self.get_response(request)
+
+        profil = getattr(user, 'profil', None)
+        # Les comptes existants qui ne sont pas rattachés à un principal
+        # conservent leur comportement. La restriction stricte s'applique aux
+        # sous-utilisateurs créés par le nouveau parcours.
+        if not profil or not profil.compte_principal_id:
+            return self.get_response(request)
+
+        path = request.path or ''
+        for prefix, menu_key, menu_label in self.MODULE_PATHS:
+            if path.startswith(prefix):
+                if menu_key not in set(profil.allowed_menus or []):
+                    logger.warning(
+                        "Menu refusé: %s a tenté d'ouvrir %s sans le menu %s",
+                        user.username,
+                        path,
+                        menu_key,
+                    )
+                    from django.shortcuts import render
+                    return render(request, 'utilisateurs/permission_denied.html', {
+                        'error_message': f"Le menu « {menu_label} » n'est pas autorisé pour votre compte.",
+                        'permission_name': f'menu_{menu_key}',
+                        'user_role': profil.role,
+                    }, status=403)
+                break
+
+        return self.get_response(request)
+
+
 class LectureSeuleMiddleware:
     """Bloque toute action (POST/PUT/PATCH/DELETE) pour les utilisateurs en
     mode lecture seule, dans TOUS les modules. La consultation (GET) reste
@@ -188,6 +244,8 @@ class LectureSeuleMiddleware:
     CHEMINS_AUTORISES = (
         '/utilisateurs/logout/',
         '/utilisateurs/deconnexion/',
+        # La sécurité du compte reste modifiable même en mode consultation.
+        '/utilisateurs/password/change/',
     )
 
     def __init__(self, get_response):

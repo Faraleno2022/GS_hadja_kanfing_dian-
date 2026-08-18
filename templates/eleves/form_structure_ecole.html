@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h2 class="mb-1">{{ titre_page }}</h2><div class="text-muted">{{ ecole.nom }}</div></div>
+    <a class="btn btn-outline-secondary" href="{% url 'eleves:configurer_ecole' ecole.id %}"><i class="fas fa-arrow-left me-1"></i>Retour</a>
+  </div>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="row g-3">
+          {% for field in form %}
+          <div class="{% if type_objet == 'grille' %}col-md-6{% else %}col-md-6{% endif %}">
+            {{ field.label_tag }}{{ field }}
+            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a class="btn btn-outline-secondary" href="{% url 'eleves:configurer_ecole' ecole.id %}">Annuler</a>
+          <button class="btn btn-primary" type="submit"><i class="fas fa-save me-1"></i>Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

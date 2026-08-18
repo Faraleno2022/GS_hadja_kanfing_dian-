@@ -26,8 +26,8 @@ def has_permission(user, permission_name):
     if not profil:
         return False
     
-    # Les admins ont toutes les permissions
-    if profil.role == 'ADMIN':
+    # Les admins et les comptes principaux ont toutes les permissions de leur école.
+    if profil.role == 'ADMIN' or profil.est_compte_principal:
         return True
 
     # Règles métier implicites par rôle
@@ -49,7 +49,7 @@ def has_any_permission(user, permission_names):
     profil = getattr(user, 'profil', None)
     if not profil:
         return False
-    if getattr(profil, 'role', None) == 'ADMIN':
+    if getattr(profil, 'role', None) == 'ADMIN' or profil.est_compte_principal:
         return True
     for perm in permission_names:
         if getattr(profil, perm, False):
@@ -242,13 +242,15 @@ def get_user_permissions(user):
             'can_view_reports': True,
             'can_manage_users': True,
             'can_manage_notes': True,
+            'can_manage_classes': True,
+            'can_manage_fee_schedules': True,
         }
     
     profil = getattr(user, 'profil', None)
     if not profil:
         return {}
     
-    if profil.role == 'ADMIN':
+    if profil.role == 'ADMIN' or profil.est_compte_principal:
         return {
             'can_add_payments': True,
             'can_add_expenses': True,
@@ -264,6 +266,8 @@ def get_user_permissions(user):
             'can_view_reports': True,
             'can_manage_users': True,
             'can_manage_notes': True,
+            'can_manage_classes': True,
+            'can_manage_fee_schedules': True,
         }
     
     # Par défaut, calcul pour les autres rôles
@@ -284,6 +288,8 @@ def get_user_permissions(user):
         'can_view_reports': profil.peut_consulter_rapports,
         'can_manage_users': profil.peut_gerer_utilisateurs,
         'can_manage_notes': can_manage_notes,
+        'can_manage_classes': profil.peut_gerer_classes,
+        'can_manage_fee_schedules': profil.peut_gerer_grilles_tarifaires,
     }
 
 def check_comptable_restrictions(user):
@@ -301,7 +307,7 @@ def check_comptable_restrictions(user):
     if not profil:
         return {'all_restricted': True}
     
-    if profil.role in ['ADMIN', 'DIRECTEUR']:
+    if profil.role in ['ADMIN', 'DIRECTEUR'] or profil.est_compte_principal:
         return {'all_restricted': False}
     
     if profil.role == 'COMPTABLE':
