@@ -19,7 +19,8 @@ from django.http import JsonResponse
 from django.db import transaction
 
 from eleves.models import Ecole
-from .models import MENUS, Profil
+from .models import Profil
+from .services import attribuer_compte_principal
 
 User = get_user_model()
 
@@ -161,21 +162,8 @@ def creer_compte(request):
                 is_active=True,
             )
             profil, _created = Profil.objects.get_or_create(user=user)
-            profil.role = 'DIRECTEUR'
             profil.telephone = telephone
-            profil.ecole = ecole
-            profil.est_compte_principal = True
-            profil.compte_principal = None
-            profil.peut_gerer_utilisateurs = True
-            profil.peut_gerer_classes = True
-            profil.peut_gerer_grilles_tarifaires = True
-            profil.peut_generer_rapports = True
-            profil.peut_consulter_rapports = True
-            profil.peut_gerer_notes = True
-            profil.allowed_menus = [key for key, _label in MENUS]
-            profil.is_validated = True
-            profil.actif = True
-            profil.save()
+            attribuer_compte_principal(profil, ecole)
             if not ecole.created_by_id:
                 ecole.created_by = user
                 ecole.save(update_fields=['created_by'])

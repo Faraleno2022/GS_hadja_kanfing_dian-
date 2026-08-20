@@ -1,9 +1,13 @@
+from importlib import import_module
+
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
 from eleves.models import Classe, Ecole, GrilleTarifaire
+from eleves.utils import valider_compte_utilisateur
 from .models import Profil
 
 
@@ -240,3 +244,104 @@ class ComptesPrincipauxTests(TestCase):
         self.assertContains(response, reverse('utilisateurs:password_change'))
         self.assertContains(response, reverse('utilisateurs:sous_utilisateur_list'))
         self.assertContains(response, reverse('eleves:configurer_ecole', args=[self.ecole.id]))
+
+    def test_validation_nouvelle_ecole_active_toutes_les_nouvelles_fonctions(self):
+        user = User.objects.create_user(
+            username='nouvelle_direction',
+            password='NouvelleDirection2026!',
+            is_active=False,
+        )
+        ecole = Ecole.objects.create(
+            nom='Nouvelle école',
+            adresse='Conakry',
+            telephone='+224622000011',
+            directeur='Nouvelle direction',
+            created_by=user,
+            etat='EN_ATTENTE',
+        )
+
+        profil = valider_compte_utilisateur(
+            user,
+            ecole,
+            telephone='+224622000011',
+            adresse='Conakry',
+        )
+
+        self.assertTrue(profil.est_compte_principal)
+        self.assertEqual(profil.ecole, ecole)
+        self.assertTrue(profil.peut_gerer_utilisateurs)
+        self.assertTrue(profil.peut_gerer_classes)
+        self.assertTrue(profil.peut_gerer_grilles_tarifaires)
+        self.assertEqual(set(profil.allowed_menus), {
+            'eleves', 'paiements', 'depenses', 'salaires',
+            'bus', 'notes', 'rapports',
+        })
+
+        self.client.force_login(user)
+        with self.settings(MIDDLEWARE=middleware_sans_licence()):
+            response = self.client.get(reverse('eleves:gestion_classes'))
+        self.assertContains(response, reverse('utilisateurs:sous_utilisateur_list'))
+        self.assertContains(response, reverse('eleves:configurer_ecole', args=[ecole.id]))
+
+    def test_signal_ecole_validee_repare_un_ancien_compte(self):
+        ecole = Ecole.objects.create(
+            nom='École historique signal',
+            adresse='Conakry',
+            telephone='+224622000012',
+            directeur='Ancienne direction',
+            etat='EN_ATTENTE',
+        )
+        user = User.objects.create_user(username='ancien_compte_signal', password='AncienCompte2026!')
+        profil = user.profil
+        profil.ecole = ecole
+        profil.role = 'COMPTABLE'
+        profil.est_compte_principal = False
+        profil.allowed_menus = []
+        profil.save()
+
+        ecole.etat = 'VALIDE'
+        ecole.save(update_fields=['etat'])
+
+        profil.refresh_from_db()
+        self.assertTrue(profil.est_compte_principal)
+        self.assertEqual(profil.role, 'DIRECTEUR')
+        self.assertTrue(profil.peut_gerer_classes)
+        self.assertTrue(profil.peut_gerer_grilles_tarifaires)
+
+    def test_migration_repare_ecole_historique_sans_directeur(self):
+        ecole = Ecole.objects.create(
+            nom='École historique migration',
+            adresse='Conakry',
+            telephone='+224622000013',
+            directeur='Ancienne direction',
+            etat='EN_ATTENTE',
+        )
+        principal_user = User.objects.create_user(username='ancien_comptable', password='AncienCompte2026!')
+        principal = principal_user.profil
+        principal.ecole = ecole
+        principal.role = 'COMPTABLE'
+        principal.est_compte_principal = False
+        principal.allowed_menus = []
+        principal.save()
+
+        agent_user = User.objects.create_user(username='ancien_agent', password='AncienAgent2026!')
+        agent = agent_user.profil
+        agent.ecole = ecole
+        agent.role = 'SECRETAIRE'
+        agent.est_compte_principal = False
+        agent.allowed_menus = []
+        agent.save()
+
+        migration = import_module(
+            'utilisateurs.migrations.0016_reparer_comptes_principaux_ecoles'
+        )
+        migration.reparer_comptes_principaux(apps, None)
+
+        principal.refresh_from_db()
+        agent.refresh_from_db()
+        self.assertTrue(principal.est_compte_principal)
+        self.assertEqual(principal.role, 'DIRECTEUR')
+        self.assertTrue(principal.peut_gerer_utilisateurs)
+        self.assertTrue(principal.peut_gerer_classes)
+        self.assertEqual(agent.compte_principal, principal)
+        self.assertEqual(set(agent.allowed_menus), set(principal.allowed_menus))
