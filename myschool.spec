@@ -60,8 +60,24 @@ except Exception:
 
 # Pandas (import/export eleves)
 try:
-    hiddenimports += collect_submodules('pandas')
-    hiddenimports += collect_submodules('numpy')
+    # Les suites ``pandas.tests`` et ``numpy.*.tests`` ne sont jamais utilisees
+    # par l'application. Les embarquer multiplie le temps d'analyse PyInstaller
+    # et ajoute plusieurs milliers de modules inutiles au paquet client.
+    hiddenimports += collect_submodules(
+        'pandas',
+        filter=lambda name: not (
+            name == 'pandas.tests' or name.startswith('pandas.tests.')
+        ),
+    )
+    hiddenimports += collect_submodules(
+        'numpy',
+        filter=lambda name: not (
+            name == 'numpy.tests'
+            or name.startswith('numpy.tests.')
+            or '.tests.' in name
+            or name.endswith('.tests')
+        ),
+    )
 except Exception:
     pass
 
@@ -101,6 +117,7 @@ hiddenimports += [
     'ecole_moderne.settings',
     'ecole_moderne.urls',
     'ecole_moderne.wsgi',
+    'ecole_moderne.validators',
     'ecole_moderne.static_views',
     'ecole_moderne.sauvegarde',
     'ecole_moderne.sauvegarde_views',
