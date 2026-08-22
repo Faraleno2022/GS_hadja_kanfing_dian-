@@ -3,6 +3,7 @@ Module d'importation d'élèves depuis Excel/CSV
 Permet l'importation massive d'élèves avec génération automatique de matricules
 """
 import pandas as pd
+import unicodedata
 from datetime import datetime
 from django.db import transaction
 from django.core.exceptions import ValidationError
@@ -12,6 +13,28 @@ from eleves.models import Eleve, Classe, Responsable
 class ImportElevesError(Exception):
     """Exception personnalisée pour l'importation d'élèves"""
     pass
+
+
+def cle_matricule(valeur):
+    """Clé d'unicité d'un matricule, insensible à la casse et aux espaces."""
+    if valeur is None:
+        return ''
+    try:
+        if pd.isna(valeur):
+            return ''
+    except (TypeError, ValueError):
+        pass
+    return ' '.join(str(valeur).strip().upper().split())
+
+
+def normaliser_libelle(valeur):
+    """Normalise un nom d'école ou de classe indépendamment des accents."""
+    texte = ' '.join(str(valeur or '').strip().casefold().split())
+    return ''.join(
+        caractere
+        for caractere in unicodedata.normalize('NFKD', texte)
+        if not unicodedata.combining(caractere)
+    )
 
 
 def generer_matricule(classe, numero_ordre, annee_scolaire=None, matricules_existants=None):
@@ -39,16 +62,16 @@ def generer_matricule(classe, numero_ordre, annee_scolaire=None, matricules_exis
     # ⚡ OPTIMISATION: Vérifier l'unicité en mémoire (pas de requête SQL)
     if matricules_existants is None:
         # Fallback si pas de set fourni (pas optimal)
-        while Eleve.objects.filter(matricule=matricule).exists():
+        while Eleve.objects.filter(matricule__iexact=matricule).exists():
             numero_ordre += 1
             matricule = f"{code_classe}-{annee_scolaire}-{numero_ordre:03d}"
     else:
         # Utiliser le set en mémoire (RAPIDE!)
-        while matricule in matricules_existants:
+        while cle_matricule(matricule) in matricules_existants:
             numero_ordre += 1
             matricule = f"{code_classe}-{annee_scolaire}-{numero_ordre:03d}"
         # Ajouter au set pour éviter réutilisation
-        matricules_existants.add(matricule)
+        matricules_existants.add(cle_matricule(matricule))
     
     return matricule
 
@@ -264,7 +287,9 @@ class ImportElevesProcessor:
             'crees': 0,
             'modifies': 0,
             'erreurs': 0,
-            'matricules_generes': 0
+            'matricules_generes': 0,
+            'doublons_ignores': 0,
+            'doublons_details': [],
         }
         self.eleves_importes = []
         
@@ -279,7 +304,11 @@ class ImportElevesProcessor:
             raise ImportElevesError("Classe introuvable")
         
         # ⚡ OPTIMISATION: Charger tous les matricules existants (1 seule requête)
-        matricules_existants = set(Eleve.objects.values_list('matricule', flat=True))
+        matricules_existants = {
+            cle_matricule(matricule)
+            for matricule in Eleve.objects.values_list('matricule', flat=True)
+            if matricule
+        }
         
         # ⚡ OPTIMISATION: Charger tous les responsables existants (1 seule requête)
         responsables_dict = {r.telephone: r for r in Responsable.objects.all()}
@@ -324,6 +353,10 @@ class ImportElevesProcessor:
                                 responsables_a_creer.extend(resultat['responsables'])
                         elif resultat['type'] == 'modifier':
                             eleves_a_modifier.append(resultat['eleve'])
+                        elif resultat['type'] == 'doublon':
+                            self._enregistrer_doublon(
+                                index + 2, row, resultat['matricule']
+                            )
                     
                     numero_ordre += 1
                     
@@ -360,13 +393,30 @@ class ImportElevesProcessor:
                 self.stats['modifies'] += len(eleves_a_modifier)
         
         return self.stats
+
+    def _enregistrer_doublon(self, ligne_num, row, matricule):
+        """Mémorise les lignes refusées sans exposer tout le fichier importé."""
+        self.stats['doublons_ignores'] += 1
+        if len(self.stats['doublons_details']) < 20:
+            identite = (
+                f"{_valeur_texte(row.get('Prénom'))} "
+                f"{_valeur_texte(row.get('Nom'))}"
+            ).strip()
+            self.stats['doublons_details'].append(
+                f"ligne {ligne_num} : {matricule}"
+                + (f" ({identite})" if identite else '')
+            )
     
     def _preparer_eleve(self, row, classe, numero_ordre, matricules_existants, responsables_dict, eleves_existants):
         """
         Prépare un élève pour bulk creation/update - VERSION OPTIMISÉE
         """
-        # Préparer les données de l'élève
+        # Le matricule est l'identifiant de doublon fiable. Le contrôle couvre
+        # à la fois la base et les lignes déjà acceptées dans ce même fichier.
         matricule = _valeur_texte(row.get('Matricule'))
+        matricule_normalise = cle_matricule(matricule)
+        if matricule_normalise and matricule_normalise in matricules_existants:
+            return {'type': 'doublon', 'matricule': matricule}
 
         # Générer le matricule si nécessaire
         if not matricule:
@@ -375,15 +425,8 @@ class ImportElevesProcessor:
                 self.stats['matricules_generes'] += 1
             else:
                 raise ImportElevesError("Matricule manquant et génération désactivée")
-        elif matricule in matricules_existants:
-            # Matricule déjà pris par un autre élève : en générer un nouveau
-            if self.generer_matricules:
-                matricule = generer_matricule(classe, numero_ordre, classe.annee_scolaire, matricules_existants)
-                self.stats['matricules_generes'] += 1
-            else:
-                raise ImportElevesError(f"Matricule déjà utilisé: {matricule}")
         else:
-            matricules_existants.add(matricule)
+            matricules_existants.add(matricule_normalise)
 
         # Gérer le responsable principal (optionnel)
         responsable = None
@@ -698,14 +741,15 @@ def resoudre_classe(nom_classe, annee_scolaire, ecole, creer=True, niveau_defaut
             f"Aucune école ne correspond pour la classe « {nom_classe} »."
         )
 
-    classes = Classe.objects.filter(ecole=ecole, nom__iexact=nom_classe)
+    nom_normalise = normaliser_libelle(nom_classe)
+    classes = Classe.objects.filter(ecole=ecole)
     if annee_scolaire:
-        classe = classes.filter(annee_scolaire=annee_scolaire).first()
-        if classe:
+        for classe in classes.filter(annee_scolaire=annee_scolaire):
+            if normaliser_libelle(classe.nom) == nom_normalise:
+                return classe, False
+    for classe in classes:
+        if normaliser_libelle(classe.nom) == nom_normalise:
             return classe, False
-    classe = classes.first()
-    if classe:
-        return classe, False
 
     if not creer:
         raise ImportElevesError(

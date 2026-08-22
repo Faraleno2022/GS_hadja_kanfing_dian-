@@ -35,11 +35,17 @@ EXE_NAME     = "MySchoolGN.exe"
 ICON_NAME    = "myschool.ico"
 
 # ─── Détection mode mise à jour ───────────────────────────────────────────────
-IS_UPDATE = (INSTALL_DIR / EXE_NAME).exists()
+IS_UPDATE = any((INSTALL_DIR / name).exists() for name in (
+    EXE_NAME, 'db.sqlite3', '.secret_key', '.trial_start',
+    'license.dat', 'media',
+))
 
 # Fichiers/dossiers à NE PAS écraser lors d'une mise à jour (données utilisateur)
-UPDATE_PRESERVE_FILES = {'db.sqlite3', 'license.dat', '.trial_start',
-                          '.secret_key', '.env', '.integrity.dat'}
+UPDATE_PRESERVE_FILES = {
+    'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
+    'license.dat', 'licence.json', '.trial_start', '.secret_key', '.env',
+    'sync_config.json', 'backup_config.json', '.restauration_en_attente.json',
+}
 UPDATE_PRESERVE_DIRS  = {'media', 'backups', 'logs'}
 
 
@@ -167,8 +173,14 @@ def do_install(log_func, progress_func, done_func, license_source=None):
             # Copier les fichiers (racine du SRC_DIR) sans écraser les données
             log_func("Mise à jour des fichiers de l'application ...")
             items = list(SRC_DIR.iterdir())
-            skip_installer = {EXE_NAME, "Installer_MySchoolGN.exe",
-                               "installer.py", "installer.exe"}
+            # Seul l'installateur en cours d'exécution doit être ignoré. Le
+            # programme principal MySchoolGN.exe doit impérativement être
+            # remplacé lors d'une mise à jour, après son arrêt ci-dessus.
+            skip_installer = {
+                "Installer_MySchoolGN.exe",
+                "installer.py",
+                "installer.exe",
+            }
             total = len(items)
             updated = 0
             preserved = 0
@@ -225,9 +237,13 @@ def do_install(log_func, progress_func, done_func, license_source=None):
             log_func("Copie des fichiers de l'application ...")
             items = list(SRC_DIR.iterdir())
             # Exclure les fichiers d'essai/licence/données dev pour que le client parte de zéro
-            skip = {"Installer_MySchoolGN.exe", "installer.py",
-                    ".trial_start", "license.dat", ".secret_key",
-                    "db.sqlite3", ".env", ".integrity.dat"}
+            skip = {
+                "Installer_MySchoolGN.exe", "installer.py",
+                ".trial_start", "license.dat", "licence.json", ".secret_key",
+                "db.sqlite3", "db.sqlite3-wal", "db.sqlite3-shm",
+                "db.sqlite3-journal", ".env", "sync_config.json",
+                "backup_config.json", ".restauration_en_attente.json",
+            }
             total = len(items)
 
             for i, item in enumerate(items):

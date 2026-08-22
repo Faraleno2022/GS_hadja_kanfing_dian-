@@ -1,7 +1,7 @@
 ﻿; MySchoolGN - Inno Setup Installer Script
 ; ==========================================
 ; Auteur  : GS Hadja Kanfing Dian
-; Version : 1.1.0
+; Version : 1.2.0
 ;
 ; Prérequis : Inno Setup 6+ (https://jrsoftware.org/isinfo.php)
 ;
@@ -19,8 +19,8 @@
 ; ── Identification ─────────────────────────────────────────────────────────────
 AppId={{B7E4A2D1-F3C8-4B91-A5E6-GS2024HADJA01}
 AppName=MySchoolGN
-AppVersion=1.1.0
-AppVerName=MySchoolGN 1.1.0
+AppVersion=1.2.0
+AppVerName=MySchoolGN 1.2.0
 AppPublisher=GS Hadja Kanfing Dian
 AppPublisherURL=https://myschoolgn.space
 AppSupportURL=https://myschoolgn.space
@@ -40,7 +40,7 @@ RestartApplications=no
 
 ; ── Sortie ─────────────────────────────────────────────────────────────────────
 OutputDir=Output
-OutputBaseFilename=MySchoolGN_Setup_v1.1.0
+OutputBaseFilename=MySchoolGN_Setup_v1.2.0
 
 ; ── Icône et splash ────────────────────────────────────────────────────────────
 SetupIconFile=myschool.ico
@@ -61,7 +61,7 @@ UninstallDisplayIcon={autopf}\MySchoolGN\MySchoolGN.exe
 CreateUninstallRegKey=yes
 
 ; ── Version info (visible dans Programmes et fonctionnalités) ──────────────────
-VersionInfoVersion=1.1.0.0
+VersionInfoVersion=1.2.0.0
 VersionInfoCompany=GS Hadja Kanfing Dian
 VersionInfoDescription=MySchoolGN - Système de Gestion Scolaire
 VersionInfoCopyright=Copyright © 2024 GS Hadja Kanfing Dian
@@ -90,6 +90,9 @@ Source: "license_manager.py"; DestDir: "{app}"; Flags: ignoreversion
 ; Icône
 Source: "myschool.ico"; DestDir: "{app}"; Flags: ignoreversion
 
+; Modèle de configuration de synchronisation en ligne (à renseigner par le technicien)
+Source: "sync_config.example.json"; DestDir: "{app}"; Flags: ignoreversion
+
 [Dirs]
 ; Dossiers avec permissions d'écriture
 Name: "{app}\logs";                 Permissions: users-modify
@@ -113,7 +116,7 @@ Name: "{userstartup}\MySchoolGN"; Filename: "{app}\MySchoolGN.exe"; WorkingDir: 
 
 [Registry]
 ; Enregistrement pour le panneau "Programmes et fonctionnalités"
-Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "Version";    ValueData: "1.1.0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "Version";    ValueData: "1.2.0"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}";  Flags: uninsdeletevalue
 
 [Run]
@@ -135,7 +138,7 @@ Type: files;          Name: "{app}\install_path.txt"
 WelcomeLabel1=Bienvenue dans l'assistant d'installation de MySchoolGN
 WelcomeLabel2=Ce programme va installer MySchoolGN - Système de Gestion Scolaire sur votre ordinateur.%n%nMySchoolGN est une solution complète de gestion scolaire développée par GS Hadja Kanfing Dian. Elle fonctionne entièrement hors ligne.%n%nFermez toutes les autres applications avant de continuer.
 FinishedHeadingLabel=Installation de MySchoolGN terminée !
-FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans sa propre fenêtre.%n%nNOTE : Si aucune licence annuelle n'a été ajoutée pendant l'installation, une période d'essai de 30 jours démarre automatiquement.
+FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%nIdentifiants par défaut :%n  Utilisateur : admin%n  Mot de passe  : admin1234%n%nL'application s'ouvre dans sa propre fenêtre.%n%nNOTE : Sans licence annuelle, MySchoolGN continue avec la version gratuite (essai de 30 jours).
 
 [Code]
 
@@ -145,16 +148,31 @@ FinishedLabel=MySchoolGN a été installé avec succès sur votre ordinateur.%n%
 var
   IsUpdate: Boolean;
   BackupTempDir: String;
+  BackupFailed: Boolean;
+  RestoreFailed: Boolean;
   LicenseQuestionAsked: Boolean;
   SelectedLicenseFile: String;
 
 // ── Détection si c'est une mise à jour ───────────────────────────────────────
 function IsUpgradeInstall(): Boolean;
 var
-  ExePath: String;
+  AppDir: String;
 begin
-  ExePath := WizardDirValue + '\MySchoolGN.exe';
-  Result := FileExists(ExePath);
+  AppDir := WizardDirValue + '\';
+  Result :=
+    FileExists(AppDir + 'MySchoolGN.exe') or
+    FileExists(AppDir + 'db.sqlite3') or
+    FileExists(AppDir + '.secret_key') or
+    FileExists(AppDir + '.trial_start') or
+    FileExists(AppDir + 'license.dat') or
+    DirExists(AppDir + 'media');
+end;
+
+function HasExistingLicense(): Boolean;
+begin
+  Result :=
+    FileExists(ExpandConstant('{app}\license.dat')) or
+    FileExists(ExpandConstant('{userappdata}\MySchoolGN\license.dat'));
 end;
 
 // ── Afficher l'ID machine à la fin pour l'activation ─────────────────────────
@@ -188,7 +206,12 @@ begin
   if FileExists(SrcPath) then
   begin
     Log('Sauvegarde : ' + FileName);
-    CopyFile(SrcPath, DstPath, False);
+    ForceDirectories(ExtractFilePath(DstPath));
+    if not CopyFile(SrcPath, DstPath, False) then
+    begin
+      BackupFailed := True;
+      Log('ERREUR sauvegarde : ' + FileName);
+    end;
   end;
 end;
 
@@ -202,7 +225,11 @@ begin
   if FileExists(SrcPath) then
   begin
     Log('Restauration : ' + FileName);
-    CopyFile(SrcPath, DstPath, False);
+    if not CopyFile(SrcPath, DstPath, False) then
+    begin
+      RestoreFailed := True;
+      Log('ERREUR restauration : ' + FileName);
+    end;
   end;
 end;
 
@@ -217,7 +244,8 @@ begin
   if DirExists(SrcDir) then
   begin
     Log('Sauvegarde dossier : ' + DirName);
-    ForceDirectories(DstDir);
+    if not ForceDirectories(DstDir) then
+      BackupFailed := True;
     if FindFirst(SrcDir + '\*', FindRec) then
     try
       repeat
@@ -225,8 +253,11 @@ begin
         begin
           if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
             BackupDirectory(DirName + '\' + FindRec.Name)
-          else
-            CopyFile(SrcDir + '\' + FindRec.Name, DstDir + '\' + FindRec.Name, False);
+          else if not CopyFile(SrcDir + '\' + FindRec.Name, DstDir + '\' + FindRec.Name, False) then
+          begin
+            BackupFailed := True;
+            Log('ERREUR sauvegarde : ' + DirName + '\' + FindRec.Name);
+          end;
         end;
       until not FindNext(FindRec);
     finally
@@ -246,7 +277,8 @@ begin
   if DirExists(SrcDir) then
   begin
     Log('Restauration dossier : ' + DirName);
-    ForceDirectories(DstDir);
+    if not ForceDirectories(DstDir) then
+      RestoreFailed := True;
     if FindFirst(SrcDir + '\*', FindRec) then
     try
       repeat
@@ -254,14 +286,77 @@ begin
         begin
           if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
             RestoreDirectory(DirName + '\' + FindRec.Name)
-          else
-            CopyFile(SrcDir + '\' + FindRec.Name, DstDir + '\' + FindRec.Name, False);
+          else if not CopyFile(SrcDir + '\' + FindRec.Name, DstDir + '\' + FindRec.Name, False) then
+          begin
+            RestoreFailed := True;
+            Log('ERREUR restauration : ' + DirName + '\' + FindRec.Name);
+          end;
         end;
       until not FindNext(FindRec);
     finally
       FindClose(FindRec);
     end;
   end;
+end;
+
+// ── Fusionner un dossier de sauvegarde vers une destination, sans écraser ────
+// (utilisé pour promouvoir les données de l'ancien emplacement _internal\ sans
+// remplacer des fichiers déjà présents à la destination)
+procedure MergeDirectoryFromBackup(const BackupSubDir, DestSubDir: String);
+var
+  SrcDir, DstDir: String;
+  FindRec: TFindRec;
+begin
+  SrcDir := BackupTempDir + '\' + BackupSubDir;
+  DstDir := ExpandConstant('{app}\') + DestSubDir;
+  if DirExists(SrcDir) then
+  begin
+    if not ForceDirectories(DstDir) then
+      RestoreFailed := True;
+    if FindFirst(SrcDir + '\*', FindRec) then
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+            MergeDirectoryFromBackup(BackupSubDir + '\' + FindRec.Name, DestSubDir + '\' + FindRec.Name)
+          else if not FileExists(DstDir + '\' + FindRec.Name) then
+          begin
+            Log('Promotion (ancien emplacement _internal) : ' + DestSubDir + '\' + FindRec.Name);
+            if not CopyFile(SrcDir + '\' + FindRec.Name, DstDir + '\' + FindRec.Name, False) then
+            begin
+              RestoreFailed := True;
+              Log('ERREUR promotion : ' + DestSubDir + '\' + FindRec.Name);
+            end;
+          end;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+// ── Remonter les données piégées dans l'ancien emplacement _internal\ ────────
+// (bug de chemin corrigé : la DB/les médias pouvaient être créés dans
+// _internal\ au lieu du dossier d'installation ; on ne remplace jamais des
+// données déjà restaurées côté racine)
+procedure PromoteLegacyInternalData();
+var
+  NewDb, LegacyDbBackup: String;
+begin
+  NewDb := ExpandConstant('{app}\db.sqlite3');
+  LegacyDbBackup := BackupTempDir + '\_internal\db.sqlite3';
+  if (not FileExists(NewDb)) and FileExists(LegacyDbBackup) then
+  begin
+    Log('Promotion base de données (ancien emplacement _internal\db.sqlite3)');
+    if not CopyFile(LegacyDbBackup, NewDb, False) then
+    begin
+      RestoreFailed := True;
+      Log('ERREUR promotion : _internal\db.sqlite3');
+    end;
+  end;
+  MergeDirectoryFromBackup('_internal\media', 'media');
 end;
 
 // ── Supprimer récursivement un dossier temporaire ────────────────────────────
@@ -277,15 +372,23 @@ var
   FindRec: TFindRec;
   AppDir: String;
 begin
-  BackupTempDir := ExpandConstant('{tmp}\MySchoolGN_UpdateBackup');
-  ForceDirectories(BackupTempDir);
+  BackupFailed := False;
+  BackupTempDir := ExpandConstant('{tmp}\MySchoolGN_UpdateBackup_') +
+    GetDateTimeString('yyyymmdd_hhnnss', #0, #0);
+  if not ForceDirectories(BackupTempDir) then
+    BackupFailed := True;
 
   // Fichiers de données critiques
   BackupFile('db.sqlite3');
+  BackupFile('db.sqlite3-wal');
+  BackupFile('db.sqlite3-shm');
+  BackupFile('db.sqlite3-journal');
   BackupFile('.secret_key');
   BackupFile('.trial_start');
   BackupFile('.env');
   BackupFile('license.dat');
+  BackupFile('sync_config.json');
+  BackupFile('backup_config.json');
 
   // Tous les fichiers de licence (license_*.lic)
   AppDir := ExpandConstant('{app}\');
@@ -306,6 +409,16 @@ begin
 
   // Dossier logs
   BackupDirectory('logs');
+
+  // Ancien emplacement (bug de chemin corrigé) : une installation déjà en
+  // place peut avoir sa vraie base/ses médias dans _internal\ au lieu du
+  // dossier d'installation. On les sauvegarde aussi pour ne rien perdre ;
+  // ils seront promus au bon endroit après la copie des nouveaux fichiers.
+  BackupFile('_internal\db.sqlite3');
+  BackupFile('_internal\db.sqlite3-wal');
+  BackupFile('_internal\db.sqlite3-shm');
+  BackupFile('_internal\db.sqlite3-journal');
+  BackupDirectory('_internal\media');
 end;
 
 // ── Restauration des données utilisateur après l'installation ────────────────
@@ -313,12 +426,18 @@ procedure RestoreUserData();
 var
   FindRec: TFindRec;
 begin
+  RestoreFailed := False;
   // Fichiers de données critiques
   RestoreFile('db.sqlite3');
+  RestoreFile('db.sqlite3-wal');
+  RestoreFile('db.sqlite3-shm');
+  RestoreFile('db.sqlite3-journal');
   RestoreFile('.secret_key');
   RestoreFile('.trial_start');
   RestoreFile('.env');
   RestoreFile('license.dat');
+  RestoreFile('sync_config.json');
+  RestoreFile('backup_config.json');
 
   // Restaurer tous les fichiers de licence
   if FindFirst(BackupTempDir + '\license_*.lic', FindRec) then
@@ -339,11 +458,17 @@ begin
   // Restaurer le dossier logs
   RestoreDirectory('logs');
 
-  // Nettoyage du dossier temporaire
-  CleanupBackupDir();
+  // Promouvoir les données trouvées dans l'ancien emplacement _internal\
+  // (bug de chemin corrigé) vers le dossier d'installation, sans écraser ce
+  // qui vient déjà d'être restauré ci-dessus.
+  PromoteLegacyInternalData();
+
+  // Ne supprimer la sauvegarde temporaire qu'après restauration complète.
+  if not RestoreFailed then
+    CleanupBackupDir();
 end;
 
-// ── Question licence pendant l'installation fraîche ─────────────────────────
+// ── Question licence pendant l'installation ─────────────────────────────────
 procedure AskLicenseBeforeInstall();
 var
   LicenseFile: String;
@@ -357,7 +482,7 @@ begin
   if MsgBox(
     'Avez-vous déjà une licence annuelle MySchoolGN ?' + #13#10 + #13#10 +
     'Oui : sélectionnez votre fichier .lic pour l''ajouter pendant l''installation.' + #13#10 +
-    'Non : MySchoolGN continuera avec la version d''essai gratuite de 30 jours.',
+    'Non : MySchoolGN continuera avec la version gratuite (essai de 30 jours).',
     mbConfirmation, MB_YESNO
   ) = IDYES then
   begin
@@ -381,7 +506,7 @@ begin
     begin
       MsgBox(
         'Aucune licence sélectionnée.' + #13#10 +
-        'MySchoolGN continuera avec l''essai gratuit de 30 jours.',
+        'MySchoolGN continuera avec la version gratuite (essai de 30 jours).',
         mbInformation, MB_OK
       );
     end;
@@ -394,7 +519,7 @@ var
 begin
   if SelectedLicenseFile = '' then
   begin
-    Log('Aucune licence fournie : essai gratuit de 30 jours au premier lancement.');
+    Log('Aucune licence fournie : version gratuite (essai de 30 jours) au premier lancement.');
     Exit;
   end;
 
@@ -423,7 +548,10 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
-  if (CurPageID = wpReady) and (not IsUpdate) and (not LicenseQuestionAsked) then
+  // En mise à jour, une licence existante est conservée sans redemander.
+  // Si aucune licence n'existe, le même choix est proposé qu'à l'installation.
+  if (CurPageID = wpReady) and (not LicenseQuestionAsked) and
+     ((not IsUpdate) or (not HasExistingLicense())) then
     AskLicenseBeforeInstall();
 end;
 
@@ -439,7 +567,7 @@ begin
     if IsUpdate then
     begin
       WizardForm.WelcomeLabel1.Caption := 'Mise à jour de MySchoolGN';
-      WelcomeMsg := 'Ce programme va mettre à jour MySchoolGN vers la version 1.1.0 sur votre ordinateur.' + #13#10 + #13#10 +
+      WelcomeMsg := 'Ce programme va mettre à jour MySchoolGN vers la version 1.2.0 sur votre ordinateur.' + #13#10 + #13#10 +
         'Vos données seront automatiquement préservées :' + #13#10 +
         '  • Base de données (élèves, notes, etc.)' + #13#10 +
         '  • Licences et période d''essai' + #13#10 +
@@ -467,34 +595,58 @@ begin
   end;
 end;
 
-// ── Étapes d'installation : sauvegarde avant, restauration après ─────────────
+// ── Bloquer toute mise à jour si la sauvegarde préalable échoue ──────────────
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  // En installation silencieuse, la page d'accueil n'est jamais affichée et
+  // CurPageChanged ne s'exécute pas : sans cette relecture, une mise à jour
+  // silencieuse passerait sans sauvegarde préalable des données.
+  if not IsUpdate then
+    IsUpdate := IsUpgradeInstall();
+  if IsUpdate then
+  begin
+    Log('=== Mode Mise à jour détecté ===');
+    KillRunningApp();
+    BackupUserData();
+    if BackupFailed then
+    begin
+      Result :=
+        'La mise à jour a été annulée avant toute modification car la ' +
+        'sauvegarde des données utilisateur n''a pas pu être vérifiée.' + #13#10 +
+        'Fermez les fichiers ouverts, vérifiez l''espace disque puis réessayez.';
+      Log('Mise à jour annulée : sauvegarde incomplète.');
+    end;
+    if not BackupFailed then
+      Log('Sauvegarde vérifiée. La mise à jour peut commencer.');
+  end;
+end;
+
+// ── Restauration après copie des nouveaux fichiers ───────────────────────────
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssInstall then
-  begin
-    if IsUpdate then
-    begin
-      Log('=== Mode Mise à jour détecté ===');
-      // Arrêter l'application
-      KillRunningApp();
-      // Sauvegarder les données utilisateur
-      BackupUserData();
-      Log('Sauvegarde des données terminée.');
-    end;
-  end;
-
   if CurStep = ssPostInstall then
   begin
     if IsUpdate then
     begin
       Log('Restauration des données utilisateur...');
       RestoreUserData();
-      Log('Restauration terminée. Mise à jour réussie.');
+      if RestoreFailed then
+      begin
+        Log('ERREUR : restauration incomplète. Sauvegarde conservée dans ' + BackupTempDir);
+        MsgBox(
+          'La restauration automatique de certaines données n''a pas abouti.' + #13#10 +
+          'La copie de sécurité a été conservée dans :' + #13#10 + BackupTempDir,
+          mbError, MB_OK
+        );
+      end
+      else
+        Log('Restauration terminée. Mise à jour réussie.');
     end;
-    if not IsUpdate then
-    begin
+
+    // Une nouvelle licence choisie remplace l'ancienne après sa restauration.
+    if SelectedLicenseFile <> '' then
       InstallSelectedLicense();
-    end;
   end;
 end;
 
@@ -560,7 +712,7 @@ begin
               'ACTIVATION DE LICENCE' + NewLine +
               'Pendant l''installation, MySchoolGN demandera si vous avez' + NewLine +
               'une licence annuelle. Si oui, elle sera ajoutée immédiatement.' + NewLine +
-              'Sinon, l''essai gratuit de 30 jours démarre automatiquement.' + NewLine +
+              'Sinon, la version gratuite (essai de 30 jours) démarre automatiquement.' + NewLine +
               '─────────────────────────────────────────';
   end;
 end;
