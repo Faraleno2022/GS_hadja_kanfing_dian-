@@ -74,6 +74,30 @@ Name: "desktopicon";   Description: "Créer un raccourci sur le Bureau";        
 Name: "startmenuicon"; Description: "Créer une entrée dans le menu Démarrer";   GroupDescription: "Raccourcis :"
 Name: "autostart";     Description: "Lancer MySchoolGN au démarrage de Windows"; GroupDescription: "Options :";   Flags: unchecked
 
+[InstallDelete]
+; Retirer uniquement les anciennes migrations applicatives qui ne font plus
+; partie de la branche principale. Inno Setup ne supprime pas automatiquement
+; un fichier disparu entre deux versions ; ces fichiers restaient donc charges
+; apres une mise a jour et pouvaient bloquer Django au demarrage.
+Type: files; Name: "{app}\_internal\paiements\migrations\0010_echeancier_nature_frais.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0011_paiementremise_portee_tranches.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0012_paiementremise_motif.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0013_paiement_annee_remise_ventilation.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0014_alter_echeancierpaiement_annee_scolaire_and_more.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0015_paiementremise_deduite_du_paiement.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0016_realigner_annee_paiements_ete.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\0017_echeancier_par_annee.py"
+Type: files; Name: "{app}\_internal\eleves\migrations\0017_alter_classe_annee_scolaire_and_more.py"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0010_echeancier_nature_frais.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0011_paiementremise_portee_tranches.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0012_paiementremise_motif.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0013_paiement_annee_remise_ventilation.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0014_alter_echeancierpaiement_annee_scolaire_and_more.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0015_paiementremise_deduite_du_paiement.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0016_realigner_annee_paiements_ete.*.pyc"
+Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0017_echeancier_par_annee.*.pyc"
+Type: files; Name: "{app}\_internal\eleves\migrations\__pycache__\0017_alter_classe_annee_scolaire_and_more.*.pyc"
+
 [Files]
 ; Application compilée (tout le dossier dist\MySchoolGN)
 Source: "dist\MySchoolGN\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
