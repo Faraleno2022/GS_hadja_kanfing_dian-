@@ -388,6 +388,7 @@ begin
   BackupFile('.env');
   BackupFile('license.dat');
   BackupFile('sync_config.json');
+  BackupFile('backup_config.json');
 
   // Tous les fichiers de licence (license_*.lic)
   AppDir := ExpandConstant('{app}\');
@@ -436,6 +437,7 @@ begin
   RestoreFile('.env');
   RestoreFile('license.dat');
   RestoreFile('sync_config.json');
+  RestoreFile('backup_config.json');
 
   // Restaurer tous les fichiers de licence
   if FindFirst(BackupTempDir + '\license_*.lic', FindRec) then
@@ -597,6 +599,11 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  // En installation silencieuse, la page d'accueil n'est jamais affichée et
+  // CurPageChanged ne s'exécute pas : sans cette relecture, une mise à jour
+  // silencieuse passerait sans sauvegarde préalable des données.
+  if not IsUpdate then
+    IsUpdate := IsUpgradeInstall();
   if IsUpdate then
   begin
     Log('=== Mode Mise à jour détecté ===');

@@ -173,8 +173,14 @@ def do_install(log_func, progress_func, done_func, license_source=None):
             # Copier les fichiers (racine du SRC_DIR) sans écraser les données
             log_func("Mise à jour des fichiers de l'application ...")
             items = list(SRC_DIR.iterdir())
-            skip_installer = {EXE_NAME, "Installer_MySchoolGN.exe",
-                               "installer.py", "installer.exe"}
+            # Seul l'installateur en cours d'exécution doit être ignoré. Le
+            # programme principal MySchoolGN.exe doit impérativement être
+            # remplacé lors d'une mise à jour, après son arrêt ci-dessus.
+            skip_installer = {
+                "Installer_MySchoolGN.exe",
+                "installer.py",
+                "installer.exe",
+            }
             total = len(items)
             updated = 0
             preserved = 0

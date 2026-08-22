@@ -17,6 +17,15 @@
         <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
             <i class="fas fa-filter me-1"></i>Filtres
         </button>
+        {% if peut_consulter_rapports %}
+        <a href="{% url 'paiements:rapport_comptable' %}"
+           class="btn btn-outline-primary"
+           target="_blank"
+           rel="noopener"
+           title="Afficher le rapport comptable complet avec le détail des paiements">
+            <i class="fas fa-eye me-1"></i>Voir le rapport comptable détaillé
+        </a>
+        {% endif %}
         <div class="btn-group">
             <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-download me-1"></i>Exporter
@@ -50,27 +59,40 @@
                         <i class="fas fa-file-pdf me-2"></i>Tranches par classe (PDF)
                     </a>
                 </li>
+                <li>
+                    <a class="dropdown-item" href="#" onclick="exportTranchesParClasseExcel(); return false;">
+                        <i class="fas fa-file-excel me-2"></i>Tranches par classe (Excel)
+                    </a>
+                </li>
+                {% if peut_consulter_rapports %}
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
-                        <i class="fas fa-book me-2"></i>Rapport comptable complet…
+                        <i class="fas fa-book me-2"></i>Rapport comptable professionnel…
                     </a>
                 </li>
+                <li>
+                    <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportRecouvrementModal">
+                        <i class="fas fa-hand-holding-usd me-2"></i>Rapport de recouvrement…
+                    </a>
+                </li>
+                {% endif %}
             </ul>
         </div>
 
+        {% if peut_consulter_rapports %}
         <!-- Modal Rapport comptable complet -->
         <div class="modal fade" id="rapportComptableModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title"><i class="fas fa-book me-2"></i>Rapport comptable complet</h5>
+                        <h5 class="modal-title"><i class="fas fa-book me-2"></i>Rapport comptable professionnel</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
                     </div>
                     <div class="modal-body">
                         <p class="text-muted small mb-3">
-                            Paiements, retards et relances par classe, avec statistiques de
-                            rapprochement par mode (Espèces, Chèque, Virement…).
+                            Encaissements par statut, mode, type et classe, remises accordées
+                            et journal détaillé des reçus pour le rapprochement de caisse.
                         </p>
                         <div class="mb-3">
                             <label class="form-label">Classe (vide = tout l'établissement)</label>
@@ -91,6 +113,7 @@
                                 <input type="date" id="rcAu" class="form-control">
                             </div>
                         </div>
+                        <input type="hidden" id="rcAnnee" value="{{ annee_active }}">
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-primary" onclick="ouvrirRapportComptable('web')">
@@ -107,6 +130,58 @@
             </div>
         </div>
 
+        <!-- Modal Rapport professionnel de recouvrement -->
+        <div class="modal fade" id="rapportRecouvrementModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-hand-holding-usd me-2"></i>Rapport professionnel de recouvrement
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Portefeuille des créances, ventilation par poste, taux de recouvrement,
+                            balance âgée, dossiers prioritaires et suivi des relances.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Classe (vide = tout l'établissement)</label>
+                            <select id="rrClasse" class="form-select">
+                                <option value="">— Tout l'établissement —</option>
+                                {% for classe in classes_rapport %}
+                                <option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.annee_scolaire }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Activité du (optionnel)</label>
+                                <input type="date" id="rrDu" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Situation au (optionnel)</label>
+                                <input type="date" id="rrAu" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-text">
+                            La date « au » sert aussi de date d'arrêt pour le calcul des retards.
+                        </div>
+                        <input type="hidden" id="rrAnnee" value="{{ annee_active }}">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" onclick="ouvrirRapportRecouvrement('pdf')">
+                            <i class="fas fa-file-pdf me-1"></i>PDF
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="ouvrirRapportRecouvrement('excel')">
+                            <i class="fas fa-file-excel me-1"></i>Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="vr mx-2 d-none d-md-block"></div>
         <div class="btn-toolbar gap-2">
             <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-info">
@@ -118,9 +193,11 @@
             <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
                 <i class="fas fa-bell me-1"></i>Relances
             </a>
+            {% if peut_consulter_rapports %}
             <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-outline-success">
                 <i class="fas fa-percent me-1"></i>Rapport des remises
             </a>
+            {% endif %}
             <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-secondary">
                 <i class="fas fa-chart-line me-1"></i>Tableau de bord
             </a>
@@ -291,6 +368,19 @@
 
 {% block content %}
 
+    {% if paiements_hors_annee %}
+    <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+        <i class="fas fa-triangle-exclamation mt-1"></i>
+        <div>
+            <strong>{{ paiements_hors_annee }} paiement(s) masqué(s).</strong>
+            La liste affiche l'année {{ annee_affichee }} ; ces encaissements
+            sont enregistrés sur une autre année scolaire et n'apparaissent
+            donc pas ci-dessous. Vérifiez la classe de l'élève, ou ouvrez le
+            paiement et corrigez sa date pour le rattacher à la bonne année.
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Recherche (une seule zone multi-critères) -->
     <div class="search-card">
         <form method="get" class="row g-3 align-items-end" id="filtresForm">
@@ -454,8 +544,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Ouvre l'export PDF "Tranches par classe" en conservant les filtres de l'URL
 function exportTranchesParClassePdf() {
+    exportTranchesParClasse('{% url "paiements:export_tranches_par_classe_pdf" %}');
+}
+
+function exportTranchesParClasseExcel() {
+    exportTranchesParClasse('{% url "paiements:export_tranches_par_classe_excel" %}');
+}
+
+function exportTranchesParClasse(base) {
     const u = new URL(window.location.href);
-    const base = '{% url "paiements:export_tranches_par_classe_pdf" %}';
     const out = new URL(base, window.location.origin);
     const annee = u.searchParams.get('annee_scolaire');
     const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id'); // compat
@@ -499,9 +596,28 @@ function ouvrirRapportComptable(format) {
     const classe = document.getElementById('rcClasse').value;
     const du = document.getElementById('rcDu').value;
     const au = document.getElementById('rcAu').value;
+    const annee = document.getElementById('rcAnnee').value;
     if (classe) out.searchParams.set(format === 'web' ? 'classe' : 'classe_id', classe);
+    if (!classe && annee && format !== 'web') out.searchParams.set('annee_scolaire', annee);
     if (du) out.searchParams.set(format === 'web' ? 'date_debut' : 'du', du);
     if (au) out.searchParams.set(format === 'web' ? 'date_fin' : 'au', au);
+    window.open(out.toString(), '_blank');
+}
+
+// Rapport professionnel regroupant tous les modules du recouvrement
+function ouvrirRapportRecouvrement(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_recouvrement_pdf" %}'
+        : '{% url "paiements:export_recouvrement_excel" %}';
+    const out = new URL(base, window.location.origin);
+    const classe = document.getElementById('rrClasse').value;
+    const du = document.getElementById('rrDu').value;
+    const au = document.getElementById('rrAu').value;
+    const annee = document.getElementById('rrAnnee').value;
+    if (classe) out.searchParams.set('classe_id', classe);
+    if (!classe && annee) out.searchParams.set('annee_scolaire', annee);
+    if (du) out.searchParams.set('du', du);
+    if (au) out.searchParams.set('au', au);
     window.open(out.toString(), '_blank');
 }
 

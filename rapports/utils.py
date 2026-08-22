@@ -42,49 +42,55 @@ def _get_logo_path(ecole=None):
     return path or ''
 
 
-def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
-    """Dessine l'entête (logo + titre) et un filigrane logo géant sur chaque page.
-
-    - Filigrane: logo agrandi (~500% largeur) centré, faible opacité si disponible
-    - Entête: logo à gauche + nom de l'établissement
-    """
-    width, height = A4
-    logo_path = _get_logo_path(ecole)
+def _draw_logo_watermark(c, logo_path, width, height, opacity=0.08):
+    """Dessine le logo centré derrière le contenu, sans gêner la lecture."""
+    if not logo_path:
+        return
 
     c.saveState()
     try:
-        # Filigrane
-        if logo_path:
-            # Taille ~500%: on couvre 1.5x la largeur de page (grand watermark)
-            wm_width = width * 1.5
-            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
-            wm_x = (width - wm_width) / 2
-            wm_y = (height - wm_height) / 2
+        from reportlab.lib.utils import ImageReader
 
-            # Opacité visible mais discrète (comme dans les reçus de paiement)
-            try:
-                c.setFillAlpha(0.15)
-            except Exception:
-                # Certaines versions de reportlab ne supportent pas l'alpha, on continue sans transparence
-                pass
+        image = ImageReader(logo_path)
+        image_width, image_height = image.getSize()
+        if not image_width or not image_height:
+            return
 
-            # Légère rotation pour l'effet filigrane
-            c.translate(width / 2.0, height / 2.0)
-            c.rotate(30)
-            c.translate(-width / 2.0, -height / 2.0)
+        max_width = width * 0.52
+        max_height = height * 0.52
+        scale = min(max_width / image_width, max_height / image_height)
+        watermark_width = image_width * scale
+        watermark_height = image_height * scale
 
-            c.drawImage(
-                logo_path,
-                wm_x,
-                wm_y,
-                width=wm_width,
-                height=wm_height,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
+        # Sans transparence, le logo masquerait le tableau : ne pas le dessiner.
+        c.setFillAlpha(opacity)
+        c.translate(width / 2, height / 2)
+        c.rotate(-18)
+        c.drawImage(
+            image,
+            -watermark_width / 2,
+            -watermark_height / 2,
+            width=watermark_width,
+            height=watermark_height,
+            preserveAspectRatio=True,
+            mask='auto',
+        )
+    except Exception:
+        pass
     finally:
-        # Restaurer l'état avant de dessiner l'entête
         c.restoreState()
+
+
+def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
+    """Dessine l'entête (logo + titre) et un filigrane logo géant sur chaque page.
+
+    - Filigrane: logo centré, redimensionné et dessiné avec une faible opacité
+    - Entête: logo à gauche + nom de l'établissement
+    """
+    width, height = getattr(c, '_pagesize', None) or getattr(doc, 'pagesize', A4)
+    logo_path = _get_logo_path(ecole)
+
+    _draw_logo_watermark(c, logo_path, width, height)
 
     # Entête (après restauration, pas d'opacité)
     c.saveState()

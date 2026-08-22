@@ -42,13 +42,11 @@ def importer_eleves(request):
         classes = classes.filter(annee_scolaire=annee_courante)
     classes = classes.order_by('nom')
     
-    # Filtrage par école si nécessaire
-    if not request.user.is_superuser:
-        from utilisateurs.utils import user_school
-        ecole = user_school(request.user)
-        if ecole:
-            classes = classes.filter(ecole=ecole)
-    
+    # Filtrage par école. Un utilisateur sans école rattachée ne se voit
+    # proposer aucune classe : sans cela il aurait accès à toutes les écoles.
+    from utilisateurs.utils import filter_by_user_school
+    classes = filter_by_user_school(classes, request.user)
+
     context = {
         'classes': classes,
         'annee_courante': annee_courante,
@@ -80,11 +78,26 @@ def _traiter_import_eleves(request):
         if not classe_id:
             messages.error(request, "Veuillez sélectionner une classe.")
             return redirect('eleves:importer_eleves')
-        
+
+        # La classe de destination doit appartenir à l'école de l'utilisateur.
+        # Le formulaire ne propose que ses classes, mais l'identifiant arrive du
+        # POST : sans ce contrôle, importer dans une autre école reste possible.
+        from utilisateurs.utils import filter_by_user_school
+
+        classe_cible = filter_by_user_school(
+            Classe.objects.filter(id=classe_id), request.user
+        ).first()
+        if classe_cible is None:
+            messages.error(
+                request,
+                "Cette classe n'appartient pas à votre école : importation refusée."
+            )
+            return redirect('eleves:importer_eleves')
+
         if not fichier:
             messages.error(request, "Veuillez sélectionner un fichier.")
             return redirect('eleves:importer_eleves')
-        
+
         # Sauvegarder temporairement le fichier
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(fichier.name)[1]) as tmp_file:
             for chunk in fichier.chunks():
@@ -121,12 +134,13 @@ def _traiter_import_eleves(request):
             stats = processor.importer()
             
             # Afficher les résultats
-            classe = Classe.objects.get(id=classe_id)
-            
-            messages.success(
-                request,
-                f"✅ Importation terminée pour la classe {classe.nom}!"
-            )
+            classe = classe_cible
+
+            if stats.get('classes_ciblees', 0) > 1:
+                resultat_import = f"{stats['classes_ciblees']} classes"
+            else:
+                resultat_import = f"la classe {classe.nom}"
+            messages.success(request, f"✅ Importation terminée pour {resultat_import} !")
             
             if stats['crees'] > 0:
                 messages.success(
@@ -146,12 +160,19 @@ def _traiter_import_eleves(request):
                     f"🔢 {stats['matricules_generes']} matricule(s) généré(s) automatiquement"
                 )
             
-            if stats.get('matricules_remplaces', 0) > 0:
+            if stats.get('doublons_ignores', 0) > 0:
+                details = stats.get('doublons_details') or []
                 messages.warning(
                     request,
-                    f"🔁 {stats['matricules_remplaces']} matricule(s) du fichier étaient déjà "
-                    f"utilisés : un nouveau matricule a été attribué"
+                    f"🚫 {stats['doublons_ignores']} ligne(s) rejetée(s) : matricule déjà "
+                    f"utilisé. Aucun élève en double n'a été créé."
                 )
+                if details:
+                    messages.warning(
+                        request,
+                        "Matricules en doublon — " + " ; ".join(details[:10])
+                        + (" ; …" if stats['doublons_ignores'] > len(details[:10]) else "")
+                    )
 
             if stats.get('classes_ciblees', 0) > 1:
                 messages.info(
@@ -164,8 +185,8 @@ def _traiter_import_eleves(request):
             if introuvables:
                 messages.warning(
                     request,
-                    f"⚠️ Classe(s) absente(s) de cette école, élèves placés dans "
-                    f"{classe.nom} : {', '.join(introuvables[:5])}"
+                    f"⚠️ {stats.get('lignes_classes_rejetees', 0)} ligne(s) rejetée(s) : "
+                    f"classe absente ou ambiguë : {', '.join(introuvables[:5])}"
                     + (f" (+{len(introuvables) - 5})" if len(introuvables) > 5 else "")
                 )
 

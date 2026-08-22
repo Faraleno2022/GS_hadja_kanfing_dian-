@@ -162,6 +162,14 @@ class Paiement(SyncTrackedModel):
     def montant_avec_frais(self):
         return self.montant + self.mode_paiement.frais_supplementaires
 
+    @property
+    def echeancier_annuel(self):
+        """Échéancier correspondant à l'année figée de ce paiement."""
+        return EcheancierPaiement.objects.filter(
+            eleve_id=self.eleve_id,
+            annee_scolaire=self.annee_scolaire,
+        ).first()
+
 class EcheancierPaiement(SyncTrackedModel):
     """Modèle pour l'échéancier des paiements d'un élève"""
 
@@ -176,7 +184,11 @@ class EcheancierPaiement(SyncTrackedModel):
         ('EN_RETARD', 'En retard'),
     ]
     
-    eleve = models.OneToOneField(Eleve, on_delete=models.CASCADE, related_name='echeancier')
+    eleve = models.ForeignKey(
+        Eleve,
+        on_delete=models.CASCADE,
+        related_name='echeanciers',
+    )
     annee_scolaire = models.CharField(
         max_length=9,
         validators=[valider_annee_scolaire],
@@ -245,6 +257,12 @@ class EcheancierPaiement(SyncTrackedModel):
             models.Index(fields=['annee_scolaire']),        # Filtrage par année
             models.Index(fields=['statut']),                 # Filtrage par statut
             models.Index(fields=['annee_scolaire', 'statut']),  # Combinaison fréquente
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['eleve', 'annee_scolaire'],
+                name='unique_echeancier_eleve_annee',
+            ),
         ]
 
     def __str__(self):
@@ -420,6 +438,13 @@ class PaiementRemise(SyncTrackedModel):
     motif = models.CharField(
         max_length=30, choices=MOTIF_CHOICES, blank=True, default='',
         verbose_name="Motif de la remise"
+    )
+
+    # Trace indispensable pour reconstituer le montant brut du reçu: sans elle,
+    # rejouer l'écran de remise déduirait une seconde fois le même montant.
+    deduite_du_paiement = models.BooleanField(
+        default=False,
+        verbose_name="Déduite du montant du reçu",
     )
 
     class Meta:

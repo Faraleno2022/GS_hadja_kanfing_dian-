@@ -62,6 +62,33 @@ def normaliser_tranches(tranches):
     return sorted(numeros)
 
 
+def montant_brut_paiement(paiement):
+    """Montant du reçu avant toute déduction de remise.
+
+    Les remises déjà déduites ont amputé ``paiement.montant``. Rejouer l'écran
+    de remise sur ce montant net déduirait une seconde fois; on repart donc
+    toujours du brut reconstitué.
+    """
+    # Pendant un recalcul, les montants en base changent lien par lien: le
+    # brut est alors figé à l'avance pour que la base ne bouge pas en cours
+    # de route (voir recalculer_remises_paiement).
+    fige = getattr(paiement, '_montant_brut_fige', None)
+    if fige is not None:
+        return _decimal(fige)
+
+    montant = _decimal(getattr(paiement, 'montant', 0))
+    try:
+        liens = list(paiement.remises.all())
+    except Exception:
+        return montant
+    deja_deduit = sum(
+        (_decimal(lien.montant_remise) for lien in liens
+         if getattr(lien, 'deduite_du_paiement', False)),
+        Decimal('0'),
+    )
+    return montant + deja_deduit
+
+
 def montants_tranches_dues(eleve):
     """Montants dus par tranche, depuis l'échéancier ou la grille tarifaire."""
     montants = {numero: Decimal('0') for numero in TRANCHE_NUMEROS}
@@ -110,7 +137,9 @@ def montants_tranches_paiement(paiement):
     la totalité du reçu porte sur la première tranche visée par son type.
     """
     montants = {numero: Decimal('0') for numero in TRANCHE_NUMEROS}
-    montant_paiement = _decimal(getattr(paiement, 'montant', 0))
+    # Base de calcul = reçu brut: une remise déjà déduite ne doit pas rétrécir
+    # la base sur laquelle on la recalcule.
+    montant_paiement = montant_brut_paiement(paiement)
     if montant_paiement <= 0:
         return montants
 

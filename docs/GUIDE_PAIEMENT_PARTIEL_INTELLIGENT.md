@@ -42,29 +42,33 @@ Si confirmé, le système alloue automatiquement :
 
 ### Backend (`paiements/views.py`)
 
+Le contrôle est **unique** et vaut pour tous les types, y compris les types
+combinés (« Inscription + Tranche 1 », « Tranche 1 + Tranche 2 », …). Il est
+placé après les plafonds d'affectation et de solde annuel, afin de ne demander
+confirmation que d'un paiement réellement enregistrable.
+
 ```python
-# Détection du sur-paiement pour T1
-elif (t1_due > 0) and ((t1_payee + montant_saisi) > t1_due):
-    # Vérifier confirmation utilisateur
-    confirmation_partiel_suivant = request.POST.get('confirmation_paiement_partiel_suivant')
-    
-    if not confirmation_partiel_suivant:
-        # Calculer répartition suggérée
-        t2_remaining = max(0, t2_due - t2_payee)
-        sur_paiement = (t1_payee + montant_saisi) - t1_due
-        
-        # Afficher interface de confirmation
+# Un montant supérieur au type sélectionné est légitime — l'excédent glisse
+# sur les postes suivants — mais il ne doit jamais partir en silence.
+if montant_attendu > 0 and montant_saisi > montant_attendu:
+    if not request.POST.get('confirmation_paiement_superieur'):
+        allocation, _payes, _reliquat = allocate_amount(
+            montant_saisi, dues, couverts, type_nom
+        )
+        repartition = [
+            {'label': libelles[bucket], 'montant': int(allocation[bucket])}
+            for bucket in (INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3)
+            if allocation[bucket] > 0
+        ]
         return render(request, 'paiements/form_paiement.html', {
-            'show_partial_next_confirmation': True,
-            'montant_t1_max': t1_due - t1_payee,
-            'excedent': sur_paiement,
-            't2_remaining': t2_remaining,
+            'show_superior_confirmation': True,
+            'repartition': repartition,
             # ...
         })
-    else:
-        # Utilisateur a confirmé, procéder à l'allocation
-        pass
 ```
+
+La répartition affichée n'est pas une suggestion : elle est calculée par
+`allocate_amount`, la fonction qui ventilera réellement le paiement.
 
 ### Frontend (`templates/paiements/form_paiement.html`)
 
@@ -85,22 +89,16 @@ La fonction d'allocation existante gère automatiquement la répartition séquen
 ### Écran de Confirmation
 
 ```
-⚠️ MONTANT SUPÉRIEUR À LA TRANCHE
+⚠️ CONFIRMATION REQUISE - MONTANT SUPÉRIEUR
 
-Le montant saisi dépasse ce qui est dû pour la 1ère tranche.
+Le montant saisi (280 000 GNF) dépasse le montant standard
+pour 1ère tranche (250 000 GNF).
 
-┌─────────────────┬─────────────────┬─────────────────┐
-│  Montant T1 max │    Excédent     │ Répartition     │
-│   250 000 GNF   │   30 000 GNF    │ T1 + Acompte T2 │
-└─────────────────┴─────────────────┴─────────────────┘
+Répartition qui sera enregistrée :
+• 1ère tranche : 250 000 GNF
+• 2ème tranche : 30 000 GNF
 
-💡 Proposition intelligente :
-• 250 000 GNF seront alloués à la 1ère tranche
-• 30 000 GNF seront utilisés comme acompte sur la 2ème tranche
-  (reste T2 : 300 000 GNF)
-
-☑️ Je confirme vouloir utiliser l'excédent comme acompte 
-   sur la tranche suivante
+☑️ Je confirme cette répartition et souhaite enregistrer le paiement.
 
 [Confirmer la répartition] [Modifier le montant]
 ```
@@ -162,12 +160,25 @@ Le montant saisi dépasse ce qui est dû pour la 1ère tranche.
 - **Contexte** : T2 et T3 déjà soldées
 - **Résultat** : Erreur de sur-paiement classique
 
+### Test 5 : Type combiné
+
+- **Type** : « Inscription + Tranche 1 » (30 000 + 400 000 = 430 000 dus)
+- **Montant** : 500 000 GNF
+- **Résultat** : confirmation affichée, répartition 30 000 / 400 000 / 70 000
+
+## ⚠️ Régression corrigée
+
+Pendant un temps, la vue posait `confirmation_partiel_suivant = True` en dur au
+lieu de lire le champ POST. Tout le bloc de confirmation devenait inatteignable :
+un montant supérieur au type partait sans un mot, alors qu'un montant inférieur,
+lui, exigeait toujours une confirmation. Cette asymétrie est corrigée et
+couverte par `paiements/tests/test_remise_deduction_et_montant_superieur.py`.
+
 ## 🚀 Évolutions Futures
 
-1. **Multi-tranches** : Étendre à T2 et T3
-2. **Suggestions multiples** : Proposer plusieurs répartitions
-3. **Historique** : Afficher les paiements partiels précédents
-4. **Notifications** : Alerter quand acompte suffisant pour solder
+1. **Suggestions multiples** : Proposer plusieurs répartitions
+2. **Historique** : Afficher les paiements partiels précédents
+3. **Notifications** : Alerter quand acompte suffisant pour solder
 
 ---
 

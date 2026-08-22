@@ -50,20 +50,87 @@ def _decimal(value):
     return Decimal(str(value or 0))
 
 
+# Les inscriptions et réinscriptions d'une année scolaire s'encaissent dès
+# juillet, avant la rentrée de septembre. Rattacher ces versements à l'année qui
+# s'achève les rendait invisibles : la liste des paiements est filtrée sur
+# l'année active (celle des classes) et le moteur n'apparie que les paiements
+# portant l'année de l'échéancier.
+MOIS_DEBUT_INSCRIPTIONS = 7
+
+
 def school_year_from_date(value):
-    """Retourne l'année scolaire septembre-août d'une date."""
+    """Retourne l'année scolaire d'une date, période d'inscription comprise."""
     value = value or date.today()
-    debut = value.year if value.month >= 9 else value.year - 1
+    debut = (
+        value.year if value.month >= MOIS_DEBUT_INSCRIPTIONS else value.year - 1
+    )
     return f'{debut}-{debut + 1}'
 
 
 def school_year_bounds(annee_scolaire):
-    """Bornes inclusives utilisées pour les anciens paiements sans année."""
+    """Bornes inclusives utilisées pour les anciens paiements sans année.
+
+    La fenêtre s'ouvre en juillet, avec les réinscriptions, et se ferme fin
+    août, après les derniers règlements de la 3ème tranche. Deux années
+    consécutives se recouvrent donc sur juillet-août : sans conséquence, un
+    élève n'ayant qu'un seul échéancier.
+    """
     try:
         debut = int(str(annee_scolaire).split('-', 1)[0])
     except (TypeError, ValueError):
         return None, None
-    return date(debut, 9, 1), date(debut + 1, 8, 31)
+    return date(debut, MOIS_DEBUT_INSCRIPTIONS, 1), date(debut + 1, 8, 31)
+
+
+def annee_scolaire_coherente(annee_actuelle, date_paiement):
+    """Année à conserver après correction de la date d'un paiement.
+
+    L'année comptable est figée à l'enregistrement, à partir de la classe de
+    l'élève. La recalculer à partir de la seule date déplaçait un versement de
+    juillet ou d'août vers l'année précédente : le paiement disparaissait alors
+    de la liste et ne comptait plus dans aucun solde. On ne la recalcule donc
+    que si la date corrigée sort de la période de l'année figée.
+    """
+    debut, fin = school_year_bounds(annee_actuelle)
+    if debut and fin and date_paiement and debut <= date_paiement <= fin:
+        return annee_actuelle
+    return school_year_from_date(date_paiement)
+
+
+def realigner_annees_paiements(Paiement, EcheancierPaiement):
+    """Recolle les paiements d'été sur l'année scolaire de leur échéancier.
+
+    Les versements de juillet et août ont été étiquetés « année précédente »
+    (ancienne règle de la date, coupure en septembre) alors que la classe et
+    l'échéancier de l'élève portent déjà l'année qui commence : ces paiements
+    n'apparaissaient plus dans la liste et n'entraient dans aucun solde ni
+    reçu. Seuls ces versements-là sont réétiquetés ; aucune autre année n'est
+    touchée. Retourne le nombre de paiements corrigés.
+    """
+    annees_par_eleve = {}
+    for eleve_id, annee in EcheancierPaiement.objects.values_list(
+        'eleve_id', 'annee_scolaire'
+    ):
+        annees_par_eleve.setdefault(eleve_id, set()).add(annee)
+    corriges = 0
+    for paiement in Paiement.objects.exclude(annee_scolaire='').iterator():
+        date_paiement = paiement.date_paiement
+        if not date_paiement:
+            continue
+        attendue = school_year_from_date(date_paiement)
+        if attendue not in annees_par_eleve.get(paiement.eleve_id, set()):
+            continue
+        if paiement.annee_scolaire == attendue:
+            continue
+        # Fenêtre des (ré)inscriptions uniquement : juillet et août.
+        if not MOIS_DEBUT_INSCRIPTIONS <= date_paiement.month <= 8:
+            continue
+        if school_year_from_date(date_paiement) != attendue:
+            continue
+        paiement.annee_scolaire = attendue
+        paiement.save(update_fields=['annee_scolaire'])
+        corriges += 1
+    return corriges
 
 
 def repartir_montant_sur_tranches(montant, bases, numeros):
@@ -162,6 +229,14 @@ def recalculer_remises_paiement(paiement):
         .filter(paiement=paiement)
         .order_by('id')
     )
+    # Une remise déduite du reçu a amputé son montant. Recalculer la remise sans
+    # re-dériver le reçu laisserait un net incohérent avec la remise accordée.
+    deja_deduit = sum(
+        (_decimal(lien.montant_remise) for lien in liens if lien.deduite_du_paiement),
+        ZERO,
+    )
+    paiement._montant_brut_fige = _decimal(paiement.montant) + deja_deduit
+
     capacites_globales = None
     for lien in liens:
         numeros = normaliser_tranches(lien.tranches_appliquees)
@@ -198,6 +273,17 @@ def recalculer_remises_paiement(paiement):
             'montant_base', 'montant_remise', 'montant_tranche_1',
             'montant_tranche_2', 'montant_tranche_3',
         ])
+
+    brut = paiement._montant_brut_fige
+    del paiement._montant_brut_fige
+
+    nouveau_deduit = sum(
+        (_decimal(lien.montant_remise) for lien in liens if lien.deduite_du_paiement),
+        ZERO,
+    )
+    if deja_deduit != nouveau_deduit:
+        paiement.montant = max(ZERO, brut - nouveau_deduit)
+        paiement.save()
     return liens
 
 
@@ -408,9 +494,17 @@ def recalculer_echeancier(eleve_ou_echeancier, date_reference=None):
     if isinstance(eleve_ou_echeancier, EcheancierPaiement):
         echeancier_id = eleve_ou_echeancier.pk
     else:
-        echeancier_id = EcheancierPaiement.objects.filter(
-            eleve=eleve_ou_echeancier
-        ).values_list('pk', flat=True).first()
+        annee = getattr(
+            getattr(eleve_ou_echeancier, 'classe', None),
+            'annee_scolaire',
+            None,
+        )
+        qs = EcheancierPaiement.objects.filter(eleve=eleve_ou_echeancier)
+        if annee:
+            qs = qs.filter(annee_scolaire=annee)
+        else:
+            qs = qs.order_by('-annee_scolaire', '-pk')
+        echeancier_id = qs.values_list('pk', flat=True).first()
     if not echeancier_id:
         return None
 

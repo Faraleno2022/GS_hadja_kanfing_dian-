@@ -129,7 +129,8 @@ def copy_extra_files():
     forbidden_names = {
         'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
         'license.dat', '.trial_start', '.secret_key', '.env',
-        '.integrity.dat', 'sync_config.json',
+        '.integrity.dat', 'sync_config.json', 'backup_config.json',
+        '.restauration_en_attente.json',
     }
     for dirpath, _dirnames, filenames in os.walk(OUTPUT_DIR):
         for filename in filenames:
@@ -174,7 +175,8 @@ def verify_distribution_has_no_user_data():
     forbidden_names = {
         'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
         'license.dat', '.trial_start', '.secret_key', '.env',
-        '.integrity.dat', 'sync_config.json',
+        '.integrity.dat', 'sync_config.json', 'backup_config.json',
+        '.restauration_en_attente.json',
     }
     errors = []
     for dirpath, _dirnames, filenames in os.walk(OUTPUT_DIR):

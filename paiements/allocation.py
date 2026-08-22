@@ -76,6 +76,53 @@ def _decimal(value):
     return Decimal(str(value or 0))
 
 
+def scope_for_type(value):
+    """Postes que le libellé du type annonce couvrir.
+
+    À ne pas confondre avec :func:`allocation_order_for_type`, qui dit jusqu'où
+    un excédent a le droit de glisser. « Réinscription + Tranche 1 » vise
+    l'inscription et T1 ; son excédent peut atteindre T2/T3, mais T2/T3 ne font
+    pas partie de ce que le type réclame.
+
+    Retourne un tuple vide pour un libellé non standard (« Scolarité »,
+    « Divers »…) : aucun montant de référence ne peut alors être déduit.
+    """
+    normalized = normalize_payment_type(value)
+    tranches = [
+        bucket
+        for number, bucket in ((1, TRANCHE_1), (2, TRANCHE_2), (3, TRANCHE_3))
+        if _mentions_tranche(normalized, number)
+    ]
+    # « Annuel » / « Scolarité » couvrent les trois tranches, mais seulement
+    # quand aucune tranche n'est nommée: « Scolarité - 2ème tranche » ne vise
+    # que T2.
+    if not tranches and ("annuel" in normalized or "scolarite" in normalized):
+        tranches = list(TRANCHE_BUCKETS)
+    scope = [INSCRIPTION] if "inscription" in normalized else []
+    scope.extend(tranches)
+    return tuple(scope)
+
+
+def montant_attendu_pour_type(value, dues, paid=None):
+    """Reste exact à payer pour les postes visés par le type.
+
+    C'est le montant qu'un guichetier devrait saisir: ce qui est déjà couvert
+    en est retranché, poste par poste. Retourne ``(total, detail)`` où
+    ``detail`` liste ``(poste, reste)`` dans l'ordre des postes visés.
+    """
+    paid = paid or {}
+    detail = []
+    total = Decimal("0")
+    for bucket in scope_for_type(value):
+        reste = max(
+            Decimal("0"),
+            _decimal(dues.get(bucket, 0)) - _decimal(paid.get(bucket, 0)),
+        )
+        total += reste
+        detail.append((bucket, reste))
+    return total, detail
+
+
 def allocate_amount(amount, dues, paid=None, payment_type=""):
     """Ventile ``amount`` et retourne (affectation, nouveaux_payés, reliquat)."""
     paid = paid or {}

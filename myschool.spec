@@ -102,6 +102,8 @@ hiddenimports += [
     'ecole_moderne.urls',
     'ecole_moderne.wsgi',
     'ecole_moderne.static_views',
+    'ecole_moderne.sauvegarde',
+    'ecole_moderne.sauvegarde_views',
     'ecole_moderne.middleware',
     'ecole_moderne.security_middleware',
     'ecole_moderne.image_cache_middleware',

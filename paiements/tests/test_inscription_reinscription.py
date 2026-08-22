@@ -8,13 +8,21 @@ montant dans les deux colonnes.
 """
 
 from datetime import date
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from eleves.models import Classe, Ecole, Eleve, Responsable
-from paiements.models import EcheancierPaiement
+from paiements.models import (
+    EcheancierPaiement,
+    ModePaiement,
+    Paiement,
+    PaiementRemise,
+    RemiseReduction,
+    TypePaiement,
+)
 from paiements.tests.support import TEST_MIDDLEWARE
 from utilisateurs.models import Profil
 
@@ -79,6 +87,27 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
             date_echeance_tranche_3=date(2026, 4, 1),
         )
 
+    def _appliquer_remise_soldante(self, eleve):
+        type_paiement = TypePaiement.objects.create(nom="Inscription + Tranche 1")
+        mode = ModePaiement.objects.create(nom="Espèces test export")
+        paiement = Paiement.objects.create(
+            eleve=eleve, type_paiement=type_paiement, mode_paiement=mode,
+            numero_recu="REMISE-EXPORT-001", montant=Decimal("110000"),
+            date_paiement=date(2026, 8, 15), annee_scolaire="2025-2026",
+            statut="VALIDE", cree_par=self.comptable, valide_par=self.comptable,
+        )
+        remise = RemiseReduction.objects.create(
+            nom="Remise test export", type_remise="MONTANT_FIXE",
+            valeur=Decimal("20000"), motif="SOCIALE",
+            date_debut=date(2025, 9, 1), date_fin=date(2026, 8, 31), actif=True,
+        )
+        PaiementRemise.objects.create(
+            paiement=paiement, remise=remise, montant_remise=Decimal("20000"),
+            applique_tranche_1=True, montant_tranche_1=Decimal("20000"),
+            base_calcul="TRANCHE", montant_base=Decimal("100000"),
+            motif="GESTE_COMMERCIAL",
+        )
+
     def test_colonnes_inscription_et_reinscription_ne_se_recouvrent_pas(self):
         response = self.client.get(reverse('paiements:liste_paiements'))
         self.assertEqual(response.status_code, 200)
@@ -134,3 +163,152 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
         self.assertEqual(totaux['frais_reinscription_total'], 40000)
         self.assertAlmostEqual(totaux['frais_reinscription_pct'], 100.0, places=2)
         self.assertEqual(totaux['du_global_net'], 200000 + 40000)
+
+    def test_export_tranches_excel_separe_inscription_et_reinscription(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        EcheancierPaiement.objects.filter(eleve=self.nouvel_eleve).update(
+            frais_inscription_paye=30000,
+        )
+        EcheancierPaiement.objects.filter(eleve=self.ancien_eleve).update(
+            frais_inscription_paye=20000,
+        )
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            {'annee_scolaire': '2025-2026'},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook[self.classe.nom[:25]]
+        headers = [cell.value for cell in sheet[2]]
+        rows = {
+            row[0].value: dict(zip(headers, [cell.value for cell in row]))
+            for row in sheet.iter_rows(min_row=3)
+        }
+
+        nouvel = rows[self.nouvel_eleve.nom_complet]
+        ancien = rows[self.ancien_eleve.nom_complet]
+        self.assertEqual(nouvel['Inscription payée'], 30000)
+        self.assertEqual(nouvel['Réinscription payée'], 0)
+        self.assertEqual(ancien['Inscription payée'], 0)
+        self.assertEqual(ancien['Réinscription payée'], 20000)
+
+    def test_export_tranches_pdf_contient_la_colonne_reinscription(self):
+        from unittest.mock import patch
+
+        from reportlab.platypus import Table
+
+        EcheancierPaiement.objects.filter(eleve=self.ancien_eleve).update(
+            frais_inscription_paye=20000,
+        )
+
+        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                {'annee_scolaire': '2025-2026'},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        elements = build_pdf.call_args.args[0]
+        table = next(element for element in elements if isinstance(element, Table))
+        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
+        self.assertIn('Réinscription payée', headers)
+
+        rows = {
+            row[0].getPlainText(): dict(zip(headers, row))
+            for row in table._cellvalues[1:]
+        }
+        ancien = rows[self.ancien_eleve.nom_complet]
+        self.assertEqual(ancien['Inscription payée'], '0')
+        self.assertEqual(ancien['Réinscription payée'], '20 000')
+
+    def test_export_tranches_excel_affiche_remise_taux_et_solde(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self._appliquer_remise_soldante(self.nouvel_eleve)
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            {'annee_scolaire': '2025-2026'},
+        )
+
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook[self.classe.nom[:25]]
+        headers = [cell.value for cell in sheet[2]]
+        rows = {
+            row[0].value: dict(zip(headers, [cell.value for cell in row]))
+            for row in sheet.iter_rows(min_row=3)
+        }
+        nouvel = rows[self.nouvel_eleve.nom_complet]
+
+        self.assertEqual(nouvel['Encaissé'], 110000)
+        self.assertEqual(nouvel['Remise'], 20000)
+        self.assertAlmostEqual(nouvel['Remise (%)'], 15.4, places=1)
+        self.assertEqual(nouvel['Reste'], 0)
+        self.assertIn('Soldé avec remise', nouvel['Situation / précision'])
+        self.assertIn('20 000 GNF', nouvel['Situation / précision'])
+
+    def test_export_tranches_pdf_affiche_remise_taux_et_precision(self):
+        from unittest.mock import patch
+
+        from reportlab.platypus import Table
+
+        self._appliquer_remise_soldante(self.nouvel_eleve)
+        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                {'annee_scolaire': '2025-2026'},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        elements = build_pdf.call_args.args[0]
+        table = next(element for element in elements if isinstance(element, Table))
+        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
+        rows = {
+            row[0].getPlainText(): dict(zip(headers, row))
+            for row in table._cellvalues[1:]
+        }
+        nouvel = rows[self.nouvel_eleve.nom_complet]
+
+        self.assertEqual(nouvel['Remise'], '20 000')
+        self.assertEqual(nouvel['Remise (%)'], '15,4 %')
+        self.assertIn('Soldé avec remise', nouvel['Situation / précision'].getPlainText())
+        self.assertIn('20 000 GNF', nouvel['Situation / précision'].getPlainText())
+
+    def test_logo_ecole_est_present_sur_exports_tranches_et_filigrane(self):
+        from pathlib import Path
+        from unittest.mock import MagicMock, patch
+
+        from django.conf import settings
+        from reportlab.lib.pagesizes import A4, landscape
+
+        logo_path = str(Path(settings.BASE_DIR) / 'static' / 'logos' / 'logo.png')
+        with patch('rapports.utils._get_logo_path', return_value=logo_path):
+            with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
+                response = self.client.get(
+                    reverse('paiements:export_tranches_par_classe_pdf'),
+                    {'annee_scolaire': '2025-2026'},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            canvas = MagicMock()
+            canvas._pagesize = landscape(A4)
+            callback = build_pdf.call_args.kwargs['onFirstPage']
+            callback(canvas, MagicMock(pagesize=landscape(A4)))
+            self.assertGreaterEqual(canvas.drawImage.call_count, 2)
+
+        with patch('paiements.views_tranches._get_logo_path', return_value=logo_path):
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_excel'),
+                {'annee_scolaire': '2025-2026'},
+            )
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(BytesIO(response.content))
+        self.assertTrue(all(sheet._images for sheet in workbook.worksheets))

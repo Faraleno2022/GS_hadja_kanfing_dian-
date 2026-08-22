@@ -6,6 +6,7 @@ from .remise_utils import (
     BASE_TRANCHE,
     TRANCHE_CHOICES,
     calculer_base_remise,
+    montant_brut_paiement,
     normaliser_tranches,
 )
 
@@ -61,6 +62,17 @@ class PaiementRemiseForm(forms.Form):
         label="Base de calcul",
     )
 
+    # Sans cette option, la remise s'ajoute à l'encaissement au lieu de s'y
+    # substituer: l'argent déjà versé se reporte alors sur les tranches
+    # suivantes, et n'ayant plus rien à couvrir il devient un trop-perçu.
+    deduire_du_paiement = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        label="Déduire la remise du montant du reçu",
+        help_text="Le reçu est ramené à son montant net; la couverture de "
+                  "l'année reste identique.",
+    )
+
     # Motif obligatoire: toute remise doit être justifiée
     motif = forms.ChoiceField(
         choices=[("", "— Choisir un motif —")] + PaiementRemise.MOTIF_CHOICES,
@@ -76,7 +88,7 @@ class PaiementRemiseForm(forms.Form):
         self.paiement = paiement
 
         if paiement:
-            self.fields['montant_original'].initial = paiement.montant
+            self.fields['montant_original'].initial = montant_brut_paiement(paiement)
             # Filtrer les remises valides à la date du paiement
             today = paiement.date_paiement
             self.fields['remises'].queryset = RemiseReduction.objects.filter(
@@ -103,6 +115,9 @@ class PaiementRemiseForm(forms.Form):
             self.fields['tranches'].initial = sorted(tranches)
         self.fields['base_calcul'].initial = existantes[0].base_calcul or BASE_TRANCHE
         self.fields['motif'].initial = existantes[0].motif or ''
+        self.fields['deduire_du_paiement'].initial = any(
+            lien.deduite_du_paiement for lien in existantes
+        )
 
     def clean_base_calcul(self):
         return self.cleaned_data.get('base_calcul') or BASE_TRANCHE

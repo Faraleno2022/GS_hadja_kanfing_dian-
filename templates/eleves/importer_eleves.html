@@ -185,7 +185,7 @@
         <div class="step-indicator">
             <div class="step active">
                 <div class="step-number">1</div>
-                <div class="step-title">Sélectionner la classe</div>
+                <div class="step-title">Classe par défaut</div>
             </div>
             <div class="step">
                 <div class="step-number">2</div>
@@ -208,7 +208,7 @@
             <!-- Sélection de la classe -->
             <div class="mb-4">
                 <label for="classe_id" class="form-label fw-bold">
-                    <i class="fas fa-school me-2"></i>Classe de destination *
+                    <i class="fas fa-school me-2"></i>Classe par défaut *
                 </label>
                 <select name="classe_id" id="classe_id" class="form-select form-select-lg" required>
                     <option value="">-- Sélectionner une classe --</option>
@@ -219,7 +219,11 @@
                         </option>
                     {% endfor %}
                 </select>
-                <small class="text-muted">Les élèves seront ajoutés à cette classe</small>
+                <small class="text-muted">
+                    Pour un fichier multi-classes, chaque élève est dirigé selon les colonnes
+                    « École », « Classe » et « Année scolaire ». Cette classe est utilisée
+                    seulement si la colonne « Classe » est absente ou vide.
+                </small>
             </div>
 
             <!-- Options d'importation -->
@@ -234,6 +238,7 @@
                 </div>
                 <small class="text-muted">
                     Format: [CODE_CLASSE]-[ANNÉE]-[NUMÉRO] (ex: 6A-2024-001)
+                    Les matricules déjà utilisés ou répétés dans le fichier sont rejetés.
                 </small>
             </div>
 
@@ -252,7 +257,9 @@
             <div class="info-alert">
                 <h5><i class="fas fa-upload me-2"></i>Étape 2: Importer le fichier complété</h5>
                 <p class="mb-3">
-                    Une fois le template rempli, importez-le ici.
+                    Une fois le template rempli, importez-le ici. Les exports contenant
+                    toutes les classes sont acceptés ; une classe introuvable est rejetée
+                    au lieu d'être remplacée par la classe par défaut.
                 </p>
                 
                 <div class="upload-area" id="uploadArea">

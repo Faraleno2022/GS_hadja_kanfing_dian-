@@ -1,0 +1,125 @@
+{% load humanize %}
+
+<div class="row g-3 mb-4">
+    <div class="col-xl col-md-4 col-6">
+        <div class="card h-100 border-primary"><div class="card-body">
+            <small class="text-muted">Modes utilisés</small><h4 class="mb-0">{{ summary.mode_count|intcomma }}</h4>
+        </div></div>
+    </div>
+    <div class="col-xl col-md-4 col-6">
+        <div class="card h-100 border-info"><div class="card-body">
+            <small class="text-muted">Élèves</small><h4 class="mb-0">{{ summary.student_count|intcomma }}</h4>
+        </div></div>
+    </div>
+    <div class="col-xl col-md-4 col-6">
+        <div class="card h-100 border-success"><div class="card-body">
+            <small class="text-muted">Encaissé sur la période</small><h4 class="mb-0 text-success">{{ summary.period_amount|floatformat:0|intcomma }} <small>GNF</small></h4>
+        </div></div>
+    </div>
+    <div class="col-xl col-md-4 col-6">
+        <div class="card h-100 border-danger"><div class="card-body">
+            <small class="text-muted">Solde global restant</small><h4 class="mb-0 text-danger">{{ summary.balance|floatformat:0|intcomma }} <small>GNF</small></h4>
+        </div></div>
+    </div>
+    <div class="col-xl col-md-4 col-6">
+        <div class="card h-100 border-secondary"><div class="card-body">
+            <small class="text-muted">Soldés / avec reste</small><h4 class="mb-0">{{ summary.settled_count }} / {{ summary.remaining_count }}</h4>
+        </div></div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <strong>Tableau par mode d'encaissement</strong>
+        <small class="text-muted">{{ summary.payment_count|intcomma }} paiement(s) validé(s)</small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mode</th>
+                    <th>Élève</th>
+                    <th>Classe</th>
+                    <th class="text-end">Paiements période</th>
+                    <th class="text-end">Encaissé via ce mode</th>
+                    <th class="text-end">Dû global</th>
+                    <th class="text-end">Déjà encaissé</th>
+                    <th class="text-end">Remises</th>
+                    <th class="text-end">Solde global</th>
+                    <th>Situation</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td><span class="badge bg-primary">{{ row.mode }}</span></td>
+                    <td>
+                        <div class="fw-semibold">{{ row.student }}</div>
+                        <small class="text-muted">{{ row.matricule }}</small>
+                    </td>
+                    <td>
+                        {{ row.class_name }}
+                        {% if user.is_superuser %}<br><small class="text-muted">{{ row.school_name }}</small>{% endif %}
+                    </td>
+                    <td class="text-end">
+                        <span class="fw-semibold">{{ row.payment_count }}</span>
+                        <br><small class="text-muted">dernier : {{ row.last_payment|date:'d/m/Y' }}</small>
+                    </td>
+                    <td class="text-end fw-bold text-success">{{ row.period_amount|floatformat:0|intcomma }} GNF</td>
+                    {% if row.situation %}
+                        <td class="text-end">{{ row.situation.due|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-end">{{ row.situation.paid|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-end text-warning">{{ row.situation.discount|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-end fw-bold {% if row.situation.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ row.situation.balance|floatformat:0|intcomma }} GNF
+                            {% if not row.situation.reliable %}<br><small class="text-warning"><i class="fas fa-triangle-exclamation"></i> Année à vérifier</small>{% endif %}
+                        </td>
+                    {% else %}
+                        <td colspan="4" class="text-center text-muted">Solde indisponible : aucun échéancier</td>
+                    {% endif %}
+                    <td>
+                        {% if row.status == 'solde' %}
+                            <span class="badge bg-success">{{ row.status_label }}</span>
+                        {% elif row.status == 'reste' %}
+                            <span class="badge bg-danger">{{ row.status_label }}</span>
+                            {% if row.situation.overdue > 0 %}<br><small class="text-danger">Retard : {{ row.situation.overdue|floatformat:0|intcomma }} GNF</small>{% endif %}
+                        {% else %}
+                            <span class="badge bg-secondary">{{ row.status_label }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                        <a href="{% url 'paiements:echeancier_eleve' row.student_id %}" class="btn btn-sm btn-outline-primary" title="Voir l'échéancier">
+                            <i class="fas fa-calendar-alt"></i>
+                        </a>
+                        <a href="{% url 'paiements:liste_paiements' %}?q={{ row.matricule|urlencode }}" class="btn btn-sm btn-outline-secondary" title="Voir les paiements">
+                            <i class="fas fa-receipt"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="11" class="text-center text-muted py-5">
+                    <i class="fas fa-search fa-2x mb-2 d-block"></i>
+                    Aucun élève ne correspond aux filtres sélectionnés.
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer bg-white">
+        <nav aria-label="Pagination du tableau par mode">
+            <ul class="pagination pagination-sm justify-content-center mb-0">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" data-page="{{ page_obj.previous_page_number }}" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Précédent</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" data-page="{{ page_obj.next_page_number }}" href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Suivant</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
