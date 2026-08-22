@@ -42,12 +42,10 @@ def importer_eleves(request):
         classes = classes.filter(annee_scolaire=annee_courante)
     classes = classes.order_by('nom')
     
-    # Filtrage par école si nécessaire
-    if not request.user.is_superuser:
-        from utilisateurs.utils import user_school
-        ecole = user_school(request.user)
-        if ecole:
-            classes = classes.filter(ecole=ecole)
+    # Un utilisateur sans école rattachée ne doit jamais voir les classes des
+    # autres établissements.
+    from utilisateurs.utils import filter_by_user_school
+    classes = filter_by_user_school(classes, request.user)
     
     context = {
         'classes': classes,
@@ -75,8 +73,18 @@ def _resoudre_ecole_ligne(nom_ecole, ecole_utilisateur, cache):
     seul un superutilisateur peut répartir sur plusieurs écoles.
     """
     from eleves.models import Ecole
+    from eleves.import_eleves import normaliser_libelle
 
     if ecole_utilisateur is not None:
+        nom = (nom_ecole or '').strip()
+        if nom:
+            attendu = normaliser_libelle(ecole_utilisateur.nom)
+            recu = normaliser_libelle(nom)
+            if recu != attendu:
+                from eleves.import_eleves import ImportElevesError
+                raise ImportElevesError(
+                    f"L'école « {nom} » n'est pas accessible avec ce compte."
+                )
         return ecole_utilisateur
 
     nom = (nom_ecole or '').strip()
@@ -85,7 +93,19 @@ def _resoudre_ecole_ligne(nom_ecole, ecole_utilisateur, cache):
     if nom in cache:
         return cache[nom]
 
-    ecole = Ecole.objects.filter(nom__iexact=nom).first() or Ecole.objects.filter(nom__icontains=nom).first()
+    nom_normalise = normaliser_libelle(nom)
+    ecoles = list(Ecole.objects.all())
+    ecole = next(
+        (candidate for candidate in ecoles
+         if normaliser_libelle(candidate.nom) == nom_normalise),
+        None,
+    )
+    if ecole is None:
+        ecole = next(
+            (candidate for candidate in ecoles
+             if nom_normalise in normaliser_libelle(candidate.nom)),
+            None,
+        )
     cache[nom] = ecole
     return ecole
 
@@ -106,7 +126,15 @@ def _importer_multi_classes(request, df, generer_matricules):
     ecole_utilisateur = _ecole_utilisateur(request)
     cache_ecoles = {}
 
-    totaux = {'total': 0, 'crees': 0, 'modifies': 0, 'erreurs': 0, 'matricules_generes': 0}
+    totaux = {
+        'total': 0,
+        'crees': 0,
+        'modifies': 0,
+        'erreurs': 0,
+        'matricules_generes': 0,
+        'doublons_ignores': 0,
+    }
+    doublons_details = []
     classes_creees = []
     classes_traitees = []
     echecs = []
@@ -165,6 +193,7 @@ def _importer_multi_classes(request, df, generer_matricules):
         stats = processor.importer()
         for cle in totaux:
             totaux[cle] += stats.get(cle, 0)
+        doublons_details.extend(stats.get('doublons_details') or [])
         classes_traitees.append(classe.nom)
 
     messages.success(
@@ -176,6 +205,18 @@ def _importer_multi_classes(request, df, generer_matricules):
         messages.info(request, "🏫 Classes créées : " + ", ".join(classes_creees))
     if totaux['matricules_generes']:
         messages.info(request, f"🔢 {totaux['matricules_generes']} matricule(s) généré(s) automatiquement")
+    if totaux['doublons_ignores']:
+        messages.warning(
+            request,
+            f"🚫 {totaux['doublons_ignores']} ligne(s) rejetée(s) : matricule déjà utilisé. "
+            "Aucun élève en double n'a été créé."
+        )
+        if doublons_details:
+            messages.warning(
+                request,
+                "Matricules en doublon — " + " ; ".join(doublons_details[:10])
+                + (" ; …" if len(doublons_details) > 10 else "")
+            )
     for echec in echecs[:5]:
         messages.warning(request, echec)
     if len(echecs) > 5:
@@ -214,6 +255,19 @@ def _traiter_import_eleves(request):
                 "si le fichier contient les colonnes École / Classe / Année scolaire."
             )
             return redirect('eleves:importer_eleves')
+
+        classe_cible = None
+        if classe_id:
+            from utilisateurs.utils import filter_by_user_school
+            classe_cible = filter_by_user_school(
+                Classe.objects.filter(id=classe_id), request.user
+            ).first()
+            if classe_cible is None:
+                messages.error(
+                    request,
+                    "Cette classe n'appartient pas à votre école : importation refusée."
+                )
+                return redirect('eleves:importer_eleves')
 
         # Sauvegarder temporairement le fichier
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(fichier.name)[1]) as tmp_file:
@@ -263,7 +317,7 @@ def _traiter_import_eleves(request):
             stats = processor.importer()
             
             # Afficher les résultats
-            classe = Classe.objects.get(id=classe_id)
+            classe = classe_cible
             
             messages.success(
                 request,
@@ -287,6 +341,20 @@ def _traiter_import_eleves(request):
                     request,
                     f"🔢 {stats['matricules_generes']} matricule(s) généré(s) automatiquement"
                 )
+
+            if stats.get('doublons_ignores', 0) > 0:
+                messages.warning(
+                    request,
+                    f"🚫 {stats['doublons_ignores']} ligne(s) rejetée(s) : matricule déjà "
+                    "utilisé. Aucun élève en double n'a été créé."
+                )
+                details = stats.get('doublons_details') or []
+                if details:
+                    messages.warning(
+                        request,
+                        "Matricules en doublon — " + " ; ".join(details[:10])
+                        + (" ; …" if len(details) > 10 else "")
+                    )
             
             if stats['erreurs'] > 0:
                 messages.warning(
@@ -338,7 +406,13 @@ def telecharger_template_eleves(request):
         
         # Nom du fichier
         if classe_id:
-            classe = Classe.objects.get(id=classe_id)
+            from utilisateurs.utils import filter_by_user_school
+            classe = filter_by_user_school(
+                Classe.objects.filter(id=classe_id), request.user
+            ).first()
+            if classe is None:
+                messages.error(request, "Cette classe n'appartient pas à votre école.")
+                return redirect('eleves:importer_eleves')
             filename = f"template_eleves_{classe.nom.replace(' ', '_')}.xlsx"
         else:
             filename = f"template_eleves_{datetime.now().strftime('%Y%m%d')}.xlsx"
