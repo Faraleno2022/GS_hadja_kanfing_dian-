@@ -15,19 +15,17 @@ from rapports.utils import _draw_header_and_watermark
 # ReportLab: fera l'objet d'un import différé dans la vue PDF
 
 
-def _pourcentage_remise(remise, total_du):
-    remise = Decimal(str(remise or 0))
-    total_du = Decimal(str(total_du or 0))
-    return remise / total_du * Decimal('100') if total_du > 0 else Decimal('0')
+def _format_taux_remise(taux):
+    """Affiche le taux enregistré sans le recalculer depuis le montant dû."""
+    taux = Decimal(str(taux or 0)).quantize(Decimal('0.01'))
+    return format(taux.normalize(), 'f')
 
 
-def _precision_remise(remise, total_du, reste, total_paye):
+def _precision_remise(total_du, reste, total_paye):
     if total_du <= 0:
-        return 'Remise appliquée - total dû indisponible' if remise > 0 else 'Total dû indisponible'
+        return 'Total dû indisponible'
     if reste <= 0:
-        return 'Soldé - remise appliquée au paiement' if remise > 0 else 'Soldé'
-    if remise > 0:
-        return 'Remise appliquée - solde restant'
+        return 'Soldé'
     return 'Paiement partiel' if total_paye > 0 else 'À payer'
 
 
@@ -54,10 +52,17 @@ def _tranche_export_rows(classe, annee_scolaire):
     )
     if effective_year:
         discounts = discounts.filter(paiement__annee_scolaire=effective_year)
-    discounts_by_student = {
-        item['paiement__eleve_id']: item['total'] or Decimal('0')
-        for item in discounts.values('paiement__eleve_id').annotate(total=Sum('montant_remise'))
-    }
+    discounts_by_student = {}
+    for item in discounts.select_related('paiement', 'remise').order_by('pk'):
+        detail = discounts_by_student.setdefault(
+            item.paiement.eleve_id,
+            {'amount': Decimal('0'), 'rates': []},
+        )
+        detail['amount'] += Decimal(str(item.montant_remise or 0))
+        if item.remise.type_remise == 'POURCENTAGE':
+            taux = Decimal(str(item.remise.valeur or 0))
+            if taux not in detail['rates']:
+                detail['rates'].append(taux)
 
     rows = []
     for eleve in eleves:
@@ -91,10 +96,12 @@ def _tranche_export_rows(classe, annee_scolaire):
             t3 = paiements.filter(type_paiement__nom__icontains='tranche 3').aggregate(total=Sum('montant'))['total'] or Decimal('0')
             total_paye = insc + reinsc + t1 + t2 + t3
 
-        remise = max(Decimal('0'), Decimal(str(discounts_by_student.get(eleve.pk, 0))))
+        discount_detail = discounts_by_student.get(
+            eleve.pk, {'amount': Decimal('0'), 'rates': []}
+        )
+        remise = max(Decimal('0'), discount_detail['amount'])
         reste = max(Decimal('0'), total_du - total_paye - remise) if total_du > 0 else Decimal('0')
-        taux_remise = _pourcentage_remise(remise, total_du)
-        precision = _precision_remise(remise, total_du, reste, total_paye)
+        precision = _precision_remise(total_du, reste, total_paye)
         rows.append({
             'student': getattr(eleve, 'nom_complet', f"{eleve.prenom} {eleve.nom}"),
             'inscription': insc,
@@ -105,7 +112,7 @@ def _tranche_export_rows(classe, annee_scolaire):
             'total_due': total_du,
             'total_paid': total_paye,
             'discount': remise,
-            'discount_rate': taux_remise,
+            'discount_rates': tuple(discount_detail['rates']),
             'balance': reste,
             'precision': precision,
         })
@@ -208,8 +215,8 @@ def export_tranches_par_classe_pdf(request):
         titre += f" – Année {annee_scolaire}"
     elements.append(Paragraph(titre, styles['Title']))
     elements.append(Paragraph(
-        "Le reste est calculé après déduction des paiements validés et des remises. "
-        "Le taux de remise est rapporté au total dû.",
+        "Les colonnes de paiement contiennent uniquement les montants encaissés. "
+        "La remise et le taux choisi dans le système sont affichés séparément.",
         cell,
     ))
     elements.append(Spacer(1, 0.5*cm))
@@ -235,6 +242,10 @@ def export_tranches_par_classe_pdf(request):
         data = [header]
 
         for row in _tranche_export_rows(classe, annee_scolaire):
+            taux_remise = ' / '.join(
+                f"{_format_taux_remise(taux)} %"
+                for taux in row['discount_rates']
+            )
             data.append([
                 P(row['student']),
                 f"{row['inscription']:,}".replace(',', ' '),
@@ -245,7 +256,7 @@ def export_tranches_par_classe_pdf(request):
                 f"{row['total_due']:,}".replace(',', ' '),
                 f"{row['total_paid']:,}".replace(',', ' '),
                 f"{row['discount']:,}".replace(',', ' '),
-                f"{row['discount_rate']:.1f} %",
+                taux_remise,
                 f"{row['balance']:,}".replace(',', ' '),
                 P(row['precision']),
             ])
@@ -385,17 +396,26 @@ def export_tranches_par_classe_excel(request):
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
         for row in _tranche_export_rows(classe, annee_scolaire):
+            if len(row['discount_rates']) == 1:
+                taux_remise = float(row['discount_rates'][0])
+            elif row['discount_rates']:
+                taux_remise = ' / '.join(
+                    f"{_format_taux_remise(taux)} %"
+                    for taux in row['discount_rates']
+                )
+            else:
+                taux_remise = None
             ws.append([
                 row['student'], int(row['inscription']), int(row['reinscription']),
                 int(row['tranche_1']), int(row['tranche_2']), int(row['tranche_3']),
                 int(row['total_due']), int(row['total_paid']), int(row['discount']),
-                float(round(row['discount_rate'], 1)), int(row['balance']),
+                taux_remise, int(row['balance']),
                 row['precision'],
             ])
 
         for row_cells in ws.iter_rows(min_row=3, min_col=2, max_col=11):
             for item in row_cells:
-                item.number_format = '0.0' if item.column == 10 else '#,##0'
+                item.number_format = '0.##' if item.column == 10 else '#,##0'
         for row_cells in ws.iter_rows(min_row=3, max_col=len(headers)):
             for item in row_cells:
                 item.alignment = Alignment(vertical='top', wrap_text=True)

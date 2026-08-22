@@ -94,7 +94,7 @@ class ExportTranchesParClasseTests(TestCase):
         discount = RemiseReduction.objects.create(
             nom='Remise fratrie export',
             type_remise='POURCENTAGE',
-            valeur=Decimal('6.54'),
+            valeur=Decimal('5.00'),
             motif='FRATRIE',
             date_debut=date(2025, 9, 1),
             date_fin=date(2026, 8, 31),
@@ -138,10 +138,12 @@ class ExportTranchesParClasseTests(TestCase):
         sheet = workbook.worksheets[1]
         self.assertEqual(sheet.cell(2, 9).value, 'Remise')
         self.assertEqual(sheet.cell(2, 10).value, 'Remise (%)')
+        self.assertEqual(sheet.cell(3, 6).value, 400000)
+        self.assertEqual(sheet.cell(3, 8).value, 1430000)
         self.assertEqual(sheet.cell(3, 9).value, 100000)
-        self.assertEqual(sheet.cell(3, 10).value, 6.5)
+        self.assertEqual(sheet.cell(3, 10).value, 5)
         self.assertEqual(sheet.cell(3, 11).value, 0)
-        self.assertEqual(sheet.cell(3, 12).value, 'Soldé - remise appliquée au paiement')
+        self.assertEqual(sheet.cell(3, 12).value, 'Soldé')
 
     def test_pdf_contient_la_colonne_reinscription(self):
         from reportlab.platypus import Table as ReportLabTable
@@ -212,5 +214,5 @@ class ExportTranchesParClasseTests(TestCase):
         header = [cell.getPlainText() for cell in tables[0][0]]
         row = [cell.getPlainText() if hasattr(cell, 'getPlainText') else cell for cell in tables[0][1]]
         self.assertEqual(header[8:12], ['Remise', 'Remise (%)', 'Reste', 'Situation / précision'])
-        self.assertEqual(row[8:11], ['100 000', '6.5 %', '0'])
-        self.assertEqual(row[11], 'Soldé - remise appliquée au paiement')
+        self.assertEqual(row[5:11], ['400 000', '1 530 000', '1 430 000', '100 000', '5 %', '0'])
+        self.assertEqual(row[11], 'Soldé')
