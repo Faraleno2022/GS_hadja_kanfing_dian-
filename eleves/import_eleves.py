@@ -335,7 +335,9 @@ class ImportElevesProcessor:
         # Listes pour bulk operations
         eleves_a_creer = []
         eleves_a_modifier = []
-        responsables_a_creer = []
+        # Indexer les responsables en attente par téléphone évite d'envoyer
+        # plusieurs fois le même objet non enregistré à bulk_create().
+        responsables_a_creer = {}
         
         with transaction.atomic():
             for index, row in self.df.iterrows():
@@ -349,14 +351,14 @@ class ImportElevesProcessor:
                     if resultat:
                         if resultat['type'] == 'creer':
                             eleves_a_creer.append(resultat['eleve'])
-                            if resultat.get('responsables'):
-                                responsables_a_creer.extend(resultat['responsables'])
                         elif resultat['type'] == 'modifier':
                             eleves_a_modifier.append(resultat['eleve'])
                         elif resultat['type'] == 'doublon':
                             self._enregistrer_doublon(
                                 index + 2, row, resultat['matricule']
                             )
+                        for responsable in resultat.get('responsables') or []:
+                            responsables_a_creer[responsable.telephone] = responsable
                     
                     numero_ordre += 1
                     
@@ -366,16 +368,35 @@ class ImportElevesProcessor:
             
             # ⚡ BULK CREATE responsables d'abord
             if responsables_a_creer:
-                Responsable.objects.bulk_create(responsables_a_creer, ignore_conflicts=True)
+                Responsable.objects.bulk_create(
+                    list(responsables_a_creer.values()), ignore_conflicts=True
+                )
                 # Recharger pour avoir les IDs
                 responsables_dict = {r.telephone: r for r in Responsable.objects.all()}
             
-            # Assigner les responsables aux élèves
-            for eleve_data in eleves_a_creer:
+            # Assigner uniquement des responsables réellement enregistrés aux
+            # élèves créés ou modifiés. Avec ignore_conflicts=True, Django ne
+            # renseigne pas forcément les PK sur les objets passés à
+            # bulk_create(), d'où le rechargement obligatoire ci-dessus.
+            for eleve_data in eleves_a_creer + eleves_a_modifier:
                 if hasattr(eleve_data, '_responsable_tel'):
-                    eleve_data.responsable_principal = responsables_dict.get(eleve_data._responsable_tel)
+                    responsable = responsables_dict.get(eleve_data._responsable_tel)
+                    if responsable is None or responsable.pk is None:
+                        raise ImportElevesError(
+                            "Impossible d'enregistrer le responsable principal "
+                            f"({eleve_data._responsable_tel})"
+                        )
+                    eleve_data.responsable_principal = responsable
+                    delattr(eleve_data, '_responsable_tel')
                 if hasattr(eleve_data, '_responsable2_tel'):
-                    eleve_data.responsable_secondaire = responsables_dict.get(eleve_data._responsable2_tel)
+                    responsable = responsables_dict.get(eleve_data._responsable2_tel)
+                    if responsable is None or responsable.pk is None:
+                        raise ImportElevesError(
+                            "Impossible d'enregistrer le responsable secondaire "
+                            f"({eleve_data._responsable2_tel})"
+                        )
+                    eleve_data.responsable_secondaire = responsable
+                    delattr(eleve_data, '_responsable2_tel')
             
             # ⚡ BULK CREATE élèves
             if eleves_a_creer:
@@ -406,6 +427,24 @@ class ImportElevesProcessor:
                 f"ligne {ligne_num} : {matricule}"
                 + (f" ({identite})" if identite else '')
             )
+
+    @staticmethod
+    def _preparer_lien_responsable(
+        eleve, champ, marqueur_telephone, responsable, nouveau_responsable
+    ):
+        """Prépare une FK sans jamais conserver un objet lié non enregistré."""
+        candidat = responsable or nouveau_responsable
+        if hasattr(eleve, marqueur_telephone):
+            delattr(eleve, marqueur_telephone)
+        if candidat is None:
+            setattr(eleve, champ, None)
+        elif candidat.pk is not None:
+            setattr(eleve, champ, candidat)
+        else:
+            # Le lien sera résolu après la création et le rechargement de tous
+            # les responsables du lot.
+            setattr(eleve, champ, None)
+            setattr(eleve, marqueur_telephone, candidat.telephone)
     
     def _preparer_eleve(self, row, classe, numero_ordre, matricules_existants, responsables_dict, eleves_existants):
         """
@@ -457,11 +496,24 @@ class ImportElevesProcessor:
             eleve_existant.sexe = _valeur_texte(row.get('Sexe')).upper()
             eleve_existant.date_naissance = date_naissance
             eleve_existant.lieu_naissance = lieu_naissance
-            eleve_existant.responsable_principal = responsable
-            eleve_existant.responsable_secondaire = responsable_secondaire
+            self._preparer_lien_responsable(
+                eleve_existant, 'responsable_principal', '_responsable_tel',
+                responsable, nouveau_resp,
+            )
+            self._preparer_lien_responsable(
+                eleve_existant, 'responsable_secondaire', '_responsable2_tel',
+                responsable_secondaire, nouveau_resp2,
+            )
             eleve_existant.statut = 'ACTIF'
-            
-            return {'type': 'modifier', 'eleve': eleve_existant}
+
+            nouveaux_resp = [
+                resp for resp in (nouveau_resp, nouveau_resp2) if resp is not None
+            ]
+            return {
+                'type': 'modifier',
+                'eleve': eleve_existant,
+                'responsables': nouveaux_resp or None,
+            }
         else:
             # Créer
             eleve = Eleve(
@@ -476,16 +528,16 @@ class ImportElevesProcessor:
                 statut='ACTIF'
             )
             
-            # Stocker les téléphones pour lier après bulk_create des responsables
-            if responsable:
-                eleve.responsable_principal = responsable
-            elif nouveau_resp:
-                eleve._responsable_tel = nouveau_resp.telephone
-            
-            if responsable_secondaire:
-                eleve.responsable_secondaire = responsable_secondaire
-            elif nouveau_resp2:
-                eleve._responsable2_tel = nouveau_resp2.telephone
+            # Les objets non enregistrés sont remplacés par un marqueur de
+            # téléphone, résolu après le bulk_create des responsables.
+            self._preparer_lien_responsable(
+                eleve, 'responsable_principal', '_responsable_tel',
+                responsable, nouveau_resp,
+            )
+            self._preparer_lien_responsable(
+                eleve, 'responsable_secondaire', '_responsable2_tel',
+                responsable_secondaire, nouveau_resp2,
+            )
             
             nouveaux_resp = []
             if nouveau_resp:
@@ -508,7 +560,10 @@ class ImportElevesProcessor:
 
         # Vérifier en mémoire
         if telephone in responsables_dict:
-            return (responsables_dict[telephone], None)
+            responsable = responsables_dict[telephone]
+            if responsable.pk is None:
+                return (None, responsable)
+            return (responsable, None)
 
         # Créer un nouveau responsable (sera bulk_create plus tard)
         nouveau_resp = Responsable(
@@ -540,7 +595,10 @@ class ImportElevesProcessor:
 
         # Vérifier en mémoire
         if telephone in responsables_dict:
-            return (responsables_dict[telephone], None)
+            responsable = responsables_dict[telephone]
+            if responsable.pk is None:
+                return (None, responsable)
+            return (responsable, None)
 
         # Créer un nouveau responsable (sera bulk_create plus tard)
         nouveau_resp = Responsable(
