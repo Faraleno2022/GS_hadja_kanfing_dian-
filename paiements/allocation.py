@@ -17,6 +17,15 @@ TRANCHE_3 = "tranche_3"
 ALL_BUCKETS = (INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3)
 TRANCHE_BUCKETS = (TRANCHE_1, TRANCHE_2, TRANCHE_3)
 
+# Interface historique encore utilisée par certaines vues de la branche
+# distante. Elle pointe vers les mêmes postes que le moteur moderne.
+ALLOCATION_COMPONENTS = (
+    (INSCRIPTION, "frais_inscription_du", "frais_inscription_paye"),
+    (TRANCHE_1, "tranche_1_due", "tranche_1_payee"),
+    (TRANCHE_2, "tranche_2_due", "tranche_2_payee"),
+    (TRANCHE_3, "tranche_3_due", "tranche_3_payee"),
+)
+
 
 def normalize_payment_type(value):
     """Retourne un libellé minuscule sans accents et aux espaces normalisés."""
@@ -27,6 +36,16 @@ def normalize_payment_type(value):
 
 def is_reinscription_payment(value):
     return "reinscription" in normalize_payment_type(value)
+
+
+def registration_kind_for_type(value):
+    """Retourne le tarif d'admission explicitement nommé par le type."""
+    normalized = normalize_payment_type(value)
+    if "reinscription" in normalized:
+        return "reinscription"
+    if "inscription" in normalized:
+        return "inscription"
+    return None
 
 
 def _mentions_tranche(normalized_value, number):
@@ -159,6 +178,44 @@ def replay_payment_allocations(payments, dues):
         allocations[getattr(payment, "pk", getattr(payment, "id", None))] = allocation
         unallocated[getattr(payment, "pk", getattr(payment, "id", None))] = remaining
     return allocations, paid, unallocated
+
+
+def allocate_amount_sequentially(echeancier, amount, initial_paid=None):
+    """Compatibilité : ventilation séquentielle admission, T1, T2 puis T3."""
+    return allocate_amount(
+        amount,
+        echeancier_dues(echeancier),
+        initial_paid,
+        "Inscription + Tranche 1",
+    )
+
+
+def get_payment_allocation(paiement, echeancier=None):
+    """Reconstruit l'affectation exacte d'un paiement validé pour les reçus."""
+    from .models import Paiement
+
+    if echeancier is None:
+        try:
+            echeancier = paiement.eleve.echeancier
+        except Exception:
+            return None
+
+    running_paid = {bucket: Decimal("0") for bucket in ALL_BUCKETS}
+    target_allocation = None
+    validated = (
+        Paiement.objects.filter(eleve=paiement.eleve, statut="VALIDE")
+        .order_by("date_paiement", "date_creation", "pk")
+    )
+    for current in validated.iterator():
+        allocation, running_paid, unapplied = allocate_amount_sequentially(
+            echeancier,
+            current.montant,
+            initial_paid=running_paid,
+        )
+        allocation["non_affecte"] = unapplied
+        if current.pk == paiement.pk:
+            target_allocation = allocation
+    return target_allocation
 
 
 def echeancier_dues(echeancier):
