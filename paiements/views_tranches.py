@@ -39,13 +39,85 @@ def _annee_vers_dates(annee_scolaire: str):
 ZERO = Decimal('0')
 
 
-def _taux_remise(remise, total_du):
+def _taux_remise(remise, base):
     remise = Decimal(str(remise or 0))
-    total_du = Decimal(str(total_du or 0))
-    return (remise / total_du * Decimal('100')) if total_du > 0 else ZERO
+    base = Decimal(str(base or 0))
+    return (remise / base * Decimal('100')) if base > 0 else ZERO
 
 
-def _situation_avec_remise(total_du, encaisse, remise, reste, *, avec_echeancier):
+def _format_taux(taux):
+    """« 50 % » plutôt que « 50,0 % » quand le taux saisi est entier."""
+    taux = Decimal(str(taux or 0))
+    if taux == taux.to_integral_value():
+        return f"{int(taux)} %"
+    return f"{taux:.1f}".replace('.', ',') + ' %'
+
+
+def _liens_remise_eleve(eleve, annee_scolaire):
+    """Remises validées de l'élève sur l'année, avec la remise d'origine.
+
+    Même périmètre que `remises_par_tranche` : on garde les paiements de
+    l'année et les anciens paiements sans année tombant dans ses bornes.
+    """
+    from django.db.models import Q
+
+    from paiements.models import PaiementRemise
+    from paiements.payment_engine import school_year_bounds
+
+    liens = PaiementRemise.objects.select_related('remise', 'paiement').filter(
+        paiement__eleve=eleve,
+        paiement__statut='VALIDE',
+    )
+    if annee_scolaire:
+        debut, fin = school_year_bounds(annee_scolaire)
+        legacy = Q(paiement__annee_scolaire='')
+        if debut and fin:
+            legacy &= Q(paiement__date_paiement__range=(debut, fin))
+        liens = liens.filter(Q(paiement__annee_scolaire=annee_scolaire) | legacy)
+    return list(liens)
+
+
+def _taux_remise_affiche(liens, remise_totale, total_du):
+    """(valeur, libellé, plusieurs_taux) du pourcentage de remise à afficher.
+
+    On restitue le pourcentage réellement choisi par l'utilisateur au moment
+    de la saisie. Le taux n'est recalculé que pour les remises exprimées en
+    montant fixe, et alors sur la base retenue à la saisie plutôt que sur le
+    total dû (qui inclut l'inscription, jamais remisée).
+    """
+    remise_totale = Decimal(str(remise_totale or 0))
+    if remise_totale <= 0:
+        return ZERO, '', False
+
+    choisis = []
+    base_fixe = ZERO
+    for lien in liens:
+        remise = getattr(lien, 'remise', None)
+        if remise is not None and getattr(remise, 'type_remise', '') == 'POURCENTAGE':
+            valeur = Decimal(str(getattr(remise, 'valeur', 0) or 0))
+            if valeur > 0 and valeur not in choisis:
+                choisis.append(valeur)
+        else:
+            base_fixe += Decimal(str(getattr(lien, 'montant_base', 0) or 0))
+
+    if len(choisis) == 1:
+        return choisis[0], _format_taux(choisis[0]), False
+    if choisis:
+        # Plusieurs taux saisis : on les affiche tous plutôt qu'une moyenne.
+        return (
+            max(choisis),
+            ' + '.join(_format_taux(taux) for taux in choisis),
+            True,
+        )
+
+    base = base_fixe if base_fixe > 0 else Decimal(str(total_du or 0))
+    taux = _taux_remise(remise_totale, base)
+    return taux, _format_taux(taux), False
+
+
+def _situation_avec_remise(
+    total_du, encaisse, remise, reste, *, avec_echeancier, taux_libelle=''
+):
     """Libellé explicite, notamment lorsqu'une remise permet de solder l'élève."""
     if not avec_echeancier:
         situation = 'Sans échéancier'
@@ -57,12 +129,11 @@ def _situation_avec_remise(total_du, encaisse, remise, reste, *, avec_echeancier
         situation = 'À payer'
 
     if remise > 0:
-        taux = _taux_remise(remise, total_du)
         montant = f"{remise:,.0f}".replace(',', ' ')
-        pourcentage = f"{taux:.1f}".replace('.', ',')
+        detail = f"{montant} GNF ({taux_libelle})" if taux_libelle else f"{montant} GNF"
         if avec_echeancier and reste <= 0:
-            return f"Soldé avec remise — {montant} GNF ({pourcentage} %)"
-        return f"{situation} — remise appliquée : {montant} GNF ({pourcentage} %)"
+            return f"Soldé avec remise — {detail}"
+        return f"{situation} — remise appliquée : {detail}"
     return situation
 
 
@@ -87,15 +158,16 @@ def _donnees_tranches_eleve(eleve, annee_scolaire):
 
     if avec_echeancier:
         situation = situation_echeancier(echeancier)
-        admission = situation['payes'][INSCRIPTION]
+        payes_affiches = situation.get('payes_affiches', situation['payes'])
+        admission = payes_affiches[INSCRIPTION]
         if getattr(echeancier, 'nature_frais', 'INSCRIPTION') == 'REINSCRIPTION':
             valeurs['reinscription'] = admission
         else:
             valeurs['inscription'] = admission
         valeurs.update({
-            'tranche_1': situation['payes'][TRANCHE_1],
-            'tranche_2': situation['payes'][TRANCHE_2],
-            'tranche_3': situation['payes'][TRANCHE_3],
+            'tranche_1': payes_affiches[TRANCHE_1],
+            'tranche_2': payes_affiches[TRANCHE_2],
+            'tranche_3': payes_affiches[TRANCHE_3],
             'total_du': situation['total_du'],
             'encaisse': situation['total_encaisse'],
             'remise': situation['total_remises'],
@@ -127,10 +199,19 @@ def _donnees_tranches_eleve(eleve, annee_scolaire):
                 ZERO,
             )
 
-    valeurs['taux_remise'] = _taux_remise(valeurs['remise'], valeurs['total_du'])
+    annee_ref = annee_scolaire or (
+        getattr(echeancier, 'annee_scolaire', '') if avec_echeancier else ''
+    )
+    liens_remise = _liens_remise_eleve(eleve, annee_ref) if valeurs['remise'] > 0 else []
+    taux, taux_libelle, plusieurs_taux = _taux_remise_affiche(
+        liens_remise, valeurs['remise'], valeurs['total_du']
+    )
+    valeurs['taux_remise'] = taux
+    valeurs['taux_remise_libelle'] = taux_libelle
+    valeurs['taux_remise_multiple'] = plusieurs_taux
     valeurs['situation'] = _situation_avec_remise(
         valeurs['total_du'], valeurs['encaisse'], valeurs['remise'], valeurs['reste'],
-        avec_echeancier=avec_echeancier,
+        avec_echeancier=avec_echeancier, taux_libelle=taux_libelle,
     )
     return valeurs
 
@@ -218,6 +299,9 @@ def export_tranches_par_classe_pdf(request):
     header_cell = ParagraphStyle(
         'HeaderCell', parent=cell, alignment=1, fontName='Helvetica-Bold'
     )
+    # Les montants passent par un Paragraph : ReportLab les confine alors à la
+    # largeur de leur colonne au lieu de les laisser déborder sur la suivante.
+    num_cell = ParagraphStyle('NumCell', parent=cell, alignment=2)
 
     titre = 'Tranches par classe'
     if annee_scolaire:
@@ -232,6 +316,15 @@ def export_tranches_par_classe_pdf(request):
 
     def P(x):
         return Paragraph(str(x or ''), cell)
+
+    def N(montant):
+        """Montant GNF cadré à droite, insécable pour rester sur une ligne."""
+        texte = f"{montant:,.0f}".replace(',', ' ')
+        return Paragraph(texte, num_cell)
+
+    def Pct(libelle):
+        """Taux saisi par l'utilisateur, tiret quand aucune remise n'existe."""
+        return Paragraph((libelle or '—').replace(' %', ' %'), num_cell)
 
     # Parcours des classes
     for classe in classes:
@@ -257,27 +350,32 @@ def export_tranches_par_classe_pdf(request):
             nom_affiche = getattr(e, 'nom_complet', None) or f"{getattr(e, 'prenom', '')} {getattr(e, 'nom', '')}".strip()
             data.append([
                 P(nom_affiche),
-                f"{valeurs['inscription']:,.0f}".replace(',', ' '),
-                f"{valeurs['reinscription']:,.0f}".replace(',', ' '),
-                f"{valeurs['tranche_1']:,.0f}".replace(',', ' '),
-                f"{valeurs['tranche_2']:,.0f}".replace(',', ' '),
-                f"{valeurs['tranche_3']:,.0f}".replace(',', ' '),
-                f"{valeurs['total_du']:,.0f}".replace(',', ' '),
-                f"{valeurs['encaisse']:,.0f}".replace(',', ' '),
-                f"{valeurs['remise']:,.0f}".replace(',', ' '),
-                f"{valeurs['taux_remise']:.1f}".replace('.', ',') + ' %',
-                f"{valeurs['reste']:,.0f}".replace(',', ' '),
+                N(valeurs['inscription']),
+                N(valeurs['reinscription']),
+                N(valeurs['tranche_1']),
+                N(valeurs['tranche_2']),
+                N(valeurs['tranche_3']),
+                N(valeurs['total_du']),
+                N(valeurs['encaisse']),
+                N(valeurs['remise']),
+                Pct(valeurs['taux_remise_libelle']),
+                N(valeurs['reste']),
                 P(valeurs['situation']),
             ])
 
         # Construire la table pour la classe
-        col_widths = [4*cm] + [1.65*cm] * 5 + [2*cm, 2*cm, 2*cm, 1.6*cm, 2*cm, 5.5*cm]
+        # Somme = 28,2 cm, soit la largeur utile d'un A4 paysage (marges 20 pt).
+        col_widths = (
+            [3.8*cm] + [1.7*cm] * 5
+            + [2.1*cm, 2.1*cm, 2.2*cm, 2.1*cm, 2.1*cm, 5.3*cm]
+        )
         table = Table(data, repeatRows=1, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
             ('TEXTCOLOR', (0,0), (-1,0), colors.black),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 8),
+            ('FONTSIZE', (0,1), (-1,-1), 7),
             ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
             ('ALIGN', (0,0), (0,-1), 'LEFT'),
             ('ALIGN', (-1,1), (-1,-1), 'LEFT'),
@@ -323,6 +421,7 @@ def export_tranches_par_classe_excel(request):
         from openpyxl import Workbook
         from openpyxl.drawing.image import Image as ExcelImage
         from openpyxl.utils import get_column_letter
+        from openpyxl.styles import Alignment
     except Exception:
         return HttpResponse("OpenPyXL n'est pas installé. Veuillez exécuter: pip install openpyxl", status=500)
 
@@ -397,13 +496,22 @@ def export_tranches_par_classe_excel(request):
         for e in eleves:
             valeurs = _donnees_tranches_eleve(e, annee_scolaire)
 
+            # Un seul taux saisi : on garde une vraie valeur numérique.
+            # Plusieurs taux : le texte « 50 % + 25 % » évite d'inventer une moyenne.
+            if valeurs['remise'] <= 0:
+                taux_cellule = None
+            elif valeurs['taux_remise_multiple']:
+                taux_cellule = valeurs['taux_remise_libelle']
+            else:
+                taux_cellule = float(round(valeurs['taux_remise'], 1))
+
             ws.append([
                 getattr(e, 'nom_complet', f"{e.prenom} {e.nom}"),
                 int(valeurs['inscription']), int(valeurs['reinscription']),
                 int(valeurs['tranche_1']), int(valeurs['tranche_2']),
                 int(valeurs['tranche_3']), int(valeurs['total_du']),
                 int(valeurs['encaisse']), int(valeurs['remise']),
-                float(round(valeurs['taux_remise'], 1)), int(valeurs['reste']),
+                taux_cellule, int(valeurs['reste']),
                 valeurs['situation'],
             ])
 
@@ -413,7 +521,19 @@ def export_tranches_par_classe_excel(request):
                 34 if col == 12 else (22 if col == 1 else 16)
             )
         for row in range(3, ws.max_row + 1):
-            ws.cell(row, 10).number_format = '0.0'
+            # Chaque montant garde sa colonne : format nombre + alignement à
+            # droite, et le taux affiche son symbole sans déborder sur le reste.
+            for col in range(2, 10):
+                cellule = ws.cell(row, col)
+                cellule.number_format = '#,##0'
+                cellule.alignment = Alignment(horizontal='right')
+            ws.cell(row, 11).number_format = '#,##0'
+            ws.cell(row, 11).alignment = Alignment(horizontal='right')
+            taux = ws.cell(row, 10)
+            taux.alignment = Alignment(horizontal='right')
+            if isinstance(taux.value, (int, float)):
+                taux.number_format = '0.0" %"'
+            ws.cell(row, 12).alignment = Alignment(horizontal='left', wrap_text=True)
 
         # Index line
         ws_index.append([getattr(classe.ecole, 'nom', ''), classe.nom, sheet_name])

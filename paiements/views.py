@@ -2981,8 +2981,10 @@ def generer_recu_pdf(request, paiement_id:int):
 
     if remises_total and int(remises_total) > 0:
         draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
-    # Montant net (jamais négatif)
-    montant_net = max(0, int(montant_brut_recu - (remises_total or 0)))
+    # Le montant réellement encaissé est déjà stocké net lorsque l'option
+    # « Déduire la remise du montant du reçu » a été choisie. Sans cette option,
+    # soustraire encore la remise afficherait à tort un encaissement inférieur.
+    montant_net = max(0, int(paiement.montant or 0))
     draw_line(f"Montant net payé : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
 
     # Affectation du paiement courant sur les tranches. La même fonction pure
@@ -2994,9 +2996,10 @@ def generer_recu_pdf(request, paiement_id:int):
         echeancier_for_alloc = None
     if echeancier_for_alloc:
         try:
-            current_allocation = situation_echeancier(
-                echeancier_for_alloc
-            )['allocations'].get(paiement.id)
+            situation_allocation = situation_echeancier(echeancier_for_alloc)
+            current_allocation = situation_allocation.get(
+                'allocations_affichees', situation_allocation['allocations']
+            ).get(paiement.id)
             if current_allocation:
                 top -= 6
                 draw_line("Affectation du paiement", bold=True)

@@ -417,6 +417,14 @@ def situation_echeancier(
         allocations, payes, non_alloues = replay_payment_allocations(
             paiements, dues_apres_remises
         )
+        # Ventilation destinée aux documents remis aux familles. Les remises
+        # sont présentées dans leur rubrique dédiée et ne doivent pas donner
+        # l'impression qu'une partie du paiement a déjà glissé sur T2/T3.
+        # On rejoue donc le cash sur les dus bruts, sans modifier la ventilation
+        # comptable ci-dessus ni le solde global.
+        allocations_affichees, payes_affiches, _ = replay_payment_allocations(
+            paiements, dues
+        )
     elif utiliser_cumuls_legacy:
         # Compatibilité avec les anciens dossiers importés qui ne possèdent
         # pas le journal de paiements mais dont les cumuls *_paye sont renseignés.
@@ -431,10 +439,14 @@ def situation_echeancier(
             for bucket in dues
         }
         allocations = {}
+        allocations_affichees = {}
+        payes_affiches = dict(payes)
         non_alloues = {}
     else:
         allocations = {}
+        allocations_affichees = {}
         payes = {bucket: ZERO for bucket in dues}
+        payes_affiches = dict(payes)
         non_alloues = {}
     couverts = {}
     restes = {}
@@ -480,6 +492,11 @@ def situation_echeancier(
         'retard_total': sum(retards.values(), ZERO),
         'non_alloue': sum(non_alloues.values(), ZERO),
         'allocations': allocations,
+        # Valeurs de présentation pour reçus et exports par tranche. Une remise
+        # reste exclusivement visible dans « Remise » et ne se reporte pas sur
+        # la tranche suivante.
+        'allocations_affichees': allocations_affichees,
+        'payes_affiches': payes_affiches,
         # Non vide = le solde ci-dessus est faux : des paiements de la période
         # sont écartés par une incohérence d'année scolaire.
         'paiements_ecartes_annee': ecartes,

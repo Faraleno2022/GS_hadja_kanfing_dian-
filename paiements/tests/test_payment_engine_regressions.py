@@ -10,6 +10,7 @@ from administration.corbeille import restaurer
 from administration.models import ElementCorbeille
 from eleves.models import Classe, Ecole, Eleve, Responsable
 from paiements.admin import EcheancierPaiementAdmin, PaiementAdmin
+from paiements.allocation import INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3
 from paiements.models import (
     EcheancierPaiement,
     ModePaiement,
@@ -136,6 +137,52 @@ class PaymentEngineRegressionTests(TestCase):
         )
         self.assertEqual(details[0]['montant_remise'], Decimal('240000'))
         self.assertEqual(details[1]['montant_remise'], Decimal('160000'))
+
+    def test_remise_t1_ne_s_affiche_pas_comme_paiement_t2(self):
+        """Le cash brut reste sur T1 dans les reçus/exports par tranche."""
+        type_combine = TypePaiement.objects.create(
+            nom='Inscription + Tranche 1'
+        )
+        paiement = Paiement.objects.create(
+            eleve=self.eleve, type_paiement=type_combine,
+            mode_paiement=self.mode, montant=Decimal('430000'),
+            date_paiement=date(2025, 10, 1), statut='VALIDE',
+            annee_scolaire='2025-2026',
+        )
+        remise = self._remise('Remise T1 5 %', 5)
+        PaiementRemise.objects.create(
+            paiement=paiement, remise=remise,
+            montant_remise=Decimal('20000'), montant_base=Decimal('400000'),
+            applique_tranche_1=True, montant_tranche_1=Decimal('20000'),
+            motif='GESTE_COMMERCIAL', deduite_du_paiement=False,
+        )
+
+        situation = situation_echeancier(
+            self.echeancier, date_reference=date(2025, 10, 1)
+        )
+
+        # La ventilation comptable nette explique toujours le solde.
+        self.assertEqual(
+            situation['allocations'][paiement.id][TRANCHE_2],
+            Decimal('20000'),
+        )
+        # Sur les documents, la remise reste dans sa colonne/rubrique et le
+        # paiement brut ne semble jamais avoir commencé la tranche suivante.
+        affichee = situation['allocations_affichees'][paiement.id]
+        self.assertEqual(affichee[INSCRIPTION], Decimal('30000'))
+        self.assertEqual(affichee[TRANCHE_1], Decimal('400000'))
+        self.assertEqual(affichee[TRANCHE_2], Decimal('0'))
+        self.assertEqual(affichee[TRANCHE_3], Decimal('0'))
+
+        # Les exports PDF et Excel partagent cette même source de données.
+        from paiements.views_tranches import _donnees_tranches_eleve
+
+        ligne_export = _donnees_tranches_eleve(self.eleve, '2025-2026')
+        self.assertEqual(ligne_export['inscription'], Decimal('30000'))
+        self.assertEqual(ligne_export['tranche_1'], Decimal('400000'))
+        self.assertEqual(ligne_export['tranche_2'], Decimal('0'))
+        self.assertEqual(ligne_export['tranche_3'], Decimal('0'))
+        self.assertEqual(ligne_export['remise'], Decimal('20000'))
 
     def test_annulation_remise_validee_est_bloquee(self):
         user = get_user_model().objects.create_superuser(
