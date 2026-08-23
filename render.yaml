@@ -2,7 +2,7 @@ services:
   - type: web
     name: myschoolgn
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput --clear
     startCommand: bash scripts/render_start.sh
     envVars:
       - key: DJANGO_SETTINGS_MODULE
