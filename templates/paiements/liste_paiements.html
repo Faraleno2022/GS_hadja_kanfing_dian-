@@ -54,6 +54,11 @@
                         <i class="fas fa-file-pdf me-2"></i>Tranches par classe (PDF)
                     </a>
                 </li>
+                <li>
+                    <a class="dropdown-item" href="#" onclick="exportTranchesParClasseExcel(); return false;">
+                        <i class="fas fa-file-excel text-success me-2"></i>Tranches par classe (Excel)
+                    </a>
+                </li>
                 <li><hr class="dropdown-divider"></li>
                 {% if can_view_reports %}
                 <li>
@@ -576,20 +581,31 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Ouvre l'export PDF "Tranches par classe" en conservant les filtres de l'URL
-function exportTranchesParClassePdf() {
+// Ouvre l'export "Tranches par classe" (PDF ou Excel) en conservant les filtres
+// actifs, qu'ils viennent de l'URL ou du formulaire de filtres.
+function _urlTranchesParClasse(base) {
     const u = new URL(window.location.href);
-    const base = '{% url "paiements:export_tranches_par_classe_pdf" %}';
+    const form = document.getElementById('filtresForm');
+    const champ = (nom) => {
+        const el = form ? form.querySelector('[name="' + nom + '"]') : null;
+        return (el && el.value ? el.value : '').trim();
+    };
     const out = new URL(base, window.location.origin);
-    const annee = u.searchParams.get('annee_scolaire');
-    const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id'); // compat
-    const ecole = u.searchParams.get('ecole');
+    const annee = u.searchParams.get('annee_scolaire') || u.searchParams.get('annee') || champ('annee');
+    const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id') || champ('classe_id');
+    const ecole = u.searchParams.get('ecole') || champ('ecole');
 
     if (annee) out.searchParams.set('annee_scolaire', annee);
     if (classe) out.searchParams.set('classe', classe);
     if (ecole) out.searchParams.set('ecole', ecole);
 
-    window.open(out.toString(), '_blank');
+    return out.toString();
+}
+function exportTranchesParClassePdf() {
+    window.open(_urlTranchesParClasse('{% url "paiements:export_tranches_par_classe_pdf" %}'), '_blank');
+}
+function exportTranchesParClasseExcel() {
+    window.open(_urlTranchesParClasse('{% url "paiements:export_tranches_par_classe_excel" %}'), '_blank');
 }
 
 // Export des résultats filtrés (reprend tous les filtres actifs du formulaire)

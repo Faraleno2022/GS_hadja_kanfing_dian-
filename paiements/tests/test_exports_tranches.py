@@ -17,6 +17,7 @@ from paiements.models import (
     RemiseReduction,
     TypePaiement,
 )
+from utilisateurs.models import Profil
 
 
 class ExportTranchesParClasseTests(TestCase):
@@ -70,6 +71,33 @@ class ExportTranchesParClasseTests(TestCase):
             date_echeance_tranche_2=date(2026, 3, 5),
             date_echeance_tranche_3=date(2026, 5, 5),
         )
+
+    def _creer_utilisateur(self, username, role, ecole=..., **permissions):
+        user = get_user_model().objects.create_user(
+            username=username, password='mot-de-passe-test'
+        )
+        # Le signal utilisateurs.signals cree deja un profil (role COMPTABLE).
+        profil, _ = Profil.objects.get_or_create(user=user)
+        profil.role = role
+        profil.ecole = self.ecole if ecole is ... else ecole
+        for champ, valeur in permissions.items():
+            setattr(profil, champ, valeur)
+        profil.save()
+        # Ce profil reste en cache sur `user`: on relit l'utilisateur pour ne
+        # pas reecrire l'ancien role par megarde au prochain save().
+        return get_user_model().objects.get(pk=user.pk)
+
+    def _tables_pdf(self):
+        """Capture les tables passees a ReportLab pendant la generation."""
+        from reportlab.platypus import Table as ReportLabTable
+
+        tables = []
+
+        def capture_table(data, *args, **kwargs):
+            tables.append(data)
+            return ReportLabTable(data, *args, **kwargs)
+
+        return tables, patch('reportlab.platypus.Table', side_effect=capture_table)
 
     def _appliquer_remise_et_solder(self):
         schedule = EcheancierPaiement.objects.get(eleve=self.eleve)
@@ -143,7 +171,9 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertEqual(sheet.cell(3, 9).value, 100000)
         self.assertEqual(sheet.cell(3, 10).value, 5)
         self.assertEqual(sheet.cell(3, 11).value, 0)
-        self.assertEqual(sheet.cell(3, 12).value, 'Soldé')
+        self.assertEqual(sheet.cell(2, 12).value, '% payé')
+        self.assertEqual(sheet.cell(3, 12).value, 100)
+        self.assertEqual(sheet.cell(3, 13).value, 'Soldé')
 
     def test_pdf_contient_la_colonne_reinscription(self):
         from reportlab.platypus import Table as ReportLabTable
@@ -213,6 +243,94 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertEqual(response.status_code, 200)
         header = [cell.getPlainText() for cell in tables[0][0]]
         row = [cell.getPlainText() if hasattr(cell, 'getPlainText') else cell for cell in tables[0][1]]
-        self.assertEqual(header[8:12], ['Remise', 'Remise (%)', 'Reste', 'Situation / précision'])
+        self.assertEqual(
+            header[8:13],
+            ['Remise', 'Remise (%)', 'Reste', '% payé', 'Situation / précision'],
+        )
         self.assertEqual(row[5:11], ['400 000', '1 530 000', '1 430 000', '100 000', '5 %', '0'])
-        self.assertEqual(row[11], 'Soldé')
+        self.assertEqual(row[11], '100 %')
+        self.assertEqual(row[12], 'Soldé')
+
+    # ── Accès ─────────────────────────────────────────────────────────
+    def test_directeur_peut_telecharger_le_pdf(self):
+        self.client.force_login(self._creer_utilisateur('directeur-export', 'DIRECTEUR'))
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_pdf'), self.filtres
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('tranches_par_classe_', response['Content-Disposition'])
+
+    def test_secretaire_peut_telecharger_le_excel(self):
+        self.client.force_login(self._creer_utilisateur('secretaire-export', 'SECRETAIRE'))
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'), self.filtres
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('spreadsheetml.sheet', response['Content-Type'])
+        self.assertIn('.xlsx', response['Content-Disposition'])
+
+    def test_enseignant_prive_de_rapports_est_refuse(self):
+        self.client.force_login(self._creer_utilisateur(
+            'prof-export', 'ENSEIGNANT',
+            peut_consulter_rapports=False, peut_generer_rapports=False,
+        ))
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_pdf'), self.filtres
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_compte_sans_ecole_n_exporte_aucune_classe(self):
+        self.client.force_login(
+            self._creer_utilisateur('comptable-sans-ecole', 'COMPTABLE', ecole=None)
+        )
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'), self.filtres
+        )
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        self.assertEqual(len(workbook.worksheets), 1)
+
+    # ── Filtres et totaux ─────────────────────────────────────────────
+    def test_filtre_annee_de_la_page_paiements_est_pris_en_compte(self):
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            {'classe': self.classe.pk, 'annee': '2025-2026'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        self.assertEqual(len(workbook.worksheets), 2)
+        self.assertEqual(workbook.worksheets[1].cell(3, 3).value, 30000)
+
+    def test_excel_termine_par_une_ligne_de_total_hors_filtre(self):
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'), self.filtres
+        )
+
+        sheet = load_workbook(BytesIO(response.content), data_only=True).worksheets[1]
+        self.assertEqual(sheet.cell(sheet.max_row, 1).value, 'TOTAL CLASSE')
+        self.assertEqual(sheet.cell(sheet.max_row, 7).value, 1530000)
+        self.assertEqual(sheet.cell(sheet.max_row, 8).value, 130000)
+        self.assertTrue(sheet.auto_filter.ref.endswith(str(sheet.max_row - 1)))
+
+    def test_pdf_termine_par_une_ligne_de_total(self):
+        tables, capture = self._tables_pdf()
+
+        with capture:
+            self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'), self.filtres
+            )
+
+        derniere = tables[0][-1]
+        self.assertEqual(derniere[0].getPlainText().strip(), 'TOTAL CLASSE')
+        self.assertEqual(derniere[6], '1 530 000')
+        self.assertEqual(derniere[7], '130 000')
