@@ -133,6 +133,46 @@ class ExportTranchesParClasseTests(TestCase):
             montant_remise=Decimal('100000'),
         )
 
+    def _creer_cas_remise_t1_avec_ancien_report_t2(self):
+        """Reproduit le cas FARA LENO: la remise T1 ne devient pas du cash T2."""
+        schedule = EcheancierPaiement.objects.get(eleve=self.eleve)
+        schedule.nature_frais = EcheancierPaiement.NATURE_INSCRIPTION
+        schedule.frais_inscription_du = Decimal('50000')
+        schedule.frais_inscription_paye = Decimal('50000')
+        schedule.tranche_1_payee = Decimal('475000')
+        schedule.tranche_2_payee = Decimal('25000')
+        schedule.tranche_3_payee = Decimal('0')
+        schedule.save()
+
+        payment_type = TypePaiement.objects.create(nom='Inscription + Tranche 1')
+        payment_mode = ModePaiement.objects.create(nom='Cash')
+        payment = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=payment_type,
+            mode_paiement=payment_mode,
+            numero_recu='REC20260001',
+            montant=Decimal('550000'),
+            annee_scolaire='2025-2026',
+            date_paiement=date(2026, 8, 23),
+            statut='VALIDE',
+            cree_par=self.user,
+            valide_par=self.user,
+        )
+        discount = RemiseReduction.objects.create(
+            nom='Remise scolarité 5% (T1)',
+            type_remise='POURCENTAGE',
+            valeur=Decimal('5.00'),
+            motif='AUTRE',
+            date_debut=date(2025, 9, 1),
+            date_fin=date(2026, 8, 31),
+        )
+        PaiementRemise.objects.create(
+            paiement=payment,
+            remise=discount,
+            montant_remise=Decimal('25000'),
+        )
+        return payment
+
     @property
     def filtres(self):
         return {'classe': self.classe.pk, 'annee_scolaire': '2025-2026'}
@@ -250,6 +290,98 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertEqual(row[5:11], ['400 000', '1 530 000', '1 430 000', '100 000', '5 %', '0'])
         self.assertEqual(row[11], '100 %')
         self.assertEqual(row[12], 'Soldé')
+
+    def test_excel_ne_reporte_pas_la_remise_t1_dans_la_tranche_2(self):
+        self._creer_cas_remise_t1_avec_ancien_report_t2()
+
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            self.filtres,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(BytesIO(response.content), data_only=True).worksheets[1]
+        self.assertEqual(sheet.cell(3, 2).value, 50000)
+        self.assertEqual(sheet.cell(3, 4).value, 500000)
+        self.assertEqual(sheet.cell(3, 5).value, 0)
+        self.assertEqual(sheet.cell(3, 6).value, 0)
+        self.assertEqual(sheet.cell(3, 8).value, 550000)
+        self.assertEqual(sheet.cell(3, 9).value, 25000)
+        self.assertEqual(sheet.cell(3, 10).value, 5)
+        self.assertEqual(sheet.cell(3, 11).value, 975000)
+
+    def test_pdf_ne_reporte_pas_la_remise_t1_dans_la_tranche_2(self):
+        self._creer_cas_remise_t1_avec_ancien_report_t2()
+        tables, capture = self._tables_pdf()
+
+        with capture:
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                self.filtres,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        row = [
+            cell.getPlainText() if hasattr(cell, 'getPlainText') else cell
+            for cell in tables[0][1]
+        ]
+        self.assertEqual(
+            row[1:11],
+            ['50 000', '0', '500 000', '0', '0', '1 550 000', '550 000', '25 000', '5 %', '975 000'],
+        )
+
+    def test_recu_pdf_ne_reporte_pas_la_remise_t1_dans_la_tranche_2(self):
+        from pypdf import PdfReader
+
+        payment = self._creer_cas_remise_t1_avec_ancien_report_t2()
+
+        response = self.client.get(
+            reverse('paiements:generer_recu_pdf', kwargs={'paiement_id': payment.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        text = '\n'.join(
+            page.extract_text() or ''
+            for page in PdfReader(BytesIO(response.content)).pages
+        )
+        allocation = text.split('Affectation du paiement', 1)[1].split(
+            "Informations de l'élève", 1
+        )[0]
+        self.assertIn('Inscription: 50 000 GNF', allocation)
+        self.assertIn('1ère tranche: 500 000 GNF', allocation)
+        self.assertIn('2ème tranche: 0 GNF', allocation)
+        self.assertIn('3ème tranche: 0 GNF', allocation)
+        self.assertNotIn('Remise accordée', text)
+        self.assertNotIn('Dette couverte par ce reçu', text)
+        self.assertIn('Remises appliquées', text)
+        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', text)
+
+    def test_recu_public_pdf_garde_la_remise_uniquement_dans_son_bloc(self):
+        from pypdf import PdfReader
+
+        from paiements.recu_public import generer_token_recu
+
+        payment = self._creer_cas_remise_t1_avec_ancien_report_t2()
+        response = self.client.get(
+            reverse('paiements:recu_public_pdf', kwargs={'paiement_id': payment.pk}),
+            {'token': generer_token_recu(payment.pk)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        text = '\n'.join(
+            page.extract_text() or ''
+            for page in PdfReader(BytesIO(response.content)).pages
+        )
+        allocation = text.split('Affectation du paiement', 1)[1].split(
+            'SITUATION FINANCIÈRE', 1
+        )[0]
+        self.assertIn('1ère tranche: 500 000 GNF', allocation)
+        self.assertIn('2ème tranche: 0 GNF', allocation)
+        self.assertIn('3ème tranche: 0 GNF', allocation)
+        self.assertNotIn('Remise accordée', text)
+        self.assertNotIn('Dette couverte', text)
+        self.assertIn('REMISES APPLIQUÉES', text)
+        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', text)
 
     # ── Accès ─────────────────────────────────────────────────────────
     def test_directeur_peut_telecharger_le_pdf(self):

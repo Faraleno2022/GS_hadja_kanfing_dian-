@@ -7,7 +7,11 @@ from decimal import Decimal
 from eleves.models import Classe, Ecole
 from eleves.utils_annee import get_annee_active
 from paiements.models import EcheancierPaiement, Paiement, PaiementRemise
-from paiements.allocation import registration_kind_for_type
+from paiements.allocation import (
+    ALLOCATION_COMPONENTS,
+    allocate_amount_sequentially,
+    registration_kind_for_type,
+)
 from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from rapports.utils import _draw_header_and_watermark
 
@@ -151,6 +155,21 @@ def _tranche_export_rows(classe, annee_scolaire):
         schedules = schedules.filter(annee_scolaire=effective_year)
     schedules_by_student = {item.eleve_id: item for item in schedules}
 
+    # Les anciens echeanciers peuvent contenir une remise reportee dans le
+    # champ *_payee de la tranche suivante. Les colonnes d'encaissement des
+    # exports doivent etre reconstruites depuis le cash valide, sur les montants
+    # bruts dus, afin qu'une remise ne soit jamais presentee comme un paiement.
+    validated_cash = Paiement.objects.filter(
+        eleve_id__in=student_ids,
+        statut='VALIDE',
+    )
+    if effective_year:
+        validated_cash = validated_cash.filter(annee_scolaire=effective_year)
+    validated_cash_by_student = {
+        item['eleve_id']: Decimal(str(item['total'] or 0))
+        for item in validated_cash.values('eleve_id').annotate(total=Sum('montant'))
+    }
+
     discounts = PaiementRemise.objects.filter(
         paiement__eleve_id__in=student_ids,
         paiement__statut='VALIDE',
@@ -176,16 +195,41 @@ def _tranche_export_rows(classe, annee_scolaire):
         total_du = total_paye = Decimal('0')
 
         if schedule is not None:
-            admission_payee = schedule.frais_inscription_paye or Decimal('0')
+            validated_total = validated_cash_by_student.get(eleve.pk)
+            if validated_total is None:
+                # Sans objet Paiement, ces champs peuvent provenir d'un import
+                # ou d'une reprise manuelle: leur ventilation reste la source.
+                admission_payee = Decimal(str(schedule.frais_inscription_paye or 0))
+                t1 = Decimal(str(schedule.tranche_1_payee or 0))
+                t2 = Decimal(str(schedule.tranche_2_payee or 0))
+                t3 = Decimal(str(schedule.tranche_3_payee or 0))
+            else:
+                recorded_cash = sum(
+                    (
+                        Decimal(str(getattr(schedule, paid_field, 0) or 0))
+                        for _key, _due_field, paid_field in ALLOCATION_COMPONENTS
+                    ),
+                    Decimal('0'),
+                )
+                cash_to_allocate = max(recorded_cash, validated_total)
+                _cash_allocation, cash_paid, _unapplied = allocate_amount_sequentially(
+                    schedule,
+                    cash_to_allocate,
+                    initial_paid={
+                        key: Decimal('0')
+                        for key, _due_field, _paid_field in ALLOCATION_COMPONENTS
+                    },
+                )
+                admission_payee = cash_paid['inscription']
+                t1 = cash_paid['tranche_1']
+                t2 = cash_paid['tranche_2']
+                t3 = cash_paid['tranche_3']
             if schedule.est_reinscription:
                 reinsc = admission_payee
             else:
                 insc = admission_payee
-            t1 = schedule.tranche_1_payee or Decimal('0')
-            t2 = schedule.tranche_2_payee or Decimal('0')
-            t3 = schedule.tranche_3_payee or Decimal('0')
             total_du = schedule.total_du or Decimal('0')
-            total_paye = schedule.total_paye or Decimal('0')
+            total_paye = admission_payee + t1 + t2 + t3
         else:
             paiements = Paiement.objects.filter(eleve=eleve, statut='VALIDE')
             if effective_year:

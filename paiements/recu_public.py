@@ -172,7 +172,6 @@ def recu_public_pdf(request, paiement_id):
         
         # Calcul total remises
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-        dette_couverte = paiement.montant + remises_total
 
         # Situation financière globale de l'élève (via échéancier)
         from decimal import Decimal
@@ -287,14 +286,6 @@ def recu_public_pdf(request, paiement_id):
                 c.drawString(left + 12, top, f"{label}: {amount:,.0f} GNF".replace(",", " "))
                 top -= 14
 
-        if remises_total > 0:
-            c.drawString(left, top, f"Remise accordée: {remises_total:,.0f} GNF".replace(",", " "))
-            top -= line_h
-            c.setFont('Helvetica-Bold', 11)
-            c.drawString(left, top, f"Dette couverte: {dette_couverte:,.0f} GNF".replace(",", " "))
-            c.setFont('Helvetica', 11)
-            top -= line_h
-
         top -= 10
 
         # Situation financière globale
@@ -317,6 +308,22 @@ def recu_public_pdf(request, paiement_id):
                 c.drawString(left, top, "Scolarité entièrement payée")
                 c.setFillColorRGB(0, 0, 0)
             top -= line_h
+
+        if remises_total > 0:
+            top -= 10
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, top, "REMISES APPLIQUÉES")
+            top -= line_h
+            c.setFont('Helvetica', 10)
+            for payment_discount in paiement.remises.select_related('remise').all():
+                discount_name = getattr(payment_discount.remise, 'nom', 'Remise')
+                discount_amount = f"{payment_discount.montant_remise:,.0f}".replace(',', ' ')
+                c.drawString(
+                    left + 12,
+                    top,
+                    f"- {discount_name} : -{discount_amount} GNF",
+                )
+                top -= 14
 
         top -= 10
         c.setFont('Helvetica-Bold', 11)

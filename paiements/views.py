@@ -3760,11 +3760,6 @@ def generer_recu_pdf(request, paiement_id:int):
     # L'encaissement et la remise sont deux composantes distinctes de la couverture.
     draw_line(f"Montant encaissé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
 
-    if remises_total and int(remises_total) > 0:
-        draw_line(f"Remise accordée : {str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
-    couverture_recu = max(0, int(paiement.montant + (remises_total or 0)))
-    draw_line(f"Dette couverte par ce reçu : {str(f'{couverture_recu:,}').replace(',', ' ')} GNF", bold=True)
-
     # Affectation réelle du paiement courant, reconstruite avec la même règle
     # séquentielle que celle utilisée lors de la validation.
     try:
