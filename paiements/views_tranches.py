@@ -8,7 +8,7 @@ from eleves.models import Classe, Ecole
 from eleves.utils_annee import get_annee_active
 from paiements.models import EcheancierPaiement, Paiement, PaiementRemise
 from paiements.allocation import registration_kind_for_type
-from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from rapports.utils import _draw_header_and_watermark
 
 # ReportLab
@@ -19,6 +19,111 @@ def _format_taux_remise(taux):
     """Affiche le taux enregistré sans le recalculer depuis le montant dû."""
     taux = Decimal(str(taux or 0)).quantize(Decimal('0.01'))
     return format(taux.normalize(), 'f')
+
+
+# Roles qui gerent ou supervisent la scolarite: ils ouvrent l'export depuis la
+# page /paiements/ a laquelle ils ont deja acces.
+ROLES_EXPORT = {'ADMIN', 'DIRECTEUR', 'COMPTABLE', 'SECRETAIRE'}
+
+
+def _peut_exporter(user):
+    """Qui peut sortir le rapport "Tranches par classe".
+
+    Le rapport ne contient rien de plus que ce que la page /paiements/ affiche
+    deja: le reserver aux seuls ADMIN/COMPTABLE renvoyait "Acces refuse" aux
+    directions et aux secretariats qui l'ouvrent pourtant depuis cette page.
+    Restent exclus les profils sans lien avec la gestion financiere tant qu'ils
+    n'ont pas la permission "rapports".
+    """
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    if user_is_admin(user):
+        return True
+    profil = getattr(user, 'profil', None)
+    if profil is None:
+        return False
+    if getattr(profil, 'role', None) in ROLES_EXPORT:
+        return True
+    return bool(
+        getattr(profil, 'peut_consulter_rapports', False)
+        or getattr(profil, 'peut_generer_rapports', False)
+    )
+
+
+def _perimetre_export(request):
+    """Classes retenues, annee appliquee et ecole de l'entete.
+
+    Partage par les deux formats pour qu'un meme filtre donne exactement le
+    meme contenu en PDF et en Excel.
+    """
+    raw_ecole = (request.GET.get('ecole') or '').strip()
+    raw_classe = (request.GET.get('classe') or request.GET.get('classe_id') or '').strip()
+    # La page /paiements/ envoie "annee"; les anciens liens "annee_scolaire".
+    annee_scolaire = (
+        request.GET.get('annee_scolaire') or request.GET.get('annee') or ''
+    ).strip()
+
+    def parse_int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    ecole_id = parse_int(raw_ecole) if raw_ecole else None
+    classe_id = parse_int(raw_classe) if raw_classe else None
+
+    ecole_user = user_school(request.user)
+    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
+
+    classes = Classe.objects.select_related('ecole').all()
+    # Meme separation que filter_by_user_school: seul le superutilisateur voit
+    # plusieurs ecoles, et un compte sans ecole rattachee n'exporte rien plutot
+    # que la totalite des etablissements.
+    if not user_is_superadmin(request.user):
+        if ecole_user is None:
+            return [], annee_scolaire, None
+        classes = classes.filter(ecole=ecole_user)
+    elif ecole_id:
+        classes = classes.filter(ecole_id=ecole_id)
+    if classe_id:
+        classes = classes.filter(id=classe_id)
+    if annee_scolaire:
+        classes = classes.filter(annee_scolaire=annee_scolaire)
+    elif annee_active:
+        classes = classes.filter(annee_scolaire=annee_active)
+
+    # Anti-abus: limiter le nombre de classes exportees en une requete
+    classes = list(classes.order_by('ecole__nom', 'niveau', 'nom')[:200])
+
+    school_ids = {classe.ecole_id for classe in classes if classe.ecole_id}
+    if len(school_ids) == 1:
+        ecole_entete = classes[0].ecole
+    elif ecole_user:
+        ecole_entete = ecole_user
+    elif ecole_id:
+        ecole_entete = Ecole.objects.filter(pk=ecole_id).first()
+    else:
+        ecole_entete = None
+    return classes, annee_scolaire, ecole_entete
+
+
+def _taux_couverture(total_du, total_paye, remise):
+    """Part du du reellement couverte par les encaissements et les remises."""
+    if total_du <= 0:
+        return Decimal('0')
+    couverture = (total_paye + remise) / total_du * Decimal('100')
+    return min(Decimal('100'), couverture)
+
+
+def _totaux_export(rows):
+    """Cumuls d'une classe, avec son taux de couverture global."""
+    cles = ('inscription', 'reinscription', 'tranche_1', 'tranche_2', 'tranche_3',
+            'total_due', 'total_paid', 'discount', 'balance')
+    totaux = {cle: sum((row[cle] for row in rows), Decimal('0')) for cle in cles}
+    totaux['coverage_rate'] = _taux_couverture(
+        totaux['total_due'], totaux['total_paid'], totaux['discount']
+    )
+    return totaux
 
 
 def _precision_remise(total_du, reste, total_paye):
@@ -114,6 +219,7 @@ def _tranche_export_rows(classe, annee_scolaire):
             'discount': remise,
             'discount_rates': tuple(discount_detail['rates']),
             'balance': reste,
+            'coverage_rate': _taux_couverture(total_du, total_paye, remise),
             'precision': precision,
         })
     return rows
@@ -130,58 +236,12 @@ def export_tranches_par_classe_pdf(request):
 
     Respecte la séparation par école pour les non-admins.
     """
-    # Contrôle d'accès: Admin ou Comptable uniquement
-    is_admin = user_is_admin(request.user)
-    is_comptable = False
-    try:
-        if hasattr(request.user, 'profil'):
-            is_comptable = (getattr(request.user.profil, 'role', None) == 'COMPTABLE')
-    except Exception:
-        is_comptable = False
-    if not (is_admin or is_comptable):
-        return HttpResponseForbidden("Accès refusé: vous n'avez pas l'autorisation d'exporter ce rapport.")
+    if not _peut_exporter(request.user):
+        return HttpResponseForbidden(
+            "Accès refusé: vous n'avez pas l'autorisation d'exporter ce rapport."
+        )
 
-    # Lecture et validation des paramètres
-    raw_ecole = (request.GET.get('ecole') or '').strip()
-    raw_classe = (request.GET.get('classe') or request.GET.get('classe_id') or '').strip()
-    annee_scolaire = (request.GET.get('annee_scolaire') or '').strip()
-
-    def parse_int(value):
-        try:
-            return int(value)
-        except Exception:
-            return None
-
-    ecole_id = parse_int(raw_ecole) if raw_ecole else None
-    classe_id = parse_int(raw_classe) if raw_classe else None
-
-    # Scope classes (filtrées par année active)
-    classes = Classe.objects.select_related('ecole').all()
-    ecole_user = user_school(request.user)
-    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
-    if restreindre:
-        classes = classes.filter(ecole=ecole_user)
-    elif ecole_id:
-        classes = classes.filter(ecole_id=ecole_id)
-    if classe_id:
-        classes = classes.filter(id=classe_id)
-    if annee_active and not annee_scolaire:
-        classes = classes.filter(annee_scolaire=annee_active)
-    elif annee_scolaire:
-        classes = classes.filter(annee_scolaire=annee_scolaire)
-
-    # Anti-abus: limiter le nombre de classes exportées en une requête
-    classes = list(classes.order_by('ecole__nom', 'niveau', 'nom')[:200])
-    school_ids = {classe.ecole_id for classe in classes if classe.ecole_id}
-    if len(school_ids) == 1:
-        ecole_pdf = classes[0].ecole
-    elif ecole_user:
-        ecole_pdf = ecole_user
-    elif ecole_id:
-        ecole_pdf = Ecole.objects.filter(pk=ecole_id).first()
-    else:
-        ecole_pdf = None
+    classes, annee_scolaire, ecole_pdf = _perimetre_export(request)
 
     # Préparer réponse PDF
     response = HttpResponse(content_type='application/pdf')
@@ -224,7 +284,7 @@ def export_tranches_par_classe_pdf(request):
     header_labels = [
         'Élève', 'Inscription payée', 'Réinscription payée',
         'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée',
-        'Total dû', 'Total payé', 'Remise', 'Remise (%)', 'Reste',
+        'Total dû', 'Total payé', 'Remise', 'Remise (%)', 'Reste', '% payé',
         'Situation / précision',
     ]
     header = [Paragraph(label, header_cell) for label in header_labels]
@@ -241,7 +301,8 @@ def export_tranches_par_classe_pdf(request):
 
         data = [header]
 
-        for row in _tranche_export_rows(classe, annee_scolaire):
+        rows = _tranche_export_rows(classe, annee_scolaire)
+        for row in rows:
             taux_remise = ' / '.join(
                 f"{_format_taux_remise(taux)} %"
                 for taux in row['discount_rates']
@@ -258,13 +319,35 @@ def export_tranches_par_classe_pdf(request):
                 f"{row['discount']:,}".replace(',', ' '),
                 taux_remise,
                 f"{row['balance']:,}".replace(',', ' '),
+                f"{_format_taux_remise(row['coverage_rate'])} %",
                 P(row['precision']),
             ])
 
+        ligne_totaux = None
+        if rows:
+            totaux = _totaux_export(rows)
+            ligne_totaux = len(data)
+            data.append([
+                P('TOTAL CLASSE'),
+                f"{totaux['inscription']:,}".replace(',', ' '),
+                f"{totaux['reinscription']:,}".replace(',', ' '),
+                f"{totaux['tranche_1']:,}".replace(',', ' '),
+                f"{totaux['tranche_2']:,}".replace(',', ' '),
+                f"{totaux['tranche_3']:,}".replace(',', ' '),
+                f"{totaux['total_due']:,}".replace(',', ' '),
+                f"{totaux['total_paid']:,}".replace(',', ' '),
+                f"{totaux['discount']:,}".replace(',', ' '),
+                '',
+                f"{totaux['balance']:,}".replace(',', ' '),
+                f"{_format_taux_remise(totaux['coverage_rate'])} %",
+                P(''),
+            ])
+
         # Construire la table pour la classe
-        col_widths = [3.7*cm] + [1.8*cm] * 5 + [2.2*cm, 2.2*cm, 2.2*cm, 1.7*cm, 2.2*cm, 4.5*cm]
+        col_widths = ([3.7*cm] + [1.8*cm] * 5
+                      + [2.2*cm, 2.2*cm, 2.2*cm, 1.7*cm, 2.2*cm, 1.5*cm, 3.5*cm])
         table = Table(data, repeatRows=1, colWidths=col_widths)
-        table.setStyle(TableStyle([
+        styles_table = [
             ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
             ('TEXTCOLOR', (0,0), (-1,0), colors.black),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
@@ -278,7 +361,13 @@ def export_tranches_par_classe_pdf(request):
             ('RIGHTPADDING', (0,0), (-1,-1), 2),
             ('TOPPADDING', (0,0), (-1,-1), 1),
             ('BOTTOMPADDING', (0,0), (-1,-1), 1),
-        ]))
+        ]
+        if ligne_totaux is not None:
+            styles_table += [
+                ('BACKGROUND', (0, ligne_totaux), (-1, ligne_totaux), colors.whitesmoke),
+                ('FONTNAME', (1, ligne_totaux), (-1, ligne_totaux), 'Helvetica-Bold'),
+            ]
+        table.setStyle(TableStyle(styles_table))
         elements.append(table)
         elements.append(Spacer(1, 0.6*cm))
 
@@ -306,16 +395,10 @@ def export_tranches_par_classe_excel(request):
     Filtres GET facultatifs: ecole, classe/classe_id, annee_scolaire.
     Respecte la séparation par école pour non-admin.
     """
-    # Contrôle d'accès
-    is_admin = user_is_admin(request.user)
-    is_comptable = False
-    try:
-        if hasattr(request.user, 'profil'):
-            is_comptable = (getattr(request.user.profil, 'role', None) == 'COMPTABLE')
-    except Exception:
-        is_comptable = False
-    if not (is_admin or is_comptable):
-        return HttpResponseForbidden("Accès refusé: vous n'avez pas l'autorisation d'exporter ce rapport.")
+    if not _peut_exporter(request.user):
+        return HttpResponseForbidden(
+            "Accès refusé: vous n'avez pas l'autorisation d'exporter ce rapport."
+        )
 
     # Import openpyxl
     try:
@@ -325,34 +408,7 @@ def export_tranches_par_classe_excel(request):
     except Exception:
         return HttpResponse("OpenPyXL n'est pas installé. Veuillez exécuter: pip install openpyxl", status=500)
 
-    raw_ecole = (request.GET.get('ecole') or '').strip()
-    raw_classe = (request.GET.get('classe') or request.GET.get('classe_id') or '').strip()
-    annee_scolaire = (request.GET.get('annee_scolaire') or '').strip()
-
-    def parse_int(value):
-        try:
-            return int(value)
-        except Exception:
-            return None
-
-    ecole_id = parse_int(raw_ecole) if raw_ecole else None
-    classe_id = parse_int(raw_classe) if raw_classe else None
-
-    classes = Classe.objects.select_related('ecole').all()
-    ecole_user = user_school(request.user)
-    annee_active_xl = get_annee_active(request, ecole_user) if ecole_user else None
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
-    if restreindre:
-        classes = classes.filter(ecole=ecole_user)
-    elif ecole_id:
-        classes = classes.filter(ecole_id=ecole_id)
-    if classe_id:
-        classes = classes.filter(id=classe_id)
-    if annee_active_xl and not annee_scolaire:
-        classes = classes.filter(annee_scolaire=annee_active_xl)
-    elif annee_scolaire:
-        classes = classes.filter(annee_scolaire=annee_scolaire)
-    classes = classes.order_by('ecole__nom', 'niveau', 'nom')[:200]
+    classes, annee_scolaire, _ecole_entete = _perimetre_export(request)
 
     wb = Workbook()
     ws_index = wb.active
@@ -378,7 +434,7 @@ def export_tranches_par_classe_excel(request):
     headers = [
         'Élève', 'Inscription payée', 'Réinscription payée',
         'Tranche 1 payée', 'Tranche 2 payée', 'Tranche 3 payée',
-        'Total dû', 'Total payé', 'Remise', 'Remise (%)', 'Reste',
+        'Total dû', 'Total payé', 'Remise', 'Remise (%)', 'Reste', '% payé',
         'Situation / précision',
     ]
 
@@ -395,7 +451,8 @@ def export_tranches_par_classe_excel(request):
             cell_header.font = Font(bold=True, color='FFFFFF')
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-        for row in _tranche_export_rows(classe, annee_scolaire):
+        rows = _tranche_export_rows(classe, annee_scolaire)
+        for row in rows:
             if len(row['discount_rates']) == 1:
                 taux_remise = float(row['discount_rates'][0])
             elif row['discount_rates']:
@@ -410,12 +467,30 @@ def export_tranches_par_classe_excel(request):
                 int(row['tranche_1']), int(row['tranche_2']), int(row['tranche_3']),
                 int(row['total_due']), int(row['total_paid']), int(row['discount']),
                 taux_remise, int(row['balance']),
+                float(round(row['coverage_rate'], 2)),
                 row['precision'],
             ])
 
-        for row_cells in ws.iter_rows(min_row=3, min_col=2, max_col=11):
+        # La ligne de total reste hors du filtre automatique pour ne jamais
+        # etre masquee par un tri ou un filtre pose sur les eleves.
+        derniere_ligne_donnees = max(ws.max_row, 2)
+        if rows:
+            totaux = _totaux_export(rows)
+            ws.append([
+                'TOTAL CLASSE',
+                int(totaux['inscription']), int(totaux['reinscription']),
+                int(totaux['tranche_1']), int(totaux['tranche_2']), int(totaux['tranche_3']),
+                int(totaux['total_due']), int(totaux['total_paid']), int(totaux['discount']),
+                None, int(totaux['balance']),
+                float(round(totaux['coverage_rate'], 2)),
+                '',
+            ])
+            for cellule in ws[ws.max_row]:
+                cellule.font = Font(bold=True)
+
+        for row_cells in ws.iter_rows(min_row=3, min_col=2, max_col=12):
             for item in row_cells:
-                item.number_format = '0.##' if item.column == 10 else '#,##0'
+                item.number_format = '0.##' if item.column in (10, 12) else '#,##0'
         for row_cells in ws.iter_rows(min_row=3, max_col=len(headers)):
             for item in row_cells:
                 item.alignment = Alignment(vertical='top', wrap_text=True)
@@ -429,7 +504,7 @@ def export_tranches_par_classe_excel(request):
                 width = 16
             ws.column_dimensions[get_column_letter(col)].width = width
         ws.freeze_panes = 'A3'
-        ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{max(ws.max_row, 2)}"
+        ws.auto_filter.ref = f"A2:{get_column_letter(len(headers))}{derniere_ligne_donnees}"
         ws.sheet_view.showGridLines = False
         ws.page_setup.orientation = 'landscape'
         ws.page_setup.fitToWidth = 1
