@@ -6,10 +6,10 @@
 {% block meta_description %}MySchoolGN est le système de gestion scolaire conçu pour les réalités des écoles guinéennes : paiements, bulletins, parents, offline et pilotage directeur.{% endblock %}
 {% block og_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
 {% block og_description %}Le système de gestion scolaire conçu pour les réalités des écoles guinéennes.{% endblock %}
-{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/public/cover-le-jourdain.webp' %}{% endblock %}
+{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}
 {% block twitter_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
 {% block twitter_description %}Paiements, bulletins, parents, offline et pilotage directeur pour les écoles en Guinée.{% endblock %}
-{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/public/cover-le-jourdain.webp' %}{% endblock %}
+{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -278,7 +278,7 @@
   .image-loading { background: #f3f4f6; }
 </style>
 <!-- Préchargement critique de l'image héro optimisée (WebP pour vitesse maximale) -->
-<link rel="preload" as="image" href="{% static 'images/public/cover-le-jourdain.webp' %}" type="image/webp" imagesizes="100vw">
+<link rel="preload" as="image" href="{% static 'images/optimized/ecole.webp' %}" type="image/webp" imagesizes="100vw">
 {# Les images des cartes sont sous le pli : on laisse le navigateur les charger en lazy plutôt que de les précharger #}
 {% endblock %}
 
@@ -290,10 +290,10 @@
   <!-- Image héro optimisée avec WebP et fallback JPEG -->
   <picture>
     <source type="image/webp"
-            srcset="{% static 'images/public/cover-le-jourdain.webp' %}"
+            srcset="{% static 'images/optimized/ecole.webp' %}"
             media="(min-width: 1px)">
-    <img src="{% static 'images/public/cover-le-jourdain.jpg' %}"
-         alt="Entrée du Groupe Scolaire Privé Le Jourdain de Kakimbo"
+    <img src="{% static 'images/optimized/ecole_optimized.jpg' %}"
+         alt="Myschool"
          class="hero-image"
          loading="eager"
          decoding="sync"
@@ -473,10 +473,10 @@
         <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
         <picture>
           <source type="image/webp"
-                  srcset="{% static 'images/public/equipe-scolaire.webp' %}"
+                  srcset="{% static 'images/optimized/carte1.webp' %}"
                   sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
-          <img src="{% static 'images/public/equipe-scolaire.jpg' %}"
-               alt="Équipe sportive du Groupe Scolaire Le Jourdain"
+          <img src="{% static 'images/optimized/carte1_optimized.jpg' %}"
+               alt="Nos installations modernes"
                class="card-img-top"
                loading="lazy"
                decoding="async"
@@ -503,10 +503,10 @@
         <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
         <picture>
           <source type="image/webp"
-                  srcset="{% static 'images/public/eleves-le-jourdain.webp' %}"
+                  srcset="{% static 'images/optimized/carte2.webp' %}"
                   sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
-          <img src="{% static 'images/public/eleves-le-jourdain.jpg' %}"
-               alt="Élèves et encadreurs du Groupe Scolaire Le Jourdain"
+          <img src="{% static 'images/optimized/carte2_optimized.jpg' %}"
+               alt="Notre équipe pédagogique"
                class="card-img-top"
                loading="lazy"
                decoding="async"

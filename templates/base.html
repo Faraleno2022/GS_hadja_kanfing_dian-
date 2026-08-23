@@ -204,11 +204,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{% url 'home' %}">
-                {% if not user.is_authenticated %}
-                <img src="{% static_versioned 'logos/le-jourdain.jpg' %}" alt="Logo du Groupe Scolaire Le Jourdain de Kakimbo" width="36" height="36" loading="eager" decoding="async" fetchpriority="high">
-                {% else %}
                 <img src="{% static_versioned 'logos/logo.png' %}" alt="Logo Myschool" width="36" height="36" loading="eager" decoding="async" fetchpriority="high">
-                {% endif %}
                 <span>Myschool</span>
             </a>
 
