@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Catégories de livres{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h2 class="mb-0"><i class="fas fa-tags text-primary me-2"></i>Catégories de livres</h2>
+        <a href="{% url 'depenses:catalogue_livres' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour au catalogue</a>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header"><i class="fas fa-plus me-1"></i>Nouvelle catégorie</div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label">Nom *</label>
+                            <input type="text" name="nom" class="form-control" required placeholder="Ex: Romans">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Code *</label>
+                            <input type="text" name="code" class="form-control text-uppercase" required placeholder="Ex: ROM">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Description</label>
+                            <textarea name="description" class="form-control" rows="2"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-save me-1"></i>Créer</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">{{ categories|length }} catégorie(s)</div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr><th>Nom</th><th>Code</th><th>Livres</th><th>Actif</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            {% for c in categories %}
+                            <tr>
+                                <td>
+                                    <form method="post" action="{% url 'depenses:modifier_categorie_livre' c.id %}" class="d-flex gap-1 align-items-center">
+                                        {% csrf_token %}
+                                        <input type="text" name="nom" value="{{ c.nom }}" class="form-control form-control-sm" style="max-width:180px">
+                                        <input type="hidden" name="code" value="{{ c.code }}">
+                                        <input type="hidden" name="description" value="{{ c.description }}">
+                                        <input type="hidden" name="actif" value="{% if c.actif %}1{% else %}0{% endif %}">
+                                        <button class="btn btn-sm btn-outline-secondary" title="Renommer"><i class="fas fa-save"></i></button>
+                                    </form>
+                                </td>
+                                <td><span class="badge bg-secondary">{{ c.code }}</span></td>
+                                <td>{{ c.nb_livres }}</td>
+                                <td>{% if c.actif %}<span class="badge bg-success">Oui</span>{% else %}<span class="badge bg-secondary">Non</span>{% endif %}</td>
+                                <td class="text-end">
+                                    {% if c.nb_livres == 0 %}
+                                    <form method="post" action="{% url 'depenses:supprimer_categorie_livre' c.id %}" class="d-inline" onsubmit="return confirm('Supprimer « {{ c.nom }} » ?')">
+                                        {% csrf_token %}
+                                        <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                    {% else %}<span class="text-muted small">utilisée</span>{% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">Aucune catégorie. Créez-en une à gauche.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

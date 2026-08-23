@@ -55,6 +55,7 @@
             <i class="fas fa-bell me-1"></i>Relance
         </button>
     </div>
+
 {% endblock %}
 
 {% block content %}
@@ -279,6 +280,18 @@
                     <button type="button" class="btn btn-primary btn-sm w-100 mt-2" data-bs-toggle="modal" data-bs-target="#relanceModal">
                         <i class="fas fa-paper-plane me-1"></i>Relance (choisir canal/message)
                     </button>
+
+                    <a href="{% url 'paiements:liste_eleves_impayes' %}" class="btn btn-outline-danger btn-sm w-100 mt-2">
+                        <i class="fas fa-exclamation-triangle me-1"></i>Consulter les élèves impayés
+                    </a>
+                    <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning btn-sm w-100 mt-2">
+                        <i class="fas fa-bell me-1"></i>Historique des relances
+                    </a>
+                    {% if is_admin or is_comptable %}
+                    <a href="{% url 'rapports:tableau_bord' %}" class="btn btn-outline-info btn-sm w-100 mt-2">
+                        <i class="fas fa-chart-bar me-1"></i>Ouvrir les rapports
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -421,13 +421,24 @@ def statistiques_bibliotheque(request):
     if ecole:
         emprunts = emprunts.filter(cree_par__profil__ecole=ecole)
 
+    # Pénalités = cumulatives (indépendantes de la fenêtre de dates d'emprunt).
+    # On somme toutes les pénalités de l'école, sinon une pénalité sur un livre
+    # emprunté il y a plus de 30 jours n'apparaîtrait jamais.
+    penalites_qs = Emprunt.objects.filter(montant_penalite__gt=0)
+    if ecole:
+        penalites_qs = penalites_qs.filter(cree_par__profil__ecole=ecole)
+    total_penalites = penalites_qs.aggregate(total=Sum('montant_penalite'))['total'] or 0
+    penalites_impayees = penalites_qs.filter(penalite_payee=False).aggregate(
+        total=Sum('montant_penalite'))['total'] or 0
+
     # Statistiques
     stats = {
         'total_emprunts': emprunts.count(),
         'emprunts_retournes': emprunts.filter(statut='RETOURNE').count(),
         'emprunts_en_cours': emprunts.filter(statut='EN_COURS').count(),
         'emprunts_en_retard': emprunts.filter(statut='EN_RETARD').count(),
-        'total_penalites': emprunts.aggregate(total=Sum('montant_penalite'))['total'] or 0,
+        'total_penalites': total_penalites,
+        'penalites_impayees': penalites_impayees,
     }
 
     # Livres les plus empruntés
