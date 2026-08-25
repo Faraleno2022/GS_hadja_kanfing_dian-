@@ -6,8 +6,10 @@
 {% block meta_description %}MySchoolGN est le système de gestion scolaire conçu pour les réalités des écoles guinéennes : paiements, bulletins, parents, offline et pilotage directeur.{% endblock %}
 {% block og_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
 {% block og_description %}Le système de gestion scolaire conçu pour les réalités des écoles guinéennes.{% endblock %}
+{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}
 {% block twitter_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
 {% block twitter_description %}Paiements, bulletins, parents, offline et pilotage directeur pour les écoles en Guinée.{% endblock %}
+{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}
 
 {% block extra_css %}
 <style>

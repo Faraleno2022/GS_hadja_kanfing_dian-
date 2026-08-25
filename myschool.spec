@@ -60,8 +60,24 @@ except Exception:
 
 # Pandas (import/export eleves)
 try:
-    hiddenimports += collect_submodules('pandas')
-    hiddenimports += collect_submodules('numpy')
+    # Les suites ``pandas.tests`` et ``numpy.*.tests`` ne sont jamais utilisees
+    # par l'application. Les embarquer multiplie le temps d'analyse PyInstaller
+    # et ajoute plusieurs milliers de modules inutiles au paquet client.
+    hiddenimports += collect_submodules(
+        'pandas',
+        filter=lambda name: not (
+            name == 'pandas.tests' or name.startswith('pandas.tests.')
+        ),
+    )
+    hiddenimports += collect_submodules(
+        'numpy',
+        filter=lambda name: not (
+            name == 'numpy.tests'
+            or name.startswith('numpy.tests.')
+            or '.tests.' in name
+            or name.endswith('.tests')
+        ),
+    )
 except Exception:
     pass
 
@@ -101,7 +117,10 @@ hiddenimports += [
     'ecole_moderne.settings',
     'ecole_moderne.urls',
     'ecole_moderne.wsgi',
+    'ecole_moderne.validators',
     'ecole_moderne.static_views',
+    'ecole_moderne.sauvegarde',
+    'ecole_moderne.sauvegarde_views',
     'ecole_moderne.middleware',
     'ecole_moderne.security_middleware',
     'ecole_moderne.image_cache_middleware',
@@ -162,14 +181,16 @@ def _add_if_exists(src_rel, dst):
 _add_if_exists('templates', 'templates')
 _add_if_exists('static', 'static')
 _add_if_exists('staticfiles', 'staticfiles')
-_add_if_exists('media', 'media')
+# Le dossier media contient les photos et documents propres à chaque école.
+# Il reste vide dans la distribution et sera créé au premier lancement.
 
 # Base de données : NE PAS inclure la DB du dev dans le build
 # Elle sera créée automatiquement via 'migrate' au premier lancement chez le client
 # _add_if_exists('db.sqlite3', '.')
 
-# Fichier .env
-_add_if_exists('.env', '.')
+# Fichier .env : NE PAS l'inclure dans le build. Chaque école doit partir avec
+# sa propre clé secrète, sa propre licence et sa propre configuration de sync.
+# _add_if_exists('.env', '.')
 
 # PROTECTION ANTI-MODIFICATION :
 # Les modules critiques (integrity_check, license_manager, load_env) sont

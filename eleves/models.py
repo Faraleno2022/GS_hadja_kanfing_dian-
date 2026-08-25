@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from decimal import Decimal
@@ -87,7 +87,11 @@ class Classe(SyncTrackedModel):
     """Modèle pour représenter une classe"""
     NIVEAUX_CHOICES = [
         ('GARDERIE', 'Garderie'),
-        ('MATERNELLE', 'Maternelle'),
+        ('TOUTE_PETITE_SECTION', 'Toute petite section'),
+        ('PETITE_SECTION', 'Petite section'),
+        ('MOYENNE_SECTION', 'Moyenne section'),
+        ('GRANDE_SECTION', 'Grande section'),
+        ('MATERNELLE', 'Maternelle (ancienne appellation)'),
         ('PRIMAIRE_1', 'Primaire 1ère'),
         ('PRIMAIRE_2', 'Primaire 2ème'),
         ('PRIMAIRE_3', 'Primaire 3ème'),
@@ -480,7 +484,15 @@ class Eleve(SyncTrackedModel):
     def _reaffecter_matricules_ancienne_classe(self, ancienne_classe, ancien_matricule):
         """Désactivée pour éviter les conflits UNIQUE"""
         pass
+
     def save(self, *args, **kwargs):
+        # Le changement de classe, son matricule, ses notes et son echeancier
+        # forment une seule operation metier : aucun etat partiel ne doit rester
+        # en base si l'une de ces etapes echoue.
+        with transaction.atomic():
+            return self._save_atomic(*args, **kwargs)
+
+    def _save_atomic(self, *args, **kwargs):
         """Génère automatiquement le matricule au format CODE-### si absent.
         - CODE déterminé par la classe via `_code_classe_from_nom_ou_niveau`
         - ### est une séquence à 3 chiffres, incrémentée par classe (et donc par école)
@@ -611,6 +623,16 @@ class Eleve(SyncTrackedModel):
             if matricule_final:
                 self.matricule = matricule_final
                 super().save(update_fields=['matricule'])
+
+            # Recalculer les montants dus depuis la grille de la classe cible,
+            # sans toucher aux objets Paiement ni melanger les annees scolaires.
+            from paiements.services import reconcilier_transfert_classe
+            self._financial_transfer_info = reconcilier_transfert_classe(
+                self,
+                ancienne_classe,
+                self.classe,
+                cree_par=getattr(self, '_current_user', None),
+            )
         
         # Créer l'historique du changement de classe après la sauvegarde
         if changement_classe_info:

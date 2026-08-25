@@ -26,6 +26,24 @@ def user_school(user: User):
     return None
 
 
+def user_is_account_principal(user: User) -> bool:
+    """Indique si l'utilisateur pilote le compte principal de son école."""
+    if not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+    profil = getattr(user, 'profil', None)
+    return bool(profil and profil.est_compte_principal and profil.ecole_id)
+
+
+def user_can_manage_school_structure(user: User, permission_name: str) -> bool:
+    """Vérifie un droit de gestion de structure sans élargir l'accès à une autre école."""
+    if user_is_account_principal(user):
+        return True
+    profil = getattr(user, 'profil', None)
+    return bool(profil and profil.ecole_id and getattr(profil, permission_name, False))
+
+
 def filter_by_user_school(qs: QuerySet, user: User, field_path: str = 'ecole') -> QuerySet:
     """Filter a queryset by the user's school unless the user is superadmin.
     field_path can be like 'classe__ecole' or 'enseignant__ecole'.

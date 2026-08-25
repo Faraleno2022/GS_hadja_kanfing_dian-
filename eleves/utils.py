@@ -111,6 +111,7 @@ def valider_compte_utilisateur(user, ecole=None, telephone='', adresse=''):
         adresse: Adresse (optionnel)
     """
     from utilisateurs.models import Profil
+    from utilisateurs.services import attribuer_compte_principal
     
     with transaction.atomic():
         # Activer le compte utilisateur
@@ -152,5 +153,10 @@ def valider_compte_utilisateur(user, ecole=None, telephone='', adresse=''):
             if ecole:
                 profil.ecole = ecole
             profil.save()
+
+        # Le créateur d'une école validée devient toujours son compte principal
+        # et bénéficie immédiatement des nouvelles fonctions.
+        if ecole:
+            profil = attribuer_compte_principal(profil, ecole)
     
     return profil

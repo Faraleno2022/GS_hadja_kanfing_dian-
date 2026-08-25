@@ -21,10 +21,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve, GrilleTarifaire
-from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, EcoleForm
+from .forms import (
+    EleveForm,
+    ResponsableForm,
+    RechercheEleveForm,
+    ClasseForm,
+    EcoleForm,
+    GrilleTarifaireForm,
+)
 from utilisateurs.forms import SignupInlineForm
 from utilisateurs.models import JournalActivite
-from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
+from utilisateurs.utils import (
+    user_is_account_principal,
+    user_is_admin,
+    user_is_superadmin,
+    filter_by_user_school,
+    user_can_manage_school_structure,
+    user_school,
+)
 from .utils_annee import get_annee_active
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
@@ -398,38 +412,62 @@ def creer_ecole_confirmation(request):
     return redirect('home')
 
 
-def _user_can_edit_school(request, ecole: Ecole) -> bool:
-    """Autoriser édition si admin ou créateur, ou si école en BROUILLON/EN_ATTENTE."""
-    if user_is_admin(request.user):
-        return True
-    try:
-        if ecole.created_by_id and request.user.is_authenticated and ecole.created_by_id == request.user.id:
-            return True
-        # Cas d'une école créée anonymement: autoriser la configuration tant que BROUILLON
-        if not ecole.created_by_id and ecole.etat == 'BROUILLON':
-            return True
-    except Exception:
-        pass
-    return False
-
-
 def configurer_ecole(request, ecole_id: int):
-    """Assistant de configuration d'une école (brouillon):
+    """Assistant de configuration de la structure d'une école :
     - Ajouter des classes
     - Définir les grilles tarifaires
     - Soumettre pour validation (etat -> EN_ATTENTE)
-    Accès: admin ou créateur tant que non validée.
+    Accès limité au créateur, au compte principal et aux délégations de la même école.
     """
     ecole = get_object_or_404(Ecole, pk=ecole_id)
 
-    # Droit d'accès: admin ou créateur. Après validation, vue en lecture seule.
-    can_edit = _user_can_edit_school(request, ecole) and ecole.etat in ("BROUILLON", "EN_ATTENTE")
+    if request.user.is_authenticated and not user_is_superadmin(request.user):
+        profil = getattr(request.user, 'profil', None)
+        est_createur = ecole.created_by_id == request.user.id
+        if not est_createur and getattr(profil, 'ecole_id', None) != ecole.id:
+            return render(request, 'utilisateurs/permission_denied.html', {
+                'error_message': "Vous ne pouvez pas consulter la configuration d'une autre école.",
+                'permission_name': 'ecole',
+            }, status=403)
 
-    message_info = None
+    # Le créateur et le compte principal pilotent la validation. Un sous-utilisateur
+    # délégué conserve uniquement le droit précis qui lui a été attribué.
+    meme_ecole = bool(
+        request.user.is_authenticated
+        and getattr(getattr(request.user, 'profil', None), 'ecole_id', None) == ecole.id
+    )
+    est_createur = bool(
+        request.user.is_authenticated and ecole.created_by_id == request.user.id
+    )
+    est_principal = bool(meme_ecole and user_is_account_principal(request.user))
+    configuration_anonyme = bool(
+        not request.user.is_authenticated
+        and not ecole.created_by_id
+        and ecole.etat == 'BROUILLON'
+    )
+    can_submit_validation = bool(
+        ecole.etat in ("BROUILLON", "EN_ATTENTE")
+        and (user_is_admin(request.user) or est_createur or est_principal or configuration_anonyme)
+    )
+    can_manage_classes = bool(
+        user_is_admin(request.user)
+        or (meme_ecole and user_can_manage_school_structure(request.user, 'peut_gerer_classes'))
+        or can_submit_validation
+    )
+    can_manage_grilles = bool(
+        user_is_admin(request.user)
+        or (meme_ecole and user_can_manage_school_structure(request.user, 'peut_gerer_grilles_tarifaires'))
+        or can_submit_validation
+    )
+    can_edit = can_manage_classes or can_manage_grilles
+
     if request.method == 'POST' and can_edit:
         action = request.POST.get('action')
         try:
             if action == 'add_classe':
+                if not can_manage_classes:
+                    messages.error(request, "Vous n'êtes pas autorisé à gérer les classes.")
+                    return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
                 nom = (request.POST.get('classe_nom') or '').strip()
                 niveau = request.POST.get('classe_niveau')
                 annee = (request.POST.get('classe_annee') or '').strip()
@@ -442,6 +480,9 @@ def configurer_ecole(request, ecole_id: int):
                 return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
 
             if action == 'add_grille':
+                if not can_manage_grilles:
+                    messages.error(request, "Vous n'êtes pas autorisé à gérer les grilles tarifaires.")
+                    return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
                 niveau = request.POST.get('grille_niveau')
                 annee = (request.POST.get('grille_annee') or '').strip()
                 frais_insp = request.POST.get('grille_inscription') or '0'
@@ -497,6 +538,9 @@ def configurer_ecole(request, ecole_id: int):
                 return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
 
             if action == 'submit_validation':
+                if not can_submit_validation:
+                    messages.error(request, "Vous n'êtes pas autorisé à soumettre cette école.")
+                    return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
                 ecole.etat = 'EN_ATTENTE'
                 ecole.save(update_fields=['etat'])
                 # Afficher une page de confirmation dédiée qui redirige ensuite vers l'accueil
@@ -525,10 +569,86 @@ def configurer_ecole(request, ecole_id: int):
     return render(request, 'eleves/configurer_ecole.html', {
         'ecole': ecole,
         'can_edit': can_edit,
+        'can_manage_classes': can_manage_classes,
+        'can_manage_grilles': can_manage_grilles,
+        'can_submit_validation': can_submit_validation,
         'classes': classes,
         'grilles': grilles,
         'niveaux': niveaux,
         'titre_page': f"Configurer l'École - {ecole.nom}",
+    })
+
+
+def _peut_modifier_structure_ecole(user, ecole, permission_name):
+    if user_is_superadmin(user):
+        return True
+    return bool(
+        user_school(user) == ecole
+        and user_can_manage_school_structure(user, permission_name)
+    )
+
+
+@login_required
+def modifier_classe_configuration(request, classe_id):
+    classe = get_object_or_404(Classe.objects.select_related('ecole'), pk=classe_id)
+    if not _peut_modifier_structure_ecole(request.user, classe.ecole, 'peut_gerer_classes'):
+        return render(request, 'utilisateurs/permission_denied.html', {
+            'error_message': "Vous n'êtes pas autorisé à modifier les classes de cette école.",
+            'permission_name': 'peut_gerer_classes',
+        }, status=403)
+
+    if request.method == 'POST':
+        form = ClasseForm(request.POST, instance=classe)
+        form.fields['ecole'].queryset = Ecole.objects.filter(pk=classe.ecole_id)
+        form.fields['ecole'].disabled = True
+        if form.is_valid():
+            objet = form.save(commit=False)
+            objet.ecole = classe.ecole
+            objet.save()
+            messages.success(request, f"Classe « {objet.nom} » modifiée avec succès.")
+            return redirect('eleves:configurer_ecole', ecole_id=classe.ecole_id)
+    else:
+        form = ClasseForm(instance=classe)
+        form.fields['ecole'].queryset = Ecole.objects.filter(pk=classe.ecole_id)
+        form.fields['ecole'].disabled = True
+    return render(request, 'eleves/form_structure_ecole.html', {
+        'form': form,
+        'titre_page': f"Modifier la classe {classe.nom}",
+        'ecole': classe.ecole,
+        'type_objet': 'classe',
+    })
+
+
+@login_required
+def modifier_grille_tarifaire(request, grille_id):
+    grille = get_object_or_404(GrilleTarifaire.objects.select_related('ecole'), pk=grille_id)
+    if not _peut_modifier_structure_ecole(
+        request.user,
+        grille.ecole,
+        'peut_gerer_grilles_tarifaires',
+    ):
+        return render(request, 'utilisateurs/permission_denied.html', {
+            'error_message': "Vous n'êtes pas autorisé à modifier les grilles tarifaires de cette école.",
+            'permission_name': 'peut_gerer_grilles_tarifaires',
+        }, status=403)
+
+    if request.method == 'POST':
+        form = GrilleTarifaireForm(request.POST, instance=grille)
+        if form.is_valid():
+            objet = form.save(commit=False)
+            objet.ecole = grille.ecole
+            objet.save()
+            messages.success(request, "Grille tarifaire modifiée avec succès.")
+            return redirect('eleves:configurer_ecole', ecole_id=grille.ecole_id)
+    else:
+        form = GrilleTarifaireForm(instance=grille)
+    form.fields['ecole'].queryset = Ecole.objects.filter(pk=grille.ecole_id)
+    form.fields['ecole'].disabled = True
+    return render(request, 'eleves/form_structure_ecole.html', {
+        'form': form,
+        'titre_page': f"Modifier la grille {grille.get_niveau_display()} {grille.annee_scolaire}",
+        'ecole': grille.ecole,
+        'type_objet': 'grille',
     })
 
 @login_required
@@ -911,6 +1031,37 @@ def modifier_eleve(request, eleve_id):
                     messages.warning(request, f"{nb_trans} note(s) transferee(s) vers la nouvelle classe, mais {nb_ign} note(s) n'ont pas pu etre transferees (matieres sans equivalent dans la nouvelle classe).")
                 elif nb_trans == 0 and nb_ign > 0:
                     messages.warning(request, f"Attention : {nb_ign} note(s) n'ont pas pu etre transferees (matieres sans equivalent dans la nouvelle classe).")
+
+            # Afficher aussi le resultat de la reconciliation financiere.
+            finance_info = getattr(eleve, '_financial_transfer_info', None)
+            if finance_info:
+                if finance_info.get('grille_manquante'):
+                    messages.warning(
+                        request,
+                        "Classe modifiee, mais aucune grille tarifaire exacte n'existe "
+                        "pour la nouvelle classe et son annee scolaire. L'echeancier "
+                        "n'a donc pas ete modifie.",
+                    )
+                elif finance_info.get('echeancier_mis_a_jour'):
+                    total = int(finance_info.get('nouveau_total_du') or 0)
+                    conserve = int(finance_info.get('encaissements_conserves') or 0)
+                    reste = int(finance_info.get('solde_restant') or 0)
+                    if finance_info.get('changement_annee'):
+                        prefixe = "Nouvel echeancier cree; l'historique de l'ancienne annee est conserve."
+                    else:
+                        prefixe = "Echeancier recalcule selon la nouvelle classe."
+                    messages.success(
+                        request,
+                        f"{prefixe} Total du : {total:,} GNF; "
+                        f"paiements conserves : {conserve:,} GNF; reste : {reste:,} GNF.",
+                    )
+                    credit = int(finance_info.get('credit_non_affecte') or 0)
+                    if credit > 0:
+                        messages.warning(
+                            request,
+                            f"Le nouveau tarif est inferieur aux encaissements : "
+                            f"un credit de {credit:,} GNF doit etre regularise.",
+                        )
 
             # Créer l'historique si des changements ont été effectués
             if changements:
@@ -1813,6 +1964,13 @@ def gestion_classes(request):
         'classes': classes,
         'stats': stats,
         'annee_active': annee_active,
+        'ecole_user': ecole_user,
+        'can_manage_classes': bool(
+            ecole_user and user_can_manage_school_structure(request.user, 'peut_gerer_classes')
+        ),
+        'can_manage_grilles': bool(
+            ecole_user and user_can_manage_school_structure(request.user, 'peut_gerer_grilles_tarifaires')
+        ),
         'titre_page': f'Gestion des Classes — {annee_active}' if annee_active else 'Gestion des Classes',
     }
 

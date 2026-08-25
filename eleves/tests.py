@@ -1,9 +1,32 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .models import Classe, Ecole, Eleve
+from .models import Classe, Ecole, Eleve, GrilleTarifaire
+
+
+class ClasseNiveauxMaternelleTests(SimpleTestCase):
+    NIVEAUX_MATERNELLE_ATTENDUS = {
+        "GARDERIE": "Garderie",
+        "TOUTE_PETITE_SECTION": "Toute petite section",
+        "PETITE_SECTION": "Petite section",
+        "MOYENNE_SECTION": "Moyenne section",
+        "GRANDE_SECTION": "Grande section",
+        "MATERNELLE": "Maternelle (ancienne appellation)",
+    }
+
+    def test_le_formulaire_classe_propose_toutes_les_sections_maternelles(self):
+        niveaux = dict(Classe._meta.get_field("niveau").choices)
+
+        for code, libelle in self.NIVEAUX_MATERNELLE_ATTENDUS.items():
+            self.assertEqual(niveaux[code], libelle)
+
+    def test_la_grille_tarifaire_propose_les_memes_sections_maternelles(self):
+        niveaux = dict(GrilleTarifaire._meta.get_field("niveau").choices)
+
+        for code, libelle in self.NIVEAUX_MATERNELLE_ATTENDUS.items():
+            self.assertEqual(niveaux[code], libelle)
 
 
 class NouvelElevePaiementWorkflowTests(TestCase):

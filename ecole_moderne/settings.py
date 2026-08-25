@@ -164,6 +164,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'utilisateurs.middleware.MenuPermissionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Vérification licence : bloque l'accès web si essai/licence expiré
@@ -322,10 +323,27 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-if DEBUG:
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
-else:
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+# Django 5.2 n'utilise plus STATICFILES_STORAGE : le backend doit être déclaré
+# dans STORAGES. WhiteNoise compresse les ressources en production sans imposer
+# de manifeste, afin qu'un fichier nouvellement déployé reste accessible même
+# pendant une reconstruction du dossier collectstatic.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+            if DEBUG else
+            'whitenoise.storage.CompressedStaticFilesStorage'
+        ),
+    },
+}
+
+# Filet de sécurité Render : si le dossier STATIC_ROOT d'une instance est
+# incomplet, WhiteNoise peut encore retrouver les fichiers versionnés dans
+# STATICFILES_DIRS. collectstatic reste exécuté au build et au démarrage.
+WHITENOISE_USE_FINDERS = bool(RENDER_EXTERNAL_HOSTNAME)
 
 # =================== Logging ===================
 LOGS_DIR = BASE_DIR / 'logs'

@@ -754,6 +754,23 @@ def main():
         pass
     check_license()
 
+    # Une restauration demandée depuis l'interface s'applique avant que Django
+    # n'ouvre la base. La base active n'est jamais remplacée pendant que le
+    # serveur est en cours d'exécution.
+    try:
+        from ecole_moderne import sauvegarde as _sauvegarde
+        _restauration = _sauvegarde.appliquer_restauration_si_demandee(BASE_DIR)
+        if _restauration:
+            print(f"[Sauvegarde] {_restauration['message']}")
+            if not _restauration['ok']:
+                _show_fatal_error(
+                    "La restauration des données n'a pas abouti.\n\n"
+                    f"{_restauration['message']}\n\n"
+                    "Vos données actuelles n'ont pas été modifiées."
+                )
+    except Exception as _restauration_err:
+        print(f"[Sauvegarde] Restauration ignorée : {_restauration_err}")
+
     # Créer les dossiers nécessaires
     for folder in ['logs', 'media', 'staticfiles',
                    'media/photos_eleves', 'media/logos_ecoles']:
@@ -773,6 +790,28 @@ def main():
 
     # Afficher la bannière
     show_banner(port, license_status)
+
+    # Sauvegarde automatique 3-2-1 : les supports absents sont simplement
+    # réessayés au prochain passage du worker.
+    try:
+        from ecole_moderne import sauvegarde as _sauvegarde_auto
+        _config_sauvegarde = _sauvegarde_auto.charger_config()
+        if _sauvegarde_auto.demarrer_worker(delai_demarrage=90):
+            _nb_destinations = len(_config_sauvegarde['destinations'])
+            if not _config_sauvegarde.get('actif', True):
+                print("[Sauvegarde] Sauvegarde automatique désactivée dans les réglages.")
+            elif _nb_destinations:
+                print(
+                    f"[Sauvegarde] Active — {_nb_destinations} destination(s), "
+                    f"toutes les {_config_sauvegarde.get('intervalle_heures', 6)} h."
+                )
+            else:
+                print(
+                    "[Sauvegarde] Aucune destination externe configurée : "
+                    "ouvrez « Sauvegarde des données » dans l'application."
+                )
+    except Exception as _sauvegarde_err:
+        print(f"[Sauvegarde] Sauvegarde automatique non démarrée : {_sauvegarde_err}")
 
     # Ouvrir le navigateur en arrière-plan
     browser_thread = threading.Thread(

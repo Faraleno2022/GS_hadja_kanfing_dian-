@@ -11,6 +11,8 @@ def user_context(request):
         'user_role': None,
         'user_ecole': None,
         'is_admin': False,
+        'is_account_principal': False,
+        'menu_restricted': False,
         'user_permissions': {},
         'user_restrictions': {},
         'annee_active': None,
@@ -27,6 +29,8 @@ def user_context(request):
                 'user_role': profil.role,
                 'user_ecole': profil.ecole,
                 'is_admin': request.user.is_superuser or profil.role == 'ADMIN',
+                'is_account_principal': request.user.is_superuser or profil.est_compte_principal,
+                'menu_restricted': bool(profil.compte_principal_id),
                 'user_permissions': get_user_permissions(request.user),
                 'user_restrictions': check_comptable_restrictions(request.user),
             })

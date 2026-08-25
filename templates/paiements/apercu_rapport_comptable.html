@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% load static humanize %}
+
+{% block title %}Rapport comptable - myschool{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-preview { color: #233443; }
+    .report-header {
+        background: linear-gradient(135deg, #174a6e, #246c96);
+        color: #fff;
+        border-radius: 1rem;
+        overflow: hidden;
+    }
+    .report-logo {
+        width: 76px;
+        height: 76px;
+        object-fit: contain;
+        background: rgba(255, 255, 255, .96);
+        border-radius: .75rem;
+        padding: .35rem;
+    }
+    .report-kpi { border: 0; border-left: .3rem solid #174a6e; }
+    .report-kpi.success { border-left-color: #207a54; }
+    .report-kpi.warning { border-left-color: #c2761c; }
+    .report-kpi.danger { border-left-color: #b53a3a; }
+    .report-section { scroll-margin-top: 1rem; }
+    .report-section .card-header {
+        background: #174a6e;
+        color: #fff;
+        font-weight: 700;
+        letter-spacing: .02em;
+    }
+    .report-table { font-size: .86rem; }
+    .report-table thead th {
+        background: #eaf2f7;
+        color: #174a6e;
+        border-bottom: 2px solid #9ab7c9;
+        white-space: nowrap;
+    }
+    .report-table tfoot { background: #eef4f7; font-weight: 700; }
+    .signature-box { min-height: 92px; }
+    @media print {
+        @page { size: A4 landscape; margin: 10mm; }
+        nav, aside, footer, .breadcrumb, .page-header, .report-actions, .preview-notice { display: none !important; }
+        body, .content-wrapper, main { background: #fff !important; }
+        .container-fluid { max-width: none !important; padding: 0 !important; }
+        .report-header { background: #174a6e !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        .card { box-shadow: none !important; break-inside: avoid; }
+        .report-section.detail-section { break-inside: auto; }
+        .report-table { font-size: 8pt; }
+        .table-responsive { overflow: visible !important; }
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'paiements:liste_paiements' %}">Paiements</a></li>
+<li class="breadcrumb-item active">Rapport comptable</li>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 report-preview">
+    <div class="report-actions d-flex flex-wrap justify-content-end gap-2 mb-3">
+        <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Retour aux paiements
+        </a>
+        <button type="button" class="btn btn-outline-primary" onclick="window.print()">
+            <i class="fas fa-print me-1"></i>Imprimer l'aperçu
+        </button>
+        <button type="button" class="btn btn-danger" data-accounting-export="{% url 'paiements:export_comptabilite_pdf' %}">
+            <i class="fas fa-file-pdf me-1"></i>Exporter en PDF
+        </button>
+        <button type="button" class="btn btn-success" data-accounting-export="{% url 'paiements:export_comptabilite_excel' %}">
+            <i class="fas fa-file-excel me-1"></i>Exporter en Excel
+        </button>
+    </div>
+
+    <div class="alert alert-info preview-notice d-flex align-items-start" role="status">
+        <i class="fas fa-eye me-2 mt-1"></i>
+        <div><strong>Rapport détaillé.</strong> Les filtres, totaux, remises et opérations ci-dessous sont ceux utilisés pour générer le PDF et le fichier Excel.</div>
+    </div>
+
+    <header class="report-header shadow-sm p-4 mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            {% if data.school.logo %}
+            <img class="report-logo" src="{{ data.school.logo.url }}" alt="Logo de {{ data.school_name }}">
+            {% else %}
+            <img class="report-logo" src="{% static 'logos/logo.png' %}" alt="Logo de l'école">
+            {% endif %}
+            <div class="flex-grow-1">
+                <div class="text-uppercase small opacity-75">{{ data.school_name }}</div>
+                <h2 class="mb-1">Rapport comptable des encaissements</h2>
+                <div>{{ data.scope_label }} · {{ data.period_label }}</div>
+            </div>
+            <div class="text-lg-end small">
+                <div><strong>Année scolaire :</strong> {{ data.school_year|default:'Toutes' }}</div>
+                <div><strong>Référence :</strong> {{ data.report_reference }}</div>
+                <div><strong>Établi par :</strong> {{ data.generated_by }}</div>
+            </div>
+        </div>
+    </header>
+
+    {% if data.period_adjusted %}
+    <div class="alert alert-warning">
+        La date de fin demandée ({{ data.requested_end|date:'d/m/Y' }}) est future : le rapport est arrêté au {{ data.end|date:'d/m/Y' }}.
+    </div>
+    {% endif %}
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi success h-100 shadow-sm"><div class="card-body"><div class="small text-muted">Encaissements validés</div><div class="h5 mb-0">{{ data.total_validated|floatformat:0|intcomma }} GNF</div></div></div></div>
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi h-100 shadow-sm"><div class="card-body"><div class="small text-muted">Paiements validés</div><div class="h5 mb-0">{{ data.validated_count|intcomma }}</div></div></div></div>
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi warning h-100 shadow-sm"><div class="card-body"><div class="small text-muted">Remises accordées</div><div class="h5 mb-0">{{ data.total_discounts|floatformat:0|intcomma }} GNF</div></div></div></div>
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi h-100 shadow-sm"><div class="card-body"><div class="small text-muted">Couverture totale</div><div class="h5 mb-0">{{ data.total_coverage|floatformat:0|intcomma }} GNF</div></div></div></div>
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi warning h-100 shadow-sm"><div class="card-body"><div class="small text-muted">En attente</div><div class="h5 mb-0">{{ data.by_status.EN_ATTENTE.count|intcomma }}</div></div></div></div>
+        <div class="col-sm-6 col-xl-2"><div class="card report-kpi danger h-100 shadow-sm"><div class="card-body"><div class="small text-muted">Remboursés</div><div class="h5 mb-0">{{ data.by_status.REMBOURSE.count|intcomma }}</div></div></div></div>
+    </div>
+
+    <section class="card border-0 shadow-sm mb-4 report-section" id="statuts">
+        <div class="card-header">1. Synthèse par statut</div>
+        <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0 report-table">
+            <thead><tr><th>Statut</th><th class="text-end">Nombre</th><th class="text-end">Montant (GNF)</th><th class="text-end">Part des opérations</th></tr></thead>
+            <tbody>{% for item in status_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count|intcomma }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td><td class="text-end">{{ item.share|floatformat:1 }} %</td></tr>{% endfor %}</tbody>
+            <tfoot><tr><td>Total</td><td class="text-end">{{ data.payment_count|intcomma }}</td><td class="text-end">{{ all_payments_total|floatformat:0|intcomma }}</td><td class="text-end">{% if data.payment_count %}100,0 %{% else %}0,0 %{% endif %}</td></tr></tfoot>
+        </table></div>
+    </section>
+
+    <section class="card border-0 shadow-sm mb-4 report-section" id="ventilation">
+        <div class="card-header">2. Ventilation et contrôle des justificatifs</div>
+        <div class="card-body pb-2"><h6 class="text-primary">Par mode d'encaissement</h6></div>
+        <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0 report-table">
+            <thead><tr><th>Mode</th><th class="text-end">Opérations</th><th class="text-end">Montant (GNF)</th><th class="text-end">% validé</th><th class="text-end">Réf. manquantes</th><th class="text-end">Montant à justifier</th></tr></thead>
+            <tbody>
+                {% for item in mode_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count|intcomma }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td><td class="text-end">{{ item.share|floatformat:1 }} %</td><td class="text-end">{{ item.reference_missing|intcomma }}</td><td class="text-end">{{ item.reference_missing_amount|floatformat:0|intcomma }}</td></tr>
+                {% empty %}<tr><td colspan="6" class="text-center text-muted py-3">Aucun encaissement validé</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+        <div class="card-body small text-muted border-top">Les écarts de caisse, banque ou Mobile Money nécessitent les bordereaux externes. Les références absentes sont signalées ci-dessus.</div>
+
+        <div class="row g-0 border-top">
+            <div class="col-xl-6 border-end">
+                <div class="p-3 pb-2"><h6 class="text-primary mb-0">Par type de paiement</h6></div>
+                <div class="table-responsive"><table class="table table-sm table-striped mb-0 report-table">
+                    <thead><tr><th>Type de paiement</th><th class="text-end">Opérations</th><th class="text-end">Montant (GNF)</th></tr></thead>
+                    <tbody>{% for item in type_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count|intcomma }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center text-muted">Aucun encaissement validé</td></tr>{% endfor %}</tbody>
+                </table></div>
+            </div>
+            <div class="col-xl-6">
+                <div class="p-3 pb-2"><h6 class="text-primary mb-0">Affectation réelle</h6></div>
+                <div class="table-responsive"><table class="table table-sm table-striped mb-0 report-table">
+                    <thead><tr><th>Affectation</th><th class="text-end">Opérations</th><th class="text-end">Montant (GNF)</th></tr></thead>
+                    <tbody>{% for item in component_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count|intcomma }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td></tr>{% endfor %}</tbody>
+                    <tfoot><tr><td>Total</td><td class="text-end">—</td><td class="text-end">{{ component_total|floatformat:0|intcomma }}</td></tr></tfoot>
+                </table></div>
+            </div>
+        </div>
+        {% if data.unallocated_total > 0 %}<div class="alert alert-warning rounded-0 mb-0">Alerte : {{ data.unallocated_total|floatformat:0|intcomma }} GNF doivent être contrôlés car ils ne peuvent pas être rattachés avec certitude à un échéancier.</div>{% endif %}
+    </section>
+
+    <section class="card border-0 shadow-sm mb-4 report-section" id="classes">
+        <div class="card-header">3. Synthèse par classe</div>
+        <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0 report-table">
+            <thead><tr><th>Classe</th><th class="text-end">Paiements</th><th class="text-end">Encaissé (GNF)</th><th class="text-end">Remises (GNF)</th><th class="text-end">Couverture (GNF)</th></tr></thead>
+            <tbody>{% for item in class_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count|intcomma }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td><td class="text-end">{{ item.discount|floatformat:0|intcomma }}</td><td class="text-end">{{ item.coverage|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted">Aucune classe avec encaissement</td></tr>{% endfor %}</tbody>
+            <tfoot><tr><td>Total</td><td class="text-end">{{ data.validated_count|intcomma }}</td><td class="text-end">{{ data.total_validated|floatformat:0|intcomma }}</td><td class="text-end">{{ data.total_discounts|floatformat:0|intcomma }}</td><td class="text-end">{{ data.total_coverage|floatformat:0|intcomma }}</td></tr></tfoot>
+        </table></div>
+    </section>
+
+    <section class="card border-0 shadow-sm mb-4 report-section" id="remises">
+        <div class="card-header">4. Remises et réductions</div>
+        <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0 report-table">
+            <thead><tr><th>Motif de remise</th><th class="text-end">Montant (GNF)</th></tr></thead>
+            <tbody>{% for item in discount_rows %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.amount|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td>Aucune remise sur les paiements validés</td><td class="text-end">0</td></tr>{% endfor %}</tbody>
+            <tfoot><tr><td>Total</td><td class="text-end">{{ data.total_discounts|floatformat:0|intcomma }}</td></tr></tfoot>
+        </table></div>
+    </section>
+
+    <section class="card border-0 shadow-sm mb-4 report-section detail-section" id="journal">
+        <div class="card-header">5. Journal détaillé des encaissements validés</div>
+        <div class="card-body py-2 small text-muted">{{ data.scope_label }} · {{ data.period_label }} · {{ data.payment_rows|length }} opération{{ data.payment_rows|length|pluralize }}</div>
+        <div class="table-responsive"><table class="table table-sm table-striped table-hover align-middle mb-0 report-table">
+            <thead><tr><th>Date</th><th>Reçu</th><th>Matricule / Élève</th><th>Classe</th><th>Type</th><th>Mode</th><th class="text-end">Montant</th><th class="text-end">Remise</th><th>Référence</th><th>Validation</th></tr></thead>
+            <tbody>
+                {% for item in data.payment_rows %}<tr><td>{{ item.date|date:'d/m/Y' }}</td><td>{{ item.receipt }}</td><td><strong>{{ item.matricule }}</strong><br>{{ item.student }}</td><td>{{ item.class }}</td><td>{{ item.type }}</td><td>{{ item.mode }}</td><td class="text-end text-nowrap">{{ item.amount|floatformat:0|intcomma }}</td><td class="text-end text-nowrap">{{ item.discount|floatformat:0|intcomma }}</td><td>{{ item.reference }}</td><td>{{ item.approval }}</td></tr>
+                {% empty %}<tr><td colspan="10" class="text-center text-muted py-4">Aucune opération validée pour les filtres sélectionnés.</td></tr>{% endfor %}
+            </tbody>
+        </table></div>
+    </section>
+
+    <div class="alert alert-light border small">Contrôle recommandé : rapprocher les montants par mode avec les bordereaux de caisse, relevés Mobile Money, chèques et relevés bancaires.</div>
+    <div class="row g-3 mb-4 text-center">
+        <div class="col-md-4"><div class="border rounded p-3 signature-box"><strong>Établi par</strong><div class="mt-3">{{ data.generated_by }}</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-3 signature-box"><strong>Contrôlé par</strong><div class="mt-3 text-muted">Nom / Signature</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-3 signature-box"><strong>Validé par</strong><div class="mt-3 text-muted">Direction / Signature</div></div></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('[data-accounting-export]').forEach(function (button) {
+    button.addEventListener('click', function () {
+        const target = new URL(button.dataset.accountingExport, window.location.origin);
+        const current = new URLSearchParams(window.location.search);
+        current.forEach(function (value, key) { target.searchParams.set(key, value); });
+        window.open(target.toString(), '_blank');
+    });
+});
+</script>
+{% endblock %}

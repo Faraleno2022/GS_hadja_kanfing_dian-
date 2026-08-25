@@ -1,12 +1,13 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.db import transaction
 import re
 
-from .models import Profil
+from .models import MENUS, Profil
 from eleves.models import Ecole
 
 
@@ -179,6 +180,195 @@ class ComptableCreationForm(UserCreationForm):
                 changed = True
             if changed:
                 profil.save()
+        return user
+
+
+SOUS_UTILISATEUR_ROLES = [
+    ('COMPTABLE', 'Comptable'),
+    ('SECRETAIRE', 'Secrétaire'),
+    ('ENSEIGNANT', 'Enseignant'),
+    ('SURVEILLANT', 'Surveillant'),
+]
+
+SOUS_UTILISATEUR_PERMISSIONS = [
+    ('peut_ajouter_paiements', 'Ajouter des paiements'),
+    ('peut_modifier_paiements', 'Modifier des paiements'),
+    ('peut_valider_paiements', 'Valider des paiements'),
+    ('peut_ajouter_depenses', 'Ajouter des dépenses'),
+    ('peut_modifier_depenses', 'Modifier des dépenses'),
+    ('peut_valider_depenses', 'Valider des dépenses'),
+    ('peut_ajouter_enseignants', 'Ajouter des enseignants'),
+    ('peut_generer_rapports', 'Générer des rapports'),
+    ('peut_consulter_rapports', 'Consulter les rapports'),
+    ('peut_gerer_notes', 'Gérer les notes et matières'),
+    ('peut_gerer_classes', 'Créer et modifier les classes'),
+    ('peut_gerer_grilles_tarifaires', 'Gérer les grilles tarifaires'),
+]
+
+
+def _configurer_champs_sous_utilisateur(form):
+    for field_name in ('username', 'first_name', 'last_name', 'email', 'telephone', 'nouveau_mot_de_passe'):
+        if field_name in form.fields:
+            css = form.fields[field_name].widget.attrs.get('class', '')
+            form.fields[field_name].widget.attrs['class'] = (css + ' form-control').strip()
+    if 'role' in form.fields:
+        form.fields['role'].widget.attrs['class'] = 'form-select'
+    for field_name, label in SOUS_UTILISATEUR_PERMISSIONS:
+        form.fields[field_name] = forms.BooleanField(label=label, required=False)
+
+
+class SousUtilisateurCreationForm(UserCreationForm):
+    first_name = forms.CharField(label="Prénom", max_length=150, required=False)
+    last_name = forms.CharField(label="Nom", max_length=150, required=False)
+    email = forms.EmailField(label="Email", required=False)
+    telephone = forms.CharField(
+        label="Téléphone",
+        max_length=20,
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format attendu: +224XXXXXXXXX')],
+    )
+    role = forms.ChoiceField(label="Fonction", choices=SOUS_UTILISATEUR_ROLES)
+    allowed_menus = forms.MultipleChoiceField(
+        label="Menus visibles",
+        choices=MENUS,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Si aucun menu n'est coché, le sous-utilisateur verra uniquement son compte.",
+    )
+    lecture_seule = forms.BooleanField(label="Lecture seule", required=False)
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ('username', 'first_name', 'last_name', 'email', 'password1', 'password2')
+
+    def __init__(self, *args, principal_profil, **kwargs):
+        self.principal_profil = principal_profil
+        super().__init__(*args, **kwargs)
+        _configurer_champs_sous_utilisateur(self)
+        for field_name in ('password1', 'password2'):
+            self.fields[field_name].widget.attrs['class'] = 'form-control'
+
+    def clean_username(self):
+        username = (self.cleaned_data.get('username') or '').strip()
+        if User.objects.filter(username__iexact=username).exists():
+            raise ValidationError("Ce nom d'utilisateur existe déjà.")
+        return username
+
+    @property
+    def action_permission_fields(self):
+        return [self[name] for name, _label in SOUS_UTILISATEUR_PERMISSIONS]
+
+    @transaction.atomic
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.first_name = self.cleaned_data.get('first_name', '')
+        user.last_name = self.cleaned_data.get('last_name', '')
+        user.email = self.cleaned_data.get('email', '')
+        user.is_active = True
+        user.is_staff = False
+        if commit:
+            user.save()
+
+        profil, _created = Profil.objects.get_or_create(user=user)
+        profil.role = self.cleaned_data['role']
+        profil.telephone = self.cleaned_data['telephone']
+        profil.ecole = self.principal_profil.ecole
+        profil.compte_principal = self.principal_profil
+        profil.est_compte_principal = False
+        profil.allowed_menus = list(self.cleaned_data.get('allowed_menus') or [])
+        profil.lecture_seule = self.cleaned_data.get('lecture_seule', False)
+        profil.peut_gerer_utilisateurs = False
+        profil.is_validated = True
+        profil.actif = True
+        for field_name, _label in SOUS_UTILISATEUR_PERMISSIONS:
+            setattr(profil, field_name, self.cleaned_data.get(field_name, False))
+        profil.save()
+        return user
+
+
+class SousUtilisateurModificationForm(forms.Form):
+    username = forms.CharField(label="Nom d'utilisateur", max_length=150)
+    first_name = forms.CharField(label="Prénom", max_length=150, required=False)
+    last_name = forms.CharField(label="Nom", max_length=150, required=False)
+    email = forms.EmailField(label="Email", required=False)
+    telephone = forms.CharField(
+        label="Téléphone",
+        max_length=20,
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format attendu: +224XXXXXXXXX')],
+    )
+    role = forms.ChoiceField(label="Fonction", choices=SOUS_UTILISATEUR_ROLES)
+    allowed_menus = forms.MultipleChoiceField(
+        label="Menus visibles",
+        choices=MENUS,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    nouveau_mot_de_passe = forms.CharField(
+        label="Nouveau mot de passe (facultatif)",
+        required=False,
+        min_length=12,
+        widget=forms.PasswordInput,
+        help_text="Laissez vide pour conserver le mot de passe actuel.",
+    )
+    actif = forms.BooleanField(label="Compte actif", required=False)
+    lecture_seule = forms.BooleanField(label="Lecture seule", required=False)
+
+    def __init__(self, *args, profil, **kwargs):
+        self.profil = profil
+        user = profil.user
+        initial = kwargs.setdefault('initial', {})
+        initial.update({
+            'username': user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'email': user.email,
+            'telephone': profil.telephone,
+            'role': profil.role,
+            'allowed_menus': profil.allowed_menus,
+            'actif': user.is_active and profil.actif,
+            'lecture_seule': profil.lecture_seule,
+        })
+        for field_name, _label in SOUS_UTILISATEUR_PERMISSIONS:
+            initial[field_name] = getattr(profil, field_name, False)
+        super().__init__(*args, **kwargs)
+        _configurer_champs_sous_utilisateur(self)
+
+    def clean_username(self):
+        username = (self.cleaned_data.get('username') or '').strip()
+        if User.objects.filter(username__iexact=username).exclude(pk=self.profil.user_id).exists():
+            raise ValidationError("Ce nom d'utilisateur existe déjà.")
+        return username
+
+    def clean_nouveau_mot_de_passe(self):
+        password = self.cleaned_data.get('nouveau_mot_de_passe') or ''
+        if password:
+            validate_password(password, user=self.profil.user)
+        return password
+
+    @property
+    def action_permission_fields(self):
+        return [self[name] for name, _label in SOUS_UTILISATEUR_PERMISSIONS]
+
+    @transaction.atomic
+    def save(self):
+        user = self.profil.user
+        user.username = self.cleaned_data['username']
+        user.first_name = self.cleaned_data.get('first_name', '')
+        user.last_name = self.cleaned_data.get('last_name', '')
+        user.email = self.cleaned_data.get('email', '')
+        user.is_active = self.cleaned_data.get('actif', False)
+        password = self.cleaned_data.get('nouveau_mot_de_passe')
+        if password:
+            user.set_password(password)
+        user.save()
+
+        self.profil.role = self.cleaned_data['role']
+        self.profil.telephone = self.cleaned_data['telephone']
+        self.profil.allowed_menus = list(self.cleaned_data.get('allowed_menus') or [])
+        self.profil.lecture_seule = self.cleaned_data.get('lecture_seule', False)
+        self.profil.actif = user.is_active
+        for field_name, _label in SOUS_UTILISATEUR_PERMISSIONS:
+            setattr(self.profil, field_name, self.cleaned_data.get(field_name, False))
+        self.profil.save()
         return user
 
 

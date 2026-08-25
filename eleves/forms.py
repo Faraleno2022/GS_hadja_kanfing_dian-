@@ -1,6 +1,6 @@
 from django import forms
 from django.core.validators import RegexValidator
-from .models import Eleve, Responsable, Classe, Ecole
+from .models import Eleve, Responsable, Classe, Ecole, GrilleTarifaire
 from utilisateurs.utils import user_is_admin, user_school
 from datetime import date
 
@@ -443,6 +443,62 @@ class ClasseForm(forms.ModelForm):
                 raise forms.ValidationError("La deuxième année doit suivre la première (ex: 2024-2025)")
         
         return annee_scolaire
+
+
+class GrilleTarifaireForm(forms.ModelForm):
+    """Formulaire de création/modification d'une grille de l'école courante."""
+
+    class Meta:
+        model = GrilleTarifaire
+        fields = [
+            'ecole', 'niveau', 'annee_scolaire',
+            'frais_inscription', 'frais_reinscription',
+            'tranche_1', 'tranche_2', 'tranche_3',
+            'periode_1', 'periode_2', 'periode_3',
+            'date_echeance_inscription_defaut',
+            'date_echeance_tranche_1_defaut',
+            'date_echeance_tranche_2_defaut',
+            'date_echeance_tranche_3_defaut',
+        ]
+        widgets = {
+            'ecole': forms.Select(attrs={'class': 'form-select'}),
+            'niveau': forms.Select(attrs={'class': 'form-select'}),
+            'annee_scolaire': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '2026-2027'}),
+            'frais_inscription': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'frais_reinscription': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'tranche_1': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'tranche_2': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'tranche_3': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'periode_1': forms.TextInput(attrs={'class': 'form-control'}),
+            'periode_2': forms.TextInput(attrs={'class': 'form-control'}),
+            'periode_3': forms.TextInput(attrs={'class': 'form-control'}),
+            'date_echeance_inscription_defaut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_echeance_tranche_1_defaut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_echeance_tranche_2_defaut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_echeance_tranche_3_defaut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+        }
+
+    def clean_annee_scolaire(self):
+        annee = (self.cleaned_data.get('annee_scolaire') or '').strip()
+        if not re.match(r'^\d{4}-\d{4}$', annee):
+            raise forms.ValidationError("Format attendu : 2026-2027.")
+        debut, fin = map(int, annee.split('-'))
+        if fin != debut + 1:
+            raise forms.ValidationError("La deuxième année doit suivre la première.")
+        return annee
+
+    def clean(self):
+        cleaned = super().clean()
+        dates = [
+            cleaned.get('date_echeance_inscription_defaut'),
+            cleaned.get('date_echeance_tranche_1_defaut'),
+            cleaned.get('date_echeance_tranche_2_defaut'),
+            cleaned.get('date_echeance_tranche_3_defaut'),
+        ]
+        dates_renseignees = [value for value in dates if value]
+        if len(dates_renseignees) > 1 and dates_renseignees != sorted(dates_renseignees):
+            raise forms.ValidationError("L'ordre des échéances doit être Inscription ≤ T1 ≤ T2 ≤ T3.")
+        return cleaned
 
 
 class EcoleForm(forms.ModelForm):

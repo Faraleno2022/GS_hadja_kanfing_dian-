@@ -10,9 +10,12 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import csv
 
-from .models import Enseignant, PresenceEnseignant
+from .models import Enseignant, ModeCalculHoraire, PresenceEnseignant
 from .forms import PresenceForm
-from .services import STATUTS_HEURES_PAYEES
+from .services import (
+    STATUTS_HEURES_PAYEES,
+    recalculer_salaire_ouvert_pour_date,
+)
 from utilisateurs.utils import user_school, user_is_admin
 
 
@@ -118,6 +121,7 @@ def pointer_presence(request):
 
         count_created = 0
         count_updated = 0
+        salaires_recalcules = 0
 
         try:
             with transaction.atomic():
@@ -160,13 +164,25 @@ def pointer_presence(request):
 
                     count_created += int(created)
                     count_updated += int(not created)
+
+                for enseignant in enseignants_valides.values():
+                    if (
+                        enseignant.est_taux_horaire
+                        and enseignant.mode_calcul_horaire
+                        == ModeCalculHoraire.POINTAGE
+                    ):
+                        _, modifie = recalculer_salaire_ouvert_pour_date(
+                            enseignant, date_pointage, request.user
+                        )
+                        salaires_recalcules += int(modifie)
         except (ValueError, InvalidOperation, ValidationError) as exc:
             messages.error(request, f"Pointage non enregistré : {exc}")
             return redirect('salaires:pointer_presence')
         
         messages.success(
             request,
-            f"Pointage enregistré: {count_created} nouveau(x), {count_updated} mis à jour."
+            f"Pointage enregistré: {count_created} nouveau(x), {count_updated} mis à jour. "
+            f"{salaires_recalcules} salaire(s) horaire(s) recalculé(s)."
         )
         return redirect('salaires:liste_presences')
     
@@ -262,13 +278,44 @@ def modifier_presence(request, presence_id):
         enseignant__ecole=user_school_obj
     )
     
+    ancienne_date = presence.date
+    ancien_enseignant = presence.enseignant
+
     if request.method == 'POST':
         form = PresenceForm(request.POST, instance=presence, ecole=user_school_obj)
         if form.is_valid():
-            presence = form.save(commit=False)
-            presence.pointe_par = request.user
-            presence.save()
-            messages.success(request, "Présence modifiée avec succès.")
+            with transaction.atomic():
+                presence = form.save(commit=False)
+                presence.pointe_par = request.user
+                presence.save()
+
+                recalculs = {
+                    (ancien_enseignant.id, ancienne_date.year, ancienne_date.month): (
+                        ancien_enseignant,
+                        ancienne_date,
+                    ),
+                    (presence.enseignant_id, presence.date.year, presence.date.month): (
+                        presence.enseignant,
+                        presence.date,
+                    ),
+                }
+                salaires_recalcules = 0
+                for enseignant, date_reference in recalculs.values():
+                    if (
+                        enseignant.est_taux_horaire
+                        and enseignant.mode_calcul_horaire
+                        == ModeCalculHoraire.POINTAGE
+                    ):
+                        _, modifie = recalculer_salaire_ouvert_pour_date(
+                            enseignant, date_reference, request.user
+                        )
+                        salaires_recalcules += int(modifie)
+
+            messages.success(
+                request,
+                "Présence modifiée avec succès. "
+                f"{salaires_recalcules} salaire(s) horaire(s) recalculé(s).",
+            )
             return redirect('salaires:liste_presences')
     else:
         form = PresenceForm(instance=presence, ecole=user_school_obj)
@@ -293,11 +340,27 @@ def supprimer_presence(request, presence_id):
     
     if request.method == 'POST':
         enseignant_nom = presence.enseignant.nom_complet
+        enseignant = presence.enseignant
         date_presence = presence.date
-        presence.delete()
+        with transaction.atomic():
+            presence.delete()
+            salaire_recalcule = False
+            if (
+                enseignant.est_taux_horaire
+                and enseignant.mode_calcul_horaire
+                == ModeCalculHoraire.POINTAGE
+            ):
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, date_presence, request.user
+                )
         messages.success(
             request,
-            f"Présence de {enseignant_nom} du {date_presence} supprimée."
+            f"Présence de {enseignant_nom} du {date_presence} supprimée. "
+            + (
+                "Le salaire horaire a été recalculé."
+                if salaire_recalcule
+                else ""
+            )
         )
         return redirect('salaires:liste_presences')
     

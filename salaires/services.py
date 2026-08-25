@@ -1,8 +1,9 @@
 """Règles de calcul du moteur de paie.
 
 Les enseignants au forfait sont payés au prorata de leur date d'embauche.
-Les enseignants du secondaire sont payés sur les heures réellement pointées
-pendant la période. Les affectations servent à ventiler ces heures par classe.
+Les enseignants du secondaire sont payés soit sur les heures réellement
+pointées, soit sur un total mensuel explicitement saisi. Les affectations
+servent à ventiler ces heures par classe.
 """
 
 from calendar import monthrange
@@ -12,7 +13,13 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
 from django.db.models import Q, Sum
 
-from .models import DetailHeuresClasse, Enseignant, EtatSalaire
+from .models import (
+    DetailHeuresClasse,
+    Enseignant,
+    EtatSalaire,
+    ModeCalculHoraire,
+    PeriodeSalaire,
+)
 
 
 HEURE = Decimal('0.01')
@@ -55,6 +62,13 @@ def heures_reellement_travaillees(enseignant, periode):
         statut__in=STATUTS_HEURES_PAYEES,
     ).aggregate(total=Sum('heures_travaillees'))['total']
     return arrondir_heures(total)
+
+
+def heures_pour_calcul(enseignant, periode):
+    """Retourne les heures selon le mode explicitement choisi."""
+    if enseignant.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
+        return arrondir_heures(enseignant.heures_mensuelles)
+    return heures_reellement_travaillees(enseignant, periode)
 
 
 def affectations_de_la_periode(enseignant, periode):
@@ -154,9 +168,10 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
     etat.details_heures.all().delete()
 
     if enseignant.est_taux_horaire:
-        total_heures = heures_reellement_travaillees(enseignant, periode)
+        total_heures = heures_pour_calcul(enseignant, periode)
         taux_horaire = enseignant.taux_horaire or Decimal('0')
         etat.total_heures = total_heures
+        etat.mode_calcul_heures = enseignant.mode_calcul_horaire
         etat.taux_horaire_applique = taux_horaire
         etat.salaire_base = arrondir_montant(total_heures * taux_horaire)
         etat.calcule_par = utilisateur
@@ -175,9 +190,36 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
             )
     else:
         etat.total_heures = None
+        etat.mode_calcul_heures = ''
         etat.taux_horaire_applique = None
         etat.salaire_base = salaire_fixe_proratise(enseignant, periode)
         etat.calcule_par = utilisateur
         etat.save()
 
     return etat, True
+
+
+def recalculer_salaire_ouvert_pour_date(
+    enseignant, date_reference, utilisateur
+):
+    """Recalcule immédiatement le brouillon du mois s'il existe.
+
+    Les périodes clôturées et les états validés restent intacts. La fonction
+    retourne ``(etat, modifie)`` ou ``(None, False)`` lorsqu'aucune période
+    ouverte et éligible ne correspond.
+    """
+    if enseignant.statut != 'ACTIF':
+        return None, False
+
+    periode = PeriodeSalaire.objects.filter(
+        ecole=enseignant.ecole,
+        mois=date_reference.month,
+        annee=date_reference.year,
+        cloturee=False,
+    ).first()
+    if periode is None or not enseignants_eligibles(periode).filter(
+        pk=enseignant.pk
+    ).exists():
+        return None, False
+
+    return calculer_etat_salaire(enseignant, periode, utilisateur)

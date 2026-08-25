@@ -1,0 +1,426 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h2 class="mb-1"><i class="fas fa-shield-halved text-primary me-2"></i>Sauvegarde des données</h2>
+      <p class="text-muted mb-0">
+        Protection contre la panne, le vol ou la réinstallation de cet ordinateur — {{ nom_ecole }}
+      </p>
+    </div>
+    <form method="post" action="{% url 'sauvegarde_lancer' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">
+        <i class="fas fa-cloud-arrow-up me-1"></i>Sauvegarder maintenant
+      </button>
+    </form>
+  </div>
+
+  {% if restauration_attente %}
+  <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <i class="fas fa-triangle-exclamation me-1"></i>
+      <strong>Restauration en attente.</strong>
+      Fermez puis relancez MySchoolGN pour remettre en place les données de
+      « {{ restauration_attente.archive }} ». La base actuelle sera conservée dans le dossier <code>backups</code>.
+    </div>
+    <form method="post" action="{% url 'sauvegarde_restaurer_annuler' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-outline-dark">Annuler la restauration</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- ── Règle 3-2-1 : état en un coup d'œil ─────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-4">
+      <div class="card h-100 border-success">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <div class="text-muted small">1 — Copie sur cet ordinateur</div>
+            <i class="fas fa-desktop text-success"></i>
+          </div>
+          <div class="h5 mb-1">Dossier local</div>
+          <div class="small text-muted text-break">{{ dossier_local }}</div>
+          <div class="small mt-2">
+            Dernière sauvegarde :
+            <strong>{{ derniere_affichee|default:"jamais" }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="card h-100 {% if a_cloud %}border-success{% else %}border-danger{% endif %}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <div class="text-muted small">2 — Copie hors du bâtiment</div>
+            <i class="fas fa-cloud {% if a_cloud %}text-success{% else %}text-danger{% endif %}"></i>
+          </div>
+          <div class="h5 mb-1">Dossier cloud synchronisé</div>
+          {% if a_cloud %}
+            <div class="text-success small"><i class="fas fa-check me-1"></i>Configuré — part chez le fournisseur dès que la connexion revient</div>
+          {% else %}
+            <div class="text-danger small"><i class="fas fa-xmark me-1"></i>Aucun dossier OneDrive / Google Drive / Dropbox configuré</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="card h-100 {% if a_amovible %}border-success{% else %}border-danger{% endif %}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between">
+            <div class="text-muted small">3 — Copie sur un autre support</div>
+            <i class="fas fa-usb {% if a_amovible %}text-success{% else %}text-danger{% endif %}"></i>
+          </div>
+          <div class="h5 mb-1">Clé USB / disque externe</div>
+          {% if a_amovible %}
+            <div class="text-success small"><i class="fas fa-check me-1"></i>Configuré — laissez le support branché sur le poste</div>
+          {% else %}
+            <div class="text-danger small"><i class="fas fa-xmark me-1"></i>Aucune clé USB ni disque externe configuré</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Destinations ─────────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="fas fa-folder-tree me-1"></i>Destinations de sauvegarde</span>
+      <span class="text-muted small">
+        {% if config.actif %}Automatique toutes les {{ config.intervalle_heures }} h — prochaine : {{ prochaine_affichee }}
+        {% else %}Sauvegarde automatique désactivée{% endif %}
+      </span>
+    </div>
+    <div class="card-body p-0">
+      {% if destinations %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Destination</th>
+              <th>Type</th>
+              <th>Dernière réussite</th>
+              <th>Espace libre</th>
+              <th class="text-end">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for destination in destinations %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ destination.libelle }}</div>
+                <div class="small text-muted text-break">{{ destination.chemin }}</div>
+                {% if destination.chemin_utilise %}
+                <div class="small text-info">
+                  <i class="fas fa-arrows-rotate me-1"></i>support retrouvé sur {{ destination.chemin_utilise }}
+                </div>
+                {% endif %}
+              </td>
+              <td>
+                {% if destination.type == 'cloud' %}
+                  <span class="badge bg-info text-dark"><i class="fas fa-cloud me-1"></i>Cloud</span>
+                {% elif destination.type == 'amovible' %}
+                  <span class="badge bg-secondary"><i class="fas fa-usb me-1"></i>Clé USB</span>
+                {% elif destination.type == 'disque' %}
+                  <span class="badge bg-secondary"><i class="fas fa-hard-drive me-1"></i>Disque</span>
+                {% else %}
+                  <span class="badge bg-light text-dark"><i class="fas fa-folder me-1"></i>Dossier</span>
+                {% endif %}
+                {% if not destination.disponible %}
+                  <span class="badge bg-warning text-dark">non branché</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if destination.derniere_affichee %}
+                  <span class="{% if destination.alerte %}text-danger fw-semibold{% else %}text-success{% endif %}">
+                    {{ destination.derniere_affichee }}
+                  </span>
+                  {% if destination.jours_depuis %}<div class="small text-muted">il y a {{ destination.jours_depuis }} jour(s)</div>{% endif %}
+                {% else %}
+                  <span class="text-danger fw-semibold">jamais</span>
+                {% endif %}
+              </td>
+              <td>{% if destination.espace_libre_go %}{{ destination.espace_libre_go }} Go{% else %}—{% endif %}</td>
+              <td class="text-end">
+                <form method="post" action="{% url 'sauvegarde_destination_retirer' %}"
+                      onsubmit="return confirm('Retirer cette destination ? Les sauvegardes déjà copiées ne seront pas supprimées.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="chemin" value="{{ destination.chemin }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-xmark me-1"></i>Retirer
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-3 text-danger">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        Aucune destination externe : en cas de panne du disque de cet ordinateur, les données seraient perdues.
+        Ajoutez au moins un dossier cloud <strong>et</strong> une clé USB ci-dessous.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- ── Supports détectés + ajout manuel ─────────────────────────────────── -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-7">
+      <div class="card h-100">
+        <div class="card-header"><i class="fas fa-magnifying-glass me-1"></i>Supports détectés sur ce poste</div>
+        <div class="card-body">
+          {% if cloud_non_montes %}
+          <div class="alert alert-warning py-2 small">
+            <i class="fas fa-circle-info me-1"></i>
+            {% for client in cloud_non_montes %}<strong>{{ client }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
+            {% if cloud_non_montes|length > 1 %}sont installés{% else %}est installé{% endif %} sur ce poste
+            mais aucun dossier n'est visible : ouvrez l'application, connectez-vous et
+            reprenez la synchronisation (si elle est en pause), puis rechargez cette page.
+          </div>
+          {% endif %}
+          {% if suggestions %}
+          <div class="list-group">
+            {% for suggestion in suggestions %}
+            <div class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <div class="fw-semibold">
+                  {% if suggestion.type == 'cloud' %}<i class="fas fa-cloud text-info me-1"></i>
+                  {% elif suggestion.type == 'amovible' %}<i class="fas fa-usb text-secondary me-1"></i>
+                  {% else %}<i class="fas fa-hard-drive text-secondary me-1"></i>{% endif %}
+                  {{ suggestion.libelle }}
+                </div>
+                <div class="small text-muted text-break">{{ suggestion.chemin }}</div>
+                {% if suggestion.espace_libre_go %}<div class="small text-muted">{{ suggestion.espace_libre_go }} Go libres</div>{% endif %}
+              </div>
+              <form method="post" action="{% url 'sauvegarde_destination_ajouter' %}">
+                {% csrf_token %}
+                <input type="hidden" name="chemin" value="{{ suggestion.chemin }}">
+                <input type="hidden" name="libelle" value="{{ suggestion.libelle }}">
+                <input type="hidden" name="type" value="{{ suggestion.type }}">
+                <input type="hidden" name="volume" value="{{ suggestion.volume|default:'' }}">
+                <button type="submit" class="btn btn-sm btn-success">
+                  <i class="fas fa-plus me-1"></i>Utiliser
+                </button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">
+            Aucun nouveau support détecté. Branchez une clé USB, ou installez/ouvrez
+            OneDrive, Google Drive ou Dropbox puis rechargez cette page.
+          </p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+      <div class="card h-100">
+        <div class="card-header"><i class="fas fa-folder-plus me-1"></i>Ajouter un dossier manuellement</div>
+        <div class="card-body">
+          <form method="post" action="{% url 'sauvegarde_destination_ajouter' %}">
+            {% csrf_token %}
+            <div class="mb-2">
+              <label class="form-label small">Chemin du dossier</label>
+              <input type="text" name="chemin" class="form-control" required
+                     placeholder="E:\MySchoolGN_Sauvegardes">
+              <div class="form-text">Copiez le chemin depuis l'explorateur Windows (barre d'adresse).</div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Nom affiché</label>
+              <input type="text" name="libelle" class="form-control" placeholder="Clé USB du bureau">
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Type de support</label>
+              <select name="type" class="form-select">
+                <option value="cloud">Dossier cloud synchronisé</option>
+                <option value="amovible">Clé USB</option>
+                <option value="disque">Disque externe</option>
+                <option value="dossier">Autre dossier / partage réseau</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-outline-primary w-100">
+              <i class="fas fa-plus me-1"></i>Ajouter cette destination
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Réglages ─────────────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="fas fa-sliders me-1"></i>Réglages de la sauvegarde automatique</div>
+    <div class="card-body">
+      <form method="post" action="{% url 'sauvegarde_reglages' %}" class="row g-3 align-items-end">
+        {% csrf_token %}
+        <div class="col-12 col-md-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="actif" name="actif"
+                   {% if config.actif %}checked{% endif %}>
+            <label class="form-check-label" for="actif">Sauvegarde automatique</label>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small">Toutes les (heures)</label>
+          <input type="number" min="1" max="168" name="intervalle_heures" class="form-control"
+                 value="{{ config.intervalle_heures }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small">Dernières gardées</label>
+          <input type="number" min="1" max="50" name="conserver_recentes" class="form-control"
+                 value="{{ config.conserver_recentes }}">
+        </div>
+        <div class="col-6 col-md-1">
+          <label class="form-label small">Quotid.</label>
+          <input type="number" min="1" max="60" name="conserver_quotidiennes" class="form-control"
+                 value="{{ config.conserver_quotidiennes }}">
+        </div>
+        <div class="col-6 col-md-1">
+          <label class="form-label small">Hebdo.</label>
+          <input type="number" min="1" max="52" name="conserver_hebdomadaires" class="form-control"
+                 value="{{ config.conserver_hebdomadaires }}">
+        </div>
+        <div class="col-6 col-md-1">
+          <label class="form-label small">Mensuel.</label>
+          <input type="number" min="1" max="60" name="conserver_mensuelles" class="form-control"
+                 value="{{ config.conserver_mensuelles }}">
+        </div>
+        <div class="col-12 col-md-1 d-grid">
+          <button type="submit" class="btn btn-primary"><i class="fas fa-check"></i></button>
+        </div>
+      </form>
+      <div class="form-text mt-2">
+        Les photos et logos sont copiés en miroir : seuls les fichiers nouveaux ou modifiés
+        transitent, la sauvegarde reste rapide même sur une clé USB.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Restauration ─────────────────────────────────────────────────────── -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <i class="fas fa-rotate-left me-1"></i>Restaurer des données
+      <span class="text-muted small ms-2">machine en panne, disque formaté ou réinstallation</span>
+    </div>
+    <div class="card-body p-0">
+      {% if archives %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Provenance</th>
+              <th>Contenu</th>
+              <th>Taille</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for archive in archives %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ archive.date_affichee|default:archive.nom }}</div>
+                <div class="small text-muted">{{ archive.nom }}</div>
+              </td>
+              <td>
+                {{ archive.source }}
+                {% if archive.medias %}<div class="small text-success"><i class="fas fa-images me-1"></i>photos incluses</div>{% endif %}
+              </td>
+              <td class="small">
+                {{ archive.ecole }}<br>
+                {% if archive.eleves is not None %}{{ archive.eleves }} élève(s){% endif %}
+                {% if archive.paiements is not None %} · {{ archive.paiements }} paiement(s){% endif %}
+              </td>
+              <td>{{ archive.taille_affichee }}</td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url 'sauvegarde_telecharger' %}?chemin={{ archive.chemin|urlencode }}">
+                  <i class="fas fa-download me-1"></i>Télécharger
+                </a>
+                <form method="post" action="{% url 'sauvegarde_restaurer' %}" class="d-inline"
+                      onsubmit="return confirm('Remplacer les données actuelles par cette sauvegarde du {{ archive.date_affichee }} ?\n\nLa base actuelle sera conservée dans le dossier backups. La restauration s\'applique au prochain démarrage de MySchoolGN.');">
+                  {% csrf_token %}
+                  <input type="hidden" name="chemin" value="{{ archive.chemin }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-rotate-left me-1"></i>Restaurer
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-3 text-muted">
+        Aucune sauvegarde trouvée. Branchez la clé USB ou ouvrez le dossier cloud contenant
+        <code>MySchoolGN_Sauvegardes</code>, puis rechargez cette page.
+      </div>
+      {% endif %}
+    </div>
+    <div class="card-footer small text-muted">
+      Sur une nouvelle machine : installez MySchoolGN, connectez-vous, branchez la clé USB
+      (ou attendez la synchronisation du dossier cloud), revenez ici et cliquez sur
+      <strong>Restaurer</strong>. La licence, elle, reste liée à l'ancienne machine : demandez-en
+      une nouvelle à GS Hadja Kanfing Dian.
+    </div>
+  </div>
+
+  <!-- ── Journal ──────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header"><i class="fas fa-clock-rotate-left me-1"></i>Historique des sauvegardes</div>
+    <div class="card-body p-0">
+      {% if journal %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Déclenchée par</th>
+              <th>Résultat</th>
+              <th>Détail</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entree in journal %}
+            <tr>
+              <td class="text-nowrap">{{ entree.date_affichee }}</td>
+              <td class="small">{{ entree.declencheur }}</td>
+              <td>
+                {% if entree.ok %}
+                  <span class="badge bg-success">Réussie</span>
+                {% else %}
+                  <span class="badge bg-danger">Échec</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {{ entree.message }}
+                {% for detail in entree.destinations %}
+                  <div class="{% if detail.ok %}text-muted{% else %}text-danger{% endif %}">
+                    {{ detail.libelle }} — {{ detail.message }}
+                  </div>
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-3 text-muted">Aucune sauvegarde enregistrée pour l'instant.</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

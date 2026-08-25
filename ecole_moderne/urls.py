@@ -23,6 +23,7 @@ from django.views.generic import TemplateView, RedirectView
 from .static_views import serve_static_no_cache
 from .activation_views import activer_licence
 from .desktop_views import arreter_application
+from . import sauvegarde_views
 from utilisateurs.license_api import activate_license, verify_license
 from notes.rapport_scolaire import rapport_scolaire_recherche, rapport_scolaire_detail, rapport_scolaire_pdf, rapport_scolaire_recu_pdf, rapport_scolaire_classes_ajax
 
@@ -77,6 +78,15 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     path('activer/', activer_licence, name='activer_licence'),
     path('desktop/arreter/', arreter_application, name='arreter_application'),
+    # Sauvegarde des données (règle 3-2-1) — application desktop
+    path('sauvegarde/', sauvegarde_views.tableau_sauvegarde, name='sauvegarde_tableau'),
+    path('sauvegarde/reglages/', sauvegarde_views.enregistrer_reglages, name='sauvegarde_reglages'),
+    path('sauvegarde/destination/ajouter/', sauvegarde_views.ajouter_destination, name='sauvegarde_destination_ajouter'),
+    path('sauvegarde/destination/retirer/', sauvegarde_views.retirer_destination, name='sauvegarde_destination_retirer'),
+    path('sauvegarde/lancer/', sauvegarde_views.sauvegarder_maintenant, name='sauvegarde_lancer'),
+    path('sauvegarde/telecharger/', sauvegarde_views.telecharger_archive, name='sauvegarde_telecharger'),
+    path('sauvegarde/restaurer/', sauvegarde_views.restaurer, name='sauvegarde_restaurer'),
+    path('sauvegarde/restaurer/annuler/', sauvegarde_views.annuler_restauration, name='sauvegarde_restaurer_annuler'),
     path('api/v1/license/activate', activate_license, name='license_api_activate'),
     path('api/v1/license/activate/', activate_license, name='license_api_activate_slash'),
     path('api/v1/license/verify', verify_license, name='license_api_verify'),

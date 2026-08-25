@@ -1491,6 +1491,12 @@ def tableau_bord_paiements(request):
         'finance_direction': finance_direction,
         'classes_a_risque': classes_a_risque,
         'modes_encaissement': modes_encaissement,
+        'modes_date_debut': today.replace(day=1),
+        'modes_date_fin': today,
+        'annee_active': annee_active or '',
+        'can_view_reports': has_permission(
+            request.user, 'peut_consulter_rapports'
+        ),
     }
     return render(request, 'paiements/tableau_bord.html', context)
 
@@ -1865,6 +1871,7 @@ def liste_paiements(request):
         'statut': statut,
         'annee_filtre': annee_filtre or (annee_active or ''),
         'annee_active': annee_active or '',
+        'can_view_reports': has_permission(request.user, 'peut_consulter_rapports'),
         'paiements': page_obj.object_list,
         'page_obj': page_obj,
         # Totaux pour l'UI (utilisés par _paiements_resultats.html)
@@ -3861,11 +3868,6 @@ def generer_recu_pdf(request, paiement_id:int):
     
     # L'encaissement et la remise sont deux composantes distinctes de la couverture.
     draw_line(f"Montant encaissé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
-
-    if remises_total and int(remises_total) > 0:
-        draw_line(f"Remise accordée : {str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
-    couverture_recu = max(0, int(paiement.montant + (remises_total or 0)))
-    draw_line(f"Dette couverte par ce reçu : {str(f'{couverture_recu:,}').replace(',', ' ')} GNF", bold=True)
 
     # Affectation réelle du paiement courant, reconstruite avec la même règle
     # séquentielle que celle utilisée lors de la validation.

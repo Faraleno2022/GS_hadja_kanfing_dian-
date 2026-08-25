@@ -30,7 +30,11 @@ from .forms import (
     EtatSalaireAjustementForm,
     PresenceForm,
 )
-from .services import calculer_etat_salaire, enseignants_eligibles
+from .services import (
+    calculer_etat_salaire,
+    enseignants_eligibles,
+    recalculer_salaire_ouvert_pour_date,
+)
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
@@ -1730,13 +1734,22 @@ def ajouter_enseignant(request):
     if request.method == 'POST':
         form = EnseignantForm(request.POST, user=request.user)
         if form.is_valid():
-            enseignant = form.save(commit=False)
-            enseignant.cree_par = request.user
-            enseignant.save()
+            with transaction.atomic():
+                enseignant = form.save(commit=False)
+                enseignant.cree_par = request.user
+                enseignant.save()
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, timezone.localdate(), request.user
+                )
             
             messages.success(
                 request, 
                 f"L'enseignant {enseignant.nom_complet} a été ajouté avec succès !"
+                + (
+                    " Son salaire du mois ouvert a été calculé."
+                    if salaire_recalcule
+                    else ""
+                )
             )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
@@ -1765,10 +1778,19 @@ def modifier_enseignant(request, enseignant_id):
     if request.method == 'POST':
         form = EnseignantForm(request.POST, instance=enseignant, user=request.user)
         if form.is_valid():
-            form.save()
+            with transaction.atomic():
+                enseignant = form.save()
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, timezone.localdate(), request.user
+                )
             messages.success(
                 request, 
                 f"L'enseignant {enseignant.nom_complet} a été modifié avec succès !"
+                + (
+                    " Son salaire du mois ouvert a été recalculé."
+                    if salaire_recalcule
+                    else ""
+                )
             )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:

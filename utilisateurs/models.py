@@ -81,12 +81,27 @@ class Profil(models.Model):
     adresse = models.TextField(blank=True, null=True, verbose_name="Adresse")
     photo = models.ImageField(upload_to='utilisateurs/photos/', blank=True, null=True, verbose_name="Photo")
     ecole = models.ForeignKey(Ecole, on_delete=models.SET_NULL, related_name='profils', verbose_name="École", null=True, blank=True)
+    est_compte_principal = models.BooleanField(
+        default=False,
+        verbose_name="Compte principal de l'école",
+        help_text="Le compte principal peut gérer la structure et les sous-utilisateurs de son école.",
+    )
+    compte_principal = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        related_name='sous_utilisateurs',
+        null=True,
+        blank=True,
+        verbose_name="Compte principal responsable",
+    )
     
     # Permissions spécifiques
     peut_valider_paiements = models.BooleanField(default=False, verbose_name="Peut valider les paiements")
     peut_valider_depenses = models.BooleanField(default=False, verbose_name="Peut valider les dépenses")
     peut_generer_rapports = models.BooleanField(default=False, verbose_name="Peut générer des rapports")
     peut_gerer_utilisateurs = models.BooleanField(default=False, verbose_name="Peut gérer les utilisateurs")
+    peut_gerer_classes = models.BooleanField(default=False, verbose_name="Peut créer et modifier les classes")
+    peut_gerer_grilles_tarifaires = models.BooleanField(default=False, verbose_name="Peut gérer les grilles tarifaires")
 
     # Mode lecture seule : l'utilisateur peut se connecter et consulter, mais
     # ne peut effectuer AUCUNE action (ajout/modif/suppression) dans aucun module.
@@ -134,14 +149,23 @@ class Profil(models.Model):
     def nom_complet(self):
         return self.user.get_full_name() or self.user.username
 
+    @property
+    def est_sous_utilisateur(self):
+        return self.compte_principal_id is not None
+
+    @property
+    def allowed_menu_labels(self):
+        labels = dict(MENUS)
+        return [labels.get(key, key) for key in (self.allowed_menus or [])]
+
 # Définition centralisée des menus configurables
 MENUS = [
     ('eleves', 'Élèves'),
     ('paiements', 'Paiements'),
-    ('depenses', 'Dépenses'),
+    ('depenses', 'Dépenses, recouvrement et bibliothèque'),
     ('salaires', 'Salaires'),
-    ('bus', 'Bus scolaire'),
-    ('notes', 'Gestion de notes (DÉSACTIVÉ)'),  # Conservé pour compatibilité
+    ('bus', 'Transport et cantine'),
+    ('notes', 'Notes, présences et chatbot'),
     ('rapports', 'Rapports'),
 ]
 
