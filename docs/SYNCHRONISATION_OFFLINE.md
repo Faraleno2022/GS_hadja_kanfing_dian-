@@ -1,5 +1,31 @@
 # Synchronisation offline / online
 
+## Synchronisation automatique (poste desktop)
+
+Sur l'application desktop packagee (MySchoolGN.exe), la synchronisation tourne
+en tache de fond des le demarrage, sans commande manuelle :
+
+- **Envoi (push)** : des qu'une donnee est enregistree localement (eleve,
+  paiement, note, depense, ...), le changement est mis en file puis envoye
+  vers le serveur en quelques instants (declenchement immediat, pas d'attente
+  d'un intervalle).
+- **Reception (pull)** : le poste interroge le serveur toutes les
+  `MYSCHOOL_SYNC_INTERVAL` secondes (10s par defaut) pour recuperer les
+  changements faits sur les autres postes/le serveur.
+- **Transport rapide** : connexion HTTP persistante (keep-alive), compression
+  gzip des lots, et vidage complet de la file a chaque cycle (pas de plafond
+  a 200 changements comme avant).
+
+Pour l'activer : copiez `sync_config.example.json` en `sync_config.json` a
+cote de `MySchoolGN.exe`, renseignez les valeurs (voir enregistrement
+ci-dessous), puis redemarrez l'application. Tant que ce fichier n'existe pas
+(ou que les variables d'environnement equivalentes ne sont pas definies), la
+synchronisation automatique reste silencieuse et n'a aucun effet.
+
+`python manage.py sync_offline` (ci-dessous) reste disponible pour forcer un
+cycle manuellement ou pour un environnement serveur sans interface graphique.
+
+
 ## 1. Configurer le serveur Render
 
 Dans Render, ajoute une variable d'environnement secrete :

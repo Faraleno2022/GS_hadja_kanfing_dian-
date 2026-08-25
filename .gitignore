@@ -99,3 +99,18 @@ backups/journal_sauvegarde.json
 .trial_start
 ~WRL*.tmp
 .claude/worktrees/
+
+# Configuration de synchronisation propre à chaque poste (contient un token)
+sync_config.json
+
+# Logs de compilation locaux (build_exe.py / ISCC)
+build_log*.txt
+iscc_log*.txt
+
+# Scratch / exports temporaires non lies a l'application
+/tmp/
+/qa_render/
+/qa_render_v*/
+/livrables/
+/logistique-site/
+build_cahier_charges.py

@@ -28,6 +28,7 @@ def create_sync_change_on_save(sender, instance, created, **kwargs):
         operation=SyncChange.OPERATION_CREATE if created else SyncChange.OPERATION_UPDATE,
         payload=serialize_instance(instance),
     )
+    _reveiller_sync()
 
 
 @receiver(pre_delete)
@@ -46,3 +47,13 @@ def create_sync_change_on_delete(sender, instance, **kwargs):
         operation=SyncChange.OPERATION_DELETE,
         payload={'sync_uuid': str(instance.sync_uuid)},
     )
+    _reveiller_sync()
+
+
+def _reveiller_sync():
+    """Reveille immediatement le worker de synchronisation automatique, s'il tourne."""
+    try:
+        from .autosync import notifier_changement
+        notifier_changement()
+    except Exception:
+        pass

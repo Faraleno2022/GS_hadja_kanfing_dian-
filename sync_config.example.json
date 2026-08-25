@@ -6,7 +6,8 @@
   "MYSCHOOL_SYNC_DEVICE_ID": "a-obtenir-via-enregistrement",
   "MYSCHOOL_SYNC_TOKEN": "a-obtenir-via-enregistrement",
 
-  "MYSCHOOL_SYNC_INTERVAL": "60",
+  "MYSCHOOL_SYNC_INTERVAL": "10",
+  "_INTERVAL_INFO": "Frequence (en secondes) de verification des changements venant des AUTRES postes. Vos propres modifications locales sont envoyees immediatement, sans attendre cet intervalle. 10s est deja tres rapide ; ne descendez pas sous 3s pour ne pas surcharger le serveur.",
 
   "_AIDE_ENREGISTREMENT": "Pour obtenir DEVICE_ID et TOKEN, enregistrez le poste aupres du serveur en ligne (une fois, avec un jeton admin) :",
   "_COMMANDE": "MySchoolGN.exe (ou python manage.py) register_sync_device --server-url https://votre-serveur --admin-token JETON_ADMIN --ecole-id 1 --nom \"Poste Secretariat\""

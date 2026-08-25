@@ -813,6 +813,28 @@ def main():
     except Exception as _sauvegarde_err:
         print(f"[Sauvegarde] Sauvegarde automatique non démarrée : {_sauvegarde_err}")
 
+    # Synchronisation offline <-> serveur en ligne : envoi quasi-instantané des
+    # changements locaux (réveillé par chaque modification) + réception des
+    # changements des autres postes toutes les quelques secondes. Silencieux
+    # tant que sync_config.json n'est pas renseigné (voir sync_config.example.json).
+    try:
+        from synchronisation import autosync as _sync_auto
+        _config_sync = _sync_auto.charger_config(BASE_DIR)
+        if _sync_auto.demarrer_worker(BASE_DIR, delai_demarrage=15):
+            if _sync_auto._pret(_config_sync):
+                print(
+                    f"[Sync] Active — serveur {_config_sync['server_url']}, "
+                    f"verification toutes les {_config_sync['interval']}s "
+                    f"(instantane sur modification locale)."
+                )
+            else:
+                print(
+                    "[Sync] Non configuree : copiez sync_config.example.json en "
+                    "sync_config.json a cote de MySchoolGN.exe pour l'activer."
+                )
+    except Exception as _sync_err:
+        print(f"[Sync] Synchronisation automatique non démarrée : {_sync_err}")
+
     # Ouvrir le navigateur en arrière-plan
     browser_thread = threading.Thread(
         target=open_browser, args=(port,), daemon=True
