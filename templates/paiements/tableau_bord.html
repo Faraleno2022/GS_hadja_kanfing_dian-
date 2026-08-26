@@ -117,6 +117,63 @@
     .risk-table th {
         vertical-align: middle;
     }
+    .finance-metric-card {
+        background: #fff;
+        border: 1px solid #e9ecef;
+        border-top: 4px solid var(--metric-color, #0d6efd);
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.06);
+        height: 100%;
+        overflow: hidden;
+    }
+    .finance-metric-card .metric-header {
+        padding: 16px 18px 10px;
+    }
+    .finance-metric-card .metric-title {
+        color: var(--metric-color, #0d6efd);
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    .metric-period-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        background: #e9ecef;
+        border-top: 1px solid #e9ecef;
+    }
+    .metric-period {
+        background: #fff;
+        min-width: 0;
+        padding: 13px 14px;
+    }
+    .metric-period-label {
+        color: #6c757d;
+        font-size: .75rem;
+        letter-spacing: .035rem;
+        text-transform: uppercase;
+    }
+    .metric-period-value {
+        color: #212529;
+        font-size: 1.05rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+    .metric-period-count {
+        color: #6c757d;
+        font-size: .76rem;
+    }
+    .metric-late {
+        background: #fff5f5;
+        border-top: 1px solid #f5c2c7;
+        color: #842029;
+        padding: 12px 16px;
+    }
+    .metric-primary { --metric-color: #0d6efd; }
+    .metric-info { --metric-color: #0dcaf0; }
+    .metric-success { --metric-color: #198754; }
+    .metric-warning { --metric-color: #f0ad00; }
+    .metric-secondary { --metric-color: #6c757d; }
 </style>
 {% endblock %}
 
@@ -150,6 +207,91 @@
                 <div class="stat-label">En attente</div>
                 <small class="text-muted">À valider</small>
             </div>
+        </div>
+    </div>
+
+    <!-- Encaissements détaillés par catégorie et période -->
+    <div class="mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-3">
+            <div>
+                <h4 class="mb-1">
+                    <i class="fas fa-coins me-2 text-primary"></i>Encaissements par catégorie
+                </h4>
+                <p class="text-muted mb-0">Montants validés et nombre d'opérations — année civile {{ financial_metrics.year }}</p>
+            </div>
+            <small class="text-muted mt-2 mt-md-0">La semaine commence le lundi</small>
+        </div>
+        <div class="row g-3">
+            {% for category in financial_metrics.categories %}
+            <div class="col-12 col-xl-4">
+                <div class="finance-metric-card metric-{{ category.color }}" data-category-card="{{ category.key }}">
+                    <div class="metric-header">
+                        <h5 class="metric-title">
+                            <i class="fas {{ category.icon }} me-2"></i>{{ category.label }}
+                        </h5>
+                    </div>
+                    <div class="metric-period-grid">
+                        {% for period in category.period_values %}
+                        <div class="metric-period">
+                            <div class="metric-period-label">{{ period.label }}</div>
+                            <div class="metric-period-value">
+                                <span data-financial-category="{{ category.key }}" data-period="{{ period.key }}" data-field="amount">{{ period.amount|floatformat:0|intcomma }}</span>
+                                <small>GNF</small>
+                            </div>
+                            <div class="metric-period-count">
+                                <span data-financial-category="{{ category.key }}" data-period="{{ period.key }}" data-field="count">{{ period.count|intcomma }}</span>
+                                opération(s)
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="metric-late d-flex justify-content-between align-items-center gap-2">
+                        <div>
+                            <strong>{{ category.late_label }}</strong><br>
+                            <small><span data-financial-category="{{ category.key }}" data-field="late_count">{{ category.late.count|intcomma }}</span> élève(s)</small>
+                        </div>
+                        <div class="text-end fw-bold">
+                            <span data-financial-category="{{ category.key }}" data-field="late_amount">{{ category.late.amount|floatformat:0|intcomma }}</span> GNF
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Inscriptions et réinscriptions -->
+    <div class="mb-4">
+        <h4 class="mb-3">
+            <i class="fas fa-user-graduate me-2 text-warning"></i>Inscriptions et réinscriptions
+        </h4>
+        <div class="row g-3">
+            {% for admission in financial_metrics.admissions %}
+            <div class="col-12 col-xl-6">
+                <div class="finance-metric-card metric-{{ admission.color }}" data-admission-card="{{ admission.key }}">
+                    <div class="metric-header">
+                        <h5 class="metric-title">
+                            <i class="fas {{ admission.icon }} me-2"></i>{{ admission.label }}
+                        </h5>
+                    </div>
+                    <div class="metric-period-grid">
+                        {% for period in admission.period_values %}
+                        <div class="metric-period">
+                            <div class="metric-period-label">{{ period.label }}</div>
+                            <div class="metric-period-value">
+                                <span data-financial-admission="{{ admission.key }}" data-period="{{ period.key }}" data-field="amount">{{ period.amount|floatformat:0|intcomma }}</span>
+                                <small>GNF</small>
+                            </div>
+                            <div class="metric-period-count">
+                                <span data-financial-admission="{{ admission.key }}" data-period="{{ period.key }}" data-field="count">{{ period.count|intcomma }}</span>
+                                opération(s)
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
 
@@ -451,6 +593,33 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const numberFormatter = new Intl.NumberFormat('fr-FR');
+
+    function setMetricValue(selector, value) {
+        const element = document.querySelector(selector);
+        if (element) {
+            element.textContent = numberFormatter.format(Number(value || 0));
+        }
+    }
+
+    function updateFinancialMetrics(metrics) {
+        if (!metrics) return;
+        (metrics.categories || []).forEach(category => {
+            Object.entries(category.values || {}).forEach(([period, values]) => {
+                setMetricValue(`[data-financial-category="${category.key}"][data-period="${period}"][data-field="amount"]`, values.amount);
+                setMetricValue(`[data-financial-category="${category.key}"][data-period="${period}"][data-field="count"]`, values.count);
+            });
+            setMetricValue(`[data-financial-category="${category.key}"][data-field="late_amount"]`, category.late && category.late.amount);
+            setMetricValue(`[data-financial-category="${category.key}"][data-field="late_count"]`, category.late && category.late.count);
+        });
+        (metrics.admissions || []).forEach(admission => {
+            Object.entries(admission.values || {}).forEach(([period, values]) => {
+                setMetricValue(`[data-financial-admission="${admission.key}"][data-period="${period}"][data-field="amount"]`, values.amount);
+                setMetricValue(`[data-financial-admission="${admission.key}"][data-period="${period}"][data-field="count"]`, values.count);
+            });
+        });
+    }
+
     // Animation des cartes statistiques
     const statCards = document.querySelectorAll('.stat-card');
     statCards.forEach(card => {
@@ -474,26 +643,28 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Total paiements ce mois
                     const totalElem = document.querySelector('.stat-card.success .stat-number');
                     if (totalElem) {
-                        totalElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.total_paiements_mois);
+                        totalElem.textContent = numberFormatter.format(stats.total_paiements_mois);
                     }
                     
                     // Nombre de paiements ce mois
                     const nombreElem = document.querySelector('.stat-card:not(.success):not(.warning):not(.danger) .stat-number');
                     if (nombreElem) {
-                        nombreElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.nombre_paiements_mois);
+                        nombreElem.textContent = numberFormatter.format(stats.nombre_paiements_mois);
                     }
                     
                     // Élèves en retard
                     const retardElem = document.querySelector('.stat-card.warning .stat-number');
                     if (retardElem) {
-                        retardElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.eleves_en_retard);
+                        retardElem.textContent = numberFormatter.format(stats.eleves_en_retard);
                     }
                     
                     // Paiements en attente
                     const attenteElem = document.querySelector('.stat-card.danger .stat-number');
                     if (attenteElem) {
-                        attenteElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.paiements_en_attente);
+                        attenteElem.textContent = numberFormatter.format(stats.paiements_en_attente);
                     }
+
+                    updateFinancialMetrics(data.financial_metrics);
                     
                     console.log('Statistiques paiements mises à jour:', stats);
                 }

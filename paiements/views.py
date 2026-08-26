@@ -46,6 +46,7 @@ from .allocation import (
     registration_kind_for_type,
     reste_par_tranche_avec_couverture,
 )
+from .dashboard_metrics import build_payment_dashboard_metrics
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from eleves.utils_annee import get_annee_active
 from .forms import PaiementForm, EcheancierForm, ModifierPaiementForm, RechercheForm
@@ -1261,6 +1262,10 @@ def tableau_bord_paiements(request):
     except Exception:
         today = date.today()
 
+    financial_metrics = build_payment_dashboard_metrics(
+        request.user, today=today
+    )
+
     try:
         from datetime import timedelta
         last_30 = today - timedelta(days=30)
@@ -1486,6 +1491,7 @@ def tableau_bord_paiements(request):
     context = {
         'titre_page': 'Tableau de bord des paiements',
         'stats': stats,
+        'financial_metrics': financial_metrics,
         'paiements_recents': paiements_recents,
         'eleves_en_retard': eleves_en_retard,
         'finance_direction': finance_direction,
@@ -4731,17 +4737,27 @@ def ajax_classes_par_ecole(request):
 
 @login_required
 def ajax_statistiques_paiements(request):
-    """Endpoint AJAX minimal pour statistiques paiements.
-    Fourni pour satisfaire le routage; peut être enrichi ultérieurement.
-    """
+    """Actualise les cartes générales et les indicateurs par catégorie."""
     try:
         base = filter_by_user_school(Paiement.objects.all(), request.user, 'eleve__classe__ecole')
         total = base.count()
         montant_total = int(base.aggregate(total=Sum('montant'))['total'] or 0)
+        today = timezone.localdate()
+        return JsonResponse({
+            'success': True,
+            'total': total,
+            'montant_total': montant_total,
+            'stats': _compute_stats(request.user),
+            'financial_metrics': build_payment_dashboard_metrics(
+                request.user, today=today
+            ),
+        })
     except Exception:
-        total = 0
-        montant_total = 0
-    return JsonResponse({'success': True, 'total': total, 'montant_total': montant_total})
+        logger.exception("Erreur lors du calcul des statistiques du tableau de bord")
+        return JsonResponse({
+            'success': False,
+            'error': "Impossible d'actualiser les statistiques.",
+        }, status=500)
 
 @login_required
 @require_http_methods(["GET", "POST"])
