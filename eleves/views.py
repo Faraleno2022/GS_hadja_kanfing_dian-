@@ -1598,12 +1598,11 @@ def export_tous_eleves_excel(request):
 
 @login_required
 def supprimer_eleve(request, eleve_id):
-    """Vue pour supprimer un élève avec ses paiements et abonnements (avec code de vérification)"""
-    # Permettre l'accès aux utilisateurs connectés (la sécurité est assurée par le code de vérification)
-    # Les permissions spécifiques (soft delete vs suppression définitive) sont gérées dans le traitement
-    
+    """Déplace un élève vers la corbeille, avec options avancées autorisées."""
     qs = Eleve.objects.all()
-    if not user_is_admin(request.user):
+    # Seul le super-administrateur peut agir sur toutes les écoles. Un
+    # administrateur d'école reste strictement limité à sa propre école.
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
     
     try:
@@ -1627,10 +1626,23 @@ def supprimer_eleve(request, eleve_id):
     abonnements_cantine_count = eleve.abonnements_cantine.count()
     
     if request.method == 'POST':
-        # Vérifier le code de sécurité
+        type_suppression = request.POST.get('type_suppression', '').strip().lower()
         code_verification = request.POST.get('code_verification', '').strip()
-        suppression_definitive = request.POST.get('suppression_definitive') == 'on'
-        mise_en_corbeille = request.POST.get('mise_en_corbeille') == 'on'
+        suppression_definitive = (
+            request.POST.get('suppression_definitive') == 'on'
+            or type_suppression in {'definitif', 'hard'}
+        )
+        mise_en_corbeille = (
+            request.POST.get('mise_en_corbeille') == 'on'
+            or type_suppression == 'corbeille'
+            # Un ancien formulaire sans champ explicite doit rester sûr :
+            # supprimer signifie alors déplacer vers la corbeille.
+            or (
+                'mise_en_corbeille' not in request.POST
+                and not type_suppression
+                and not suppression_definitive
+            )
+        )
 
         # Mise à la corbeille : simple confirmation, aucune donnée n'est perdue
         if mise_en_corbeille and not suppression_definitive:
@@ -1790,33 +1802,16 @@ def supprimer_eleve(request, eleve_id):
 @login_required
 @require_http_methods(["POST"])
 def supprimer_eleves_masse(request):
-    """Vue pour supprimer définitivement plusieurs élèves en masse"""
-    # Vérifier la permission de suppression définitive
-    peut_supprimer_definitivement = user_is_admin(request.user) or (
-        hasattr(request.user, 'profil') and 
-        request.user.profil.peut_supprimer_eleves_definitivement
-    )
-    
-    if not peut_supprimer_definitivement:
-        messages.error(request, "Vous n'avez pas la permission de supprimer définitivement des élèves.")
-        return redirect('eleves:liste_eleves')
-    
-    # Vérifier le code de sécurité
-    code_verification = request.POST.get('code_verification', '').strip()
-    from django.conf import settings as django_settings
-    expected_code = django_settings.SECURITY_VERIFICATION_CODE
-    if not expected_code or code_verification != expected_code:
-        messages.error(request, "Code de vérification incorrect. Suppression annulée.")
-        return redirect('eleves:liste_eleves')
-    
-    # Récupérer les IDs des élèves
+    """Déplace plusieurs élèves vers la corbeille sans perte de données."""
     eleve_ids_str = request.POST.get('eleve_ids', '')
     if not eleve_ids_str:
         messages.error(request, "Aucun élève sélectionné.")
         return redirect('eleves:liste_eleves')
     
     try:
-        eleve_ids = [int(x) for x in eleve_ids_str.split(',') if x.strip()]
+        eleve_ids = list(dict.fromkeys(
+            int(x) for x in eleve_ids_str.split(',') if x.strip()
+        ))
     except ValueError:
         messages.error(request, "IDs d'élèves invalides.")
         return redirect('eleves:liste_eleves')
@@ -1825,103 +1820,59 @@ def supprimer_eleves_masse(request):
         messages.error(request, "Aucun élève sélectionné.")
         return redirect('eleves:liste_eleves')
     
-    # Récupérer les élèves
-    qs = Eleve.objects.filter(id__in=eleve_ids)
-    if not user_is_admin(request.user):
-        qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    
-    eleves = list(qs)
+    qs = filter_by_user_school(
+        Eleve.objects.select_related('classe', 'classe__ecole').filter(id__in=eleve_ids),
+        request.user,
+        'classe__ecole',
+    )
+    eleves = list(qs.order_by('pk'))
     if not eleves:
         messages.error(request, "Aucun élève trouvé avec les IDs fournis.")
         return redirect('eleves:liste_eleves')
-    
-    import logging
-    logger = logging.getLogger(__name__)
+
+    # Ne jamais exécuter une suppression partielle si la requête contient un
+    # élève absent ou appartenant à une autre école.
+    if len(eleves) != len(eleve_ids):
+        messages.error(
+            request,
+            "Suppression annulée : au moins un élève est introuvable ou appartient à une autre école.",
+        )
+        return redirect('eleves:liste_eleves')
     
     try:
         with transaction.atomic():
-            eleves_supprimes = []
-            total_paiements = 0
-            total_abonnements_bus = 0
-            total_abonnements_cantine = 0
-            
+            from administration.audit import mettre_eleve_en_corbeille
+
+            noms = []
             for eleve in eleves:
                 nom_complet = f"{eleve.prenom} {eleve.nom}"
-                matricule = eleve.matricule
-                
-                paiements_count = eleve.paiements.count()
-                abonnements_bus_count = eleve.abonnements_bus.count()
-                abonnements_cantine_count = eleve.abonnements_cantine.count()
-                
-                # Collecter les informations avant suppression
-                paiements_supprimes = []
-                for paiement in eleve.paiements.all():
-                    paiements_supprimes.append(f"{paiement.numero_recu} - {paiement.montant} GNF")
-                
-                abonnements_bus_supprimes = []
-                for abo in eleve.abonnements_bus.all():
-                    abonnements_bus_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                
-                abonnements_cantine_supprimes = []
-                for abo in eleve.abonnements_cantine.all():
-                    abonnements_cantine_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                
-                eleves_supprimes.append({
-                    'eleve_id': eleve.id,
-                    'matricule': matricule,
-                    'nom_complet': nom_complet,
-                    'classe': str(eleve.classe),
-                    'paiements_supprimes': paiements_supprimes,
-                    'abonnements_bus_supprimes': abonnements_bus_supprimes,
-                    'abonnements_cantine_supprimes': abonnements_cantine_supprimes,
-                })
-                
-                total_paiements += paiements_count
-                total_abonnements_bus += abonnements_bus_count
-                total_abonnements_cantine += abonnements_cantine_count
-                
-                # Supprimer les éléments associés
-                eleve.paiements.all().delete()
-                eleve.abonnements_bus.all().delete()
-                eleve.abonnements_cantine.all().delete()
-                
-                # Supprimer l'élève
-                eleve.delete()
-                
-                logger.info(f"Suppression définitive en masse: {nom_complet} ({matricule}) par {request.user.username}")
-            
-            # Créer l'entrée dans la corbeille
-            from administration.models import SystemLog
-            SystemLog.objects.create(
-                action='SUPPRESSION_DEFINITIVE',
-                description=f"Suppression définitive en masse de {len(eleves_supprimes)} élève(s) avec {total_paiements} paiement(s), {total_abonnements_bus} abonnement(s) bus et {total_abonnements_cantine} abonnement(s) cantine",
-                user=request.user,
-                ip_address=request.META.get('REMOTE_ADDR', ''),
-                details={
-                    'type': 'suppression_masse',
-                    'nombre_eleves': len(eleves_supprimes),
-                    'eleves_supprimes': eleves_supprimes,
-                    'verification_code_used': True,
-                    'user_agent': request.META.get('HTTP_USER_AGENT', '')
-                }
-            )
-            
-            # Log dans le journal d'activité
-            noms = ', '.join([e['nom_complet'] for e in eleves_supprimes])
+                noms.append(nom_complet)
+                mettre_eleve_en_corbeille(
+                    eleve,
+                    request=request,
+                    motif=request.POST.get('motif', '').strip()
+                    or "Suppression groupée depuis la liste des élèves",
+                )
+
             JournalActivite.objects.create(
                 user=request.user,
                 action='SUPPRESSION',
                 type_objet='ELEVE',
-                description=f"Suppression définitive en masse de {len(eleves_supprimes)} élève(s): {noms}",
+                description=(
+                    f"Mise à la corbeille groupée de {len(eleves)} élève(s) : "
+                    + ', '.join(noms)
+                ),
                 adresse_ip=request.META.get('REMOTE_ADDR', ''),
-                user_agent=request.META.get('HTTP_USER_AGENT', '')
+                user_agent=request.META.get('HTTP_USER_AGENT', '')[:200],
             )
-            
-            messages.success(request, f"{len(eleves_supprimes)} élève(s) ont été supprimés définitivement avec toutes leurs données associées.")
-            
+
+        messages.success(
+            request,
+            f"{len(eleves)} élève(s) ont été placés dans la corbeille et peuvent être restaurés.",
+        )
     except Exception as e:
-        logger.error(f"Erreur lors de la suppression en masse: {e}")
-        messages.error(request, f"Erreur lors de la suppression en masse: {e}")
+        logger.exception("Erreur lors de la mise à la corbeille groupée")
+        messages.error(request, f"Erreur lors de la mise à la corbeille : {e}")
     
     return redirect('eleves:liste_eleves')
 

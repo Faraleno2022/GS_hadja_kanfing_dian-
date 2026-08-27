@@ -505,7 +505,7 @@
                                 {% endif %}
                                 {% endif %}
 
-                                {% if user.is_superuser or user.profil.role == 'ADMIN' %}
+                                {% if user.is_superuser or user.profil.role == 'ADMIN' or is_account_principal %}
                                 <li><a class="dropdown-item" href="{% url 'administration:corbeille_eleves' %}">
                                     <i class="fas fa-trash-restore me-1"></i>Corbeille des élèves
                                 </a></li>

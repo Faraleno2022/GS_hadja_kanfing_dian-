@@ -433,6 +433,77 @@ class SuppressionEleveInterfaceTest(TestCase):
         self.assertEqual(reponse.status_code, 200)
         self.assertTrue(Eleve.objects.filter(matricule=self.eleve.matricule).exists())
 
+    def test_suppression_sans_option_utilise_la_corbeille_par_defaut(self):
+        """Le formulaire historique de la fiche élève doit aussi rester sûr."""
+        from django.urls import reverse
+
+        reponse = self.client.post(
+            reverse('eleves:supprimer_eleve', args=[self.eleve.pk]),
+            {},
+            follow=True,
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertFalse(Eleve.objects.filter(pk=self.eleve.pk).exists())
+        self.assertTrue(
+            CorbeilleEleve.objects.filter(
+                matricule=self.eleve.matricule,
+                restaure=False,
+            ).exists()
+        )
+
+    def test_desactivation_explicitement_choisie_reste_disponible(self):
+        from django.urls import reverse
+
+        reponse = self.client.post(
+            reverse('eleves:supprimer_eleve', args=[self.eleve.pk]),
+            {
+                'type_suppression': 'soft',
+                'mise_en_corbeille': '',
+                'suppression_definitive': '',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.eleve.refresh_from_db()
+        self.assertEqual(self.eleve.statut, 'EXCLU')
+        self.assertFalse(
+            CorbeilleEleve.objects.filter(matricule=self.eleve.matricule).exists()
+        )
+
+    def test_suppression_groupee_utilise_la_corbeille(self):
+        from django.urls import reverse
+
+        autre = Eleve.objects.create(
+            matricule='MAT-iu-002', prenom='Ibrahima', nom='Barry', sexe='M',
+            date_naissance=date(2013, 4, 10), lieu_naissance='Conakry',
+            classe=self.classe, date_inscription=date(2025, 9, 15), statut='ACTIF',
+            responsable_principal=self.eleve.responsable_principal,
+        )
+
+        reponse = self.client.post(
+            reverse('eleves:supprimer_eleves_masse'),
+            {
+                'eleve_ids': f'{self.eleve.pk},{autre.pk}',
+                'motif': 'Départ groupé',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertFalse(
+            Eleve.objects.filter(pk__in=[self.eleve.pk, autre.pk]).exists()
+        )
+        self.assertEqual(
+            CorbeilleEleve.objects.filter(
+                matricule__in=[self.eleve.matricule, autre.matricule],
+                motif='Départ groupé',
+                restaure=False,
+            ).count(),
+            2,
+        )
+
     def test_page_corbeille_accessible(self):
         from django.urls import reverse
 
@@ -441,6 +512,56 @@ class SuppressionEleveInterfaceTest(TestCase):
                     'administration:journal_modifications'):
             with self.subTest(vue=nom):
                 self.assertEqual(self.client.get(reverse(nom)).status_code, 200)
+
+
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
+class SuppressionElevePerimetreEcoleTest(TestCase):
+    """Un administrateur d'école ne peut supprimer que ses propres élèves."""
+
+    def setUp(self):
+        self.ecole, self.classe, self.eleve = _creer_jeu_de_donnees('scope-a')
+        self.autre_ecole, _, self.eleve_autre_ecole = _creer_jeu_de_donnees(
+            'scope-b', rang=2,
+        )
+        self.user = User.objects.create_user('admin_ecole_scope', password='x')
+        self.user.profil.role = 'ADMIN'
+        self.user.profil.ecole = self.ecole
+        self.user.profil.telephone = '+224622300001'
+        self.user.profil.save()
+        self.client.force_login(self.user)
+
+    def test_suppression_eleve_autre_ecole_est_refusee(self):
+        from django.urls import reverse
+
+        reponse = self.client.post(
+            reverse('eleves:supprimer_eleve', args=[self.eleve_autre_ecole.pk]),
+            {'mise_en_corbeille': 'on'},
+            follow=True,
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertTrue(
+            Eleve.objects.filter(pk=self.eleve_autre_ecole.pk).exists()
+        )
+        self.assertFalse(
+            CorbeilleEleve.objects.filter(
+                matricule=self.eleve_autre_ecole.matricule,
+            ).exists()
+        )
+
+    def test_suppression_groupee_inter_ecoles_est_entierement_annulee(self):
+        from django.urls import reverse
+
+        reponse = self.client.post(
+            reverse('eleves:supprimer_eleves_masse'),
+            {'eleve_ids': f'{self.eleve.pk},{self.eleve_autre_ecole.pk}'},
+            follow=True,
+        )
+
+        self.assertEqual(reponse.status_code, 200)
+        self.assertTrue(Eleve.objects.filter(pk=self.eleve.pk).exists())
+        self.assertTrue(Eleve.objects.filter(pk=self.eleve_autre_ecole.pk).exists())
+        self.assertEqual(CorbeilleEleve.objects.count(), 0)
 
 
 @override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)

@@ -557,13 +557,16 @@ def restaurer_element(request, log_id):
 
 
 def peut_gerer_corbeille(user):
-    """Superutilisateurs et administrateurs d'école accèdent à la corbeille."""
+    """Superutilisateurs, admins et comptes principaux gèrent la corbeille."""
     if not user.is_authenticated:
         return False
     if user.is_superuser:
         return True
     profil = getattr(user, 'profil', None)
-    return bool(profil and getattr(profil, 'role', None) == 'ADMIN')
+    return bool(profil and (
+        getattr(profil, 'role', None) == 'ADMIN'
+        or getattr(profil, 'est_compte_principal', False)
+    ))
 
 
 def _restreindre_a_l_ecole(queryset, user, champ='ecole_nom'):
