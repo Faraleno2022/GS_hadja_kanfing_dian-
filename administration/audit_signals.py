@@ -27,6 +27,7 @@ MODELES_SUIVIS = {
     'paiements.PaiementRemise',
     'bus.AbonnementBus',
     'bus.AbonnementCantine',
+    'bus.GrilleTarifaireBus',
     'depenses.Depense',
     'salaires.Enseignant',
     'salaires.EtatSalaire',

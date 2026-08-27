@@ -48,6 +48,7 @@ SYNC_MODEL_LABELS = [
     'notes.Classement',
     'notes.ActiviteJournaliere',
     'notes.PieceJointeActivite',
+    'bus.GrilleTarifaireBus',
     'bus.AbonnementBus',
     'bus.AbonnementCantine',
     'salaires.Enseignant',

@@ -33,6 +33,17 @@
       {% csrf_token %}
       {{ form.non_field_errors }}
 
+      {% if aucune_grille %}
+      <div class="alert alert-warning d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-exclamation-triangle me-2"></i>Aucune grille tarifaire bus active n'est disponible pour cette école.</span>
+        {% if user.is_superuser or is_account_principal or user_profil.role == 'ADMIN' or user_profil.peut_gerer_grilles_tarifaires %}
+        <a class="btn btn-sm btn-warning" href="{% url 'administration:grille_bus_nouvelle' %}">Créer une grille</a>
+        {% else %}
+        <span class="small">Contactez l'administrateur de l'école.</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <!-- Élève -->
       <div class="form-section">
         <h5 class="d-flex align-items-center"><i class="fas fa-user me-2"></i>Élève</h5>
@@ -91,9 +102,22 @@
         </div>
       </div>
 
-      <!-- Détails abonnement -->
+      <!-- Paiement bus -->
       <div class="form-section">
-        <h5 class="d-flex align-items-center"><i class="fas fa-bus me-2"></i>Détails de l'abonnement</h5>
+        <h5 class="d-flex align-items-center"><i class="fas fa-bus me-2"></i>Paiement de l'abonnement bus</h5>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label small-label" for="{{ form.grille.id_for_label }}">Grille (zone et année) <span class="required-field">*</span></label>
+            {{ form.grille }}
+            {% if form.grille.errors %}<div class="text-danger small">{{ form.grille.errors.0 }}</div>{% endif %}
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label small-label" for="{{ form.periodicite.id_for_label }}">Type / tranche <span class="required-field">*</span></label>
+            {{ form.periodicite }}
+            {% if form.periodicite.errors %}<div class="text-danger small">{{ form.periodicite.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
         <div class="row">
           <div class="col-md-4 mb-3">
             <label class="form-label small-label" for="{{ form.montant.id_for_label }}">Montant <span class="required-field">*</span></label>
@@ -105,61 +129,35 @@
             {% if form.montant.errors %}<div class="text-danger small">{{ form.montant.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.periodicite.id_for_label }}">Périodicité</label>
-            {{ form.periodicite }}
+            <label class="form-label small-label" for="{{ form.date_debut.id_for_label }}">Date du paiement <span class="required-field">*</span></label>
+            {{ form.date_debut }}
+            {% if form.date_debut.errors %}<div class="text-danger small">{{ form.date_debut.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.statut.id_for_label }}">Statut</label>
-            {{ form.statut }}
+            <label class="form-label small-label" for="{{ form.mode_paiement.id_for_label }}">Mode de paiement <span class="required-field">*</span></label>
+            {{ form.mode_paiement }}
+            {% if form.mode_paiement.errors %}<div class="text-danger small">{{ form.mode_paiement.errors.0 }}</div>{% endif %}
           </div>
         </div>
 
-        <div class="row">
-          <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.date_debut.id_for_label }}">Date de début</label>
-            {{ form.date_debut }}
-          </div>
-          <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.date_expiration.id_for_label }}">Date d'expiration</label>
-            {{ form.date_expiration }}
-          </div>
-          <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.alerte_avant_jours.id_for_label }}">Alerte (jours avant)</label>
-            {{ form.alerte_avant_jours }}
+        <div id="tarifInfo" class="alert alert-info mb-0" style="display:none;">
+          <div class="row text-center">
+            <div class="col-md-4"><small>Dû pour la tranche</small><div class="fw-bold" id="tarifDu">0 GNF</div></div>
+            <div class="col-md-4"><small>Déjà payé</small><div class="fw-bold" id="tarifPaye">0 GNF</div></div>
+            <div class="col-md-4"><small>Reste avant ce reçu</small><div class="fw-bold text-danger" id="tarifReste">0 GNF</div></div>
           </div>
         </div>
       </div>
 
-      <!-- Logistique -->
       <div class="form-section">
-        <h5 class="d-flex align-items-center"><i class="fas fa-route me-2"></i>Logistique</h5>
-        <div class="row">
-          <div class="col-md-4 mb-3">
-            <label class="form-label small-label" for="{{ form.zone.id_for_label }}">Zone</label>
-            {{ form.zone }}
-          </div>
-          <div class="col-md-8 mb-3">
-            <label class="form-label small-label" for="{{ form.itineraire.id_for_label }}">Itinéraire</label>
-            {{ form.itineraire }}
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label small-label" for="{{ form.point_arret.id_for_label }}">Point d'arrêt</label>
-            {{ form.point_arret }}
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label small-label" for="{{ form.contact_parent.id_for_label }}">Contact parent</label>
-            {{ form.contact_parent }}
-          </div>
-          <div class="col-12 mb-1">
-            <label class="form-label small-label" for="{{ form.observations.id_for_label }}">Observations</label>
-            {{ form.observations }}
-          </div>
-        </div>
+        <label class="form-label small-label" for="{{ form.observations.id_for_label }}">Observations (facultatif)</label>
+        {{ form.observations }}
+        {% if form.observations.errors %}<div class="text-danger small">{{ form.observations.errors.0 }}</div>{% endif %}
       </div>
 
       <div class="d-flex justify-content-between align-items-center">
         <a href="{% url 'bus:liste' %}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>Annuler</a>
-        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>Enregistrer</button>
+        <button type="submit" class="btn btn-primary btn-lg" {% if aucune_grille %}disabled{% endif %}><i class="fas fa-save me-2"></i>Enregistrer et générer le reçu</button>
       </div>
     </form>
   </div>
@@ -184,6 +182,45 @@ document.addEventListener('DOMContentLoaded', function() {
   const form = document.getElementById('busForm');
   const montantInput = document.getElementById('id_montant');
   const montantDisplay = document.getElementById('montantDisplay');
+  const grilleSelect = document.getElementById('id_grille');
+  const periodiciteSelect = document.getElementById('id_periodicite');
+  const tarifInfo = document.getElementById('tarifInfo');
+  const tarifDu = document.getElementById('tarifDu');
+  const tarifPaye = document.getElementById('tarifPaye');
+  const tarifReste = document.getElementById('tarifReste');
+  const tarifBusUrl = '{% url "bus:tarif_bus_json" %}';
+  const paiementEnModification = '{{ form.instance.pk|default:"" }}';
+
+  function formatGNF(value) {
+    return Number(value || 0).toLocaleString('fr-FR') + ' GNF';
+  }
+
+  async function chargerTarif() {
+    if (!eleveSelect || !eleveSelect.value || !grilleSelect || !grilleSelect.value || !periodiciteSelect || !periodiciteSelect.value) {
+      if (tarifInfo) tarifInfo.style.display = 'none';
+      return;
+    }
+    try {
+      const url = new URL(tarifBusUrl, window.location.origin);
+      url.searchParams.set('eleve_id', eleveSelect.value);
+      url.searchParams.set('grille_id', grilleSelect.value);
+      url.searchParams.set('periodicite', periodiciteSelect.value);
+      if (paiementEnModification) url.searchParams.set('exclure', paiementEnModification);
+      const response = await fetch(url.toString(), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Tarif indisponible');
+      tarifDu.textContent = formatGNF(data.du);
+      tarifPaye.textContent = formatGNF(data.paye);
+      tarifReste.textContent = formatGNF(data.reste);
+      tarifInfo.style.display = 'block';
+      if (!paiementEnModification && montantInput) {
+        montantInput.value = data.reste;
+        montantInput.dispatchEvent(new Event('input'));
+      }
+    } catch (error) {
+      if (tarifInfo) tarifInfo.style.display = 'none';
+    }
+  }
 
   function showEleveInfo(data) {
     if (!data || !data.success || !data.eleve) return;
@@ -197,6 +234,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     eleveInfoSection.style.display = 'block';
     eleveError && (eleveError.style.display = 'none');
+    chargerTarif();
   }
 
   async function fetchByMatricule(m) {
@@ -249,56 +287,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Calcul automatique de la date d'expiration
-  const periodiciteSelect = document.getElementById('id_periodicite');
-  const dateDebutInput = document.getElementById('id_date_debut');
-  const dateExpirationInput = document.getElementById('id_date_expiration');
-
-  function calculateExpirationDate() {
-    if (!periodiciteSelect || !dateDebutInput || !dateExpirationInput) return;
-    
-    const periodicite = periodiciteSelect.value;
-    const dateDebut = dateDebutInput.value;
-    
-    if (!periodicite || !dateDebut) return;
-    
-    const debut = new Date(dateDebut);
-    if (isNaN(debut.getTime())) return;
-    
-    let expiration = new Date(debut);
-    
-    switch(periodicite) {
-      case 'MENSUEL':
-        expiration.setMonth(expiration.getMonth() + 1);
-        break;
-      case 'TRIMESTRIEL':
-        expiration.setMonth(expiration.getMonth() + 3);
-        break;
-      case 'SEMESTRIEL':
-        expiration.setMonth(expiration.getMonth() + 6);
-        break;
-      case 'ANNUEL':
-        expiration.setFullYear(expiration.getFullYear() + 1);
-        break;
-      default:
-        return;
-    }
-    
-    // Format YYYY-MM-DD pour l'input date
-    const year = expiration.getFullYear();
-    const month = String(expiration.getMonth() + 1).padStart(2, '0');
-    const day = String(expiration.getDate()).padStart(2, '0');
-    
-    dateExpirationInput.value = `${year}-${month}-${day}`;
-  }
-
-  // Écouter les changements de périodicité et date de début
-  if (periodiciteSelect) {
-    periodiciteSelect.addEventListener('change', calculateExpirationDate);
-  }
-  if (dateDebutInput) {
-    dateDebutInput.addEventListener('change', calculateExpirationDate);
-  }
+  if (periodiciteSelect) periodiciteSelect.addEventListener('change', chargerTarif);
+  if (grilleSelect) grilleSelect.addEventListener('change', chargerTarif);
+  if (eleveSelect) eleveSelect.addEventListener('change', chargerTarif);
 
   // Affichage du montant formaté
   if (montantInput) {
@@ -314,6 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
     montantInput.addEventListener('input', updateMontant);
     updateMontant();
   }
+  chargerTarif();
 
   // Validation élève à la soumission
   form && form.addEventListener('submit', function(e) {

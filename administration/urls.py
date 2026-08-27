@@ -1,11 +1,18 @@
 from django.urls import path
 from . import views
+from bus import views as bus_views
 
 app_name = 'administration'
 
 urlpatterns = [
     # Tableau de bord principal
     path('', views.dashboard, name='dashboard'),
+
+    # Grilles tarifaires du transport scolaire (séparées par école)
+    path('grilles-bus/', bus_views.grilles_bus, name='grilles_bus'),
+    path('grilles-bus/nouvelle/', bus_views.grille_bus_form, name='grille_bus_nouvelle'),
+    path('grilles-bus/<int:grille_id>/modifier/', bus_views.grille_bus_form, name='grille_bus_modifier'),
+    path('grilles-bus/<int:grille_id>/basculer/', bus_views.basculer_grille_bus, name='grille_bus_basculer'),
     
     # Gestion des utilisateurs
     path('users/', views.users_management, name='users_management'),
