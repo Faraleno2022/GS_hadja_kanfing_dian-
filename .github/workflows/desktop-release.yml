@@ -1,0 +1,97 @@
+name: Publier la version Desktop
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Construire et publier l'installateur Windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Vérifier la cohérence de la version
+        shell: pwsh
+        run: |
+          $appVersion = python -c "from app_version import APP_VERSION; print(APP_VERSION)"
+          $tagVersion = "${{ github.ref_name }}" -replace '^desktop-v', ''
+          if ($tagVersion -ne $appVersion) {
+            throw "Le tag ($tagVersion) ne correspond pas à app_version.py ($appVersion)."
+          }
+          "APP_VERSION=$appVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Installer les dépendances Python
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Installer les bibliothèques PDF Windows
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --needed --noconfirm mingw-w64-x86_64-gtk3 mingw-w64-x86_64-pango mingw-w64-x86_64-gdk-pixbuf2 mingw-w64-x86_64-fontconfig"
+
+      - name: Installer Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Construire l'application Desktop
+        shell: pwsh
+        env:
+          DJANGO_DEBUG: "true"
+          DJANGO_SECRET_KEY: "github-actions-build-key"
+        run: python build_exe.py
+
+      - name: Construire l'installateur de mise à jour
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc "--define=MyAppVersion=$env:APP_VERSION" installer_myschool.iss
+
+      - name: Générer et vérifier l'empreinte SHA-256
+        shell: pwsh
+        run: |
+          $installer = "Output\MySchoolGN_Setup_v$env:APP_VERSION.exe"
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Installateur introuvable : $installer"
+          }
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksum = "$installer.sha256"
+          "$hash *$(Split-Path -Leaf $installer)" | Set-Content -LiteralPath $checksum -Encoding ascii
+          "INSTALLER_PATH=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "CHECKSUM_PATH=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Conserver l'installateur comme artefact du build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MySchoolGN-Desktop-${{ env.APP_VERSION }}
+          path: |
+            ${{ env.INSTALLER_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          if-no-files-found: error
+
+      - name: Publier la GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "$env:INSTALLER_PATH" `
+            "$env:CHECKSUM_PATH" `
+            --verify-tag `
+            --title "MySchoolGN Desktop $env:APP_VERSION" `
+            --generate-notes

@@ -3,7 +3,7 @@
 MySchoolGN - PyInstaller Spec File
 ====================================
 Auteur  : GS Hadja Kanfing Dian
-Version : 1.0.0
+Version : voir app_version.py
 
 Pour compiler :
     venv\\Scripts\\python.exe -m PyInstaller --clean --noconfirm myschool.spec
@@ -160,6 +160,8 @@ hiddenimports += [
     'hashlib',
     'base64',
     'json',
+    'app_version',
+    'desktop_updater',
     # JWT / auth
     'jwt',
     'jwt.algorithms',

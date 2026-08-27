@@ -1,7 +1,7 @@
 ﻿; MySchoolGN - Inno Setup Installer Script
 ; ==========================================
 ; Auteur  : GS Hadja Kanfing Dian
-; Version : 1.2.0
+; Version : définie par MyAppVersion
 ;
 ; Prérequis : Inno Setup 6+ (https://jrsoftware.org/isinfo.php)
 ;
@@ -15,15 +15,20 @@
 ;   - Installation fraîche
 ;   - Mise à jour (préserve base de données, licences, médias, config)
 
+#ifndef MyAppVersion
+  #define MyAppVersion "1.3.0"
+#endif
+
 [Setup]
 ; ── Identification ─────────────────────────────────────────────────────────────
 AppId={{B7E4A2D1-F3C8-4B91-A5E6-GS2024HADJA01}
 AppName=MySchoolGN
-AppVersion=1.2.0
-AppVerName=MySchoolGN 1.2.0
+AppVersion={#MyAppVersion}
+AppVerName=MySchoolGN {#MyAppVersion}
 AppPublisher=GS Hadja Kanfing Dian
 AppPublisherURL=https://myschoolgn.space
 AppSupportURL=https://myschoolgn.space
+AppUpdatesURL=https://github.com/Faraleno2022/GS_hadja_kanfing_dian-/releases/latest
 AppCopyright=Copyright © 2024 GS Hadja Kanfing Dian. Tous droits réservés.
 
 ; ── Installation ───────────────────────────────────────────────────────────────
@@ -40,7 +45,7 @@ RestartApplications=no
 
 ; ── Sortie ─────────────────────────────────────────────────────────────────────
 OutputDir=Output
-OutputBaseFilename=MySchoolGN_Setup_v1.2.0
+OutputBaseFilename=MySchoolGN_Setup_v{#MyAppVersion}
 
 ; ── Icône et splash ────────────────────────────────────────────────────────────
 SetupIconFile=myschool.ico
@@ -61,7 +66,7 @@ UninstallDisplayIcon={autopf}\MySchoolGN\MySchoolGN.exe
 CreateUninstallRegKey=yes
 
 ; ── Version info (visible dans Programmes et fonctionnalités) ──────────────────
-VersionInfoVersion=1.2.0.0
+VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany=GS Hadja Kanfing Dian
 VersionInfoDescription=MySchoolGN - Système de Gestion Scolaire
 VersionInfoCopyright=Copyright © 2024 GS Hadja Kanfing Dian
@@ -132,6 +137,7 @@ Name: "{autodesktop}\MySchoolGN"; Filename: "{app}\MySchoolGN.exe"; WorkingDir: 
 
 ; Menu Démarrer
 Name: "{group}\MySchoolGN";                        Filename: "{app}\MySchoolGN.exe";         WorkingDir: "{app}"; IconFilename: "{app}\myschool.ico"; Comment: "Démarrer MySchoolGN"
+Name: "{group}\Vérifier les mises à jour";         Filename: "{app}\MySchoolGN.exe";         Parameters: "--check-updates"; WorkingDir: "{app}"; IconFilename: "{app}\myschool.ico"; Comment: "Rechercher une nouvelle version de MySchoolGN"
 Name: "{group}\Arrêter MySchoolGN";                Filename: "{app}\Arreter_MySchoolGN.bat"; WorkingDir: "{app}"; Comment: "Arrêter le serveur MySchoolGN"
 Name: "{group}\{cm:UninstallProgram,MySchoolGN}";  Filename: "{uninstallexe}"
 
@@ -140,7 +146,7 @@ Name: "{userstartup}\MySchoolGN"; Filename: "{app}\MySchoolGN.exe"; WorkingDir: 
 
 [Registry]
 ; Enregistrement pour le panneau "Programmes et fonctionnalités"
-Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "Version";    ValueData: "1.2.0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "Version";    ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\GS Hadja Kanfing Dian\MySchoolGN"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}";  Flags: uninsdeletevalue
 
 [Run]
@@ -591,7 +597,7 @@ begin
     if IsUpdate then
     begin
       WizardForm.WelcomeLabel1.Caption := 'Mise à jour de MySchoolGN';
-      WelcomeMsg := 'Ce programme va mettre à jour MySchoolGN vers la version 1.2.0 sur votre ordinateur.' + #13#10 + #13#10 +
+      WelcomeMsg := 'Ce programme va mettre à jour MySchoolGN vers la version {#MyAppVersion} sur votre ordinateur.' + #13#10 + #13#10 +
         'Vos données seront automatiquement préservées :' + #13#10 +
         '  • Base de données (élèves, notes, etc.)' + #13#10 +
         '  • Licences et période d''essai' + #13#10 +

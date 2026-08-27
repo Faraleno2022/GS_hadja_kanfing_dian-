@@ -11,6 +11,8 @@ import sys
 import shutil
 import subprocess
 
+from app_version import APP_VERSION
+
 # Repertoire du projet
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, 'dist')
@@ -160,6 +162,10 @@ def copy_extra_files():
     for folder in ['logs', 'media', 'backups']:
         folder_path = os.path.join(OUTPUT_DIR, folder)
         os.makedirs(folder_path, exist_ok=True)
+
+    # Version lisible par le support technique dans le dossier installé.
+    with open(os.path.join(OUTPUT_DIR, 'version.json'), 'w', encoding='utf-8') as f:
+        f.write('{\n  "version": "' + APP_VERSION + '"\n}\n')
 
     print("  [OK] Fichiers supplementaires copies")
 
@@ -450,7 +456,7 @@ def generate_guard_file():
 def main():
     print("")
     print("*" * 60)
-    print("  MySchoolGN - Compilation en .exe")
+    print(f"  MySchoolGN {APP_VERSION} - Compilation en .exe")
     print("  AVEC PROTECTION ANTI-MODIFICATION")
     print("*" * 60)
 

@@ -3,7 +3,7 @@
 MySchoolGN - Lanceur autonome offline
 =======================================
 Auteur  : GS Hadja Kanfing Dian
-Version : 1.0.0
+Version : voir app_version.py
 
 Ce script lance le serveur Django en mode autonome (offline).
 Conçu pour être compilé en .exe avec PyInstaller.
@@ -20,6 +20,8 @@ import json as _json_mod
 import secrets
 import traceback
 import datetime
+
+from app_version import APP_VERSION
 
 # ─── Clé de garde anti-modification (obfusquée) ──────────────────────────────
 def _gk_guard():
@@ -744,6 +746,22 @@ def main():
 
     # Vérification d'intégrité (anti-modification)
     check_integrity()
+
+    # La version Desktop vérifie périodiquement les Releases GitHub. Ce contrôle
+    # intervient avant la licence et avant l'ouverture de la base afin que
+    # l'installateur puisse remplacer proprement l'exécutable courant.
+    manual_update_check = '--check-updates' in sys.argv
+    if '--no-update' not in sys.argv and getattr(sys, 'frozen', False):
+        try:
+            from desktop_updater import check_and_offer_update
+            if check_and_offer_update(force=manual_update_check):
+                return
+        except Exception as update_error:
+            print(f"[Mise à jour] Vérification ignorée : {update_error}")
+    if manual_update_check:
+        # Le raccourci « Vérifier les mises à jour » ne lance pas ensuite le
+        # serveur lorsque la version est déjà à jour ou que l'utilisateur reporte.
+        return
 
     # Vérification de la licence
     license_status = None
