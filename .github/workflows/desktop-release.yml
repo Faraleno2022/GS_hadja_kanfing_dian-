@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          & $iscc "--define=MyAppVersion=$env:APP_VERSION" installer_myschool.iss
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" installer_myschool.iss
 
       - name: Générer et vérifier l'empreinte SHA-256
         shell: pwsh
