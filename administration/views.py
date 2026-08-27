@@ -569,6 +569,14 @@ def peut_gerer_corbeille(user):
     ))
 
 
+def peut_gerer_corbeille_elements(user):
+    """Autorise aussi la corbeille des paiements selon la permission dédiée."""
+    if peut_gerer_corbeille(user):
+        return True
+    profil = getattr(user, 'profil', None)
+    return bool(profil and getattr(profil, 'peut_supprimer_paiements', False))
+
+
 def _restreindre_a_l_ecole(queryset, user, champ='ecole_nom'):
     """Limite un queryset de corbeille à l'école de l'utilisateur."""
     if user.is_superuser:
@@ -578,6 +586,14 @@ def _restreindre_a_l_ecole(queryset, user, champ='ecole_nom'):
     if ecole is None:
         return queryset.none()
     return queryset.filter(**{champ: ecole.nom})
+
+
+def _restreindre_corbeille_elements(queryset, user):
+    """Limite par école et, pour un délégataire, aux seuls paiements."""
+    queryset = _restreindre_a_l_ecole(queryset, user)
+    if not peut_gerer_corbeille(user):
+        queryset = queryset.filter(app_label='paiements', model_name='Paiement')
+    return queryset
 
 
 @login_required
@@ -670,12 +686,12 @@ def purger_eleve_corbeille(request, corbeille_id):
 
 
 @login_required
-@user_passes_test(peut_gerer_corbeille, login_url='home')
+@user_passes_test(peut_gerer_corbeille_elements, login_url='home')
 def corbeille_elements(request):
     """Corbeille des paiements, échéanciers, abonnements et autres éléments."""
     from .models import CorbeilleElement
 
-    entrees = _restreindre_a_l_ecole(
+    entrees = _restreindre_corbeille_elements(
         CorbeilleElement.objects.select_related('supprime_par', 'restaure_par'),
         request.user,
     )
@@ -701,7 +717,10 @@ def corbeille_elements(request):
     paginator = Paginator(entrees, 25)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    base = _restreindre_a_l_ecole(CorbeilleElement.objects.all(), request.user)
+    base = _restreindre_corbeille_elements(
+        CorbeilleElement.objects.all(),
+        request.user,
+    )
     stats = {
         'total': base.count(),
         'a_restaurer': base.filter(restaure=False).count(),
@@ -717,11 +736,12 @@ def corbeille_elements(request):
         'etat': etat,
         'type_objet': type_objet,
         'types': types,
+        'peut_gerer_toute_corbeille': peut_gerer_corbeille(request.user),
     })
 
 
 @login_required
-@user_passes_test(peut_gerer_corbeille, login_url='home')
+@user_passes_test(peut_gerer_corbeille_elements, login_url='home')
 @require_POST
 @csrf_protect
 def restaurer_element_corbeille(request, corbeille_id):
@@ -729,7 +749,10 @@ def restaurer_element_corbeille(request, corbeille_id):
     from .audit import restaurer_element
     from .models import CorbeilleElement
 
-    entrees = _restreindre_a_l_ecole(CorbeilleElement.objects.all(), request.user)
+    entrees = _restreindre_corbeille_elements(
+        CorbeilleElement.objects.all(),
+        request.user,
+    )
     entree = get_object_or_404(entrees, pk=corbeille_id)
 
     try:

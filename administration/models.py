@@ -137,7 +137,13 @@ class CorbeilleElement(models.Model):
 
     @property
     def nb_lignes_liees(self):
-        return sum(len(v) for v in (self.donnees or {}).get('relations', {}).values())
+        donnees = self.donnees or {}
+        total = sum(len(v) for v in donnees.get('relations', {}).values())
+        if donnees.get('recu'):
+            total += 1
+        if donnees.get('echeancier'):
+            total += 1
+        return total
 
 
 class JournalModification(models.Model):

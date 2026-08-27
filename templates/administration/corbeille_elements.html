@@ -8,20 +8,22 @@
 
 {% block page_actions %}
     <div class="d-flex flex-wrap gap-2">
+        {% if peut_gerer_toute_corbeille %}
         <a href="{% url 'administration:corbeille_eleves' %}" class="btn btn-outline-secondary">
             <i class="fas fa-user-graduate me-1"></i>Corbeille des élèves
         </a>
         <a href="{% url 'administration:journal_modifications' %}" class="btn btn-outline-info">
             <i class="fas fa-history me-1"></i>Corbeille mémoire
         </a>
+        {% endif %}
     </div>
 {% endblock %}
 
 {% block content %}
 <div class="alert alert-info">
     <i class="fas fa-info-circle me-2"></i>
-    Les paiements, échéanciers, abonnements et remises supprimés depuis l'administration
-    sont archivés ici avec leurs lignes liées, et peuvent être restaurés.
+    Les paiements, échéanciers, abonnements et remises supprimés depuis l'application
+    ou l'administration sont archivés ici avec leurs données liées, et peuvent être restaurés.
 </div>
 
 <div class="row mb-3">
@@ -123,6 +125,20 @@
                         <td>
                             <small>{{ entree.contexte|default:"—" }}</small><br>
                             <small class="text-muted">{{ entree.ecole_nom }}</small>
+                            {% if entree.model_name == 'Paiement' %}
+                                <div class="mt-1">
+                                    {% if entree.donnees.recu.numero %}
+                                    <span class="badge bg-light text-dark">
+                                        <i class="fas fa-receipt me-1"></i>{{ entree.donnees.recu.numero }}
+                                    </span>
+                                    {% endif %}
+                                    {% if entree.donnees.echeancier %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-calendar-check me-1"></i>Échéancier archivé
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
                         </td>
                         <td><small>{{ entree.nb_lignes_liees }}</small></td>
                         <td><small>{{ entree.supprime_par|default:"—" }}</small></td>

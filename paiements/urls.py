@@ -28,6 +28,7 @@ urlpatterns = [
     path('ajouter/', views.ajouter_paiement, name='ajouter_paiement'),
     path('ajouter/<int:eleve_id>/', views.ajouter_paiement, name='ajouter_paiement_eleve'),
     path('modifier/<int:paiement_id>/', views.modifier_paiement, name='modifier_paiement'),
+    path('supprimer/<int:paiement_id>/', views.supprimer_paiement, name='supprimer_paiement'),
     path('valider/<int:paiement_id>/', views.valider_paiement, name='valider_paiement'),
     path('relancer/<int:eleve_id>/', views.relancer_eleve, name='relancer_eleve'),
     path('relances/', views.liste_relances, name='liste_relances'),

@@ -237,6 +237,29 @@ def construire_snapshot_objet(instance):
             capturer_etat(ligne) for ligne in lignes
         )
 
+    if label == 'paiements.Paiement':
+        # Le reçu PDF est généré dynamiquement depuis le paiement : conserver
+        # son numéro et l'ID permet de le régénérer après restauration.
+        donnees['recu'] = {
+            'numero': getattr(instance, 'numero_recu', '') or '',
+            'paiement_id': instance.pk,
+        }
+
+        # L'échéancier est partagé avec les autres paiements. On archive son
+        # état pour audit sans le supprimer ; il sera recalculé après l'action.
+        try:
+            from paiements.models import EcheancierPaiement
+
+            echeancier = EcheancierPaiement.objects.filter(
+                eleve_id=instance.eleve_id,
+                annee_scolaire=instance.annee_scolaire,
+            ).first()
+            donnees['echeancier'] = (
+                capturer_etat(echeancier) if echeancier is not None else None
+            )
+        except Exception:
+            donnees['echeancier'] = None
+
     return donnees
 
 
@@ -249,7 +272,11 @@ def mettre_en_corbeille(instance, utilisateur=None, request=None, motif=''):
         utilisateur = None
 
     opts = instance._meta
+    label = f'{opts.app_label}.{opts.object_name}'
     contexte, ecole_nom = _contexte_objet(instance)
+    contexte_paiement = None
+    if label == 'paiements.Paiement':
+        contexte_paiement = (instance.eleve_id, instance.annee_scolaire)
 
     entree = CorbeilleElement.objects.create(
         app_label=opts.app_label,
@@ -273,6 +300,11 @@ def mettre_en_corbeille(instance, utilisateur=None, request=None, motif=''):
     with suspendre_journal():
         instance.delete()
 
+    if contexte_paiement is not None:
+        from paiements.services import synchroniser_echeancier_apres_changement_paiement
+
+        synchroniser_echeancier_apres_changement_paiement(*contexte_paiement)
+
     return entree
 
 
@@ -293,11 +325,21 @@ def restaurer_element(entree, utilisateur=None, request=None):
     if not principal:
         raise ValueError("L'instantané de cet élément est vide : restauration impossible.")
 
-    principal.pop('id', None)
+    identifiant_origine = principal.pop('id', None)
     principal.pop('date_creation', None)
     principal.pop('date_modification', None)
     principal.pop('created_at', None)
     principal.pop('updated_at', None)
+
+    # Restaurer le même ID quand il est encore libre conserve les anciennes
+    # URLs de reçus, qui utilisent l'identifiant du paiement.
+    est_paiement = entree.app_label == 'paiements' and entree.model_name == 'Paiement'
+    if (
+        est_paiement
+        and identifiant_origine is not None
+        and not modele.objects.filter(pk=identifiant_origine).exists()
+    ):
+        principal['id'] = identifiant_origine
 
     with suspendre_journal():
         try:
@@ -323,6 +365,14 @@ def restaurer_element(entree, utilisateur=None, request=None):
                 continue
             nb_lignes += _restaurer_lignes(modele_lie, lignes, {champ_parent: objet.pk})
 
+        if est_paiement:
+            from paiements.services import synchroniser_echeancier_apres_changement_paiement
+
+            synchroniser_echeancier_apres_changement_paiement(
+                objet.eleve_id,
+                objet.annee_scolaire,
+            )
+
     if utilisateur is None and request is not None:
         utilisateur = getattr(request, 'user', None)
     if utilisateur is not None and not getattr(utilisateur, 'is_authenticated', False):
@@ -339,7 +389,12 @@ def restaurer_element(entree, utilisateur=None, request=None):
         commentaire=f"Restauration depuis la corbeille (élément #{entree.pk})",
     )
 
-    complement = f" ({nb_lignes} ligne(s) liée(s))" if nb_lignes else ""
+    if est_paiement:
+        complement = (
+            f" ({nb_lignes} remise(s) liée(s), reçu et échéancier resynchronisés)"
+        )
+    else:
+        complement = f" ({nb_lignes} ligne(s) liée(s))" if nb_lignes else ""
     return objet, f"{entree.modele_libelle or entree.model_name} « {objet} » restauré{complement}."
 
 

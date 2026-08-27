@@ -1878,6 +1878,7 @@ def liste_paiements(request):
         'annee_filtre': annee_filtre or (annee_active or ''),
         'annee_active': annee_active or '',
         'can_view_reports': has_permission(request.user, 'peut_consulter_rapports'),
+        'user_permissions': get_user_permissions(request.user),
         'paiements': page_obj.object_list,
         'page_obj': page_obj,
         # Totaux pour l'UI (utilisés par _paiements_resultats.html)
@@ -2225,6 +2226,65 @@ def modifier_paiement(request, paiement_id: int):
         'historique_modifications': historique,
     }
     return render(request, 'paiements/modifier_paiement.html', context)
+
+
+@login_required
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
+@can_delete_payments
+@require_http_methods(["GET", "POST"])
+def supprimer_paiement(request, paiement_id: int):
+    """Place un paiement et ses données liées dans la corbeille restaurable."""
+    paiement_qs = Paiement.objects.select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole',
+        'type_paiement', 'mode_paiement',
+    ).prefetch_related('remises__remise')
+    paiement_qs = filter_by_user_school(
+        paiement_qs,
+        request.user,
+        'eleve__classe__ecole',
+    )
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
+    echeancier = EcheancierPaiement.objects.filter(
+        eleve=paiement.eleve,
+        annee_scolaire=paiement.annee_scolaire,
+    ).first()
+
+    if request.method == 'POST':
+        from administration.audit import mettre_en_corbeille
+
+        numero_recu = paiement.numero_recu
+        nom_eleve = paiement.eleve.nom_complet
+        try:
+            mettre_en_corbeille(
+                paiement,
+                request=request,
+                motif=(request.POST.get('motif') or '').strip()
+                or "Suppression depuis la gestion des paiements",
+            )
+        except Exception as exc:
+            logger.exception(
+                "Erreur lors de la mise à la corbeille du paiement %s",
+                paiement_id,
+            )
+            messages.error(
+                request,
+                f"Le paiement n'a pas pu être placé dans la corbeille : {exc}",
+            )
+            return redirect('paiements:detail_paiement', paiement_id=paiement_id)
+
+        messages.success(
+            request,
+            f"Le paiement {numero_recu} de {nom_eleve} a été placé dans la corbeille. "
+            "Son reçu, ses remises et l'état de son échéancier ont été archivés.",
+        )
+        return redirect('paiements:liste_paiements')
+
+    return render(request, 'paiements/confirmer_suppression_paiement.html', {
+        'titre_page': f"Supprimer le paiement {paiement.numero_recu}",
+        'paiement': paiement,
+        'echeancier': echeancier,
+        'remises_count': paiement.remises.count(),
+    })
 
 
 @login_required

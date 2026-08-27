@@ -240,6 +240,14 @@
                                                 <i class="fas fa-bell me-2"></i>Alertes / Relances
                                             </a>
                                         </li>
+                                        {% if user_permissions.can_delete_payments %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <a class="dropdown-item text-danger" href="{% url 'paiements:supprimer_paiement' paiement.id %}">
+                                                <i class="fas fa-trash me-2"></i>Mettre à la corbeille
+                                            </a>
+                                        </li>
+                                        {% endif %}
                                         {% if paiement.statut == 'EN_ATTENTE' %}
                                         <li><hr class="dropdown-divider"></li>
                                         <li>

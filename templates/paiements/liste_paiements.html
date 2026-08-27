@@ -14,6 +14,11 @@
         <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Nouveau Paiement
         </a>
+        {% if user_permissions.can_delete_payments %}
+        <a href="{% url 'administration:corbeille_elements' %}?type=Paiement" class="btn btn-outline-danger">
+            <i class="fas fa-trash-restore me-1"></i>Corbeille des paiements
+        </a>
+        {% endif %}
         <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
             <i class="fas fa-filter me-1"></i>Filtres
         </button>

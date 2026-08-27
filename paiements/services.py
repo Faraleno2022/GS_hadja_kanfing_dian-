@@ -189,6 +189,27 @@ def _synchroniser_couverture(echeancier, *, conserver_saisie_manuelle=True):
 
 
 @transaction.atomic
+def synchroniser_echeancier_apres_changement_paiement(eleve_id, annee_scolaire):
+    """Recalcule la couverture après suppression ou restauration d'un paiement.
+
+    L'échéancier appartient à l'élève et à l'année, pas à un versement unique.
+    Il reste donc en place et seuls ses montants payés ainsi que son statut sont
+    reconstruits depuis les paiements validés encore actifs.
+    """
+    echeancier = (
+        EcheancierPaiement.objects.select_for_update()
+        .filter(eleve_id=eleve_id, annee_scolaire=annee_scolaire)
+        .first()
+    )
+    if echeancier is None:
+        return None
+
+    _synchroniser_couverture(echeancier, conserver_saisie_manuelle=False)
+    echeancier.save()
+    return echeancier
+
+
+@transaction.atomic
 def reconcilier_transfert_classe(eleve, ancienne_classe, nouvelle_classe, *, cree_par=None):
     """Applique la grille cible tout en preservant l'historique financier.
 
