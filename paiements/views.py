@@ -2407,38 +2407,20 @@ def ajouter_paiement(request, eleve_id:int=None):
             type_description = ' + '.join(type_labels)
             
             # Vérifier si le montant correspond au type sélectionné
+            paiement_partiel_info = None
             if montant_attendu > 0 and montant_saisi != montant_attendu:
-                # Paiements partiels: autoriser sans confirmation pour une tranche simple
-                is_single_tranche = (
-                    not type_plan['include_registration']
-                    and len(type_plan['tranches']) == 1
-                )
-                if montant_saisi < montant_attendu and is_single_tranche:
-                    # Autoriser directement le paiement partiel de tranche
-                    pass
-                elif montant_saisi < montant_attendu:
-                    # Demander confirmation pour paiement partiel (inscription ou types combinés)
-                    confirmation_partiel = request.POST.get('confirmation_paiement_partiel')
-                    if not confirmation_partiel:
-                        # Message d'avertissement et demande de confirmation
-                        from django.utils.safestring import mark_safe
-                        message_html = mark_safe(
-                            f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
-                            f'⚠️ ATTENTION: Le montant saisi ({montant_saisi:,} GNF) est inférieur au montant standard '
-                            f'pour {type_description} ({montant_attendu:,} GNF).</span><br>'
-                            f'<strong>S\'agit-il d\'un paiement partiel ?</strong> Si oui, confirmez ci-dessous.'
-                        )
-                        messages.error(request, message_html)
-                        return render(request, 'paiements/form_paiement.html', {
-                            'titre_page': titre_page,
-                            'action': action,
-                            'form': form,
-                            'eleve': eleve,
-                            'montant_attendu': montant_attendu,
-                            'montant_saisi': montant_saisi,
-                            'type_description': type_description,
-                            'show_partial_confirmation': True,
-                        })
+                if montant_saisi < montant_attendu:
+                    # Paiement partiel (tranche simple, inscription ou type combiné) :
+                    # accepté immédiatement, sans confirmation ni second essai. Le
+                    # moteur d'allocation (allocate_amount_sequentially, applique
+                    # lors de la validation) répartit correctement un montant
+                    # partiel sur le(s) poste(s) concerné(s) ; l'utilisateur est
+                    # simplement informé apres coup, pas bloqué avant.
+                    paiement_partiel_info = {
+                        'montant_saisi': montant_saisi,
+                        'montant_attendu': montant_attendu,
+                        'type_description': type_description,
+                    }
                 else:
                     # Montant supérieur au montant standard: autoriser.
                     # Raison: pour les types combinés et même pour certaines tranches,
@@ -2879,6 +2861,14 @@ def ajouter_paiement(request, eleve_id:int=None):
             except Exception:
                 logging.getLogger(__name__).exception("Erreur lors de l'envoi des notifications Twilio")
             messages.success(request, "Paiement enregistré avec succès.")
+            if paiement_partiel_info:
+                reste = paiement_partiel_info['montant_attendu'] - paiement_partiel_info['montant_saisi']
+                messages.info(
+                    request,
+                    f"Paiement partiel enregistré pour {paiement_partiel_info['type_description']} : "
+                    f"{paiement_partiel_info['montant_saisi']:,} GNF sur {paiement_partiel_info['montant_attendu']:,} GNF "
+                    f"attendus (reste {reste:,} GNF)."
+                )
             # Le détail permet d'appliquer une remise, d'envoyer une relance puis
             # de valider immédiatement le paiement avant de poursuivre les inscriptions.
             return redirect('paiements:detail_paiement', paiement_id=paiement.id)
