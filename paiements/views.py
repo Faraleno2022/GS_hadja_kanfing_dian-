@@ -2135,6 +2135,11 @@ def modifier_paiement(request, paiement_id: int):
             avant = capturer_etat(paiement.__class__.objects.get(pk=paiement.pk), champs_suivis)
             motif = form.cleaned_data['motif_modification']
             montant_modifie = 'montant' in form.changed_data
+            # Le type de paiement determine si le montant est classe comme
+            # inscription ou comme tranche (_nature_frais) : le laisser
+            # changer sans resynchroniser fige l'echeancier sur l'ancienne
+            # repartition.
+            type_modifie = 'type_paiement' in form.changed_data
             etait_valide = paiement.statut == 'VALIDE'
 
             # Un paiement ancien peut porter une année absente ou mal formée :
@@ -2157,9 +2162,10 @@ def modifier_paiement(request, paiement_id: int):
                         paiement.valide_par = None
                         paiement.save(update_fields=['statut', 'date_validation', 'valide_par'])
 
-                    # L'échéancier gardait l'ancien montant : on le reconstruit
+                    # L'échéancier gardait l'ancien montant / l'ancienne
+                    # répartition inscription-vs-tranche : on le reconstruit
                     # à partir des seuls paiements validés de l'année.
-                    if montant_modifie:
+                    if montant_modifie or type_modifie:
                         _auto_validate_echeancier_for_eleve(
                             paiement.eleve,
                             reference_date=paiement.date_paiement,
@@ -5056,6 +5062,12 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF.",
                     )
                     return _retour_detail()
+            # Pas de resynchronisation ici : appliquer_remise_paiement est
+            # gardée plus haut ("Seuls les paiements en attente peuvent
+            # recevoir des remises") donc paiement.statut est toujours
+            # EN_ATTENTE à ce stade. La validation (_valider_paiement_impl)
+            # prend en compte les remises déjà attachées au moment où elle
+            # recalcule l'échéancier.
             messages.success(request, f"Remises appliquées: {created}.")
             return redirect('paiements:detail_paiement', paiement_id=paiement.id)
         else:

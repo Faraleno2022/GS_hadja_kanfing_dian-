@@ -427,8 +427,17 @@ def construire_snapshot_eleve(eleve):
         'historique': [],
     }
 
+    donnees['paiements_remises'] = {}
     for paiement in eleve.paiements.all():
         donnees['paiements'].append(capturer_etat(paiement))
+        remises = list(paiement.remises.all())
+        if remises:
+            # Indispensable pour ne pas gonfler le solde restant a la
+            # restauration : solde_restant est recalcule depuis les remises
+            # reellement en base (models.py), pas depuis le total_du brut.
+            donnees['paiements_remises'][str(paiement.pk)] = [
+                capturer_etat(remise) for remise in remises
+            ]
 
     for abo in eleve.abonnements_bus.all():
         donnees['abonnements_bus'].append(capturer_etat(abo))
@@ -519,6 +528,50 @@ def _restaurer_lignes(modele, snapshots, remplacements):
     return restaures
 
 
+def _restaurer_paiements_eleve(eleve, snapshots_paiements, snapshots_remises_par_paiement):
+    """Recrée les paiements d'un élève restauré, avec leurs remises.
+
+    Conserve l'ancien identifiant quand il est encore libre (mêmes reçus
+    PDF qu'avant suppression, comme restaurer_element). Retourne le nombre
+    de paiements restaurés et l'ensemble des années scolaires concernées,
+    pour resynchroniser leur échéancier depuis ce qui a réellement pu être
+    recréé plutôt que depuis l'instantané figé (paiement ou remise dont le
+    type/mode/motif a disparu entre-temps).
+    """
+    from paiements.models import Paiement, PaiementRemise
+
+    restaures = 0
+    annees_scolaires = set()
+
+    for snapshot in snapshots_paiements or []:
+        principal = dict(snapshot)
+        identifiant_origine = principal.pop('id', None)
+        principal.pop('date_creation', None)
+        principal.pop('date_modification', None)
+        principal['eleve_id'] = eleve.pk
+
+        if identifiant_origine is not None and not Paiement.objects.filter(pk=identifiant_origine).exists():
+            principal['id'] = identifiant_origine
+
+        try:
+            paiement = Paiement.objects.create(**coercer_valeurs(Paiement, principal))
+        except Exception:
+            continue
+
+        restaures += 1
+        annees_scolaires.add(paiement.annee_scolaire)
+
+        for snapshot_remise in snapshots_remises_par_paiement.get(str(identifiant_origine), []):
+            donnees_remise = {k: v for k, v in snapshot_remise.items() if k != 'id'}
+            donnees_remise['paiement_id'] = paiement.pk
+            try:
+                PaiementRemise.objects.create(**coercer_valeurs(PaiementRemise, donnees_remise))
+            except Exception:
+                continue
+
+    return restaures, annees_scolaires
+
+
 @transaction.atomic
 def restaurer_eleve(entree, utilisateur=None, request=None):
     """Restaure un élève depuis la corbeille.
@@ -575,12 +628,24 @@ def restaurer_eleve(entree, utilisateur=None, request=None):
     with suspendre_journal():
         eleve = Eleve.objects.create(**coercer_valeurs(Eleve, snapshot_eleve))
 
-        nb_paiements = _restaurer_lignes(Paiement, donnees.get('paiements'), {'eleve_id': eleve.pk})
+        nb_paiements, annees_a_resynchroniser = _restaurer_paiements_eleve(
+            eleve, donnees.get('paiements'), donnees.get('paiements_remises') or {}
+        )
         nb_bus = _restaurer_lignes(AbonnementBus, donnees.get('abonnements_bus'), {'eleve_id': eleve.pk})
         nb_cantine = _restaurer_lignes(AbonnementCantine, donnees.get('abonnements_cantine'), {'eleve_id': eleve.pk})
 
         if donnees.get('echeancier'):
             _restaurer_lignes(EcheancierPaiement, [donnees['echeancier']], {'eleve_id': eleve.pk})
+
+        # Ne pas se fier aux montants payes/statut figes dans l'instantane :
+        # un paiement ou une remise peut avoir echoue a se recreer
+        # (classe/mode/type disparu). On reconstruit la couverture depuis ce
+        # qui est reellement restaure, comme pour la restauration d'un
+        # paiement isole (cf. restaurer_element ci-dessus).
+        for annee_scolaire in annees_a_resynchroniser:
+            from paiements.services import synchroniser_echeancier_apres_changement_paiement
+
+            synchroniser_echeancier_apres_changement_paiement(eleve.pk, annee_scolaire)
 
     if utilisateur is None and request is not None:
         utilisateur = getattr(request, 'user', None)

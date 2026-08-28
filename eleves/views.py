@@ -1756,7 +1756,9 @@ def supprimer_eleve(request, eleve_id):
                     eleve.delete()
                     
                     total_elements = paiements_count + abonnements_bus_count + abonnements_cantine_count
-                    messages.success(request, f"L'élève {nom_complet} et tous ses éléments associés ({total_elements} au total) ont été supprimés définitivement et sauvegardés dans la corbeille.")
+                    # Suppression irréversible (pas de CorbeilleEleve créée ici, contrairement
+                    # à mettre_eleve_en_corbeille) : ne jamais laisser croire que c'est restaurable.
+                    messages.success(request, f"L'élève {nom_complet} et tous ses éléments associés ({total_elements} au total) ont été supprimés définitivement. Cette action est irréversible (non restaurable depuis la corbeille) ; un journal d'audit a été conservé.")
                 else:
                     # Soft delete - changer le statut au lieu de supprimer
                     eleve.statut = 'EXCLU'

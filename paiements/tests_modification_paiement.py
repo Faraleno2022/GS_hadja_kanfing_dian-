@@ -8,6 +8,7 @@ l'ancien montant après correction.
 
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -17,7 +18,7 @@ from django.urls import reverse
 from eleves.models import Classe, Ecole, Eleve, Responsable
 from paiements.forms import MontantGNFField
 from paiements.models import (
-    EcheancierPaiement, ModePaiement, Paiement, TypePaiement,
+    EcheancierPaiement, ModePaiement, Paiement, PaiementRemise, TypePaiement,
 )
 
 # La vérification de licence renvoie 403 hors installation activée.
@@ -190,9 +191,89 @@ class ModificationMontantPaiementTest(TestCase):
             Decimal('175000'),
         )
 
+    def test_changement_de_type_seul_resynchronise_lecheancier(self):
+        """Changer uniquement le type (sans toucher au montant) doit aussi
+        resynchroniser l'échéancier : le type détermine si le montant est
+        classé en inscription ou en tranche (_nature_frais)."""
+        from paiements.views import _valider_paiement_impl
+
+        _valider_paiement_impl(self.paiement, self.user)
+        autre_type = TypePaiement.objects.create(nom="Réinscription")
+
+        with patch('paiements.views._auto_validate_echeancier_for_eleve') as resync:
+            self._corriger('120000', type_paiement=autre_type.pk)
+
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.type_paiement_id, autre_type.pk)
+        resync.assert_called()
+
     def test_montant_actuel_affiche_dans_le_formulaire(self):
         reponse = self.client.get(
             reverse('paiements:modifier_paiement', args=[self.paiement.pk])
         )
         self.assertEqual(reponse.status_code, 200)
         self.assertContains(reponse, 'value="120000"')
+
+
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
+class ApplicationRemisePaiementTest(TestCase):
+    """appliquer_remise_paiement refuse tout paiement déjà VALIDE (« Seuls les
+    paiements en attente peuvent recevoir des remises ») : une remise ne peut
+    donc être ajoutée qu'avant validation. La validation qui suit doit alors
+    correctement intégrer la remise dans le calcul du solde restant."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser('caissier2', 'c2@c.gn', 'x')
+        self.client.force_login(self.user)
+        self.ecole, self.classe, self.eleve = _jeu_de_donnees('rem')
+        self.type_p = TypePaiement.objects.create(nom="Scolarité")
+        self.mode_p = ModePaiement.objects.create(nom="Espèces")
+        self.echeancier = EcheancierPaiement.objects.create(
+            eleve=self.eleve, annee_scolaire="2025-2026",
+            frais_inscription_du=Decimal('0'),
+            tranche_1_due=Decimal('100000'),
+            tranche_2_due=Decimal('0'),
+            tranche_3_due=Decimal('0'),
+            date_echeance_inscription=date(2025, 9, 30),
+            date_echeance_tranche_1=date(2025, 12, 31),
+            date_echeance_tranche_2=date(2026, 3, 31),
+            date_echeance_tranche_3=date(2026, 6, 30),
+        )
+        # En attente : une remise ne peut être accordée qu'avant validation.
+        self.paiement = Paiement.objects.create(
+            eleve=self.eleve, type_paiement=self.type_p, mode_paiement=self.mode_p,
+            montant=Decimal('90000'), date_paiement=date(2025, 10, 20),
+            statut='EN_ATTENTE',
+        )
+
+    def test_remise_accordee_avant_validation_couvre_le_solde(self):
+        from paiements.models import RemiseReduction
+        from paiements.views import _valider_paiement_impl
+
+        remise = RemiseReduction.objects.create(
+            nom='Remise solde', type_remise='MONTANT_FIXE', valeur=Decimal('10000'),
+            motif='AUTRE', date_debut=date(2025, 9, 1), date_fin=date(2026, 6, 30),
+            cree_par=self.user,
+        )
+
+        reponse = self.client.post(
+            reverse('paiements:appliquer_remise', args=[self.paiement.pk]),
+            {
+                'remises': [remise.pk],
+                'tranches': ['1'],
+                'base_calcul': 'paiement_echeance',
+                'motif': 'AUTRE',
+                'montant_original': '90000',
+            },
+            follow=True,
+        )
+        self.assertEqual(reponse.status_code, 200)
+        self.assertTrue(PaiementRemise.objects.filter(paiement=self.paiement).exists())
+
+        # La validation doit imputer le paiement (90000) ET la remise (10000)
+        # sur la tranche due (100000) : le solde tombe à zéro.
+        _valider_paiement_impl(self.paiement, self.user)
+
+        self.echeancier.refresh_from_db()
+        self.assertEqual(self.echeancier.solde_restant, Decimal('0'))
+        self.assertEqual(self.echeancier.statut, 'PAYE_COMPLET')

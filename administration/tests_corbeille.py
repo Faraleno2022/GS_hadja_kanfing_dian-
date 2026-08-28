@@ -196,6 +196,60 @@ class CorbeilleEleveTest(TestCase):
             ).exists()
         )
 
+    def test_restauration_conserve_remise_et_solde_restant(self):
+        """La restauration ne doit ni perdre la remise, ni gonfler le solde.
+
+        Reproduit le bug corrigé : construire_snapshot_eleve n'archivait pas
+        les PaiementRemise, et restaurer_eleve ne recalculait jamais
+        l'échéancier depuis ce qui était réellement restauré.
+        """
+        from administration.audit import mettre_eleve_en_corbeille, restaurer_eleve
+        from paiements.models import PaiementRemise, RemiseReduction
+
+        ecole, classe, eleve = _creer_jeu_de_donnees('rm')
+        type_p = TypePaiement.objects.create(nom="Scolarité RM")
+        mode_p = ModePaiement.objects.create(nom="Espèces RM")
+        echeancier = EcheancierPaiement.objects.create(
+            eleve=eleve, annee_scolaire='2025-2026',
+            frais_inscription_du=Decimal('100000'),
+            tranche_1_due=Decimal('200000'),
+            tranche_2_due=Decimal('200000'),
+            tranche_3_due=Decimal('200000'),
+            date_echeance_inscription=date(2025, 9, 1),
+            date_echeance_tranche_1=date(2025, 10, 1),
+            date_echeance_tranche_2=date(2026, 1, 1),
+            date_echeance_tranche_3=date(2026, 3, 1),
+        )
+        paiement = Paiement.objects.create(
+            eleve=eleve, type_paiement=type_p, mode_paiement=mode_p,
+            montant=Decimal('90000'), date_paiement=date(2025, 9, 2),
+            statut='VALIDE', cree_par=self.admin, valide_par=self.admin,
+        )
+        remise = RemiseReduction.objects.create(
+            nom='Remise RM', type_remise='MONTANT_FIXE', valeur=Decimal('10000'),
+            motif='AUTRE', date_debut=date(2025, 9, 1), date_fin=date(2026, 6, 30),
+            cree_par=self.admin,
+        )
+        PaiementRemise.objects.create(
+            paiement=paiement, remise=remise, montant_remise=Decimal('10000'),
+        )
+
+        from paiements.services import synchroniser_echeancier_apres_changement_paiement
+        synchroniser_echeancier_apres_changement_paiement(eleve.pk, '2025-2026')
+        echeancier.refresh_from_db()
+        solde_avant = echeancier.solde_restant
+        self.assertEqual(solde_avant, Decimal('600000'))  # 700000 dus - 90000 payés - 10000 remisés
+
+        entree = mettre_eleve_en_corbeille(eleve, utilisateur=self.admin)
+        eleve_restaure, _ = restaurer_eleve(entree, utilisateur=self.admin)
+
+        paiement_restaure = eleve_restaure.paiements.get()
+        self.assertEqual(paiement_restaure.remises.count(), 1)
+        self.assertEqual(paiement_restaure.remises.first().montant_remise, Decimal('10000'))
+
+        echeancier_restaure = EcheancierPaiement.objects.get(eleve=eleve_restaure, annee_scolaire='2025-2026')
+        self.assertEqual(echeancier_restaure.solde_restant, solde_avant)
+
 
 class CorbeillePaiementAdminTest(TestCase):
     """Les suppressions admin de paiements / échéanciers passent par la corbeille."""
