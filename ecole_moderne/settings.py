@@ -244,11 +244,21 @@ WSGI_APPLICATION = 'ecole_moderne.wsgi.application'
 # =================== Base de données ===================
 
 if DEBUG or not os.environ.get('DJANGO_DB_NAME'):
-    # Utiliser SQLite en développement local
+    # Utiliser SQLite en développement local (et sur le Desktop packagé, qui
+    # tourne toujours avec DJANGO_DEBUG=true, cf. run_server.py).
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+            # SQLite verrouille par defaut tout le fichier pendant une
+            # ecriture : plusieurs utilisateurs (postes, onglets, ou le
+            # worker de synchronisation en tache de fond) qui interrogent
+            # l'API en meme temps declenchaient "database is locked" au
+            # premier vrai concurrentiel. timeout releve la patience avant
+            # cette erreur ; le mode WAL (active juste en dessous) permet
+            # aux lectures de continuer pendant une ecriture au lieu de se
+            # bloquer entre elles.
+            "OPTIONS": {"timeout": 20},
         }
     }
 else:
@@ -272,6 +282,21 @@ else:
             "CONN_MAX_AGE": 270,
         }
     }
+
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    from django.db.backends.signals import connection_created
+
+    def _activer_wal_sqlite(sender, connection, **kwargs):
+        """WAL : les lectures ne sont plus bloquees par une ecriture en
+        cours (postes/onglets multiples, worker de sync en arriere-plan).
+        synchronous=NORMAL est la contrepartie recommandee avec WAL (sur)."""
+        if connection.vendor != "sqlite":
+            return
+        with connection.cursor() as curseur:
+            curseur.execute("PRAGMA journal_mode=WAL;")
+            curseur.execute("PRAGMA synchronous=NORMAL;")
+
+    connection_created.connect(_activer_wal_sqlite)
 
 # =================== Cache (vitesse maximale) ===================
 CACHES = {
