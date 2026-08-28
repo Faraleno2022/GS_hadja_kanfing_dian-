@@ -266,9 +266,14 @@ class MontantSuperieurAuTypeTests(_BaseScolarite):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Paiement.objects.count(), 1)
 
-    def test_montant_inferieur_demande_toujours_confirmation(self):
-        """L'asymétrie corrigée ne doit pas retirer le contrôle existant."""
+    def test_montant_inferieur_est_accepte_sans_confirmation(self):
+        """Un paiement partiel ne doit plus bloquer le caissier.
+
+        Le contrôle anti-surpaiement (montant supérieur) reste actif ; seule
+        la confirmation pour montant insuffisant a été retirée, le moteur
+        d'allocation répartissant correctement un montant partiel.
+        """
         resp = self.client.post(self.url, self._donnees(100000))
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.context["show_partial_confirmation"])
-        self.assertFalse(Paiement.objects.exists())
+        self.assertEqual(resp.status_code, 302)
+        paiement = Paiement.objects.get()
+        self.assertEqual(paiement.montant, Decimal("100000"))

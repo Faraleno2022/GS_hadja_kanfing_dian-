@@ -330,7 +330,7 @@ class RapportsProfessionnelsTests(TestCase):
 
         from django.conf import settings
 
-        logo_path = str(Path(settings.BASE_DIR) / 'static' / 'logos' / 'logo.png')
+        logo_path = str(Path(settings.BASE_DIR) / 'static' / 'logos' / 'logo.jpeg')
         data = collect_recovery_data(self._request(classe_id=self.classe.pk))
 
         with patch(
