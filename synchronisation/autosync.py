@@ -19,7 +19,11 @@ import time
 from django.conf import settings
 
 
-INTERVALLE_DEFAUT = 10  # secondes : verification rapide des changements distants
+INTERVALLE_DEFAUT = 4  # secondes : le serveur ne peut pas pousser vers le poste,
+# donc la vitesse de reception depend entierement de ce delai. Verifie
+# supportable meme sous forte charge concurrente (mode WAL + API exclue du
+# rate limiting, cf. sessions precedentes) ; garde une marge au-dessus du
+# plancher pour ne pas coller au minimum absolu.
 INTERVALLE_MINIMUM = 3
 DELAI_DEMARRAGE_DEFAUT = 15
 
