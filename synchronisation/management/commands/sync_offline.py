@@ -30,12 +30,22 @@ class Command(BaseCommand):
                 'MYSCHOOL_SYNC_DEVICE_ID, MYSCHOOL_SYNC_TOKEN et MYSCHOOL_SYNC_ECOLE_ID.'
             )
 
-        ecole = Ecole.objects.filter(pk=ecole_id).first()
-        if not ecole:
-            raise CommandError(f"Ecole locale introuvable: {ecole_id}")
+        # Un poste desktop est toujours dedie a une seule ecole : son
+        # identifiant local (auto-attribue lors de l'amorçage) n'a aucune
+        # raison de correspondre a l'identifiant sur le serveur. ecole_id
+        # sert uniquement a valider que la configuration est complete et a
+        # enregistrer l'appareil (register_sync_device) ; la recherche
+        # locale se fait sur l'ecole unique deja presente, quel que soit
+        # son id.
+        ecole = Ecole.objects.first()
+        if not ecole and not options['initial']:
+            raise CommandError(
+                f"Ecole locale introuvable: {ecole_id}. "
+                "Utilisez --initial pour amorcer un poste tout juste installe."
+            )
 
         try:
-            if not options['pull_only']:
+            if not options['pull_only'] and ecole is not None:
                 pushed = push_pending(server_url, device_id, token, ecole)
                 self.stdout.write(self.style.SUCCESS(f'{pushed} changement(s) envoye(s).'))
 

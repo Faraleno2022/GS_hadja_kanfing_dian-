@@ -150,6 +150,27 @@ def pull_changes(server_url, device_id, token, ecole, since_id=None, initial=Fal
             raise SyncTransportError(response.get('error') or 'Pull refuse.')
 
         items = response.get('changes', [])
+
+        if ecole is None:
+            # Amorçage d'un poste tout juste installe : SyncChange.ecole est
+            # une cle etrangere obligatoire, donc aucune ligne SyncChange ne
+            # peut exister tant que l'ecole elle-meme n'existe pas encore
+            # localement. On la materialise directement (hors file d'attente),
+            # puis la boucle normale ci-dessous traite le reste de la page,
+            # cette meme ecole incluse (upsert idempotent par sync_uuid).
+            from .engine import build_change_instance
+
+            premier = items[0] if items else None
+            if not premier or premier.get('model_label') != 'eleves.Ecole':
+                raise SyncTransportError(
+                    "École locale introuvable et absente du premier lot recu : "
+                    "amorçage impossible."
+                )
+            ecole = build_change_instance(
+                'eleves.Ecole', premier.get('object_uuid'), premier.get('payload') or {},
+            )
+            total += 1
+
         for item in items:
             server_change_id = item.get('id')
             if server_change_id and SyncChange.objects.filter(

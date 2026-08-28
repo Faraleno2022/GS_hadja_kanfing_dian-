@@ -81,9 +81,21 @@ def _cycle(base_dir):
     if not _pret(config):
         return config, 0, 0
 
-    ecole = Ecole.objects.filter(pk=config['ecole_id']).first()
+    # Un poste est toujours dedie a une seule ecole : son id local (attribue
+    # a l'amorçage) ne correspond pas forcement a config['ecole_id'] (celui
+    # du serveur). On prend l'ecole unique deja presente, quel que soit son id.
+    ecole = Ecole.objects.first()
     if not ecole:
-        return config, 0, 0
+        # Poste tout juste installe : rien en local encore, y compris
+        # l'ecole elle-meme. pull_changes(ecole=None) l'amorce depuis le
+        # premier lot recu du serveur avant de traiter le reste. Sans ce
+        # cas particulier, le worker ne ferait jamais rien pour un poste
+        # neuf (ecole introuvable en boucle, silencieusement).
+        nb_recus = pull_changes(
+            config['server_url'], config['device_id'], config['token'],
+            ecole=None, initial=True,
+        )
+        return config, 0, nb_recus
 
     nb_pousses = push_pending(config['server_url'], config['device_id'], config['token'], ecole)
     nb_recus = pull_changes(config['server_url'], config['device_id'], config['token'], ecole)

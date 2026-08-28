@@ -123,27 +123,34 @@ def ecole_for_instance(instance):
     return Ecole.objects.order_by('id').first()
 
 
-def apply_sync_change(change):
-    model = get_model(change.model_label)
-    if not model or change.model_label not in SYNC_MODEL_SET:
-        raise ValueError(f'Modele non synchronisable: {change.model_label}')
+def build_change_instance(model_label, object_uuid, payload, *, operation='UPDATE'):
+    """Cree/met a jour l'objet cible depuis un changement, sans toucher a une
+    ligne SyncChange.
 
-    object_uuid = change.object_uuid
+    Extrait d'apply_sync_change() pour l'amorçage d'un poste tout juste
+    installe : SyncChange.ecole est une cle etrangere obligatoire vers
+    Ecole, donc aucune ligne SyncChange ne peut exister tant que l'ecole
+    elle-meme n'a pas ete materialisee localement. Ce cas particulier
+    (le tout premier changement d'un poste vide est justement l'ecole)
+    doit pouvoir s'appliquer directement, en dehors de la file d'attente.
+    """
+    model = get_model(model_label)
+    if not model or model_label not in SYNC_MODEL_SET:
+        raise ValueError(f'Modele non synchronisable: {model_label}')
+
     if not object_uuid:
-        raw_uuid = (change.payload or {}).get('sync_uuid')
+        raw_uuid = (payload or {}).get('sync_uuid')
         object_uuid = UUID(str(raw_uuid)) if raw_uuid else None
+    elif not isinstance(object_uuid, UUID):
+        object_uuid = UUID(str(object_uuid))
     if not object_uuid:
         raise ValueError('sync_uuid manquant.')
 
     with mute_sync():
         obj = model.objects.filter(sync_uuid=object_uuid).first()
-        if change.operation == 'DELETE':
+        if operation == 'DELETE':
             if obj:
                 obj.delete()
-            change.statut = change.STATUT_APPLIED
-            change.date_application = timezone.now()
-            change.erreur = ''
-            change.save(update_fields=['statut', 'date_application', 'erreur'])
             return None
 
         if obj is None:
@@ -152,9 +159,9 @@ def apply_sync_change(change):
         for field in model._meta.concrete_fields:
             if field.name == 'id' or field.name in SYNC_FIELD_NAMES:
                 continue
-            if field.name not in change.payload:
+            if field.name not in payload:
                 continue
-            value = deserialize_field(field, change.payload.get(field.name))
+            value = deserialize_field(field, payload.get(field.name))
             if value is None and not field.null and not field.blank and isinstance(field, (models.ForeignKey, models.OneToOneField)):
                 raise ValueError(f"Relation introuvable pour {field.name}.")
             setattr(obj, field.name, value)
@@ -162,12 +169,25 @@ def apply_sync_change(change):
         obj.is_synced = True
         obj.sync_version = getattr(obj, 'sync_version', 1) + 1
         obj.save()
+        return obj
 
+
+def apply_sync_change(change):
+    if change.operation == 'DELETE':
+        build_change_instance(change.model_label, change.object_uuid, change.payload, operation='DELETE')
         change.statut = change.STATUT_APPLIED
         change.date_application = timezone.now()
         change.erreur = ''
         change.save(update_fields=['statut', 'date_application', 'erreur'])
-        return obj
+        return None
+
+    obj = build_change_instance(change.model_label, change.object_uuid, change.payload, operation=change.operation)
+
+    change.statut = change.STATUT_APPLIED
+    change.date_application = timezone.now()
+    change.erreur = ''
+    change.save(update_fields=['statut', 'date_application', 'erreur'])
+    return obj
 
 
 def queryset_for_ecole(model, ecole):
@@ -200,6 +220,8 @@ def queryset_for_ecole(model, ecole):
             return model.objects.filter(classe__ecole=ecole)
     if label.startswith('depenses.'):
         return model.objects.all()
+    if label == 'bus.GrilleTarifaireBus':
+        return model.objects.filter(ecole=ecole)
     if label.startswith('bus.'):
         return model.objects.filter(eleve__classe__ecole=ecole)
     if label.startswith('salaires.'):
