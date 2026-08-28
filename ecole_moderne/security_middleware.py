@@ -100,6 +100,18 @@ class SecurityMiddleware(MiddlewareMixin):
             return JsonResponse({'success': False, 'error': message}, status=status)
         return HttpResponseForbidden(message)
 
+    def _too_many_requests(self, request, retry_after):
+        """Réponse 429 correcte (et non un 403) avec Retry-After, pour que les
+        clients (navigateur ou poste de synchronisation) sachent combien de
+        temps attendre avant de réessayer."""
+        message = "Trop de requêtes. Veuillez patienter."
+        if self._wants_json(request):
+            response = JsonResponse({'success': False, 'error': message}, status=429)
+        else:
+            response = HttpResponse(message, status=429, content_type='text/plain; charset=utf-8')
+        response['Retry-After'] = str(int(retry_after))
+        return response
+
     def process_request(self, request):
         """
         Traite chaque requête pour détecter les tentatives d'attaque
@@ -148,16 +160,23 @@ class SecurityMiddleware(MiddlewareMixin):
                 if self.is_ip_blocked(client_ip):
                     logger.info(f"Accès admin refusé pour IP bloquée: {client_ip}")
                     return self._forbidden(request, "Votre adresse IP a été bloquée.")
-                self.increment_request_count(client_ip)
+                if not self._is_rate_limit_exempt(path):
+                    limited, retry_after = self.check_rate_limit(client_ip)
+                    if limited:
+                        return self._too_many_requests(request, retry_after)
                 return None
         except Exception:
             # En cas d'erreur inattendue, ne pas bloquer l'admin
             pass
 
-        # 1. Vérifier le rate limiting
-        if self.is_rate_limited(client_ip):
-            logger.warning(f"Rate limit dépassé pour IP: {client_ip}")
-            return self._forbidden(request, "Trop de requêtes. Veuillez patienter.")
+        # 1. Vérifier le rate limiting (hors ressources statiques et API techniques :
+        # ces requêtes ne représentent pas une navigation humaine et ne doivent pas
+        # épuiser le quota des vraies pages, ni celui des postes en synchronisation).
+        if not self._is_rate_limit_exempt(path):
+            limited, retry_after = self.check_rate_limit(client_ip)
+            if limited:
+                logger.warning(f"Rate limit dépassé pour IP: {client_ip}")
+                return self._too_many_requests(request, retry_after)
 
         # 2. Vérifier les User Agents suspects
         if self.is_suspicious_user_agent(user_agent):
@@ -188,32 +207,52 @@ class SecurityMiddleware(MiddlewareMixin):
             logger.info(f"Accès refusé pour IP bloquée: {client_ip}")
             return self._forbidden(request, "Votre adresse IP a été bloquée.")
 
-        # 7. Incrémenter le compteur de requêtes
-        self.increment_request_count(client_ip)
-        
         return None
-    
+
+    # Chemins qui ne doivent jamais consommer le quota des pages dynamiques :
+    # une seule page vue charge plusieurs images/CSS, et les postes en
+    # synchronisation interrogent l'API toutes les quelques secondes.
+    RATE_LIMIT_EXEMPT_PREFIXES = ('/static/', '/media/', '/api/')
+
+    def _is_rate_limit_exempt(self, path):
+        return any(path.startswith(prefix) for prefix in self.RATE_LIMIT_EXEMPT_PREFIXES)
+
     def get_client_ip(self, request):
-        """Obtient l'adresse IP réelle du client"""
+        """Obtient l'adresse IP réelle du client, même derrière le répartiteur
+        PythonAnywhere (qui transmet la vraie IP via X-Real-IP : sans cet
+        en-tête, tous les visiteurs partagent l'IP du répartiteur et finissent
+        par se bloquer mutuellement). Voir :
+        https://help.pythonanywhere.com/pages/WebAppClientIPAddresses"""
+        real_ip = request.META.get('HTTP_X_REAL_IP')
+        if real_ip:
+            return real_ip.strip()
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
-    
-    def is_rate_limited(self, ip):
-        """Vérifie si l'IP dépasse la limite de requêtes"""
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
+
+    RATE_LIMIT_WINDOW_SECONDS = 60
+    RATE_LIMIT_MAX_REQUESTS = 300  # pages dynamiques par fenêtre de 60s
+
+    def check_rate_limit(self, ip):
+        """Fenêtre fixe de 60s : incrémente sans jamais prolonger l'expiration
+        d'une fenêtre déjà entamée (l'ancien code repoussait le blocage à
+        chaque requête, ce qui pouvait ne jamais expirer sous trafic soutenu).
+        Retourne (bloque: bool, retry_after_secondes: int)."""
         cache_key = f"rate_limit_{ip}"
-        requests = cache.get(cache_key, 0)
-        return requests > 100  # Max 100 requêtes par minute
-    
-    def increment_request_count(self, ip):
-        """Incrémente le compteur de requêtes pour une IP"""
-        cache_key = f"rate_limit_{ip}"
-        requests = cache.get(cache_key, 0)
-        cache.set(cache_key, requests + 1, 60)  # Expire après 1 minute
-    
+        try:
+            count = cache.incr(cache_key)
+        except ValueError:
+            cache.set(cache_key, 1, self.RATE_LIMIT_WINDOW_SECONDS)
+            count = 1
+
+        if count > self.RATE_LIMIT_MAX_REQUESTS:
+            ttl = cache.ttl(cache_key) if hasattr(cache, 'ttl') else None
+            retry_after = ttl if ttl else self.RATE_LIMIT_WINDOW_SECONDS
+            return True, retry_after
+        return False, 0
+
+
     def is_suspicious_user_agent(self, user_agent):
         """Vérifie si le User Agent est suspect"""
         return any(suspicious in user_agent for suspicious in self.SUSPICIOUS_USER_AGENTS)
@@ -392,13 +431,15 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         return None
     
     def get_client_ip(self, request):
-        """Obtient l'adresse IP réelle du client"""
+        """Obtient l'adresse IP réelle du client (X-Real-IP en priorité,
+        cf. SecurityMiddleware.get_client_ip pour le detail PythonAnywhere)."""
+        real_ip = request.META.get('HTTP_X_REAL_IP')
+        if real_ip:
+            return real_ip.strip()
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
     
     def is_session_expired(self, request):
         """Vérifie si la session a expiré (30 minutes d'inactivité)"""
@@ -435,13 +476,15 @@ class CSRFSecurityMiddleware(MiddlewareMixin):
         return None
     
     def get_client_ip(self, request):
-        """Obtient l'adresse IP réelle du client"""
+        """Obtient l'adresse IP réelle du client (X-Real-IP en priorité,
+        cf. SecurityMiddleware.get_client_ip pour le detail PythonAnywhere)."""
+        real_ip = request.META.get('HTTP_X_REAL_IP')
+        if real_ip:
+            return real_ip.strip()
         x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
         if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
     
     def is_same_origin(self, request, referer):
         """Vérifie si le referer provient du même domaine"""
