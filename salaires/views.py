@@ -1043,7 +1043,7 @@ def fiche_paie_pdf(request, etat_id):
         # Fallback: logo statique
         if not header_logo_path:
             from django.contrib.staticfiles import finders
-            header_logo_path = finders.find('logos/logo.png')
+            header_logo_path = finders.find('logos/logo.jpeg')
         if header_logo_path:
             p.drawImage(header_logo_path, 2*cm, height-4*cm, width=3*cm, height=2*cm, preserveAspectRatio=True, mask='auto')
     except Exception:
@@ -1430,7 +1430,7 @@ def export_rapport_paiements_pdf(request):
     # Ajouter le logo en en-tête
     try:
         from django.contrib.staticfiles import finders
-        logo_path = finders.find('logos/logo.png')
+        logo_path = finders.find('logos/logo.jpeg')
         if logo_path:
             from reportlab.platypus import Image
             logo = Image(logo_path, width=60, height=60)

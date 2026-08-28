@@ -3877,7 +3877,7 @@ def cartes_scolaires_pdf(request, classe_id):
                 logo_path = None
             if not logo_path:
                 # Fallback: logo statique
-                logo_path = finders.find('logos/logo.png') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+                logo_path = finders.find('logos/logo.jpeg') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.jpeg')
             
             if logo_path and os.path.exists(logo_path):
                 # Calculer la position centrale de la carte
@@ -3922,7 +3922,7 @@ def cartes_scolaires_pdf(request, classe_id):
             except Exception:
                 logo_path = None
             if not logo_path:
-                logo_path = finders.find('logos/logo.png') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+                logo_path = finders.find('logos/logo.jpeg') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.jpeg')
             if logo_path and os.path.exists(logo_path):
                 c.drawImage(logo_path, logo_x, logo_y, logo_size, logo_size, preserveAspectRatio=True)
             else:
@@ -4229,7 +4229,7 @@ def carte_eleve_pdf(request, matricule):
         except Exception:
             logo_path = None
         if not logo_path:
-            logo_path = finders.find('logos/logo.png') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+            logo_path = finders.find('logos/logo.jpeg') or os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.jpeg')
         
         if logo_path and os.path.exists(logo_path):
             # Calculer la position centrale de la carte

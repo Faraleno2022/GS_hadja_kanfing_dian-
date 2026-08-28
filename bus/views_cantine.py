@@ -492,7 +492,7 @@ def generer_recu_cantine_pdf(request, abo_id):
                 logo_path = school_logo_path
         
         if not logo_path:
-            logo_path = finders.find('logos/logo.png')
+            logo_path = finders.find('logos/logo.jpeg')
         
         if logo_path:
             try:

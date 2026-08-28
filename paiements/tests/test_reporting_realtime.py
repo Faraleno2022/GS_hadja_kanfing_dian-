@@ -151,6 +151,19 @@ class ReportingTempsReelTests(TestCase):
         self.assertEqual(lignes[0]['reste_a_payer'], 70000)
         self.assertNotContains(response, self.autre_eleve.matricule)
 
+    def test_liste_paiements_affiche_bouton_rapport_comptable_detaille(self):
+        response = self.client.get(reverse('paiements:liste_paiements'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'Voir le rapport comptable d\u00e9taill\u00e9',
+        )
+        self.assertContains(
+            response,
+            f'href="{reverse("paiements:rapport_comptable")}"',
+        )
+
     def test_soldes_prennent_une_annee_ayant_des_echeanciers(self):
         response = self.client.get(reverse('paiements:liste_eleves_soldes'))
 

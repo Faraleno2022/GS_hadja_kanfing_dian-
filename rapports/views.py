@@ -893,7 +893,7 @@ def generer_pdf_journalier(donnees, date_rapport):
         except Exception:
             logo_path = None
         if not logo_path:
-            logo_path = finders.find('logos/logo.png')
+            logo_path = finders.find('logos/logo.jpeg')
         if logo_path:
             from reportlab.platypus import Image
             logo = Image(logo_path, width=60, height=60)

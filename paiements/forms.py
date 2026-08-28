@@ -46,7 +46,9 @@ class PaiementForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': 'Montant en GNF',
                 'min': '0',
-                'step': '1000'
+                # Le GNF n'a pas de subdivision, mais un reçu net de remise
+                # tombe rarement sur un multiple de 1 000: pas de pas imposé.
+                'step': '1'
             }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control',
@@ -159,11 +161,12 @@ class EcheancierForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Année scolaire par défaut
         if not self.instance.pk and not self.initial.get('annee_scolaire'):
-            current_year = date.today().year
-            if date.today().month >= 9:  # Année scolaire commence en septembre
-                self.fields['annee_scolaire'].initial = f"{current_year}-{current_year + 1}"
-            else:
-                self.fields['annee_scolaire'].initial = f"{current_year - 1}-{current_year}"
+            # Même règle que le moteur de paiement : une réinscription réglée
+            # en juillet ou en août ouvre déjà l'année suivante.
+            from .payment_engine import school_year_from_date
+            self.fields['annee_scolaire'].initial = school_year_from_date(
+                date.today()
+            )
 
         # Attacher data-iso aux champs date pour que le fallback JS du template puisse les remplir
         date_fields = [
@@ -395,7 +398,7 @@ class PaiementModificationForm(forms.ModelForm):
             'type_paiement': forms.Select(attrs={'class': 'form-select'}),
             'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
             'montant': forms.NumberInput(attrs={
-                'class': 'form-control', 'min': '0', 'step': '1000',
+                'class': 'form-control', 'min': '0', 'step': '1',
             }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control', 'type': 'date',

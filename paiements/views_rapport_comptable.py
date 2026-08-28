@@ -196,8 +196,8 @@ def rapport_comptable(request):
 
 
 def export_rapport_comptable_pdf(request):
-    """Adapte les filtres de la page au rapport PDF existant."""
-    from .export_comptabilite import export_comptabilite_pdf
+    """Adapte les filtres de la page au rapport PDF professionnel."""
+    from .rapports_professionnels import export_comptabilite_pdf
 
     query = request.GET.copy()
     query["classe_id"] = query.get("classe", "")
@@ -208,8 +208,8 @@ def export_rapport_comptable_pdf(request):
 
 
 def export_rapport_comptable_excel(request):
-    """Adapte les filtres de la page au rapport Excel existant."""
-    from .export_comptabilite import export_comptabilite_excel
+    """Adapte les filtres de la page au rapport Excel professionnel."""
+    from .rapports_professionnels import export_comptabilite_excel
 
     query = request.GET.copy()
     query["classe_id"] = query.get("classe", "")

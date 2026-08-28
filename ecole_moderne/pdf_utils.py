@@ -34,7 +34,7 @@ def draw_logo_watermark(c, width=None, height=None, *, opacity=0.04, rotate=30, 
 
     # 2) Fallback vers le logo global statique
     if not logo_path:
-        logo_path = finders.find('logos/logo.png')
+        logo_path = finders.find('logos/logo.jpeg')
     if not logo_path:
         return  # Pas de logo, on ne dessine rien (évite les erreurs)
 

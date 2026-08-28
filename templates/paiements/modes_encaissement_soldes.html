@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Élèves et soldes par mode d'encaissement{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+<li class="breadcrumb-item active">Soldes par mode</li>
+{% endblock %}
+
+{% block page_actions %}
+<a href="{% url 'paiements:tableau_bord' %}" class="btn btn-outline-secondary">
+    <i class="fas fa-arrow-left me-1"></i>Tableau de bord
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h5 class="mb-1"><i class="fas fa-wallet text-primary me-2"></i>Élèves et soldes par mode d'encaissement</h5>
+                <small class="text-muted">Le montant par mode porte sur la période filtrée ; le solde est le solde scolaire global au {{ balance_date|date:'d/m/Y' }}.</small>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="get" id="modesFilters" class="row g-3 align-items-end">
+            <div class="col-lg-4 col-md-6">
+                <label for="filterQ" class="form-label">Rechercher un élève</label>
+                <input id="filterQ" type="search" name="q" value="{{ filters.q }}" class="form-control"
+                       placeholder="Nom, prénom, matricule, reçu…" autocomplete="off">
+            </div>
+            <div class="col-lg-2 col-md-3">
+                <label for="filterMode" class="form-label">Mode</label>
+                <select id="filterMode" name="mode_id" class="form-select js-auto-filter">
+                    <option value="">Tous les modes</option>
+                    {% for mode in modes %}
+                    <option value="{{ mode.id }}" {% if filters.mode_id == mode.id|stringformat:'s' %}selected{% endif %}>{{ mode.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-3">
+                <label for="filterClasse" class="form-label">Classe</label>
+                <select id="filterClasse" name="classe_id" class="form-select js-auto-filter">
+                    <option value="">Toutes les classes</option>
+                    {% for classe in classes %}
+                    <option value="{{ classe.id }}" {% if filters.classe_id == classe.id|stringformat:'s' %}selected{% endif %}>
+                        {{ classe.nom }}{% if user.is_superuser %} — {{ classe.ecole.nom }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="filterSituation" class="form-label">Situation</label>
+                <select id="filterSituation" name="situation" class="form-select js-auto-filter">
+                    <option value="">Toutes</option>
+                    <option value="solde" {% if filters.situation == 'solde' %}selected{% endif %}>Élèves soldés</option>
+                    <option value="reste" {% if filters.situation == 'reste' %}selected{% endif %}>Reste à payer</option>
+                    <option value="sans_echeancier" {% if filters.situation == 'sans_echeancier' %}selected{% endif %}>Sans échéancier</option>
+                </select>
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="filterDu" class="form-label">Du</label>
+                <input id="filterDu" type="date" name="du" value="{{ filters.du|date:'Y-m-d' }}" class="form-control js-auto-filter">
+            </div>
+            <div class="col-lg-2 col-md-4">
+                <label for="filterAu" class="form-label">Au</label>
+                <input id="filterAu" type="date" name="au" value="{{ filters.au|date:'Y-m-d' }}" class="form-control js-auto-filter">
+            </div>
+            <div class="col-lg-4 col-md-6 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-filter me-1"></i>Filtrer
+                </button>
+                <a href="{% url 'paiements:modes_encaissement_soldes' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-undo me-1"></i>Réinitialiser
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="modesResults" aria-live="polite">
+    {% include 'paiements/_modes_encaissement_soldes_resultats.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('modesFilters');
+    const results = document.getElementById('modesResults');
+    const search = document.getElementById('filterQ');
+    let debounceTimer;
+    let activeRequest;
+
+    function filteredUrl(page) {
+        const url = new URL(window.location.pathname, window.location.origin);
+        new FormData(form).forEach((value, key) => {
+            const cleanValue = String(value || '').trim();
+            if (cleanValue) url.searchParams.set(key, cleanValue);
+        });
+        if (page) url.searchParams.set('page', page);
+        return url;
+    }
+
+    async function refresh(page) {
+        const url = filteredUrl(page);
+        if (activeRequest) activeRequest.abort();
+        activeRequest = new AbortController();
+        results.setAttribute('aria-busy', 'true');
+        results.classList.add('opacity-50');
+        try {
+            const response = await fetch(url, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                signal: activeRequest.signal,
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            results.innerHTML = await response.text();
+            history.replaceState({}, '', url);
+            wirePagination();
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                results.innerHTML = '<div class="alert alert-danger">Impossible d’actualiser le tableau. Veuillez réessayer.</div>';
+            }
+        } finally {
+            results.removeAttribute('aria-busy');
+            results.classList.remove('opacity-50');
+        }
+    }
+
+    function wirePagination() {
+        results.querySelectorAll('[data-page]').forEach(link => {
+            link.addEventListener('click', event => {
+                event.preventDefault();
+                refresh(link.dataset.page);
+            });
+        });
+    }
+
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        refresh();
+    });
+    form.querySelectorAll('.js-auto-filter').forEach(field => {
+        field.addEventListener('change', () => refresh());
+    });
+    search.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => refresh(), 300);
+    });
+    wirePagination();
+});
+</script>
+{% endblock %}

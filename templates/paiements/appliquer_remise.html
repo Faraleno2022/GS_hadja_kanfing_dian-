@@ -243,7 +243,26 @@
                                                 Attention: vous avez sélectionné <strong>100%</strong> de remise. Cela annulera entièrement les tranches cochées pour l'année en cours. Vérifiez que vous avez l'autorisation nécessaire avant de confirmer.
                                             </div>
                                         </div>
-                                        
+
+                                        <!-- Déduction de la remise sur le reçu -->
+                                        <div class="mb-3 p-3 rounded border bg-light">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox"
+                                                       name="deduire_du_paiement"
+                                                       id="id_deduire_du_paiement" value="1"
+                                                       {% if form.deduire_du_paiement.value %}checked{% endif %}>
+                                                <label class="form-check-label fw-bold" for="id_deduire_du_paiement">
+                                                    <i class="fas fa-receipt me-1"></i>Déduire la remise du montant du reçu
+                                                </label>
+                                            </div>
+                                            <small class="text-muted d-block mt-1">
+                                                Le reçu est ramené à son montant net ({{ montant_brut|floatformat:0 }} GNF −
+                                                remise). La couverture de l'année reste identique : la remise remplace
+                                                l'encaissement au lieu de s'y ajouter. Sans cette option, la somme déjà
+                                                versée peut se retrouver sans poste à couvrir.
+                                            </small>
+                                        </div>
+
                                         {% if form.remises.field.queryset %}
                                             <div class="row">
                                                 {% for remise in form.remises.field.queryset %}
@@ -315,8 +334,12 @@
                                             </div>
                                             <p class="mb-2">
                                                 <strong>Montant encaissé:</strong><br>
-                                                <span id="montantOriginal">{{ paiement.montant|floatformat:0 }} GNF</span>
-                                                <small class="text-muted d-block">Le reçu n'est pas modifié par la remise.</small>
+                                                <span id="montantOriginal">{{ montant_brut|floatformat:0 }} GNF</span>
+                                                <small class="text-muted d-block" id="noteRecu">Le reçu n'est pas modifié par la remise.</small>
+                                            </p>
+                                            <p class="mb-2 d-none" id="blocRecuNet">
+                                                <strong>Nouveau montant du reçu:</strong><br>
+                                                <span class="text-primary fw-bold" id="recuNet">{{ montant_brut|floatformat:0 }} GNF</span>
                                             </p>
                                             <p class="mb-2">
                                                 <strong>Base de calcul:</strong><br>
@@ -366,6 +389,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnAppliquer = document.getElementById('btnAppliquer');
     const selectPct = document.getElementById('id_pourcentage_scolarite');
     const selectMotif = document.getElementById('id_motif');
+    const checkDeduire = document.getElementById('id_deduire_du_paiement');
     // Motifs qui fixent eux-mêmes le pourcentage (miroir de PaiementRemiseForm)
     const POURCENTAGE_PAR_MOTIF = {'NE_PAIE_RIEN': '100', 'LA_MOITIE': '50'};
 
@@ -463,6 +487,21 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('totalRemises').textContent = totalRemises.toLocaleString('fr-FR') + ' GNF';
         document.getElementById('montantFinal').textContent = resteDu.toLocaleString('fr-FR') + ' GNF';
 
+        // Reçu ramené au net quand la déduction est demandée
+        const deduire = checkDeduire && checkDeduire.checked;
+        const blocRecuNet = document.getElementById('blocRecuNet');
+        const noteRecu = document.getElementById('noteRecu');
+        if (blocRecuNet) {
+            blocRecuNet.classList.toggle('d-none', !(deduire && totalRemises > 0));
+            const net = Math.max(0, montantOriginal - totalRemises);
+            document.getElementById('recuNet').textContent = net.toLocaleString('fr-FR') + ' GNF';
+        }
+        if (noteRecu) {
+            noteRecu.textContent = deduire
+                ? 'Montant brut, avant déduction de la remise.'
+                : "Le reçu n'est pas modifié par la remise.";
+        }
+
         // Afficher les détails des remises
         const detailsDiv = document.getElementById('remisesDetails');
         if (remisesDetails.length > 0) {
@@ -506,6 +545,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (selectMotif) {
         selectMotif.addEventListener('change', updatePreview);
+    }
+    if (checkDeduire) {
+        checkDeduire.addEventListener('change', updatePreview);
     }
 
     // Boutons de sélection rapide (T1, T1+T2, les 3 tranches, ...)

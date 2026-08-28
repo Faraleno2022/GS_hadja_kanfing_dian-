@@ -163,9 +163,12 @@ def recu_public_pdf(request, paiement_id):
             statut='VALIDE'
         )
         
-        # Calcul total remises
+        # Calcul total remises. Le brut sert de base: une remise déjà déduite du
+        # reçu serait sinon retranchée une seconde fois.
+        from .remise_utils import montant_brut_paiement
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-        montant_net = paiement.montant - remises_total if remises_total > 0 else paiement.montant
+        montant_brut = montant_brut_paiement(paiement)
+        montant_net = montant_brut - remises_total if remises_total > 0 else montant_brut
 
         # Situation financière globale de l'élève (via échéancier)
         from .models import EcheancierPaiement
@@ -252,7 +255,7 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h
         c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom if paiement.mode_paiement else 'N/A'}")
         top -= line_h
-        c.drawString(left, top, f"Montant: {paiement.montant:,.0f} GNF".replace(",", " "))
+        c.drawString(left, top, f"Montant: {montant_brut:,.0f} GNF".replace(",", " "))
         top -= line_h
 
         if remises_total > 0:

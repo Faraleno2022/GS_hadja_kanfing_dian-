@@ -87,7 +87,20 @@ license_*.lic
 licence_*.lic
 licenses_emises.json
 
+# Sauvegarde locale (réglages propres à chaque poste + archives)
+backup_config.json
+.restauration_en_attente.json
+backups/archives/
+backups/.travail/
+backups/.restauration/
+backups/journal_sauvegarde.json
+
 # Fichiers temporaires locaux
 .trial_start
 ~WRL*.tmp
 .claude/worktrees/
+
+# Secrets et fichiers de travail locaux (jamais versionnes)
+.secret_key
+tmp/
+tmp_dbg_test.py

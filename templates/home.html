@@ -2,107 +2,195 @@
 {% load static %}
 {% load static_versioned %}
 
-{% block title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
-{% block meta_description %}MySchoolGN est le système de gestion scolaire conçu pour les réalités des écoles guinéennes : paiements, bulletins, parents, offline et pilotage directeur.{% endblock %}
-{% block og_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
-{% block og_description %}Le système de gestion scolaire conçu pour les réalités des écoles guinéennes.{% endblock %}
-{% block twitter_title %}Myschool GN - Logiciel de gestion scolaire en Guinée{% endblock %}
-{% block twitter_description %}Paiements, bulletins, parents, offline et pilotage directeur pour les écoles en Guinée.{% endblock %}
+{% block title %}Le Jourdain de Kakimbo — Grandir, apprendre, réussir{% endblock %}
+{% block meta_description %}Le Groupe Scolaire Privé Le Jourdain de Kakimbo accompagne chaque élève dans un cadre bienveillant, exigeant et ouvert sur l'avenir.{% endblock %}
+{% block og_title %}Le Jourdain de Kakimbo — Une école où chaque talent grandit{% endblock %}
+{% block og_description %}Découvrez la vie scolaire, les activités et l'accompagnement proposé par Le Jourdain de Kakimbo.{% endblock %}
+{% block twitter_title %}Le Jourdain de Kakimbo{% endblock %}
+{% block twitter_description %}Grandir, apprendre et réussir au cœur de Kakimbo.{% endblock %}
 
 {% block extra_css %}
 <style>
-  /* Hero section plein écran */
+  :root {
+    --jourdain-green: #075b3a;
+    --jourdain-green-light: #12a56b;
+    --jourdain-navy: #071f3d;
+    --jourdain-gold: #f1b82d;
+    --jourdain-cream: #fbf7ed;
+    --jourdain-ink: #122033;
+  }
+
   .hero-wrapper {
-    margin-top: -70px; /* Compenser la navbar fixe */
-    margin-left: -15px;
-    margin-right: -15px;
+    min-height: calc(100vh - 70px);
+    margin: -24px -24px 0;
     position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(390px, .92fr);
     overflow: hidden;
-    /* Utiliser une couleur neutre claire pour éviter l'effet d'écran noir */
-    background-color: #f3f4f6;
+    background:
+      radial-gradient(circle at 16% 12%, rgba(241, 184, 45, .17), transparent 30%),
+      linear-gradient(135deg, var(--jourdain-navy) 0%, #073e38 63%, #075b3a 100%);
+    color: #fff;
   }
 
-  .hero-image {
-    width: 100vw; /* Pleine largeur de la fenêtre */
-    height: 100vh; /* Pleine hauteur de la fenêtre */
-    object-fit: cover;
-    object-position: center center;
-    border-radius: 0;
-    display: block;
-    /* Optimisations de performance */
-    will-change: transform;
-    transform: translateZ(0);
-    /* Fond neutre sous l'image, évite le flash noir avant chargement */
-    background-color: transparent;
-  }
-
-  /* Overlay pour améliorer la lisibilité du texte */
-  .hero-overlay {
+  .hero-wrapper::before {
+    content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-      135deg,
-      rgba(0, 123, 255, 0.1) 0%,
-      rgba(0, 0, 0, 0.3) 100%
-    );
-    z-index: 1;
+    width: 420px;
+    height: 420px;
+    left: -210px;
+    bottom: -250px;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 50%;
+    box-shadow: 0 0 0 70px rgba(255,255,255,.025), 0 0 0 140px rgba(255,255,255,.02);
   }
 
-  /* Texte superposé sur l'image */
   .hero-content {
-    position: absolute;
-    bottom: 50px;
-    left: 50px;
-    right: 50px;
+    position: relative;
     z-index: 2;
-    color: white;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+    align-self: center;
+    max-width: 800px;
+    padding: clamp(4rem, 8vw, 8rem) clamp(2rem, 6vw, 6.5rem);
+  }
+
+  .hero-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: .65rem;
+    margin-bottom: 1.35rem;
+    color: #f9d77c;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+
+  .hero-kicker::before {
+    content: "";
+    width: 34px;
+    height: 2px;
+    background: var(--jourdain-gold);
   }
 
   .hero-title {
-    font-size: 3.5rem;
-    font-weight: bold;
-    margin-bottom: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 2px;
+    max-width: 720px;
+    margin: 0;
+    font-size: clamp(3rem, 6.4vw, 6.8rem);
+    font-weight: 850;
+    line-height: .9;
+    letter-spacing: -.055em;
   }
 
-  .hero-subtitle {
-    font-size: 1.5rem;
-    font-weight: 300;
-    opacity: 0.9;
+  .hero-title span {
+    display: block;
+    color: var(--jourdain-gold);
+    font-size: .62em;
+    line-height: 1.05;
+    letter-spacing: -.025em;
+  }
+
+  .hero-positioning {
+    max-width: 620px;
+    margin: 1.7rem 0 0;
+    color: rgba(255,255,255,.8);
+    font-size: clamp(1.05rem, 1.45vw, 1.3rem);
+    line-height: 1.65;
   }
 
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
+    gap: .85rem;
+    margin-top: 2rem;
   }
 
   .hero-actions .btn {
-    min-height: 44px;
+    min-height: 52px;
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    text-shadow: none;
-    font-weight: 600;
+    justify-content: center;
+    gap: .55rem;
+    padding: .8rem 1.25rem;
+    border-radius: 999px;
+    font-weight: 750;
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
   }
 
-  .hero-positioning {
-    font-size: 1.2rem;
-    max-width: 720px;
-    line-height: 1.55;
+  .hero-actions .btn:hover { transform: translateY(-2px); }
+  .hero-actions .btn-light {
+    color: var(--jourdain-navy);
+    background: var(--jourdain-gold);
+    border-color: var(--jourdain-gold);
+    box-shadow: 0 12px 32px rgba(241,184,45,.23);
   }
+
+  .hero-actions .btn-outline-light { border-color: rgba(255,255,255,.4); }
+
+  .hero-visual {
+    position: relative;
+    min-height: 620px;
+    overflow: hidden;
+  }
+
+  .hero-visual picture,
+  .hero-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .hero-image {
+    object-fit: cover;
+    object-position: center 42%;
+    background: #dfe8e2;
+  }
+
+  .hero-visual::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, #073e38 0%, transparent 26%), linear-gradient(0deg, rgba(7,31,61,.7), transparent 48%);
+    pointer-events: none;
+  }
+
+  .hero-logo {
+    position: absolute;
+    z-index: 2;
+    top: clamp(1.5rem, 4vw, 3.5rem);
+    right: clamp(1.5rem, 4vw, 3.5rem);
+    width: clamp(92px, 10vw, 142px);
+    aspect-ratio: 1;
+    padding: .45rem;
+    border-radius: 50%;
+    background: rgba(255,255,255,.93);
+    box-shadow: 0 22px 55px rgba(0,0,0,.2);
+    backdrop-filter: blur(10px);
+  }
+
+  .hero-logo img { width: 100%; height: 100%; object-fit: contain; }
+
+  .hero-caption {
+    position: absolute;
+    z-index: 2;
+    right: clamp(1.5rem, 4vw, 3.5rem);
+    bottom: clamp(1.5rem, 4vw, 3.5rem);
+    max-width: 310px;
+    padding: 1rem 1.15rem;
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 18px;
+    background: rgba(7,31,61,.72);
+    box-shadow: 0 18px 45px rgba(0,0,0,.18);
+    backdrop-filter: blur(12px);
+  }
+
+  .hero-caption strong { display: block; color: #fff; font-size: 1rem; }
+  .hero-caption span { color: rgba(255,255,255,.72); font-size: .86rem; }
 
   .strategy-strip {
-    background: #0d6efd;
+    background: linear-gradient(135deg, var(--jourdain-navy), #0b4d46);
     color: #fff;
-    border-radius: 0.5rem;
-    padding: 1.25rem;
+    border-radius: 1.25rem;
+    padding: 1.5rem;
   }
 
   .strategy-strip .item {
@@ -116,42 +204,15 @@
     margin-top: 0.15rem;
   }
 
-  /* Bouton de défilement */
-  .scroll-indicator {
-    position: absolute;
-    bottom: 30px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
-    color: white;
-    font-size: 2rem;
-    animation: bounce 2s infinite;
-    cursor: pointer;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-  }
-
-  @keyframes bounce {
-    0%, 20%, 50%, 80%, 100% {
-      transform: translateX(-50%) translateY(0);
-    }
-    40% {
-      transform: translateX(-50%) translateY(-10px);
-    }
-    60% {
-      transform: translateX(-50%) translateY(-5px);
-    }
-  }
-
   /* Section de contenu avec espacement */
   .content-section {
-    margin-top: 2rem;
-    padding-top: 3rem;
+    padding-top: 4.5rem;
   }
 
   .presentation-card {
-    border: 1px solid #e9ecef;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e5ece8;
+    border-radius: 1.25rem;
+    box-shadow: 0 18px 60px rgba(7, 31, 61, .08);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
   }
 
@@ -166,7 +227,7 @@
 
   .presentation-title {
     font-size: 1.75rem;
-    color: #007bff;
+    color: var(--jourdain-green);
   }
 
   .presentation-body p {
@@ -178,8 +239,8 @@
   .audience-card,
   .trust-item {
     height: 100%;
-    border: 1px solid #e9ecef;
-    border-radius: 0.5rem;
+    border: 1px solid #e5ece8;
+    border-radius: 1rem;
     background: #fff;
   }
 
@@ -194,8 +255,8 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: #eef5ff;
-    color: #0d6efd;
+    background: #eaf7f1;
+    color: var(--jourdain-green);
     margin-bottom: 1rem;
   }
 
@@ -204,120 +265,136 @@
     text-align: center;
   }
 
-  /* Images des cartes avec lazy loading */
+  .school-life-section {
+    padding: 4.5rem 0 1rem;
+  }
+
+  .section-kicker {
+    color: var(--jourdain-green);
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+  }
+
+  .school-life-title {
+    margin-top: .5rem;
+    color: var(--jourdain-ink);
+    font-size: clamp(2rem, 4vw, 3.6rem);
+    font-weight: 800;
+    letter-spacing: -.04em;
+  }
+
   .image-card {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    height: 100%;
+    overflow: hidden;
+    border: 0;
+    border-radius: 1.5rem;
+    background: #fff;
+    box-shadow: 0 18px 55px rgba(7,31,61,.11);
+    transition: transform .3s ease, box-shadow .3s ease;
   }
 
   .image-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+    transform: translateY(-8px);
+    box-shadow: 0 28px 70px rgba(7,31,61,.16);
   }
 
+  .card-media { position: relative; overflow: hidden; }
   .image-card .card-img-top {
     width: 100%;
-    height: 360px;
+    height: 430px;
     object-fit: cover;
-    border-top-left-radius: 0.5rem;
-    border-top-right-radius: 0.5rem;
-    transition: transform 0.3s ease;
-    /* Optimisations de performance */
-    will-change: transform;
-    transform: translateZ(0);
-    /* Couleur neutre pour le placeholder au lieu du noir */
-    background-color: #f3f4f6;
+    transition: transform .6s cubic-bezier(.2,.7,.2,1);
+    background: #e8eee9;
   }
 
-  .image-card:hover .card-img-top {
-    transform: scale(1.05);
+  .image-card:hover .card-img-top { transform: scale(1.035); }
+  .card-img-football { object-position: 51% 30%; }
+  .card-img-maternelle { object-position: 50% 48%; }
+
+  .card-media::after {
+    content: "";
+    position: absolute;
+    inset: 45% 0 0;
+    background: linear-gradient(transparent, rgba(7,31,61,.55));
+    pointer-events: none;
+  }
+
+  .photo-tag {
+    position: absolute;
+    z-index: 2;
+    left: 1.25rem;
+    bottom: 1.15rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .55rem .8rem;
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 999px;
+    background: rgba(7,31,61,.76);
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 750;
+    backdrop-filter: blur(10px);
+  }
+
+  .image-card .card-body { padding: 1.6rem 1.7rem 1.8rem; }
+  .image-card .card-title { color: var(--jourdain-ink) !important; font-size: 1.45rem; font-weight: 800; }
+  .image-card .card-text { line-height: 1.65; }
+  .card-accent {
+    width: 42px;
+    height: 4px;
+    margin-bottom: 1rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--jourdain-gold), var(--jourdain-green-light));
   }
 
   /* Responsive design */
   @media (max-width: 768px) {
-    .hero-title {
-      font-size: 2.5rem;
-    }
-
-    .hero-subtitle {
-      font-size: 1.2rem;
-    }
-
-    .hero-content {
-      bottom: 30px;
-      left: 20px;
-      right: 20px;
-    }
-
-    .hero-image {
-      height: 70vh; /* Réduire la hauteur sur mobile */
-    }
+    .hero-wrapper { grid-template-columns: 1fr; margin: -24px -24px 0; }
+    .hero-content { padding: 4.5rem 1.5rem 3rem; }
+    .hero-visual { min-height: 62vh; }
+    .hero-visual::after { background: linear-gradient(0deg, rgba(7,31,61,.75), transparent 55%); }
+    .hero-logo { width: 96px; }
+    .image-card .card-img-top { height: 360px; }
   }
 
   @media (max-width: 480px) {
-    .hero-title {
-      font-size: 2rem;
-    }
-
-    .hero-subtitle {
-      font-size: 1rem;
-    }
-
-    .hero-image {
-      height: 60vh;
-    }
-
     .hero-actions .btn {
       width: 100%;
-      justify-content: center;
     }
+    .hero-caption { left: 1rem; right: 1rem; bottom: 1rem; }
+    .hero-logo { top: 1rem; right: 1rem; }
+    .presentation-body { padding: 1.5rem !important; }
   }
 
-  /* Placeholder de chargement (neutre, sans shimmer pour ne pas ralentir) */
   .image-loading { background: #f3f4f6; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .image-card, .image-card .card-img-top, .hero-actions .btn { transition: none; }
+  }
 </style>
-<!-- Préchargement critique de l'image héro optimisée (WebP pour vitesse maximale) -->
-<link rel="preload" as="image" href="{% static 'images/optimized/ecole.webp' %}" type="image/webp" imagesizes="100vw">
-{# Les images des cartes sont sous le pli : on laisse le navigateur les charger en lazy plutôt que de les précharger #}
+<link rel="preload" as="image" href="{% static 'images/optimized/jourdain-hero.webp' %}" type="image/webp" imagesizes="(min-width: 769px) 46vw, 100vw">
 {% endblock %}
 
 {% block breadcrumb %}{% endblock %}
 
 {% block content %}
 <div class="hero-wrapper">
-
-  <!-- Image héro optimisée avec WebP et fallback JPEG -->
-  <picture>
-    <source type="image/webp"
-            srcset="{% static 'images/optimized/ecole.webp' %}"
-            media="(min-width: 1px)">
-    <img src="{% static 'images/optimized/ecole_optimized.jpg' %}"
-         alt="Myschool"
-         class="hero-image"
-         loading="eager"
-         decoding="sync"
-         fetchpriority="high"
-         width="1920"
-         height="1080">
-  </picture>
-
-
-  <!-- Overlay pour améliorer la lisibilité -->
-  <div class="hero-overlay"></div>
-
-  <!-- Contenu superposé -->
   <div class="hero-content">
-    <h1 class="hero-title">MySchoolGN</h1>
-    <p class="hero-subtitle" style="display:none;"></p>
-    <p class="hero-positioning mt-3">
-      Le système de gestion scolaire conçu pour les réalités des écoles guinéennes.
-      Paiements, bulletins, parents, offline et pilotage directeur.
+    <div class="hero-kicker">Groupe scolaire privé</div>
+    <h1 class="hero-title">
+      Le Jourdain
+      <span>de Kakimbo</span>
+    </h1>
+    <p class="hero-positioning">
+      Une école où chaque enfant grandit avec confiance, apprend avec curiosité
+      et construit son avenir dans un cadre exigeant et bienveillant.
     </p>
     <div class="hero-actions" aria-label="Actions principales">
-      <a href="{% url 'contact' %}" class="btn btn-light btn-lg">
-        <i class="fas fa-calendar-check"></i>Demander une démonstration
-      </a>
-      <a href="{% url 'utilisateurs:login' %}" class="btn btn-primary btn-lg">
-        <i class="fas fa-lock"></i>Accéder à mon école
+      <a href="{% url 'utilisateurs:login' %}" class="btn btn-light btn-lg">
+        <i class="fas fa-lock"></i>Accéder à mon espace
       </a>
       <a href="{% url 'rapport_scolaire' %}" class="btn btn-outline-light btn-lg">
         <i class="fas fa-file-alt"></i>Voir le rapport scolaire
@@ -325,9 +402,25 @@
     </div>
   </div>
 
-  <!-- Indicateur de défilement -->
-  <div class="scroll-indicator" onclick="scrollToContent()">
-    <i class="fas fa-chevron-down"></i>
+  <div class="hero-visual">
+    <picture>
+      <source type="image/webp" srcset="{% static 'images/optimized/jourdain-hero.webp' %}">
+      <img src="{% static 'images/jourdain-hero.jpg' %}"
+           alt="Cour du Groupe Scolaire Privé Le Jourdain de Kakimbo"
+           class="hero-image"
+           loading="eager"
+           decoding="sync"
+           fetchpriority="high"
+           width="443"
+           height="590">
+    </picture>
+    <div class="hero-logo" aria-hidden="true">
+      <img src="{% static_versioned 'logos/logo.jpeg' %}" alt="">
+    </div>
+    <div class="hero-caption">
+      <strong>Au cœur de Kakimbo</strong>
+      <span>Un environnement vivant, proche des familles et tourné vers la réussite.</span>
+    </div>
   </div>
 </div>
 
@@ -462,67 +555,73 @@
   </div>
 </div>
 
-<!-- Section des images de présentation -->
-<div class="container pb-5">
+<!-- Vie scolaire en images -->
+<div class="container school-life-section pb-5">
+  <div class="row align-items-end mb-4 g-3">
+    <div class="col-lg-8">
+      <div class="section-kicker">La vie au Jourdain</div>
+      <h2 class="school-life-title mb-0">Apprendre aussi en vivant ensemble.</h2>
+    </div>
+    <div class="col-lg-4">
+      <p class="text-muted mb-1">Le sport, l'entraide et les moments collectifs font pleinement partie de l'apprentissage.</p>
+    </div>
+  </div>
   <div class="row g-4">
     <div class="col-md-6">
-      <div class="card shadow-sm image-card">
-
-        <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
-        <picture>
-          <source type="image/webp"
-                  srcset="{% static 'images/optimized/carte1.webp' %}"
-                  sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
-          <img src="{% static 'images/optimized/carte1_optimized.jpg' %}"
-               alt="Nos installations modernes"
-               class="card-img-top"
-               loading="lazy"
-               decoding="async"
-               sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw"
-               width="1200"
-               height="800">
-        </picture>
-
+      <article class="card image-card">
+        <div class="card-media">
+          <picture>
+            <source type="image/webp"
+                    srcset="{% static 'images/optimized/jourdain-card-football.webp' %}"
+                    sizes="(min-width: 992px) 636px, (min-width: 768px) 50vw, 100vw">
+            <img src="{% static 'images/jourdain-card-football.jpg' %}"
+                 alt="Élèves et encadreurs réunis pour une activité sportive dans la cour de l'école"
+                 class="card-img-top card-img-football"
+                 loading="lazy"
+                 decoding="async"
+                 sizes="(min-width: 992px) 636px, (min-width: 768px) 50vw, 100vw"
+                 width="756"
+                 height="1008">
+          </picture>
+          <span class="photo-tag"><i class="fas fa-futbol"></i> Sport & dépassement</span>
+        </div>
         <div class="card-body">
-          <h5 class="card-title text-primary">
-            <i class="fas fa-building me-2"></i>Installations Modernes
-          </h5>
+          <div class="card-accent"></div>
+          <h3 class="card-title">L'esprit d'équipe en action</h3>
           <p class="card-text text-muted">
-            Des espaces d'apprentissage équipés des dernières technologies pour offrir
-            une éducation de qualité dans un environnement stimulant.
+            Sur le terrain comme en classe, nos élèves apprennent la discipline,
+            le respect et la joie de progresser ensemble.
           </p>
         </div>
-      </div>
+      </article>
     </div>
     <div class="col-md-6">
-      <div class="card shadow-sm image-card">
-
-
-        <!-- Image optimisée WebP avec fallback JPEG (lazy : sous le pli) -->
-        <picture>
-          <source type="image/webp"
-                  srcset="{% static 'images/optimized/carte2.webp' %}"
-                  sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw">
-          <img src="{% static 'images/optimized/carte2_optimized.jpg' %}"
-               alt="Notre équipe pédagogique"
-               class="card-img-top"
-               loading="lazy"
-               decoding="async"
-               sizes="(min-width: 992px) 545px, (min-width: 768px) 50vw, 100vw"
-               width="1200"
-               height="800">
-        </picture>
-
+      <article class="card image-card">
+        <div class="card-media">
+          <picture>
+            <source type="image/webp"
+                    srcset="{% static 'images/optimized/jourdain-card-maternelle.webp' %}"
+                    sizes="(min-width: 992px) 636px, (min-width: 768px) 50vw, 100vw">
+            <img src="{% static 'images/jourdain-card-maternelle.jpg' %}"
+                 alt="Les plus jeunes élèves du Jourdain de Kakimbo avec leurs encadreurs"
+                 class="card-img-top card-img-maternelle"
+                 loading="lazy"
+                 decoding="async"
+                 sizes="(min-width: 992px) 636px, (min-width: 768px) 50vw, 100vw"
+                 width="1008"
+                 height="756">
+          </picture>
+          <span class="photo-tag"><i class="fas fa-seedling"></i> Maternelle & éveil</span>
+        </div>
         <div class="card-body">
-          <h5 class="card-title text-primary">
-            <i class="fas fa-users me-2"></i>Équipe Pédagogique
-          </h5>
+          <div class="card-accent"></div>
+          <h3 class="card-title">Bien grandir, dès les premiers pas</h3>
           <p class="card-text text-muted">
-            Une équipe d'enseignants qualifiés et dévoués, engagés dans la réussite
-            et l'épanouissement de chaque élève.
+            Un accompagnement attentif et des activités adaptées pour développer
+            l'autonomie, la curiosité et la confiance de chaque enfant.
           </p>
         </div>
-      </div>
+      </article>
     </div>
   </div>
 
@@ -566,49 +665,4 @@
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script src="{% static 'js/image-reload.js' %}"></script>
-<script>
-// Fonction de défilement fluide
-function scrollToContent() {
-  document.getElementById('content-section').scrollIntoView({
-    behavior: 'smooth',
-    block: 'start'
-  });
-}
-
-// Optimisations de performance - Version allégée pour vitesse maximale
-document.addEventListener('DOMContentLoaded', function() {
-  // Animation d'entrée légère pour les cartes (sans observer lourd)
-  const cards = document.querySelectorAll('.image-card, .presentation-card');
-
-  // Animation simple avec délai progressif (plus rapide que IntersectionObserver)
-  cards.forEach((card, index) => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px)';
-    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-
-    // Animation décalée simple
-    setTimeout(() => {
-      card.style.opacity = '1';
-      card.style.transform = 'translateY(0)';
-    }, 100 * index);
-  });
-});
-
-// Optimisation du redimensionnement
-let resizeTimeout;
-window.addEventListener('resize', function() {
-  clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(function() {
-    // Recalculer les dimensions si nécessaire
-    const heroImage = document.querySelector('.hero-image');
-    if (heroImage) {
-      heroImage.style.height = window.innerHeight + 'px';
-    }
-  }, 250);
-});
-</script>
 {% endblock %}

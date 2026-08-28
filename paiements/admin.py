@@ -13,9 +13,9 @@ from .models import (
     TypePaiement,
 )
 from .payment_engine import (
+    annee_scolaire_coherente,
     recalculer_echeancier,
     recalculer_remises_paiement,
-    school_year_from_date,
 )
 
 
@@ -98,7 +98,9 @@ class PaiementAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
                 'eleve_id', flat=True
             ).first()
         if 'date_paiement' in getattr(form, 'changed_data', []):
-            obj.annee_scolaire = school_year_from_date(obj.date_paiement)
+            obj.annee_scolaire = annee_scolaire_coherente(
+                obj.annee_scolaire, obj.date_paiement
+            )
         super().save_model(request, obj, form, change)
         recalculer_remises_paiement(obj)
         eleve_ids = {obj.eleve_id, ancien_eleve_id} - {None}

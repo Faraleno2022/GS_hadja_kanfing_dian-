@@ -165,9 +165,12 @@ class Paiement(SyncTrackedModel):
 class EcheancierPaiement(SyncTrackedModel):
     """Modèle pour l'échéancier des paiements d'un élève"""
 
+    NATURE_INSCRIPTION = 'INSCRIPTION'
+    NATURE_REINSCRIPTION = 'REINSCRIPTION'
+
     NATURE_FRAIS_CHOICES = [
-        ('INSCRIPTION', 'Inscription'),
-        ('REINSCRIPTION', 'Réinscription'),
+        (NATURE_INSCRIPTION, 'Inscription'),
+        (NATURE_REINSCRIPTION, 'Réinscription'),
     ]
     STATUT_CHOICES = [
         ('A_PAYER', 'À payer'),
@@ -176,7 +179,12 @@ class EcheancierPaiement(SyncTrackedModel):
         ('EN_RETARD', 'En retard'),
     ]
     
-    eleve = models.OneToOneField(Eleve, on_delete=models.CASCADE, related_name='echeancier')
+    eleve = models.ForeignKey(
+        Eleve,
+        on_delete=models.CASCADE,
+        related_name='echeanciers',
+        related_query_name='echeancier',
+    )
     annee_scolaire = models.CharField(
         max_length=9,
         validators=[valider_annee_scolaire],
@@ -185,7 +193,7 @@ class EcheancierPaiement(SyncTrackedModel):
     nature_frais = models.CharField(
         max_length=20,
         choices=NATURE_FRAIS_CHOICES,
-        default='INSCRIPTION',
+        default=NATURE_INSCRIPTION,
         verbose_name="Nature des frais d'admission",
     )
     
@@ -245,6 +253,12 @@ class EcheancierPaiement(SyncTrackedModel):
             models.Index(fields=['annee_scolaire']),        # Filtrage par année
             models.Index(fields=['statut']),                 # Filtrage par statut
             models.Index(fields=['annee_scolaire', 'statut']),  # Combinaison fréquente
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['eleve', 'annee_scolaire'],
+                name='echeancier_unique_eleve_annee',
+            ),
         ]
 
     def __str__(self):
@@ -420,6 +434,13 @@ class PaiementRemise(SyncTrackedModel):
     motif = models.CharField(
         max_length=30, choices=MOTIF_CHOICES, blank=True, default='',
         verbose_name="Motif de la remise"
+    )
+
+    # Trace indispensable pour reconstituer le montant brut du reçu: sans elle,
+    # rejouer l'écran de remise déduirait une seconde fois le même montant.
+    deduite_du_paiement = models.BooleanField(
+        default=False,
+        verbose_name="Déduite du montant du reçu",
     )
 
     class Meta:

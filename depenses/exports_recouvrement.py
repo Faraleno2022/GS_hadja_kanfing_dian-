@@ -159,7 +159,7 @@ def _chemin_logo(ecole):
         chemin = None
     if chemin and os.path.exists(chemin):
         return chemin
-    return finders.find('logos/logo.png')
+    return finders.find('logos/logo.jpeg')
 
 
 def carte_abonnement_pdf(abonnement):

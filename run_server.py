@@ -681,18 +681,14 @@ def setup_database():
 
     if is_new_db:
         print("[MySchoolGN] Nouvelle installation détectée.")
-        try:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            if not User.objects.filter(username='admin').exists():
-                User.objects.create_superuser(
-                    username='admin',
-                    password='admin1234',
-                    email='admin@myschool.local'
-                )
-                print("[MySchoolGN] Compte admin créé : admin / admin1234")
-        except Exception as e:
-            print(f"[MySchoolGN] Avertissement création admin : {e}")
+
+    # Une base peut déjà exister après une installation interrompue tout en ne
+    # contenant aucun administrateur. Le compte doit donc être contrôlé à
+    # chaque démarrage, sans modifier un administrateur existant.
+    try:
+        _ensure_default_admin()
+    except Exception as e:
+        print(f"[MySchoolGN] Avertissement création admin : {e}")
 
     # Fichiers statiques : une seule fois par version de l'application
     if not _static_is_ready():
@@ -702,6 +698,59 @@ def setup_database():
             _mark_static_ready()
         except Exception:
             pass
+
+
+def _ensure_default_admin():
+    """Garantit un accès admin sans écraser les identifiants existants."""
+    from django.contrib.auth import get_user_model
+    from django.db import transaction
+
+    User = get_user_model()
+    if User.objects.filter(is_superuser=True).exists():
+        return False
+
+    with transaction.atomic():
+        if User.objects.select_for_update().filter(is_superuser=True).exists():
+            return False
+
+        user = User.objects.select_for_update().filter(username='admin').first()
+        created = user is None
+        if created:
+            user = User(username='admin', email='admin@myschool.local')
+        else:
+            user.username = 'admin'
+            if not user.email:
+                user.email = 'admin@myschool.local'
+
+        user.is_staff = True
+        user.is_superuser = True
+        user.is_active = True
+        user.set_password('admin1234')
+        user.save()
+
+        # Le signal crée normalement ce profil. S'il existe déjà, le rendre
+        # cohérent avec le compte administrateur réparé.
+        try:
+            profil = user.profil
+            fields = []
+            if profil.role != 'ADMIN':
+                profil.role = 'ADMIN'
+                fields.append('role')
+            if not profil.actif:
+                profil.actif = True
+                fields.append('actif')
+            if not profil.is_validated:
+                profil.is_validated = True
+                fields.append('is_validated')
+            if fields:
+                profil.save(update_fields=fields)
+        except Exception:
+            # Un profil n'est pas requis pour authentifier un superutilisateur.
+            pass
+
+    action = "créé" if created else "réparé"
+    print(f"[MySchoolGN] Compte admin {action} : admin / admin1234")
+    return True
 
 
 def _backup_sqlite_verified(source_path, backup_path):
@@ -930,6 +979,22 @@ def main():
         pass
     check_license()
 
+    # Restauration demandée depuis l'interface : elle s'applique ICI, avant que
+    # Django n'ouvre la base (jamais pendant que l'application tourne).
+    try:
+        from ecole_moderne import sauvegarde as _sauvegarde
+        _restauration = _sauvegarde.appliquer_restauration_si_demandee(BASE_DIR)
+        if _restauration:
+            print(f"[Sauvegarde] {_restauration['message']}")
+            if not _restauration['ok']:
+                _show_fatal_error(
+                    "La restauration des données n'a pas abouti.\n\n"
+                    f"{_restauration['message']}\n\n"
+                    "Vos données actuelles n'ont pas été modifiées."
+                )
+    except Exception as _restauration_err:
+        print(f"[Sauvegarde] Restauration ignorée : {_restauration_err}")
+
     # Créer les dossiers nécessaires
     for folder in ['logs', 'media', 'staticfiles',
                    'media/photos_eleves', 'media/logos_ecoles']:
@@ -969,6 +1034,24 @@ def main():
             print(f"[Sync] Synchronisation automatique active (intervalle {_sync_interval}s).")
     except Exception as _sync_err:
         print(f"[Sync] Synchronisation automatique non démarrée : {_sync_err}")
+
+    # Sauvegarde automatique (règle 3-2-1) : dossier cloud synchronisé + clé USB
+    # ou disque externe. Un support absent est simplement réessayé plus tard.
+    try:
+        from ecole_moderne import sauvegarde as _sauvegarde_auto
+        _config_sauvegarde = _sauvegarde_auto.charger_config()
+        if _sauvegarde_auto.demarrer_worker(delai_demarrage=90):
+            _nb_destinations = len(_config_sauvegarde['destinations'])
+            if not _config_sauvegarde.get('actif', True):
+                print("[Sauvegarde] Sauvegarde automatique désactivée dans les réglages.")
+            elif _nb_destinations:
+                print(f"[Sauvegarde] Active — {_nb_destinations} destination(s), "
+                      f"toutes les {_config_sauvegarde.get('intervalle_heures', 6)} h.")
+            else:
+                print("[Sauvegarde] Aucune destination externe configurée : "
+                      "ouvrez « Sauvegarde des données » dans l'application.")
+    except Exception as _sauvegarde_err:
+        print(f"[Sauvegarde] Sauvegarde automatique non démarrée : {_sauvegarde_err}")
 
     # Ouvrir le navigateur en arrière-plan
     browser_thread = threading.Thread(

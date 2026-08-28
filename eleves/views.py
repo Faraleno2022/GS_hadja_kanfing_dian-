@@ -917,6 +917,44 @@ def modifier_eleve(request, eleve_id):
                 elif nb_trans == 0 and nb_ign > 0:
                     messages.warning(request, f"Attention : {nb_ign} note(s) n'ont pas pu etre transferees (matieres sans equivalent dans la nouvelle classe).")
 
+            # Afficher le résultat de la réconciliation financière.
+            finance_info = getattr(eleve, '_financial_transfer_info', None)
+            if finance_info:
+                if finance_info.get('transfert_inter_ecoles'):
+                    messages.warning(
+                        request,
+                        "Le transfert entre écoles a été enregistré, mais la situation "
+                        "financière doit être régularisée manuellement afin de préserver "
+                        "les rapports historiques de l'école d'origine.",
+                    )
+                elif finance_info.get('grille_manquante'):
+                    messages.warning(
+                        request,
+                        "Classe modifiée, mais aucune grille tarifaire exacte n'existe "
+                        "pour la nouvelle classe et son année scolaire. L'échéancier "
+                        "n'a donc pas été modifié.",
+                    )
+                elif finance_info.get('echeancier_mis_a_jour'):
+                    total = int(finance_info.get('nouveau_total_du') or 0)
+                    conserve = int(finance_info.get('encaissements_conserves') or 0)
+                    reste = int(finance_info.get('solde_restant') or 0)
+                    if finance_info.get('changement_annee'):
+                        prefixe = "Nouvel échéancier créé ; l'historique de l'ancienne année est conservé."
+                    else:
+                        prefixe = "Échéancier recalculé selon la nouvelle classe."
+                    messages.success(
+                        request,
+                        f"{prefixe} Total dû : {total:,} GNF ; "
+                        f"paiements conservés : {conserve:,} GNF ; reste : {reste:,} GNF.",
+                    )
+                    credit = int(finance_info.get('credit_non_affecte') or 0)
+                    if credit > 0:
+                        messages.warning(
+                            request,
+                            f"Le nouveau tarif est inférieur aux encaissements : "
+                            f"un crédit de {credit:,} GNF doit être régularisé.",
+                        )
+
             # Créer l'historique si des changements ont été effectués
             if changements:
                 try:
@@ -2196,7 +2234,7 @@ def fiche_inscription_pdf(request, eleve_id):
         if school_logo and hasattr(school_logo, 'path') and os.path.exists(school_logo.path):
             logo_path = school_logo.path
         else:
-            logo_path = finders.find('logos/logo.png')
+            logo_path = finders.find('logos/logo.jpeg')
         
         if logo_path:
             try:

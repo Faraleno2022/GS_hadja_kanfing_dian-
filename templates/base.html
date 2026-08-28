@@ -5,28 +5,28 @@
     {% load static_versioned %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}G.S HKD{% endblock %}</title>
+    <title>{% block title %}Le Jourdain de Kakimbo{% endblock %}</title>
 
     {# SEO : description par défaut, écrasable par les pages via le bloc meta_description #}
     <meta name="description" content="{% block meta_description %}Myschool — système de gestion scolaire moderne : élèves, paiements, salaires, transport, notes et statistiques pour les établissements en Guinée.{% endblock %}">
     <meta name="robots" content="{% block meta_robots %}index,follow{% endblock %}">
-    <meta name="theme-color" content="#0d6efd">
+    <meta name="theme-color" content="#075b3a">
     <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}">
 
     {# Open Graph (Facebook, WhatsApp, LinkedIn, etc.) #}
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Myschool">
+    <meta property="og:site_name" content="Le Jourdain de Kakimbo">
     <meta property="og:title" content="{% block og_title %}{{ self.title|default:'Myschool' }}{% endblock %}">
     <meta property="og:description" content="{% block og_description %}Gestion scolaire moderne — automatisation des inscriptions, paiements, notes et bulletins.{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
-    <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/jourdain-hero.webp' %}{% endblock %}">
     <meta property="og:locale" content="fr_FR">
 
     {# Twitter Card #}
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.title|default:'Myschool' }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}Gestion scolaire moderne, automatisée et fiable pour les établissements scolaires.{% endblock %}">
-    <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/ecole.webp' %}{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}{{ request.scheme }}://{{ request.get_host }}{% static 'images/optimized/jourdain-hero.webp' %}{% endblock %}">
 
     {% block structured_data %}
     <script type="application/ld+json">
@@ -69,15 +69,38 @@
         body { padding-top: 70px; }
         .navbar-brand {
             font-weight: bold;
+            gap: 2px;
         }
         .navbar-brand img {
-            height: 36px;
+            height: 42px;
             width: auto;
             margin-right: 8px;
             object-fit: contain;
-            border-radius: 8px; /* coins arrondis */
-            background-color: #ffffff; /* arrière-plan blanc */
-            padding: 2px; /* petit espace autour du logo */
+            border-radius: 50%;
+            background-color: #ffffff;
+            padding: 2px;
+            box-shadow: 0 5px 18px rgba(0,0,0,.16);
+        }
+        .school-navbar {
+            background: linear-gradient(90deg, #071f3d 0%, #075b3a 100%);
+            box-shadow: 0 8px 30px rgba(7,31,61,.16);
+        }
+        .brand-copy {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.02;
+        }
+        .brand-copy strong {
+            font-size: .96rem;
+            letter-spacing: .01em;
+        }
+        .brand-copy small {
+            margin-top: .18rem;
+            color: rgba(255,255,255,.65);
+            font-size: .62rem;
+            font-weight: 650;
+            letter-spacing: .11em;
+            text-transform: uppercase;
         }
         /* Réduction de la taille des liens de navigation */
         .navbar-nav .nav-link {
@@ -201,11 +224,14 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark school-navbar fixed-top">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{% url 'home' %}">
-                <img src="{% static_versioned 'logos/logo.png' %}" alt="Logo Myschool" width="36" height="36" loading="eager" decoding="async" fetchpriority="high">
-                <span>Myschool</span>
+                <img src="{% static_versioned 'logos/logo.jpeg' %}" alt="Logo Le Jourdain de Kakimbo" width="42" height="42" loading="eager" decoding="async" fetchpriority="high">
+                <span class="brand-copy">
+                    <strong>Le Jourdain</strong>
+                    <small>de Kakimbo</small>
+                </span>
             </a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -485,6 +511,11 @@
                                 <li><a class="dropdown-item" href="{% url 'utilisateurs:security_dashboard' %}">
                                     <i class="fas fa-shield-alt me-1"></i>Sécurité
                                 </a></li>
+                                {% if is_offline %}
+                                <li><a class="dropdown-item" href="{% url 'sauvegarde_tableau' %}">
+                                    <i class="fas fa-shield-halved me-1"></i>Sauvegarde des données
+                                </a></li>
+                                {% endif %}
                                 {% endif %}
 
                                 {% if user.is_superuser %}

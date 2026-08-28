@@ -383,6 +383,11 @@
                                             <div><span class="text-muted">T2 restant:</span> <strong id="sbT2">0 GNF</strong></div>
                                             <div><span class="text-muted">T3 restant:</span> <strong id="sbT3">0 GNF</strong></div>
                                         </div>
+                                        <!-- Ce que le type sélectionné couvre exactement -->
+                                        <div class="small mt-2" id="sbCompositionBloc" style="display:none;">
+                                            <span class="text-muted">Ce type couvre :</span>
+                                            <span id="sbComposition" class="fw-bold"></span>
+                                        </div>
                                         <div class="small text-muted mt-1">
                                             <i class="fas fa-info-circle me-1"></i>
                                             <span id="sbDesc">Suggestion calculée selon le type sélectionné.</span>
@@ -441,115 +446,34 @@
                         </ul>
                     </div>
                     
-                    <!-- Confirmation pour paiement partiel -->
-                    {% if show_partial_confirmation %}
-                    <div class="alert alert-danger mt-3" style="border: 2px solid #dc3545;">
-                        <h6 style="color: #dc3545; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ CONFIRMATION REQUISE - PAIEMENT PARTIEL</h6>
-                        <p class="mb-3" style="color: #721c24; font-weight: bold; font-size: 1.05em;">
-                            Le montant saisi (<span style="color: #dc3545;">{{ montant_saisi|floatformat:0 }} GNF</span>) est inférieur au montant standard 
-                            pour {{ type_description }} (<span style="color: #dc3545;">{{ montant_attendu|floatformat:0 }} GNF</span>).
-                        </p>
-                        <div class="form-check p-3" style="background-color: #f8d7da; border-radius: 5px; border: 1px solid #dc3545;">
-                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_partiel" id="confirmationPartiel" value="1" required>
-                            <label class="form-check-label" for="confirmationPartiel" style="color: #721c24; font-weight: bold;">
-                                <i class="fas fa-check-square me-2"></i>Je confirme qu'il s'agit d'un paiement partiel et je souhaite procéder à l'enregistrement.
-                            </label>
-                        </div>
-                        <div class="mt-3">
-                            <button type="button" class="btn btn-outline-danger me-2" onclick="showConfirmationDialog()">
-                                <i class="fas fa-exclamation-circle me-1"></i>Confirmer le paiement partiel
-                            </button>
-                            <small class="text-muted">ou cochez la case ci-dessus et soumettez le formulaire</small>
-                        </div>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Confirmation pour paiement partiel vers tranche suivante -->
-                    {% if show_partial_next_confirmation %}
+                    <!-- Confirmation pour montant supérieur au type sélectionné -->
+                    {% if show_superior_confirmation %}
                     <div class="alert alert-warning mt-3" style="border: 2px solid #f39c12;">
-                        <h6 style="color: #f39c12; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ MONTANT SUPÉRIEUR À LA TRANCHE</h6>
-                        <div class="mb-3">
-                            <p style="color: #856404; font-weight: bold; font-size: 1.05em; margin-bottom: 10px;">
-                                {% if tranche_source == 'T2' %}
-                                    Le montant saisi dépasse ce qui est dû pour la 2ème tranche.
-                                {% else %}
-                                    Le montant saisi dépasse ce qui est dû pour la 1ère tranche.
-                                {% endif %}
-                            </p>
-                            <div class="row text-center mb-3">
-                                <div class="col-md-4">
-                                    <div class="bg-light p-2 rounded border">
-                                        {% if tranche_source == 'T2' %}
-                                            <small class="text-muted">Montant T2 max</small><br>
-                                            <strong class="text-primary">{{ montant_t2_max|floatformat:0|default:0 }} GNF</strong>
-                                        {% else %}
-                                            <small class="text-muted">Montant T1 max</small><br>
-                                            <strong class="text-primary">{{ montant_t1_max|floatformat:0|default:0 }} GNF</strong>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="bg-light p-2 rounded border">
-                                        <small class="text-muted">Excédent</small><br>
-                                        <strong class="text-warning">{{ excedent|floatformat:0|default:0 }} GNF</strong>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="bg-light p-2 rounded border">
-                                        <small class="text-muted">Répartition suggérée</small><br>
-                                        {% if tranche_source == 'T2' and t3_remaining > 0 %}
-                                            <strong class="text-success">T2 + Acompte T3</strong>
-                                        {% elif t2_remaining > 0 %}
-                                            <strong class="text-success">T1 + Acompte T2</strong>
-                                        {% elif t3_remaining > 0 %}
-                                            <strong class="text-success">T1 + Acompte T3</strong>
-                                        {% else %}
-                                            <strong class="text-muted">Aucune tranche disponible</strong>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {% if t2_remaining > 0 or t3_remaining > 0 %}
-                            <div class="bg-info bg-opacity-10 p-3 rounded border border-info">
-                                <h6 class="text-info mb-2"><i class="fas fa-lightbulb me-2"></i>Proposition intelligente :</h6>
-                                {% if tranche_source == 'T2' %}
-                                <p class="mb-2">
-                                    <strong>{{ montant_t2_max|floatformat:0|default:0 }} GNF</strong> seront alloués à la <strong>2ème tranche</strong>
-                                </p>
-                                <p class="mb-0">
-                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 3ème tranche</strong>
-                                    <small class="text-muted">(reste T3 : {{ t3_remaining|floatformat:0|default:0 }} GNF)</small>
-                                </p>
-                                {% else %}
-                                <p class="mb-2">
-                                    <strong>{{ montant_t1_max|floatformat:0|default:0 }} GNF</strong> seront alloués à la <strong>1ère tranche</strong>
-                                </p>
-                                {% if t2_remaining > 0 %}
-                                <p class="mb-0">
-                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 2ème tranche</strong>
-                                    <small class="text-muted">(reste T2 : {{ t2_remaining|floatformat:0|default:0 }} GNF)</small>
-                                </p>
-                                {% elif t3_remaining > 0 %}
-                                <p class="mb-0">
-                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 3ème tranche</strong>
-                                    <small class="text-muted">(reste T3 : {{ t3_remaining|floatformat:0|default:0 }} GNF)</small>
-                                </p>
-                                {% endif %}
-                                {% endif %}
-                            </div>
-                            {% endif %}
+                        <h6 style="color: #f39c12; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ CONFIRMATION REQUISE - MONTANT SUPÉRIEUR</h6>
+                        <p class="mb-3" style="color: #856404; font-weight: bold; font-size: 1.05em;">
+                            Le montant saisi (<span style="color: #dc3545;">{{ montant_saisi|floatformat:0 }} GNF</span>)
+                            dépasse le montant standard pour {{ type_description }}
+                            (<span style="color: #dc3545;">{{ montant_attendu|floatformat:0 }} GNF</span>).
+                        </p>
+
+                        <div class="bg-info bg-opacity-10 p-3 rounded border border-info mb-3">
+                            <h6 class="text-info mb-2"><i class="fas fa-list-ol me-2"></i>Répartition qui sera enregistrée :</h6>
+                            <ul class="mb-0">
+                                {% for ligne in repartition %}
+                                <li><strong>{{ ligne.label }}</strong> : {{ ligne.montant|floatformat:0 }} GNF</li>
+                                {% endfor %}
+                            </ul>
                         </div>
-                        
+
                         <div class="form-check p-3" style="background-color: #fff3cd; border-radius: 5px; border: 1px solid #f39c12;">
-                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_partiel_suivant" id="confirmationPartielSuivant" value="1" required>
-                            <label class="form-check-label" for="confirmationPartielSuivant" style="color: #856404; font-weight: bold;">
-                                <i class="fas fa-check-square me-2"></i>Je confirme vouloir utiliser l'excédent comme acompte sur la tranche suivante
+                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_superieur" id="confirmationSuperieur" value="1" required>
+                            <label class="form-check-label" for="confirmationSuperieur" style="color: #856404; font-weight: bold;">
+                                <i class="fas fa-check-square me-2"></i>Je confirme cette répartition et souhaite enregistrer le paiement.
                             </label>
                         </div>
-                        
+
                         <div class="mt-3 d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn btn-outline-warning" onclick="document.getElementById('confirmationPartielSuivant').checked = true;">
+                            <button type="button" class="btn btn-outline-warning" onclick="document.getElementById('confirmationSuperieur').checked = true;">
                                 <i class="fas fa-check me-1"></i>Confirmer la répartition
                             </button>
                             <button type="button" class="btn btn-outline-secondary" onclick="history.back();">
@@ -867,103 +791,99 @@ document.addEventListener('DOMContentLoaded', function() {
         return false;
     }
 
-    function updateMontantSuggestion() {
-        console.log('updateMontantSuggestion called');
-        if (!typeSelect || !montantInput) {
-            console.log('Missing elements - typeSelect:', !!typeSelect, 'montantInput:', !!montantInput);
-            return;
-        }
-        
-        const ech = getEcheancier();
-        if (!ech) {
-            console.log('No echeancier available');
-            return;
-        }
+    async function updateMontantSuggestion() {
+        if (!typeSelect || !montantInput) return;
 
-        console.log('Echeancier data:', ech);
-        // Afficher la scolarité annuelle (hors inscription)
+        // L'échéancier local ne sert plus qu'à afficher la scolarité annuelle;
+        // son absence n'empêche plus de calculer le montant.
         try {
             const elTxt = document.getElementById('scolariteAnnuelleTxt');
             const tuition = getTuitionBase();
             if (elTxt && tuition) elTxt.textContent = fmtGNF(roundNearest1000(tuition.due));
         } catch(_) {}
 
-        // Restes par poste
-        const remIns = Math.max(0, (ech.inscription_du||0) - (ech.inscription_paye||0));
-        const rem1 = Math.max(0, (ech.tranche_1_du||0) - (ech.tranche_1_payee||0));
-        const rem2 = Math.max(0, (ech.tranche_2_du||0) - (ech.tranche_2_payee||0));
-        const rem3 = Math.max(0, (ech.tranche_3_du||0) - (ech.tranche_3_payee||0));
-        const reste = Math.max(0, (ech.total_du||0)-(ech.total_paye||0));
-
-        console.log('Remaining amounts - Ins:', remIns, 'T1:', rem1, 'T2:', rem2, 'T3:', rem3, 'Total:', reste);
-        // Rafraîchir l'aperçu après MAJ des données
         updateOnePercentHint();
         if (typeof updateFinalAmount === 'function') updateFinalAmount();
 
-        // Normaliser le libellé du type
-        let selectedText = '';
-        if (typeSelect.selectedIndex >= 0 && typeSelect.options[typeSelect.selectedIndex]) {
-            selectedText = typeSelect.options[typeSelect.selectedIndex].text.toLowerCase();
-            selectedText = selectedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-            selectedText = selectedText.replace(/\s+/g, ' ').trim();
+        // Le montant exact vient du serveur, via la fonction qui valide aussi
+        // l'enregistrement. Rejouer ces règles ici ferait proposer des montants
+        // ensuite refusés à la soumission — c'était le cas pour « T1 + T2 »,
+        // dont seule T1 était proposée.
+        const eleveEl = document.getElementById('id_eleve');
+        const eleveId = eleveEl && eleveEl.value ? eleveEl.value : null;
+        const typeId = typeSelect.value;
+        if (!eleveId || !typeId) {
+            if (badge) badge.style.display = 'none';
+            return;
         }
 
-        console.log('Selected type text:', selectedText);
+        let data = null;
+        try {
+            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
+            const resp = await fetch(ajaxMontantSuggereUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfInput ? csrfInput.value : '',
+                },
+                body: new URLSearchParams({eleve_id: eleveId, type_id: typeId}).toString(),
+            });
+            data = await resp.json();
+        } catch (e) {
+            console.warn('ajax_montant_suggere failed', e);
+            return;
+        }
+        if (!data || !data.ok) return;
 
-        var amount = 0;
+        const suggested = Math.floor(Number(data.suggested || 0));
+        const bd = data.breakdown || {};
 
-        const hasIns = selectedText.includes('inscription') || selectedText.includes('insc');
-        const hasAnn = selectedText.includes('annuel') || selectedText.includes('annuelle');
-        var nearTranche = function(n) { 
-            return new RegExp('(tranche\\\\D{0,8}' + n + '|' + n + '\\\\D{0,8}tranche)').test(selectedText);
-        };
-        const hasT1 = /tranche\s*1|1ere|1er|premiere|\bt1\b/.test(selectedText) || nearTranche(1);
-        const hasT2 = /tranche\s*2|2eme|deuxieme|\bt2\b/.test(selectedText) || nearTranche(2);
-        const hasT3 = /tranche\s*3|3eme|troisieme|\bt3\b/.test(selectedText) || nearTranche(3);
+        // Restes par poste, tels que le serveur les voit
+        const fmtGnf = (v) => Number(v || 0).toLocaleString('fr-FR') + ' GNF';
+        const panneau = document.getElementById('suggestionBreakdown');
+        const sbFi = document.getElementById('sbFi');
+        const sbT1 = document.getElementById('sbT1');
+        const sbT2 = document.getElementById('sbT2');
+        const sbT3 = document.getElementById('sbT3');
+        if (sbFi) sbFi.textContent = fmtGnf(bd.fi_restant);
+        if (sbT1) sbT1.textContent = fmtGnf(bd.t1_restant);
+        if (sbT2) sbT2.textContent = fmtGnf(bd.t2_restant);
+        if (sbT3) sbT3.textContent = fmtGnf(bd.t3_restant);
+        if (panneau) panneau.style.display = '';
 
-        console.log('Type detection - Ins:', hasIns, 'Ann:', hasAnn, 'T1:', hasT1, 'T2:', hasT2, 'T3:', hasT3);
-
-        if (hasIns && hasT1 && hasT2) {
-            amount = remIns + rem1 + rem2;
-        } else if (hasIns && hasT1) {
-            amount = remIns + rem1;
-        } else if (hasIns && hasAnn) {
-            amount = reste;
-        } else if (hasAnn) {
-            amount = reste;
-        } else if (hasT1) {
-            amount = rem1;
-        } else if (hasT2) {
-            amount = rem2;
-        } else if (hasT3) {
-            amount = rem3;
-        } else if (hasIns) {
-            amount = remIns;
-        } else {
-            amount = reste;
+        // Détail poste par poste de ce que ce type réclame
+        const blocCompo = document.getElementById('sbCompositionBloc');
+        const compo = document.getElementById('sbComposition');
+        const postes = Array.isArray(bd.postes) ? bd.postes : [];
+        if (compo && blocCompo) {
+            if (postes.length) {
+                compo.textContent = postes
+                    .map(p => p.label + ' : ' + Number(p.montant).toLocaleString('fr-FR') + ' GNF')
+                    .join('  +  ');
+                blocCompo.style.display = '';
+            } else {
+                blocCompo.style.display = 'none';
+            }
+        }
+        const desc = document.getElementById('sbDesc');
+        if (desc) {
+            desc.textContent = postes.length
+                ? "Montant exact restant pour les postes couverts par ce type."
+                : "Ce type ne cible aucun poste précis : saisissez le montant.";
         }
 
-        console.log('Calculated amount:', amount);
-
-        // Toujours renseigner le champ
-        var suggested = Math.floor(amount);
         if (suggested > 0) {
-            // Ne pas forcer 0 dans le champ, seulement une suggestion positive
             montantInput.value = suggested;
-            // Mettre à jour le badge
             if (badge && badgeValue) {
                 badgeValue.textContent = Number(suggested).toLocaleString('fr-FR');
                 badge.style.display = 'inline-flex';
             }
         } else {
-            // Pas de suggestion positive: ne rien écraser et masquer le badge
-            if (badge) {
-                badge.style.display = 'none';
-            }
+            // Rien à payer sur ces postes: ne pas écraser une saisie en cours
+            if (badge) badge.style.display = 'none';
         }
-         montantInput.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        console.log('Montant field updated to:', montantInput.value);
+        montantInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     // Écouteurs d'événements
@@ -1019,91 +939,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Déclenchement immédiat et répété pour s'assurer que ça marche
     async function tryUpdateMontant() {
-        console.log('tryUpdateMontant called');
-        
-        // Si pas d'échéancier, essayer de le charger via AJAX
+        // L'échéancier local n'est plus requis pour le montant — le serveur le
+        // calcule — mais on le charge quand même pour les affichages annexes.
         if (!getEcheancier()) {
-            console.log('No echeancier found, trying AJAX...');
-            const loaded = await ensureEcheancierLoaded();
-            if (!loaded) {
-                console.log('Failed to load echeancier via AJAX');
-                return;
-            }
+            await ensureEcheancierLoaded();
         }
-        
-        updateMontantSuggestion();
-        
-        // Réessayer dans 500ms si le montant n'est toujours pas rempli
-        setTimeout(async () => {
-            if (montantInput && !montantInput.value) {
-                console.log('Retrying montant update...');
-                if (!getEcheancier()) {
-                    await ensureEcheancierLoaded();
-                }
-                updateMontantSuggestion();
-                // Fallback: si toujours vide, appeler le serveur pour une suggestion exacte
-                setTimeout(async () => {
-                    if (montantInput && !montantInput.value) {
-                        console.log('Fallback to server ajax_montant_suggere');
-                        try {
-                            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
-                            const eleveHidden = document.getElementById('id_eleve');
-                            const typeSelectEl = document.getElementById('id_type_paiement');
-                            const eleveId = eleveHidden && eleveHidden.value ? eleveHidden.value : null;
-                            const typeId = typeSelectEl && typeSelectEl.value ? typeSelectEl.value : null;
-                            if (!eleveId || !typeId) return;
-                            const resp = await fetch('{% url "paiements:ajax_montant_suggere" %}', {
-                                method: 'POST',
-                                headers: {
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                    'X-CSRFToken': csrfInput ? csrfInput.value : ''
-                                },
-                                body: new URLSearchParams({ eleve_id: eleveId, type_id: typeId }).toString()
-                            });
-                            const data = await resp.json();
-                            if (data && data.ok) {
-                                const suggested = Number(data.suggested || 0);
-                                if (suggested > 0) {
-                                    montantInput.value = suggested;
-                                    const txt = suggested.toLocaleString('fr-FR') + ' GNF';
-                                    if (montantDisplay) montantDisplay.textContent = txt;
-                                    const stickyMontant = document.getElementById('stickyMontant');
-                                    if (stickyMontant) stickyMontant.textContent = txt;
-                                    const finalDisp = document.getElementById('finalAmountDisplay');
-                                    const stickyFinal = document.getElementById('stickyFinal');
-                                    if (finalDisp) finalDisp.textContent = txt;
-                                    if (stickyFinal) stickyFinal.textContent = txt;
-                                    if (badge && badgeValue) {
-                                        badge.style.display = 'inline-flex';
-                                        badgeValue.textContent = Number(suggested).toLocaleString('fr-FR');
-                                    }
-                                    // Mettre à jour le breakdown si disponible
-                                    const bd = data.breakdown || {};
-                                    const sb = document.getElementById('suggestionBreakdown');
-                                    const fmt = (v) => { try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; } };
-                                    if (sb) {
-                                        const sbFi = document.getElementById('sbFi');
-                                        const sbT1 = document.getElementById('sbT1');
-                                        const sbT2 = document.getElementById('sbT2');
-                                        const sbT3 = document.getElementById('sbT3');
-                                        const sbDesc = document.getElementById('sbDesc');
-                                        if (sbFi) sbFi.textContent = fmt(bd.fi_restant);
-                                        if (sbT1) sbT1.textContent = fmt(bd.t1_restant);
-                                        if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
-                                        if (sbT3) sbT3.textContent = fmt(bd.t3_restant);
-                                        if (sbDesc) sbDesc.textContent = bd.description || '';
-                                        sb.style.display = '';
-                                    }
-                                }
-                            }
-                        } catch(e) {
-                            console.warn('ajax_montant_suggere fallback failed', e);
-                        }
-                    }
-                }, 400);
-            }
-        }, 500);
+        await updateMontantSuggestion();
     }
     
     // Déclencher immédiatement

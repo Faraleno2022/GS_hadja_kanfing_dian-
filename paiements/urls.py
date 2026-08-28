@@ -1,7 +1,17 @@
 from django.urls import path
 from . import views
 from .views_tranches import export_tranches_par_classe_pdf, export_tranches_par_classe_excel
-from .export_comptabilite import export_comptabilite_pdf, export_comptabilite_excel
+from .export_modes_encaissement import (
+    export_modes_encaissement_excel,
+    export_modes_encaissement_pdf,
+)
+from .views_modes_encaissement import modes_encaissement_soldes
+from .rapports_professionnels import (
+    export_comptabilite_excel,
+    export_comptabilite_pdf,
+    export_recouvrement_excel,
+    export_recouvrement_pdf,
+)
 from .export_paiements_filtres import export_paiements_filtres_pdf, export_paiements_filtres_excel
 from . import views_rappels
 from .whatsapp_recu import apercu_message_whatsapp_recu, apercu_message_whatsapp_note_rappel
@@ -45,6 +55,11 @@ urlpatterns = [
     path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
     path('export/comptabilite/pdf/', export_comptabilite_pdf, name='export_comptabilite_pdf'),
     path('export/comptabilite/excel/', export_comptabilite_excel, name='export_comptabilite_excel'),
+    path('export/recouvrement/pdf/', export_recouvrement_pdf, name='export_recouvrement_pdf'),
+    path('export/recouvrement/excel/', export_recouvrement_excel, name='export_recouvrement_excel'),
+    path('export/modes-encaissement/pdf/', export_modes_encaissement_pdf, name='export_modes_encaissement_pdf'),
+    path('export/modes-encaissement/excel/', export_modes_encaissement_excel, name='export_modes_encaissement_excel'),
+    path('modes-encaissement/soldes/', modes_encaissement_soldes, name='modes_encaissement_soldes'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
     path('export/liste/excel/', views.export_liste_paiements_excel, name='export_liste_paiements_excel'),
@@ -103,4 +118,3 @@ urlpatterns = [
     path('recu-public/<int:paiement_id>/', recu_public_pdf, name='recu_public_pdf'),
     path('note-rappel-public/<int:eleve_id>/', note_rappel_public_pdf, name='note_rappel_public_pdf'),
 ]
-

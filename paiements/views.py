@@ -41,6 +41,7 @@ from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from .remise_utils import (
     BASE_ECHEANCE,
     BASE_TRANCHE,
+    montant_brut_paiement,
     montants_tranches_dues,
     montants_tranches_paiement,
     normaliser_tranches,
@@ -52,17 +53,20 @@ from .allocation import (
     TRANCHE_3,
     allocate_amount,
     allocation_order_for_type,
+    montant_attendu_pour_type,
     echeancier_dues,
     echeancier_paid,
     is_reinscription_payment,
     replay_payment_allocations,
 )
 from .payment_engine import (
+    annee_scolaire_coherente,
     paiements_valides_echeancier,
     preparer_ventilation_remises,
     repartir_montant_sur_tranches,
     recalculer_echeancier,
     recalculer_remises_paiement,
+    school_year_bounds,
     school_year_from_date,
     situation_echeancier,
 )
@@ -116,7 +120,10 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
         from datetime import date as _d
         today_d = _d.today()
 
-    annee_scolaire_def = f"{today_d.year}-{today_d.year+1}" if today_d.month >= 9 else f"{today_d.year-1}-{today_d.year}"
+    # Même règle que Paiement.save() : sans elle, l'échéancier et le paiement
+    # d'un élève dont la classe n'a pas d'année tomberaient sur deux années
+    # différentes et le versement ne compterait dans aucun solde.
+    annee_scolaire_def = school_year_from_date(today_d)
     grille = None
     try:
         if ecole and niveau:
@@ -159,7 +166,7 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
         try:
             annee_debut = int(str(annee_scol).split('-')[0])
         except Exception:
-            annee_debut = today_d.year if today_d.month >= 9 else today_d.year - 1
+            annee_debut = int(school_year_from_date(today_d).split('-')[0])
         annee_fin = annee_debut + 1
         from datetime import date as _d
         # Par défaut génériques
@@ -167,12 +174,32 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
         default_t1 = _d(annee_fin, 1, 15)
         default_t2 = _d(annee_fin, 3, 15)
         default_t3 = _d(annee_fin, 5, 15)
-        # Surcharges via grille si disponibles
+        # Surcharges via grille si disponibles. La grille peut être celle d'une
+        # autre année (repli sur « la plus récente ») : une échéance héritée
+        # tomberait alors dans une année révolue et le reçu afficherait une date
+        # incohérente. On ne retient donc que les dates de la bonne période.
+        borne_debut, borne_fin = school_year_bounds(f"{annee_debut}-{annee_fin}")
+
+        def _date_de_l_annee(valeur, defaut):
+            if not valeur:
+                return defaut
+            if borne_debut and borne_fin and not (borne_debut <= valeur <= borne_fin):
+                return defaut
+            return valeur
+
         if grille is not None:
-            d_insc = getattr(grille, 'date_echeance_inscription_defaut', None) or default_insc
-            d_t1 = getattr(grille, 'date_echeance_tranche_1_defaut', None) or default_t1
-            d_t2 = getattr(grille, 'date_echeance_tranche_2_defaut', None) or default_t2
-            d_t3 = getattr(grille, 'date_echeance_tranche_3_defaut', None) or default_t3
+            d_insc = _date_de_l_annee(
+                getattr(grille, 'date_echeance_inscription_defaut', None), default_insc
+            )
+            d_t1 = _date_de_l_annee(
+                getattr(grille, 'date_echeance_tranche_1_defaut', None), default_t1
+            )
+            d_t2 = _date_de_l_annee(
+                getattr(grille, 'date_echeance_tranche_2_defaut', None), default_t2
+            )
+            d_t3 = _date_de_l_annee(
+                getattr(grille, 'date_echeance_tranche_3_defaut', None), default_t3
+            )
         else:
             d_insc = default_insc
             d_t1 = default_t1
@@ -192,14 +219,21 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
             # trop-perçu sur ce poste est reporté sur T1, puis T2 et T3.
             old_fee_paid = Decimal(str(ech.frais_inscription_paye or 0))
             ech.annee_scolaire = annee_scol
-            ech.frais_inscription_du = fi
-            ech.tranche_1_due = t1
-            ech.tranche_2_due = t2
-            ech.tranche_3_due = t3
+            # Sans grille applicable, fi/t1/t2/t3 valent 0: les recopier
+            # effacerait la dette de l'élève. Or on passe ici à chaque
+            # réinscription, y compris depuis la simple sélection du type dans
+            # l'écran d'ajout. On ne réécrit donc que des montants réellement
+            # fournis par une grille.
+            if grille is not None:
+                ech.frais_inscription_du = fi
+                ech.tranche_1_due = t1
+                ech.tranche_2_due = t2
+                ech.tranche_3_due = t3
             if prefer_reinscription:
                 ech.nature_frais = 'REINSCRIPTION'
-                overflow = max(Decimal('0'), old_fee_paid - Decimal(str(fi or 0)))
-                ech.frais_inscription_paye = min(old_fee_paid, Decimal(str(fi or 0)))
+                fi_effectif = Decimal(str(ech.frais_inscription_du or 0))
+                overflow = max(Decimal('0'), old_fee_paid - fi_effectif)
+                ech.frais_inscription_paye = min(old_fee_paid, fi_effectif)
                 for due_attr, paid_attr in (
                     ('tranche_1_due', 'tranche_1_payee'),
                     ('tranche_2_due', 'tranche_2_payee'),
@@ -251,7 +285,30 @@ def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reins
             logging.getLogger(__name__).info(
                 "Échéancier déjà créé par un autre processus pour l'élève %s, récupération.", eleve.id
             )
-            return EcheancierPaiement.objects.filter(eleve=eleve).first()
+            return EcheancierPaiement.objects.filter(
+                eleve=eleve,
+                annee_scolaire=annee_scol,
+            ).first()
+
+LIBELLES_POSTES = {
+    TRANCHE_1: "1ère tranche",
+    TRANCHE_2: "2ème tranche",
+    TRANCHE_3: "3ème tranche",
+}
+
+
+def libelle_poste(bucket, prefer_reinscription=False):
+    """Nom affichable d'un poste; l'admission change de mot selon le cas."""
+    if bucket == INSCRIPTION:
+        return "Réinscription" if prefer_reinscription else "Inscription"
+    return LIBELLES_POSTES[bucket]
+
+
+def libelle_postes(buckets, prefer_reinscription=False):
+    return " + ".join(
+        libelle_poste(bucket, prefer_reinscription) for bucket in buckets
+    )
+
 
 @login_required
 def ajax_montant_suggere(request):
@@ -302,49 +359,39 @@ def ajax_montant_suggere(request):
         rt2 = max(0, t2_due - t2_pay)
         rt3 = max(0, t3_due - t3_pay)
 
-        suggested = 0
-        description = ''
-        # Types combinés prioritairement
-        if ((('inscription' in type_nom) and ('annuel' in type_nom)) or ((('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('annuel' in type_nom))):
-            suggested = rfi + rt1 + rt2 + rt3
-            description = "frais d'inscription/réinscription + Annuel (reste)"
-        elif ((('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom)):
-            suggested = rfi + rt1 + rt2
-            description = "frais d'inscription/réinscription + Tranche 1 + Tranche 2 (reste)"
-        elif ((('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom)) and ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom)):
-            suggested = rfi + rt1
-            description = "frais d'inscription/réinscription + Tranche 1 (reste)"
-        elif ('inscription' in type_nom) or ('réinscription' in type_nom) or ('reinscription' in type_nom):
-            suggested = rfi
-            description = "frais d'inscription/réinscription (reste)"
-        elif ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
-            suggested = rt1 + rt2 + rt3
-            description = "Tranche 1 + Tranche 2 + Tranche 3 (reste)"
-        elif 'tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom:
-            suggested = rt1 + rt2
-            description = "Tranche 1 + Tranche 2 (reste)"
-        elif 'tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom:
-            suggested = rt2 + rt3
-            description = "Tranche 2 + Tranche 3 (reste)"
-        elif 'tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom:
-            suggested = rt1
-            description = "1ère tranche (reste)"
-        elif 'tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom:
-            suggested = rt2
-            description = "2ème tranche (reste)"
-        elif 'tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom:
-            suggested = rt3
-            description = "3ème tranche (reste)"
-        elif 'scolarité' in type_nom:
-            suggested = rt1 + rt2 + rt3
-            description = "Scolarité (reste)"
+        # Même fonction que la validation à l'enregistrement: l'écran ne peut
+        # donc pas proposer un montant qu'il refuserait ensuite.
+        suggested, detail = montant_attendu_pour_type(
+            type_nom,
+            {
+                INSCRIPTION: fi_due,
+                TRANCHE_1: t1_due,
+                TRANCHE_2: t2_due,
+                TRANCHE_3: t3_due,
+            },
+            {
+                INSCRIPTION: fi_pay,
+                TRANCHE_1: t1_pay,
+                TRANCHE_2: t2_pay,
+                TRANCHE_3: t3_pay,
+            },
+        )
+        postes = [
+            {'label': libelle_poste(bucket, prefer_reinsc), 'montant': int(reste)}
+            for bucket, reste in detail
+        ]
+        description = libelle_postes(
+            [bucket for bucket, _reste in detail], prefer_reinsc
+        )
 
         breakdown = {
             'fi_restant': rfi,
             't1_restant': rt1,
             't2_restant': rt2,
             't3_restant': rt3,
-            'description': description,
+            'description': f"{description} (reste)" if description else '',
+            # Détail poste par poste de ce que le montant proposé recouvre.
+            'postes': postes,
         }
         return JsonResponse({'ok': True, 'suggested': int(suggested or 0), 'breakdown': breakdown})
     except Exception:
@@ -369,7 +416,10 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
         # Tout le bloc d'allocation est atomique avec verrouillage (select_for_update)
         with transaction.atomic():
             # Verrouiller l'échéancier pour éviter les écritures concurrentes
-            ech = EcheancierPaiement.objects.select_for_update().filter(eleve=eleve).first()
+            ech = EcheancierPaiement.objects.select_for_update().filter(
+                eleve=eleve,
+                annee_scolaire=paiement.annee_scolaire,
+            ).first()
             if not ech:
                 ech = ensure_echeancier_for_eleve(eleve, created_by=getattr(paiement, 'cree_par', None))
                 if ech:
@@ -454,7 +504,7 @@ def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaie
 
 def _sum_validated_payments_and_remises(eleve):
     """Retourne la couverture de l'année active, sans anciens paiements."""
-    echeancier = EcheancierPaiement.objects.filter(eleve=eleve).first()
+    echeancier = getattr(eleve, 'echeancier', None)
     if not echeancier:
         return 0, 0
     situation = situation_echeancier(echeancier)
@@ -891,11 +941,33 @@ def liste_paiements(request):
 
     # L'année est figée sur le reçu : la classe de l'élève peut changer
     # lors du passage à l'année suivante sans déplacer l'historique.
+    annee_affichee = annee_filtre or annee_active or ''
     if annee_filtre:
         qs = qs.filter(annee_scolaire=annee_filtre)
     elif annee_active:
         # Par défaut, montrer uniquement l'année active
         qs = qs.filter(annee_scolaire=annee_active)
+
+    # Filet de sécurité : un paiement étiqueté sur une autre année que celle
+    # affichée n'apparaît nulle part. On signale les deux cas où cela trahit
+    # une anomalie : l'élève est suivi sur l'année affichée, ou l'encaissement
+    # vient d'être saisi. Sans cela, la caisse cherche un paiement invisible.
+    paiements_hors_annee = 0
+    if annee_affichee:
+        try:
+            saisie_recente = timezone.now() - timedelta(days=30)
+            hors_annee_qs = filter_by_user_school(
+                Paiement.objects.filter(
+                    Q(eleve__echeancier__annee_scolaire=annee_affichee)
+                    | Q(date_creation__gte=saisie_recente)
+                ).exclude(annee_scolaire=annee_affichee).exclude(statut='ANNULE'),
+                request.user, 'eleve__classe__ecole'
+            )
+            paiements_hors_annee = hors_annee_qs.distinct().count()
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Comptage des paiements hors année scolaire impossible"
+            )
 
     # Filtre recherche optimisé
     if q:
@@ -1135,6 +1207,9 @@ def liste_paiements(request):
         'statut': statut,
         'annee_filtre': annee_filtre or (annee_active or ''),
         'annee_active': annee_active or '',
+        'annee_affichee': annee_affichee,
+        'paiements_hors_annee': paiements_hors_annee,
+        'peut_consulter_rapports': has_permission(request.user, 'peut_consulter_rapports'),
         'paiements': page_obj.object_list,
         'page_obj': page_obj,
         # Totaux pour l'UI (utilisés par _paiements_resultats.html)
@@ -1440,76 +1515,45 @@ def ajouter_paiement(request, eleve_id:int=None):
             except Exception:
                 fi_due = fi_payee = t1_due = t1_payee = t2_due = t2_payee = t3_due = t3_payee = 0
 
-            # Validation du montant selon le type de paiement
+            # Montant de référence: le reste exact à payer sur les postes que
+            # le type annonce couvrir. Même source que le montant proposé à la
+            # saisie, pour que l'écran ne propose jamais un montant qu'il
+            # refuserait ensuite.
             montant_saisi = int(paiement.montant or 0)
-            montant_attendu = 0
-            type_description = ""
-            
-            # IMPORTANT: évaluer d'abord les types combinés pour éviter que 'inscription' seul ne matche
-            if ('inscription' in type_nom and 'annuel' in type_nom):
-                # Frais d'inscription + Annuel (T1+T2+T3)
-                montant_attendu = fi_due + t1_due + t2_due + t3_due
-                type_description = "frais d'inscription + Annuel"
-            elif ('inscription' in type_nom and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom)):
-                # Frais d'inscription + T1 + T2
-                montant_attendu = fi_due + t1_due + t2_due
-                type_description = "frais d'inscription + Tranche 1 + Tranche 2"
-            elif ('inscription' in type_nom and ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom)):
-                # Frais d'inscription + T1
-                montant_attendu = fi_due + t1_due
-                type_description = "frais d'inscription + Tranche 1"
-            elif 'inscription' in type_nom:
-                montant_attendu = fi_due
-                type_description = "frais d'inscription"
-            elif ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
-                montant_attendu = t1_due + t2_due + t3_due
-                type_description = "Tranche 1 + Tranche 2 + Tranche 3"
-            elif 'tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom:
-                montant_attendu = t1_due + t2_due
-                type_description = "Tranche 1 + Tranche 2"
-            elif 'tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom:
-                montant_attendu = t2_due + t3_due
-                type_description = "Tranche 2 + Tranche 3"
-            elif 'tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom:
-                montant_attendu = t1_due
-                type_description = "1ère tranche"
-            elif 'tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom:
-                montant_attendu = t2_due
-                type_description = "2ème tranche"
-            elif 'tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom:
-                montant_attendu = t3_due
-                type_description = "3ème tranche"
-            
+            attendu, detail_attendu = montant_attendu_pour_type(
+                type_nom,
+                {
+                    INSCRIPTION: fi_due,
+                    TRANCHE_1: t1_due,
+                    TRANCHE_2: t2_due,
+                    TRANCHE_3: t3_due,
+                },
+                {
+                    INSCRIPTION: fi_payee,
+                    TRANCHE_1: t1_payee,
+                    TRANCHE_2: t2_payee,
+                    TRANCHE_3: t3_payee,
+                },
+            )
+            montant_attendu = int(attendu)
+            postes_vises = [bucket for bucket, _reste in detail_attendu]
+            type_description = libelle_postes(postes_vises, prefer_reinscription)
+
             # Vérifier si le montant correspond au type sélectionné
+            paiement_partiel_info = None
             if montant_attendu > 0 and montant_saisi != montant_attendu:
-                # Paiements partiels: autoriser sans confirmation pour une tranche simple
-                is_single_tranche = type_description in ["1ère tranche", "2ème tranche", "3ème tranche"]
-                if montant_saisi < montant_attendu and is_single_tranche:
-                    # Autoriser directement le paiement partiel de tranche
-                    pass
-                elif montant_saisi < montant_attendu:
-                    # Demander confirmation pour paiement partiel (inscription ou types combinés)
-                    confirmation_partiel = request.POST.get('confirmation_paiement_partiel')
-                    if not confirmation_partiel:
-                        # Message d'avertissement et demande de confirmation
-                        from django.utils.safestring import mark_safe
-                        message_html = mark_safe(
-                            f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
-                            f'⚠️ ATTENTION: Le montant saisi ({montant_saisi:,} GNF) est inférieur au montant standard '
-                            f'pour {type_description} ({montant_attendu:,} GNF).</span><br>'
-                            f'<strong>S\'agit-il d\'un paiement partiel ?</strong> Si oui, confirmez ci-dessous.'
-                        )
-                        messages.error(request, message_html)
-                        return render(request, 'paiements/form_paiement.html', {
-                            'titre_page': titre_page,
-                            'action': action,
-                            'form': form,
-                            'eleve': eleve,
-                            'montant_attendu': montant_attendu,
-                            'montant_saisi': montant_saisi,
-                            'type_description': type_description,
-                            'show_partial_confirmation': True,
-                        })
+                if montant_saisi < montant_attendu:
+                    # Paiement partiel (tranche simple, inscription ou type combiné) :
+                    # accepté immédiatement, sans confirmation ni second essai. Le
+                    # moteur d'allocation (allocate_amount_sequentially, appliqué
+                    # lors de la validation) répartit correctement un montant partiel
+                    # sur le(s) poste(s) concerné(s) ; l'utilisateur est simplement
+                    # informé après coup, pas bloqué avant.
+                    paiement_partiel_info = {
+                        'montant_saisi': montant_saisi,
+                        'montant_attendu': montant_attendu,
+                        'type_description': type_description,
+                    }
                 else:
                     # Montant supérieur au montant standard: autoriser.
                     # Raison: pour les types combinés et même pour certaines tranches,
@@ -1721,62 +1765,9 @@ def ajouter_paiement(request, eleve_id:int=None):
                         'form': form,
                         'eleve': eleve,
                     })
-                # Gestion intelligente des sur-paiements avec proposition de paiement partiel
-                elif (t1_due > 0) and ((t1_payee + montant_saisi) > t1_due):
-                    # Autoriser un dépassement si celui-ci correspond exactement au reste d'inscription à payer
-                    fi_remaining = max(0, fi_due - fi_payee)
-                    sur_paiement_calcule = (t1_payee + montant_saisi) - t1_due
-                    
-                    if fi_remaining > 0 and sur_paiement_calcule <= fi_remaining:
-                        # On laisse passer : le report vers les tranches suivantes est automatique.
-                        pass
-                    else:
-                        # Le report vers les tranches suivantes est automatique.
-                        confirmation_partiel_suivant = True
-                        
-                        if not confirmation_partiel_suivant:
-                            # Calculer combien pourrait aller à la tranche suivante
-                            t2_remaining = max(0, t2_due - t2_payee)
-                            t3_remaining = max(0, t3_due - t3_payee)
-                            
-                            from django.utils.safestring import mark_safe
-                            sur_paiement = (t1_payee + montant_saisi) - t1_due
-                            montant_max_t1 = t1_due - t1_payee
-                            
-                            # Proposer l'allocation vers les tranches suivantes
-                            suggestion_html = ""
-                            if t2_remaining > 0:
-                                montant_vers_t2 = min(sur_paiement, t2_remaining)
-                                suggestion_html = f'<br><strong>💡 Suggestion:</strong> {montant_max_t1:,} GNF pour T1 + {montant_vers_t2:,} GNF comme acompte T2'
-                            elif t3_remaining > 0:
-                                montant_vers_t3 = min(sur_paiement, t3_remaining)
-                                suggestion_html = f'<br><strong>💡 Suggestion:</strong> {montant_max_t1:,} GNF pour T1 + {montant_vers_t3:,} GNF comme acompte T3'
-                            
-                            message_html = mark_safe(
-                                f'<span style="color: #f39c12; font-weight: bold; font-size: 1.1em;">'
-                                f'⚠️ ATTENTION: Montant supérieur à la 1ère tranche!</span><br>'
-                                f'<strong>Montant dû T1:</strong> {t1_due:,} GNF | <strong>Déjà payé T1:</strong> {t1_payee:,} GNF<br>'
-                                f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Excédent:</strong> {sur_paiement:,} GNF<br>'
-                                f'<strong>Montant maximum T1:</strong> {montant_max_t1:,} GNF'
-                                f'{suggestion_html}<br><br>'
-                                f'<strong>Voulez-vous utiliser l\'excédent comme acompte sur une tranche suivante ?</strong>'
-                            )
-                            messages.warning(request, message_html)
-                            return render(request, 'paiements/form_paiement.html', {
-                                'titre_page': titre_page,
-                                'action': action,
-                                'form': form,
-                                'eleve': eleve,
-                                'show_partial_next_confirmation': True,
-                                'montant_t1_max': montant_max_t1,
-                                'excedent': sur_paiement,
-                                't2_remaining': t2_remaining,
-                                't3_remaining': t3_remaining,
-                            })
-                        else:
-                            # L'utilisateur a confirmé, on laisse passer pour allocation intelligente
-                            pass
-            
+                # Le dépassement de T1 est traité plus bas par la confirmation
+                # unique, qui montre la répartition réelle sur T2/T3.
+
             # Vérification pour la 2ème tranche
             elif ('tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom):
                 # Bloquer uniquement si complètement soldée
@@ -1798,66 +1789,10 @@ def ajouter_paiement(request, eleve_id:int=None):
                         'form': form,
                         'eleve': eleve,
                     })
-                # Gestion intelligente des sur-paiements T2 avec proposition vers T3
-                elif (t2_due > 0) and ((t2_payee + montant_saisi) > t2_due):
-                    # Le report vers la tranche suivante est automatique.
-                    confirmation_partiel_suivant = True
-                    
-                    if not confirmation_partiel_suivant:
-                        # Calculer combien pourrait aller à la tranche suivante
-                        t3_remaining = max(0, t3_due - t3_payee)
-                        
-                        from django.utils.safestring import mark_safe
-                        sur_paiement = (t2_payee + montant_saisi) - t2_due
-                        montant_max_t2 = t2_due - t2_payee
-                        
-                        # Proposer l'allocation vers T3 si disponible
-                        if t3_remaining > 0:
-                            montant_vers_t3 = min(sur_paiement, t3_remaining)
-                            suggestion_html = f'<br><strong>💡 Suggestion:</strong> {montant_max_t2:,} GNF pour T2 + {montant_vers_t3:,} GNF comme acompte T3'
-                            
-                            message_html = mark_safe(
-                                f'<span style="color: #f39c12; font-weight: bold; font-size: 1.1em;">'
-                                f'⚠️ ATTENTION: Montant supérieur à la 2ème tranche!</span><br>'
-                                f'<strong>Montant dû T2:</strong> {t2_due:,} GNF | <strong>Déjà payé T2:</strong> {t2_payee:,} GNF<br>'
-                                f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Excédent:</strong> {sur_paiement:,} GNF<br>'
-                                f'<strong>Montant maximum T2:</strong> {montant_max_t2:,} GNF'
-                                f'{suggestion_html}<br><br>'
-                                f'<strong>Voulez-vous utiliser l\'excédent comme acompte sur la 3ème tranche ?</strong>'
-                            )
-                            messages.warning(request, message_html)
-                            return render(request, 'paiements/form_paiement.html', {
-                                'titre_page': titre_page,
-                                'action': action,
-                                'form': form,
-                                'eleve': eleve,
-                                'show_partial_next_confirmation': True,
-                                'montant_t2_max': montant_max_t2,
-                                'excedent': sur_paiement,
-                                't3_remaining': t3_remaining,
-                                'tranche_source': 'T2',
-                            })
-                        else:
-                            # Aucune tranche suivante disponible, bloquer le sur-paiement
-                            message_html = mark_safe(
-                                f'<span style="color: #dc3545; font-weight: bold; font-size: 1.1em;">'
-                                f'❌ ERREUR: Sur-paiement détecté pour la 2ème tranche!</span><br>'
-                                f'<strong>Montant dû:</strong> {t2_due:,} GNF | <strong>Déjà payé:</strong> {t2_payee:,} GNF<br>'
-                                f'<strong>Montant saisi:</strong> {montant_saisi:,} GNF | <strong>Sur-paiement:</strong> {sur_paiement:,} GNF<br>'
-                                f'<strong>Montant maximum autorisé:</strong> {montant_max_t2:,} GNF<br>'
-                                f'<em>Aucune tranche suivante disponible pour l\'excédent.</em>'
-                            )
-                            messages.error(request, message_html)
-                            return render(request, 'paiements/form_paiement.html', {
-                                'titre_page': titre_page,
-                                'action': action,
-                                'form': form,
-                                'eleve': eleve,
-                            })
-                    else:
-                        # L'utilisateur a confirmé, on laisse passer pour allocation intelligente
-                        pass
-            
+                # Le dépassement de T2 est traité plus bas par la confirmation
+                # unique; le plafond d'affectation rejette déjà l'excédent qui
+                # ne trouverait aucune tranche suivante.
+
             # Vérification pour la 3ème tranche
             elif ('tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom):
                 # Bloquer uniquement si complètement soldée
@@ -1949,6 +1884,55 @@ def ajouter_paiement(request, eleve_id:int=None):
                     'eleve': eleve,
                 })
 
+            # Un montant supérieur au type sélectionné est légitime — l'excédent
+            # glisse sur les postes suivants — mais il ne doit jamais partir en
+            # silence: la saisie inférieure, elle, demande déjà confirmation.
+            if montant_attendu > 0 and montant_saisi > montant_attendu:
+                if not request.POST.get('confirmation_paiement_superieur'):
+                    allocation, _payes, _reliquat = allocate_amount(
+                        montant_saisi,
+                        {
+                            INSCRIPTION: fi_due,
+                            TRANCHE_1: t1_due,
+                            TRANCHE_2: t2_due,
+                            TRANCHE_3: t3_due,
+                        },
+                        {
+                            INSCRIPTION: fi_payee,
+                            TRANCHE_1: t1_payee,
+                            TRANCHE_2: t2_payee,
+                            TRANCHE_3: t3_payee,
+                        },
+                        type_nom,
+                    )
+                    repartition = [
+                        {
+                            'label': libelle_poste(bucket, prefer_reinscription),
+                            'montant': int(allocation[bucket]),
+                        }
+                        for bucket in (INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3)
+                        if allocation[bucket] > 0
+                    ]
+                    saisi_lisible = f"{montant_saisi:,}".replace(',', ' ')
+                    attendu_lisible = f"{montant_attendu:,}".replace(',', ' ')
+                    messages.warning(
+                        request,
+                        f"Le montant saisi ({saisi_lisible} GNF) dépasse le montant standard "
+                        f"pour {type_description} ({attendu_lisible} GNF). "
+                        f"Vérifiez la répartition ci-dessous avant de confirmer."
+                    )
+                    return render(request, 'paiements/form_paiement.html', {
+                        'titre_page': titre_page,
+                        'action': action,
+                        'form': form,
+                        'eleve': eleve,
+                        'montant_attendu': montant_attendu,
+                        'montant_saisi': montant_saisi,
+                        'type_description': type_description,
+                        'show_superior_confirmation': True,
+                        'repartition': repartition,
+                    })
+
             # Si tout est cohérent, on peut enregistrer
             with transaction.atomic():
                 # Attacher l'utilisateur créateur si connecté
@@ -1970,6 +1954,14 @@ def ajouter_paiement(request, eleve_id:int=None):
             except Exception:
                 logging.getLogger(__name__).exception("Erreur lors de l'envoi des notifications Twilio")
             messages.success(request, "Paiement enregistré avec succès.")
+            if paiement_partiel_info:
+                reste = paiement_partiel_info['montant_attendu'] - paiement_partiel_info['montant_saisi']
+                messages.info(
+                    request,
+                    f"Paiement partiel enregistré pour {paiement_partiel_info['type_description']} : "
+                    f"{paiement_partiel_info['montant_saisi']:,} GNF sur {paiement_partiel_info['montant_attendu']:,} GNF "
+                    f"attendus (reste {reste:,} GNF)."
+                )
             # Rediriger vers la page échéancier de l'élève
             return redirect('paiements:echeancier_eleve', eleve_id=paiement.eleve_id)
         else:
@@ -2015,10 +2007,14 @@ def modifier_paiement(request, paiement_id: int):
         if form.is_valid():
             with transaction.atomic():
                 paiement = form.save(commit=False)
-                # Une correction de date peut faire changer l'année comptable.
-                # Il faut la recalculer explicitement, car save() conserve sinon
-                # la valeur figée lors de la création du paiement.
-                paiement.annee_scolaire = school_year_from_date(paiement.date_paiement)
+                # Une correction de date ne change l'année comptable que si la
+                # nouvelle date sort de la période de l'année figée à la
+                # création. Recalculer systématiquement depuis la date faisait
+                # basculer un versement de juillet/août sur l'année précédente :
+                # le paiement quittait alors la liste et les soldes.
+                paiement.annee_scolaire = annee_scolaire_coherente(
+                    paiement.annee_scolaire, paiement.date_paiement
+                )
                 paiement.save()
                 recalculer_remises_paiement(paiement)
 
@@ -2254,6 +2250,15 @@ def liste_relances(request):
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get('page') or 1)
 
+    # Élèves à relancer: même critère que le compteur qui renvoie vers cette
+    # page (retard réel au jour J), afin que le nombre annoncé et la liste
+    # affichée ne puissent jamais diverger.
+    a_relancer = _echeanciers_a_relancer(request.user)
+    paginator_relancer = Paginator(a_relancer, 25)
+    a_relancer_page_obj = paginator_relancer.get_page(
+        request.GET.get('page_relancer') or 1
+    )
+
     context = {
         'titre_page': titre_page,
         'q': q,
@@ -2261,6 +2266,8 @@ def liste_relances(request):
         'statut': statut,
         'eleve_id': eleve_id,
         'page_obj': page_obj,
+        'a_relancer_page_obj': a_relancer_page_obj,
+        'total_a_relancer': len(a_relancer),
     }
     template = 'paiements/relances.html' if _template_exists('paiements/relances.html') else None
     if template:
@@ -2466,7 +2473,7 @@ def creer_echeancier(request, eleve_id:int):
         ecole = getattr(eleve.classe, 'ecole', None)
         # Année scolaire préférée: celle de la classe de l'élève, sinon calcul par date
         today = date.today()
-        annee_scolaire_def = f"{today.year}-{today.year+1}" if today.month >= 9 else f"{today.year-1}-{today.year}"
+        annee_scolaire_def = school_year_from_date(today)
         annee_classe = getattr(eleve.classe, 'annee_scolaire', None)
         from eleves.models import GrilleTarifaire as _Grille
         grille = None
@@ -2623,6 +2630,22 @@ def valider_echeancier(request, eleve_id: int):
 
     return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
+
+def _chemin_photo_eleve(eleve):
+    """Chemin disque de la photo de l'élève, ou None s'il n'en a pas.
+
+    Sur un `ImageField` vide, `photo.path` lève ValueError : la lire sans
+    précaution faisait échouer tout le bloc photo du reçu.
+    """
+    photo = getattr(eleve, 'photo', None)
+    if not photo or not getattr(photo, 'name', ''):
+        return None
+    try:
+        return photo.path
+    except Exception:
+        return None
+
+
 @login_required
 @require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def generer_recu_pdf(request, paiement_id:int):
@@ -2651,8 +2674,10 @@ def generer_recu_pdf(request, paiement_id:int):
     except Exception:
         logging.getLogger(__name__).exception("Validation automatique de l'échéancier avant reçu échouée")
 
-    # Calcul total remises
+    # Calcul total remises. Le brut sert de base: une remise déjà déduite du
+    # reçu serait sinon retranchée une seconde fois.
     remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+    montant_brut_recu = montant_brut_paiement(paiement)
 
     # Préparer le buffer et le canvas
     buffer = BytesIO()
@@ -2709,7 +2734,7 @@ def generer_recu_pdf(request, paiement_id:int):
         # Fallback vers le logo statique global si aucun logo d'école
         if not logo_path:
             from django.contrib.staticfiles import finders
-            logo_path = finders.find('logos/logo.png')
+            logo_path = finders.find('logos/logo.jpeg')
 
         if logo_path and ImageReader is not None:
             try:
@@ -2861,7 +2886,11 @@ def generer_recu_pdf(request, paiement_id:int):
         x_img = width - 40 - img_w
         y_img = height - 40 - img_h
         if ImageReader is not None:
-            photo_path = getattr(getattr(paiement.eleve, 'photo', None), 'path', None)
+            # `photo.path` lève ValueError quand aucune photo n'est enregistrée :
+            # l'exception remontait jusqu'au except global et emportait tout le
+            # bloc, si bien que le reçu d'un élève sans photo n'affichait ni le
+            # cadre à initiales ni son nom.
+            photo_path = _chemin_photo_eleve(paiement.eleve)
             if photo_path and os.path.exists(photo_path):
                 try:
                     img = ImageReader(photo_path)
@@ -2927,17 +2956,17 @@ def generer_recu_pdf(request, paiement_id:int):
         top -= 5  # Petit espace
     
     # Afficher le montant payé
-    draw_line(f"Montant payé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
+    draw_line(f"Montant payé : {str(f'{montant_brut_recu:,.0f}').replace(',', ' ')} GNF", bold=True)
 
     if remises_total and int(remises_total) > 0:
         draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
     # Montant net (jamais négatif)
-    montant_net = max(0, int(paiement.montant - (remises_total or 0)))
+    montant_net = max(0, int(montant_brut_recu - (remises_total or 0)))
     draw_line(f"Montant net payé : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
 
-    # Affectation du paiement courant sur les tranches. La même fonction pure
-    # est utilisée ici et lors de la validation afin que le reçu reflète le
-    # calcul réellement appliqué à l'échéancier.
+    # Affectation lisible du paiement courant. Une remise non déduite du reçu
+    # reste affichée dans le bloc « Remises appliquées » et ne doit pas glisser
+    # visuellement sur la tranche suivante.
     try:
         echeancier_for_alloc = getattr(paiement.eleve, 'echeancier', None)
     except Exception:
@@ -2946,7 +2975,7 @@ def generer_recu_pdf(request, paiement_id:int):
         try:
             current_allocation = situation_echeancier(
                 echeancier_for_alloc
-            )['allocations'].get(paiement.id)
+            )['allocations_affichees'].get(paiement.id)
             if current_allocation:
                 top -= 6
                 draw_line("Affectation du paiement", bold=True)
@@ -3274,10 +3303,10 @@ def liste_eleves_soldes(request):
     from django.utils import timezone as _tz
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
 
-    # Déterminer dynamiquement l'année scolaire par défaut en fonction de la date courante
-    # Septembre → Août: AAAA-AAAA+1, sinon AAAA-1-AAAA
+    # Année scolaire par défaut : celle en cours, période des réinscriptions
+    # (juillet-août) comprise.
     try:
-        annee_dyn = f"{today.year}-{today.year+1}" if today.month >= 9 else f"{today.year-1}-{today.year}"
+        annee_dyn = school_year_from_date(today)
     except Exception:
         annee_dyn = "2025-2026"
     annee = (request.GET.get('annee') or annee_dyn).strip()
@@ -3350,26 +3379,18 @@ def liste_eleves_soldes(request):
             output_field=DecimalField(max_digits=12, decimal_places=0),
         )
     )
-    # Déterminer la période de l'année scolaire pour restreindre les remises aux paiements de l'année
-    try:
-        annee_debut = int(annee.split('-')[0])
-        periode_debut = date(annee_debut, 9, 1)
-        periode_fin = date(annee_debut + 1, 8, 31)
-    except Exception:
-        # Fallback simple si parsing échoue: limiter à l'année civile courante
-        annee_debut = today.year if today.month >= 9 else today.year - 1
-        periode_debut = date(annee_debut, 9, 1)
-        periode_fin = date(annee_debut + 1, 8, 31)
-    
-    # Spécifique 2025-2026: début au 14/08/2025 pour inclure les enregistrements d'août
-    try:
-        if annee == "2025-2026":
-            periode_debut = date(2025, 8, 14)
-    except Exception:
-        pass
-    # Note: on ne bascule plus automatiquement à l'année précédente avant le 1er septembre.
-    # La période par défaut 2025-2026 est maintenue même si today < 1er septembre 2025.
-    # Éviter une plage inversée: si today < periode_debut, on fixe periode_fin = periode_debut.
+    # Période de l'année scolaire, réinscriptions d'été comprises : la fenêtre
+    # est celle du moteur de paiement (juillet → août), sinon les encaissements
+    # d'août tombaient hors rapport et le total annuel était sous-évalué.
+    periode_debut, periode_fin = school_year_bounds(annee)
+    if not periode_debut or not periode_fin:
+        periode_debut, periode_fin = school_year_bounds(
+            school_year_from_date(today)
+        )
+    annee_debut = periode_debut.year
+    # Note: on ne bascule plus automatiquement à l'année précédente avant la
+    # rentrée. Éviter une plage inversée: si today < periode_debut, on fixe
+    # periode_fin = periode_debut.
     # Sinon, on cape la fin de période à aujourd'hui pour éviter une fin future.
     try:
         if today < periode_debut:
@@ -3521,8 +3542,8 @@ def eleves_soldes_simple(request):
     from django.contrib import messages as django_messages
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
 
-    # Année scolaire par défaut: Septembre→Août
-    annee_dyn = f"{today.year}-{today.year+1}" if today.month >= 9 else f"{today.year-1}-{today.year}"
+    # Année scolaire par défaut, réinscriptions d'été comprises
+    annee_dyn = school_year_from_date(today)
     ecole_resume = user_school(request.user)
     annee_active = get_annee_active(request, ecole_resume) if ecole_resume else None
     try:
@@ -3550,17 +3571,13 @@ def eleves_soldes_simple(request):
     classe_id = (request.GET.get('classe_id') or '').strip()
     q = (request.GET.get('q') or '').strip()
 
-    # Période de l'année
-    try:
-        annee_debut = int(annee.split('-')[0])
-        periode_debut = date(annee_debut, 9, 1)
-        periode_fin = date(annee_debut + 1, 8, 31)
-    except Exception:
-        annee_debut = today.year if today.month >= 9 else today.year - 1
-        periode_debut = date(annee_debut, 9, 1)
-        periode_fin = date(annee_debut + 1, 8, 31)
-    if annee == "2025-2026":
-        periode_debut = date(2025, 8, 14)
+    # Période de l'année, réinscriptions d'été comprises (juillet → août).
+    periode_debut, periode_fin = school_year_bounds(annee)
+    if not periode_debut or not periode_fin:
+        periode_debut, periode_fin = school_year_bounds(
+            school_year_from_date(today)
+        )
+    annee_debut = periode_debut.year
     if today < periode_debut:
         periode_fin = periode_debut
     elif periode_fin > today:
@@ -3845,6 +3862,8 @@ def appliquer_remise_paiement(request, paiement_id:int):
             'base_tranche_code': BASE_TRANCHE,
             'base_echeance_code': BASE_ECHEANCE,
             'total_echeance_tranches': int(sum(montants_echeance.values())),
+            # Toujours le brut: le net affiché dépend de la case à cocher.
+            'montant_brut': int(montant_brut_paiement(paiement)),
         }
         return render(request, 'paiements/appliquer_remise.html', context)
 
@@ -3860,6 +3879,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
             tranches = normaliser_tranches(form.cleaned_data.get('tranches'))
             base_calcul = form.cleaned_data.get('base_calcul') or BASE_TRANCHE
             motif = form.cleaned_data.get('motif') or ''
+            deduire = bool(form.cleaned_data.get('deduire_du_paiement'))
 
             # Si aucune remise n'est sélectionnée, ne rien modifier et afficher une erreur
             if not remises and pct_value <= 0:
@@ -3900,6 +3920,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                 'base_calcul': base_calcul,
                 'montant_base': base_remise,
                 'motif': motif,
+                'deduite_du_paiement': deduire,
             }
 
             # Une remise technique en pourcentage suit exactement les mêmes
@@ -3931,6 +3952,10 @@ def appliquer_remise_paiement(request, paiement_id:int):
                 if all(remise.id != remise_pct.id for remise in remises_a_appliquer):
                     remises_a_appliquer.append(remise_pct)
 
+            # Le brut est reconstitué avant tout calcul: une remise déjà déduite
+            # a amputé le reçu, et la recalculer sur ce net la déduirait deux fois.
+            montant_brut = montant_brut_paiement(paiement)
+
             ventilations = preparer_ventilation_remises(
                 paiement, remises_a_appliquer, tranches, base_calcul
             )
@@ -3940,6 +3965,29 @@ def appliquer_remise_paiement(request, paiement_id:int):
             montant_effectif = sum(
                 (detail['montant_remise'] for detail in ventilations), Decimal('0')
             )
+
+            # Déduire ramène le reçu au net: la remise se substitue à
+            # l'encaissement au lieu de s'y ajouter, la couverture de l'année
+            # est donc inchangée. Sinon le reçu reste au brut.
+            montant_final = max(Decimal('0'), montant_brut - montant_effectif) if deduire else montant_brut
+
+            # Sans déduction, remise et encaissement s'additionnent. Au-delà du
+            # dû annuel, l'argent déjà versé n'a plus de poste à couvrir.
+            excedent_prevu = Decimal('0')
+            if not deduire and montant_effectif > 0:
+                try:
+                    situation = situation_echeancier(paiement.eleve.echeancier)
+                    couverture_prevue = (
+                        situation['total_encaisse']
+                        + situation['total_remises']
+                        + montant_brut
+                        + montant_effectif
+                    )
+                    excedent_prevu = max(
+                        Decimal('0'), couverture_prevue - situation['total_du']
+                    )
+                except Exception:
+                    excedent_prevu = Decimal('0')
 
             with transaction.atomic():
                 # Remplacer les remises existantes par la sélection
@@ -3959,6 +4007,29 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         **portee,
                     )
                     created += 1
+                # Décocher l'option restaure le brut au lieu de laisser un reçu
+                # amputé sans remise correspondante.
+                if Decimal(str(paiement.montant or 0)) != montant_final:
+                    paiement.montant = montant_final
+                    paiement.save()
+            if deduire and montant_effectif > 0:
+                def _gnf(valeur):
+                    return f"{int(valeur):,}".replace(',', ' ')
+
+                messages.info(
+                    request,
+                    f"Montant du reçu ramené à {_gnf(montant_final)} GNF "
+                    f"(brut {_gnf(montant_brut)} GNF − remise {_gnf(montant_effectif)} GNF)."
+                )
+            elif excedent_prevu > 0:
+                excedent_lisible = f"{int(excedent_prevu):,}".replace(',', ' ')
+                messages.warning(
+                    request,
+                    f"Cette remise dépasse de {excedent_lisible} GNF ce qu'il reste à couvrir "
+                    f"pour l'année : une fois le reçu validé, cette somme déjà encaissée ne "
+                    f"couvrira plus rien. Cochez « Déduire la remise du montant du reçu » "
+                    f"pour l'éviter."
+                )
             if montant_nominal > montant_effectif:
                 messages.warning(
                     request,
@@ -4009,12 +4080,29 @@ def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):
         )
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
     try:
+        liens = PaiementRemise.objects.filter(paiement=paiement)
         if remise_id:
-            PaiementRemise.objects.filter(paiement=paiement, id=remise_id).delete()
+            liens = liens.filter(id=remise_id)
+        # Une remise déduite avait amputé le reçu: la supprimer sans rendre le
+        # montant laisserait un encaissement minoré et un solde faux.
+        restitution = sum(
+            (Decimal(str(lien.montant_remise or 0)) for lien in liens if lien.deduite_du_paiement),
+            Decimal('0'),
+        )
+        with transaction.atomic():
+            liens.delete()
+            if restitution > 0:
+                paiement.montant = Decimal(str(paiement.montant or 0)) + restitution
+                paiement.save()
+        if remise_id:
             messages.success(request, "Remise supprimée.")
         else:
-            PaiementRemise.objects.filter(paiement=paiement).delete()
             messages.success(request, "Toutes les remises de ce paiement ont été supprimées.")
+        if restitution > 0:
+            messages.info(
+                request,
+                f"Montant du reçu rétabli à {int(paiement.montant):,} GNF.".replace(',', ' ')
+            )
     except Exception:
         messages.error(request, "Impossible d'annuler la remise.")
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
@@ -4240,6 +4328,60 @@ def generer_note_rappel_pdf(request, eleve_id):
     messages.success(request, f"Note de rappel générée pour {eleve.nom_complet}")
     
     return response
+
+
+def _echeanciers_a_relancer(user, date_reference=None):
+    """Échéanciers réellement en retard au jour J, prêts pour l'affichage.
+
+    Le critère est identique à celui du compteur « élèves en retard » du
+    tableau de bord : un poste échu dont le reste, remises ventilées incluses,
+    est encore positif.
+    """
+    reference = date_reference or timezone.localdate()
+    echeanciers = (
+        EcheancierPaiement.objects
+        .select_related(
+            'eleve', 'eleve__classe', 'eleve__classe__ecole',
+            'eleve__responsable_principal',
+        )
+        .filter(eleve__statut='ACTIF')
+    )
+    echeanciers = filter_by_user_school(
+        echeanciers, user, 'eleve__classe__ecole'
+    )
+    echeanciers = echeanciers.order_by(
+        'eleve__classe__nom', 'eleve__nom', 'eleve__prenom'
+    )
+
+    resultat = []
+    for echeancier in echeanciers:
+        situation = situation_echeancier(echeancier, date_reference=reference)
+        if situation['retard_total'] <= 0:
+            continue
+        echeancier.total_du_calc = situation['total_du']
+        echeancier.total_paye_calc = situation['total_encaisse']
+        echeancier.total_remises_calc = situation['total_remises']
+        echeancier.solde_a_relancer = situation['solde_restant']
+        echeancier.derniere_relance_date = None
+        echeancier.derniere_relance_statut = ''
+        resultat.append(echeancier)
+
+    # Dernière relance connue, en une seule requête pour toute la liste.
+    if resultat:
+        dernieres = {}
+        relances = (
+            Relance.objects
+            .filter(eleve_id__in=[e.eleve_id for e in resultat])
+            .order_by('eleve_id', '-date_creation')
+        )
+        for relance in relances:
+            dernieres.setdefault(relance.eleve_id, relance)
+        for echeancier in resultat:
+            relance = dernieres.get(echeancier.eleve_id)
+            if relance:
+                echeancier.derniere_relance_date = relance.date_creation
+                echeancier.derniere_relance_statut = relance.get_statut_display()
+    return resultat
 
 
 def _echeanciers_impayes_utilisateur(user, classe=None, limite=None):

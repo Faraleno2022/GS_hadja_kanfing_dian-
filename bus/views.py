@@ -327,7 +327,7 @@ def generer_recu_abonnement_pdf(request, abo_id):
         
         # Fallback vers le logo statique global
         if not logo_path:
-            logo_path = finders.find('logos/logo.png')
+            logo_path = finders.find('logos/logo.jpeg')
         
         if logo_path:
             try:

@@ -5,6 +5,13 @@ from typing import Optional
 from django.utils import timezone
 
 from .models import Paiement, Eleve, Relance
+from .allocation import (
+    INSCRIPTION,
+    TRANCHE_1,
+    TRANCHE_2,
+    TRANCHE_3,
+    is_reinscription_payment,
+)
 from .twilio_utils import send_message_async, send_payment_confirmation_async
 
 
@@ -13,6 +20,26 @@ def _format_amount(val) -> str:
         return f"{int(val):,}".replace(",", " ") + " GNF"
     except Exception:
         return f"{val} GNF"
+
+
+def _est_reinscription(paiement: Optional[Paiement]) -> bool:
+    if paiement is None:
+        return False
+    return is_reinscription_payment(getattr(paiement.type_paiement, "nom", ""))
+
+
+def _affectation_paiement(paiement: Paiement):
+    """Ventilation réellement appliquée à l'échéancier, ou None.
+
+    On lit la même source que le reçu PDF afin qu'un SMS et un reçu papier ne
+    puissent jamais annoncer deux affectations différentes.
+    """
+    from .payment_engine import situation_echeancier
+
+    echeancier = getattr(paiement.eleve, "echeancier", None)
+    if echeancier is None:
+        return None
+    return situation_echeancier(echeancier)["allocations"].get(paiement.pk)
 
 
 def _safe_phone(number: Optional[str]) -> Optional[str]:
@@ -44,6 +71,21 @@ def build_payment_receipt_message(paiement: Paiement) -> str:
         parts.append(f"Reçu N°: {paiement.numero_recu}")
     if paiement.reference_externe:
         parts.append(f"Réf: {paiement.reference_externe}")
+    try:
+        allocation = _affectation_paiement(paiement)
+    except Exception:
+        allocation = None
+    if allocation is not None:
+        registration_label = (
+            "Réinscription" if _est_reinscription(paiement) else "Inscription"
+        )
+        details = [
+            f"{registration_label}: {_format_amount(allocation.get(INSCRIPTION, 0))}",
+            f"T1: {_format_amount(allocation.get(TRANCHE_1, 0))}",
+            f"T2: {_format_amount(allocation.get(TRANCHE_2, 0))}",
+            f"T3: {_format_amount(allocation.get(TRANCHE_3, 0))}",
+        ]
+        parts.append("Affectation: " + " | ".join(details))
     parts.append("Merci pour votre confiance – myschool")
     return "\n".join(parts)
 
@@ -51,14 +93,25 @@ def build_payment_receipt_message(paiement: Paiement) -> str:
 def build_enrollment_receipt_message(eleve: Eleve, paiement: Optional[Paiement] = None) -> str:
     today = timezone.localdate() if hasattr(timezone, "localdate") else datetime.today().date()
     date_txt = today.strftime("%d/%m/%Y")
+    registration_label = "Réinscription" if _est_reinscription(paiement) else "Inscription"
+    confirmation_title = (
+        "Confirmation de réinscription"
+        if registration_label == "Réinscription"
+        else "Confirmation d'inscription"
+    )
+    fee_label = (
+        "Frais de réinscription"
+        if registration_label == "Réinscription"
+        else "Frais d'inscription"
+    )
     parts = [
-        "Confirmation d'inscription",
+        confirmation_title,
         f"Élève: {eleve.nom_complet} ({eleve.matricule})",
         f"Classe: {getattr(eleve.classe, 'nom', '')}",
         f"Date: {date_txt}",
     ]
     if paiement is not None:
-        parts.append(f"Frais d'inscription: {_format_amount(paiement.montant)}")
+        parts.append(f"{fee_label}: {_format_amount(paiement.montant)}")
         if paiement.numero_recu:
             parts.append(f"Reçu N°: {paiement.numero_recu}")
     parts.append("Bienvenue à l'myschool")
@@ -116,7 +169,8 @@ def send_enrollment_confirmation(eleve: Eleve, paiement: Optional[Paiement] = No
         return
     body = build_enrollment_receipt_message(eleve, paiement=paiement)
     send_payment_confirmation_async(to_number=tel, body=body)
-    sms_body = f"Inscription confirmée pour {eleve.nom_complet}. Bienvenue!"
+    registration_label = "Réinscription" if _est_reinscription(paiement) else "Inscription"
+    sms_body = f"{registration_label} confirmée pour {eleve.nom_complet}. Bienvenue!"
     send_message_async(to_number=tel, body=sms_body, channel="sms")
 
 
