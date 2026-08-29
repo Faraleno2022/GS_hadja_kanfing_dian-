@@ -162,6 +162,15 @@ class Paiement(SyncTrackedModel):
     def montant_avec_frais(self):
         return self.montant + self.mode_paiement.frais_supplementaires
 
+    @property
+    def echeancier_annuel(self):
+        """Échéancier correspondant à l'année figée de ce paiement."""
+        return EcheancierPaiement.objects.filter(
+            eleve_id=self.eleve_id,
+            annee_scolaire=self.annee_scolaire,
+        ).first()
+
+
 class EcheancierPaiement(SyncTrackedModel):
     """Modèle pour l'échéancier des paiements d'un élève"""
 

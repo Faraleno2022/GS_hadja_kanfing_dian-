@@ -162,6 +162,16 @@ def recu_public_pdf(request, paiement_id):
             id=paiement_id,
             statut='VALIDE'
         )
+
+        # Corriger aussi les anciens échéanciers avant de produire un reçu public.
+        from .views import ensure_echeancier_for_eleve, _auto_validate_echeancier_for_eleve
+        ensure_echeancier_for_eleve(
+            paiement.eleve,
+            created_by=getattr(paiement, 'cree_par', None),
+            registration_kind=registration_kind_for_type(paiement.type_paiement),
+        )
+        _auto_validate_echeancier_for_eleve(paiement.eleve)
+        paiement.eleve._state.fields_cache.pop('echeancier', None)
         
         # Calcul total remises. Le brut sert de base: une remise déjà déduite du
         # reçu serait sinon retranchée une seconde fois.
@@ -175,7 +185,7 @@ def recu_public_pdf(request, paiement_id):
         from decimal import Decimal
         ech = None
         try:
-            ech = paiement.eleve.echeancier
+            ech = paiement.echeancier_annuel
         except EcheancierPaiement.DoesNotExist:
             ech = None
         total_du = ech.total_du if ech else Decimal('0')
@@ -257,6 +267,28 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h
         c.drawString(left, top, f"Montant: {montant_brut:,.0f} GNF".replace(",", " "))
         top -= line_h
+
+        # Répartition de ce paiement selon l'ordre inscription -> T1 -> T2 -> T3.
+        allocation = get_payment_allocation(paiement, ech) if ech else None
+        if allocation is not None:
+            registration_label = (
+                "Réinscription"
+                if registration_kind_for_type(paiement.type_paiement) == "reinscription"
+                else "Inscription"
+            )
+            c.setFont('Helvetica-Bold', 11)
+            c.drawString(left, top, "Affectation du paiement")
+            top -= line_h
+            c.setFont('Helvetica', 10)
+            allocation_lines = (
+                (registration_label, allocation.get('inscription', 0)),
+                ("1ère tranche", allocation.get('tranche_1', 0)),
+                ("2ème tranche", allocation.get('tranche_2', 0)),
+                ("3ème tranche", allocation.get('tranche_3', 0)),
+            )
+            for label, amount in allocation_lines:
+                c.drawString(left + 12, top, f"{label}: {amount:,.0f} GNF".replace(",", " "))
+                top -= 14
 
         if remises_total > 0:
             c.drawString(left, top, f"Remises: -{remises_total:,.0f} GNF".replace(",", " "))

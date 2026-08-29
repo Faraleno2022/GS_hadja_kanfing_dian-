@@ -846,9 +846,10 @@ def nouvelle_annee_creer(request):
                             )
                             resultats['eleves_conserves'] += 1
 
-            # ─── Étape 5 : Recréer les échéanciers pour la nouvelle année ─
-            # Pour chaque élève qui a changé de classe (nouvelle année),
-            # créer l'échéancier cible sans supprimer l'historique précédent.
+            # ─── Étape 5 : Assurer les échéanciers de la nouvelle année ───
+            # L'ancien échéancier est un historique comptable : il ne doit
+            # jamais être supprimé. Un échéancier distinct est conservé pour
+            # chaque année scolaire.
             if faire_passer_eleves:
                 from paiements.models import EcheancierPaiement
                 from .models import GrilleTarifaire
@@ -867,14 +868,6 @@ def nouvelle_annee_creer(request):
 
                 for eleve in eleves_nouvelle_annee:
                     try:
-                        # Le hook de transfert peut avoir créé l'échéancier cible.
-                        # On remplace seulement celui de la nouvelle année ; les
-                        # échéanciers historiques restent intacts.
-                        EcheancierPaiement.objects.filter(
-                            eleve=eleve,
-                            annee_scolaire=annee_nouvelle,
-                        ).delete()
-
                         # Chercher la grille tarifaire de la nouvelle année
                         niveau = getattr(eleve.classe, 'niveau', None)
                         grille = None
@@ -883,34 +876,62 @@ def nouvelle_annee_creer(request):
                                 ecole=ecole, niveau=niveau, annee_scolaire=annee_nouvelle
                             ).first()
 
+                        if grille is None:
+                            resultats['erreurs'].append(
+                                f"Échéancier {eleve}: aucune grille tarifaire "
+                                f"pour {eleve.classe.nom} ({annee_nouvelle})"
+                            )
+                            continue
+
                         # Montants depuis la grille (ou 0 si pas de grille)
                         fi = Decimal(str(grille.frais_reinscription or 0)) if grille else Decimal('0')
                         t1 = Decimal(str(grille.tranche_1 or 0)) if grille else Decimal('0')
                         t2 = Decimal(str(grille.tranche_2 or 0)) if grille else Decimal('0')
                         t3 = Decimal(str(grille.tranche_3 or 0)) if grille else Decimal('0')
 
-                        EcheancierPaiement.objects.create(
+                        echeancier, cree = EcheancierPaiement.objects.get_or_create(
                             eleve=eleve,
                             annee_scolaire=annee_nouvelle,
-                            nature_frais='REINSCRIPTION',
-                            frais_inscription_du=fi,
-                            tranche_1_due=t1,
-                            tranche_2_due=t2,
-                            tranche_3_due=t3,
-                            # Paiements remis à zéro
-                            frais_inscription_paye=Decimal('0'),
-                            tranche_1_payee=Decimal('0'),
-                            tranche_2_payee=Decimal('0'),
-                            tranche_3_payee=Decimal('0'),
-                            # Dates d'échéance par défaut
-                            date_echeance_inscription=_date_type(annee_debut, 10, 1),
-                            date_echeance_tranche_1=_date_type(annee_fin, 1, 15),
-                            date_echeance_tranche_2=_date_type(annee_fin, 3, 15),
-                            date_echeance_tranche_3=_date_type(annee_fin, 5, 15),
-                            statut='A_PAYER',
-                            cree_par=request.user,
+                            defaults={
+                                'nature_frais': 'REINSCRIPTION',
+                                'frais_inscription_du': fi,
+                                'tranche_1_due': t1,
+                                'tranche_2_due': t2,
+                                'tranche_3_due': t3,
+                                'frais_inscription_paye': Decimal('0'),
+                                'tranche_1_payee': Decimal('0'),
+                                'tranche_2_payee': Decimal('0'),
+                                'tranche_3_payee': Decimal('0'),
+                                'date_echeance_inscription': _date_type(annee_debut, 10, 1),
+                                'date_echeance_tranche_1': _date_type(annee_fin, 1, 15),
+                                'date_echeance_tranche_2': _date_type(annee_fin, 3, 15),
+                                'date_echeance_tranche_3': _date_type(annee_fin, 5, 15),
+                                'statut': 'A_PAYER',
+                                'cree_par': request.user,
+                            },
                         )
-                        resultats['echeanciers_crees'] += 1
+                        if cree:
+                            resultats['echeanciers_crees'] += 1
+                        else:
+                            # Le hook de transfert a pu creer l'echeancier de la
+                            # nouvelle annee avec les tarifs de l'ancienne classe.
+                            # On realigne les montants dus sur la grille, sans
+                            # toucher aux colonnes payees : l'historique
+                            # comptable et les encaissements restent intacts.
+                            montants_dus = {
+                                'frais_inscription_du': fi,
+                                'tranche_1_due': t1,
+                                'tranche_2_due': t2,
+                                'tranche_3_due': t3,
+                            }
+                            desaligne = any(
+                                Decimal(str(getattr(echeancier, champ, 0) or 0)) != valeur
+                                for champ, valeur in montants_dus.items()
+                            )
+                            if desaligne:
+                                for champ, valeur in montants_dus.items():
+                                    setattr(echeancier, champ, valeur)
+                                echeancier.save(update_fields=list(montants_dus))
                     except Exception as exc:
                         logger.warning(f"Échéancier non créé pour {eleve}: {exc}")
                         resultats['erreurs'].append(f"Échéancier {eleve}: {exc}")

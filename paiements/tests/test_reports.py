@@ -1,5 +1,5 @@
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import resolve, reverse
 from django.contrib.auth import get_user_model
 
 from paiements.tests.support import TEST_MIDDLEWARE
@@ -32,3 +32,14 @@ class PaiementsReportsTests(TestCase):
         url = reverse("paiements:rapport_encaissements")
         resp = self.client.get(url, {"du": "2025-01-01", "au": "2025-12-31"})
         self.assertEqual(resp.status_code, 200)
+
+    def test_routes_remises_impayes_relances_et_rapports_sont_disponibles(self):
+        routes = (
+            reverse("paiements:calculateur_remise"),
+            reverse("paiements:liste_eleves_impayes"),
+            reverse("paiements:liste_relances"),
+            reverse("paiements:rapport_remises"),
+            reverse("rapports:tableau_bord"),
+        )
+        for route in routes:
+            self.assertIsNotNone(resolve(route).func)

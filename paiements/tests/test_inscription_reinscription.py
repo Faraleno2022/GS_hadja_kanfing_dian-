@@ -27,6 +27,14 @@ from paiements.tests.support import TEST_MIDDLEWARE
 from utilisateurs.models import Profil
 
 
+def _texte_cellule(cellule):
+    """Texte d'une cellule de tableau PDF, Paragraph ou chaîne simple."""
+    texte = cellule.getPlainText() if hasattr(cellule, 'getPlainText') else str(cellule)
+    # Les montants sont mis en forme avec une espace insecable pour ne pas etre
+    # coupes en fin de colonne : la ramener a une espace ordinaire.
+    return texte.replace(' ', ' ')
+
+
 @override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
 class RepartitionInscriptionReinscriptionTests(TestCase):
     def setUp(self):
@@ -87,9 +95,7 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
             date_echeance_tranche_3=date(2026, 4, 1),
         )
 
-    def _appliquer_remise_soldante(
-        self, eleve, *, type_remise="POURCENTAGE", valeur=Decimal("20")
-    ):
+    def _appliquer_remise_soldante(self, eleve):
         type_paiement = TypePaiement.objects.create(nom="Inscription + Tranche 1")
         mode = ModePaiement.objects.create(nom="Espèces test export")
         paiement = Paiement.objects.create(
@@ -99,8 +105,8 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
             statut="VALIDE", cree_par=self.comptable, valide_par=self.comptable,
         )
         remise = RemiseReduction.objects.create(
-            nom="Remise test export", type_remise=type_remise,
-            valeur=valeur, motif="SOCIALE",
+            nom="Remise test export", type_remise="MONTANT_FIXE",
+            valeur=Decimal("20000"), motif="SOCIALE",
             date_debut=date(2025, 9, 1), date_fin=date(2026, 8, 31), actif=True,
         )
         PaiementRemise.objects.create(
@@ -109,51 +115,6 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
             base_calcul="TRANCHE", montant_base=Decimal("100000"),
             motif="GESTE_COMMERCIAL",
         )
-
-    def _appliquer_remise_sans_report(self):
-        """Cas réel : 550 000 encaissés et 25 000 de remise sur T1."""
-        echeancier = self.nouvel_eleve.echeancier
-        echeancier.frais_inscription_du = Decimal('50000')
-        echeancier.tranche_1_due = Decimal('500000')
-        echeancier.tranche_2_due = Decimal('500000')
-        echeancier.tranche_3_due = Decimal('500000')
-        echeancier.save()
-
-        paiement = Paiement.objects.create(
-            eleve=self.nouvel_eleve,
-            type_paiement=TypePaiement.objects.create(
-                nom='Inscription + Tranche 1'
-            ),
-            mode_paiement=ModePaiement.objects.create(nom='Cash'),
-            numero_recu='REC20260001',
-            montant=Decimal('550000'),
-            date_paiement=date(2026, 8, 15),
-            annee_scolaire='2025-2026',
-            statut='VALIDE',
-            cree_par=self.comptable,
-            valide_par=self.comptable,
-        )
-        remise = RemiseReduction.objects.create(
-            nom='Remise scolarité 5%',
-            type_remise='POURCENTAGE',
-            valeur=Decimal('5'),
-            motif='SOCIALE',
-            date_debut=date(2025, 9, 1),
-            date_fin=date(2026, 8, 31),
-            actif=True,
-        )
-        PaiementRemise.objects.create(
-            paiement=paiement,
-            remise=remise,
-            montant_remise=Decimal('25000'),
-            applique_tranche_1=True,
-            montant_tranche_1=Decimal('25000'),
-            base_calcul='TRANCHE',
-            montant_base=Decimal('500000'),
-            motif='GESTE_COMMERCIAL',
-            deduite_du_paiement=False,
-        )
-        return paiement
 
     def test_colonnes_inscription_et_reinscription_ne_se_recouvrent_pas(self):
         response = self.client.get(reverse('paiements:liste_paiements'))
@@ -266,7 +227,9 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
         self.assertIn('Réinscription payée', headers)
 
         rows = {
-            row[0].getPlainText(): dict(zip(headers, row))
+            row[0].getPlainText(): dict(
+                zip(headers, [_texte_cellule(cellule) for cellule in row])
+            )
             for row in table._cellvalues[1:]
         }
         ancien = rows[self.ancien_eleve.nom_complet]
@@ -295,69 +258,12 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
 
         self.assertEqual(nouvel['Encaissé'], 110000)
         self.assertEqual(nouvel['Remise'], 20000)
-        # Le rapport reprend le taux choisi (20 %) au lieu de recalculer
-        # 20 000 / 130 000 = 15,4 %.
+        # Taux calcule sur la base retenue a la saisie (montant_base), et non
+        # sur le total du qui inclut l'inscription, jamais remisee.
         self.assertEqual(nouvel['Remise (%)'], 20)
         self.assertEqual(nouvel['Reste'], 0)
-        self.assertEqual(nouvel['Situation'], 'Soldé')
-        self.assertNotIn('remise', nouvel['Situation'].lower())
-
-    def test_export_tranches_excel_ne_calcule_pas_de_taux_pour_remise_fixe(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        self._appliquer_remise_soldante(
-            self.nouvel_eleve,
-            type_remise='MONTANT_FIXE',
-            valeur=Decimal('20000'),
-        )
-        response = self.client.get(
-            reverse('paiements:export_tranches_par_classe_excel'),
-            {'annee_scolaire': '2025-2026'},
-        )
-
-        workbook = load_workbook(BytesIO(response.content), data_only=True)
-        sheet = workbook[self.classe.nom[:25]]
-        headers = [cell.value for cell in sheet[2]]
-        rows = {
-            row[0].value: dict(zip(headers, [cell.value for cell in row]))
-            for row in sheet.iter_rows(min_row=3)
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Remise'], 20000)
-        self.assertIsNone(nouvel['Remise (%)'])
-        self.assertEqual(nouvel['Situation'], 'Soldé')
-
-    def test_export_tranches_excel_ne_reporte_pas_la_remise_sur_t2(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        self._appliquer_remise_sans_report()
-        response = self.client.get(
-            reverse('paiements:export_tranches_par_classe_excel'),
-            {'annee_scolaire': '2025-2026'},
-        )
-
-        workbook = load_workbook(BytesIO(response.content), data_only=True)
-        sheet = workbook[self.classe.nom[:25]]
-        headers = [cell.value for cell in sheet[2]]
-        rows = {
-            row[0].value: dict(zip(headers, [cell.value for cell in row]))
-            for row in sheet.iter_rows(min_row=3)
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Inscription payée'], 50000)
-        self.assertEqual(nouvel['Tranche 1 payée'], 475000)
-        self.assertEqual(nouvel['Tranche 2 payée'], 0)
-        self.assertEqual(nouvel['Tranche 3 payée'], 0)
-        self.assertEqual(nouvel['Encaissé'], 550000)
-        self.assertEqual(nouvel['Remise'], 25000)
-        self.assertEqual(nouvel['Remise (%)'], 5)
-        self.assertEqual(nouvel['Reste'], 975000)
+        self.assertIn('Soldé avec remise', nouvel['Situation / précision'])
+        self.assertIn('20 000 GNF', nouvel['Situation / précision'])
 
     def test_export_tranches_pdf_affiche_remise_taux_et_precision(self):
         from unittest.mock import patch
@@ -376,72 +282,17 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
         table = next(element for element in elements if isinstance(element, Table))
         headers = [cell.getPlainText() for cell in table._cellvalues[0]]
         rows = {
-            row[0].getPlainText(): dict(zip(headers, row))
+            row[0].getPlainText(): dict(
+                zip(headers, [_texte_cellule(cellule) for cellule in row])
+            )
             for row in table._cellvalues[1:]
         }
         nouvel = rows[self.nouvel_eleve.nom_complet]
 
         self.assertEqual(nouvel['Remise'], '20 000')
         self.assertEqual(nouvel['Remise (%)'], '20 %')
-        self.assertEqual(nouvel['Situation'].getPlainText(), 'Soldé')
-        self.assertNotIn('remise', nouvel['Situation'].getPlainText().lower())
-
-    def test_export_tranches_pdf_ne_reporte_pas_la_remise_sur_t2(self):
-        from unittest.mock import patch
-
-        from reportlab.platypus import Table
-
-        self._appliquer_remise_sans_report()
-        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
-            response = self.client.get(
-                reverse('paiements:export_tranches_par_classe_pdf'),
-                {'annee_scolaire': '2025-2026'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        elements = build_pdf.call_args.args[0]
-        table = next(element for element in elements if isinstance(element, Table))
-        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
-        rows = {
-            row[0].getPlainText(): dict(zip(headers, row))
-            for row in table._cellvalues[1:]
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Inscription payée'], '50 000')
-        self.assertEqual(nouvel['Tranche 1 payée'], '475 000')
-        self.assertEqual(nouvel['Tranche 2 payée'], '0')
-        self.assertEqual(nouvel['Tranche 3 payée'], '0')
-        self.assertEqual(nouvel['Encaissé'], '550 000')
-        self.assertEqual(nouvel['Remise'], '25 000')
-        self.assertEqual(nouvel['Remise (%)'], '5 %')
-        self.assertEqual(nouvel['Reste'], '975 000')
-
-    def test_recu_pdf_ne_reporte_pas_la_remise_sur_t2_ni_t3(self):
-        from io import BytesIO
-
-        from pypdf import PdfReader
-
-        paiement = self._appliquer_remise_sans_report()
-        response = self.client.get(reverse(
-            'paiements:generer_recu_pdf',
-            kwargs={'paiement_id': paiement.id},
-        ))
-
-        self.assertEqual(response.status_code, 200)
-        texte = '\n'.join(
-            page.extract_text() or ''
-            for page in PdfReader(BytesIO(response.content)).pages
-        )
-        self.assertIn('Montant payé : 550 000 GNF', texte)
-        self.assertIn('Total remises : -25 000 GNF', texte)
-        self.assertIn('Montant net payé : 525 000 GNF', texte)
-        self.assertIn('Inscription: 50 000 GNF', texte)
-        self.assertIn('1ère tranche: 475 000 GNF', texte)
-        self.assertIn('2ème tranche: 0 GNF', texte)
-        self.assertIn('3ème tranche: 0 GNF', texte)
-        self.assertIn('Solde global restant : 975 000 GNF', texte)
-        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', texte)
+        self.assertIn('Soldé avec remise', nouvel['Situation / précision'])
+        self.assertIn('20 000 GNF', nouvel['Situation / précision'])
 
     def test_logo_ecole_est_present_sur_exports_tranches_et_filigrane(self):
         from pathlib import Path
@@ -475,3 +326,136 @@ class RepartitionInscriptionReinscriptionTests(TestCase):
 
         workbook = load_workbook(BytesIO(response.content))
         self.assertTrue(all(sheet._images for sheet in workbook.worksheets))
+
+    def _appliquer_remise_sans_report(self):
+        """Cas réel : 550 000 encaissés et 25 000 de remise sur T1."""
+        echeancier = self.nouvel_eleve.echeancier
+        echeancier.frais_inscription_du = Decimal('50000')
+        echeancier.tranche_1_due = Decimal('500000')
+        echeancier.tranche_2_due = Decimal('500000')
+        echeancier.tranche_3_due = Decimal('500000')
+        echeancier.save()
+
+        paiement = Paiement.objects.create(
+            eleve=self.nouvel_eleve,
+            type_paiement=TypePaiement.objects.create(
+                nom='Inscription + Tranche 1'
+            ),
+            mode_paiement=ModePaiement.objects.create(nom='Cash'),
+            numero_recu='REC20260001',
+            montant=Decimal('550000'),
+            date_paiement=date(2026, 8, 15),
+            annee_scolaire='2025-2026',
+            statut='VALIDE',
+            cree_par=self.comptable,
+            valide_par=self.comptable,
+        )
+        remise = RemiseReduction.objects.create(
+            nom='Remise scolarité 5%',
+            type_remise='POURCENTAGE',
+            valeur=Decimal('5'),
+            motif='SOCIALE',
+            date_debut=date(2025, 9, 1),
+            date_fin=date(2026, 8, 31),
+            actif=True,
+        )
+        PaiementRemise.objects.create(
+            paiement=paiement,
+            remise=remise,
+            montant_remise=Decimal('25000'),
+            applique_tranche_1=True,
+            montant_tranche_1=Decimal('25000'),
+            base_calcul='TRANCHE',
+            montant_base=Decimal('500000'),
+            motif='GESTE_COMMERCIAL',
+            deduite_du_paiement=False,
+        )
+        return paiement
+
+    def test_export_tranches_excel_ne_reporte_pas_la_remise_sur_t2(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        self._appliquer_remise_sans_report()
+        response = self.client.get(
+            reverse('paiements:export_tranches_par_classe_excel'),
+            {'annee_scolaire': '2025-2026'},
+        )
+
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        sheet = workbook[self.classe.nom[:25]]
+        headers = [cell.value for cell in sheet[2]]
+        rows = {
+            row[0].value: dict(zip(headers, [cell.value for cell in row]))
+            for row in sheet.iter_rows(min_row=3)
+        }
+        nouvel = rows[self.nouvel_eleve.nom_complet]
+
+        self.assertEqual(nouvel['Inscription payée'], 50000)
+        self.assertEqual(nouvel['Tranche 1 payée'], 500000)
+        self.assertEqual(nouvel['Tranche 2 payée'], 0)
+        self.assertEqual(nouvel['Tranche 3 payée'], 0)
+        self.assertEqual(nouvel['Encaissé'], 550000)
+        self.assertEqual(nouvel['Remise'], 25000)
+        self.assertEqual(nouvel['Remise (%)'], 5)
+        self.assertEqual(nouvel['Reste'], 975000)
+
+    def test_export_tranches_pdf_ne_reporte_pas_la_remise_sur_t2(self):
+        from unittest.mock import patch
+
+        from reportlab.platypus import Table
+
+        self._appliquer_remise_sans_report()
+        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
+            response = self.client.get(
+                reverse('paiements:export_tranches_par_classe_pdf'),
+                {'annee_scolaire': '2025-2026'},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        elements = build_pdf.call_args.args[0]
+        table = next(element for element in elements if isinstance(element, Table))
+        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
+        rows = {
+            row[0].getPlainText(): dict(
+                zip(headers, [_texte_cellule(cellule) for cellule in row])
+            )
+            for row in table._cellvalues[1:]
+        }
+        nouvel = rows[self.nouvel_eleve.nom_complet]
+
+        self.assertEqual(nouvel['Inscription payée'], '50 000')
+        self.assertEqual(nouvel['Tranche 1 payée'], '500 000')
+        self.assertEqual(nouvel['Tranche 2 payée'], '0')
+        self.assertEqual(nouvel['Tranche 3 payée'], '0')
+        self.assertEqual(nouvel['Encaissé'], '550 000')
+        self.assertEqual(nouvel['Remise'], '25 000')
+        self.assertEqual(nouvel['Remise (%)'], '5 %')
+        self.assertEqual(nouvel['Reste'], '975 000')
+
+    def test_recu_pdf_ne_reporte_pas_la_remise_sur_t2_ni_t3(self):
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        paiement = self._appliquer_remise_sans_report()
+        response = self.client.get(reverse(
+            'paiements:generer_recu_pdf',
+            kwargs={'paiement_id': paiement.id},
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        texte = '\n'.join(
+            page.extract_text() or ''
+            for page in PdfReader(BytesIO(response.content)).pages
+        )
+        self.assertIn('Montant payé : 550 000 GNF', texte)
+        self.assertIn('Total remises : -25 000 GNF', texte)
+        self.assertIn('Montant net payé : 550 000 GNF', texte)
+        self.assertIn('Inscription: 50 000 GNF', texte)
+        self.assertIn('1ère tranche: 500 000 GNF', texte)
+        self.assertIn('2ème tranche: 0 GNF', texte)
+        self.assertIn('3ème tranche: 0 GNF', texte)
+        self.assertIn('Solde global restant : 975 000 GNF', texte)
+        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', texte)

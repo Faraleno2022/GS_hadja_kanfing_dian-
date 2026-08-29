@@ -569,7 +569,7 @@ def _generer_recu_paiement_pdf(paiement):
 
     # ── Situation financière ──
     try:
-        ech = paiement.eleve.echeancier
+        ech = paiement.echeancier_annuel
         total_du = ech.total_du
         total_paye = ech.total_paye
         solde_restant = ech.solde_restant

@@ -241,3 +241,31 @@ def echeancier_paid(echeancier):
         TRANCHE_2: _decimal(echeancier.tranche_2_payee),
         TRANCHE_3: _decimal(echeancier.tranche_3_payee),
     }
+
+
+def get_payment_allocation(paiement, echeancier=None):
+    """Reconstruit l'affectation exacte d'un paiement validé pour les reçus."""
+    from .models import Paiement
+
+    if echeancier is None:
+        try:
+            echeancier = paiement.eleve.echeancier
+        except Exception:
+            return None
+
+    running_paid = {bucket: Decimal("0") for bucket in ALL_BUCKETS}
+    target_allocation = None
+    validated = (
+        Paiement.objects.filter(eleve=paiement.eleve, statut="VALIDE")
+        .order_by("date_paiement", "date_creation", "pk")
+    )
+    for current in validated.iterator():
+        allocation, running_paid, unapplied = allocate_amount_sequentially(
+            echeancier,
+            current.montant,
+            initial_paid=running_paid,
+        )
+        allocation["non_affecte"] = unapplied
+        if current.pk == paiement.pk:
+            target_allocation = allocation
+    return target_allocation

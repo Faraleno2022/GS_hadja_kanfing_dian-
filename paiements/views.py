@@ -34,6 +34,12 @@ from ecole_moderne.pdf_utils import draw_logo_watermark
 from ecole_moderne.security_decorators import require_school_object
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance, TwilioInboundMessage
+from .allocation import (
+    ALLOCATION_COMPONENTS,
+    allocate_amount_sequentially,
+    get_payment_allocation,
+    registration_kind_for_type,
+)
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from eleves.utils_annee import get_annee_active
 from .forms import PaiementForm, PaiementModificationForm, EcheancierForm, RechercheForm
@@ -79,19 +85,32 @@ from .notifications import (
     send_retard_notification,
 )
 
-def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None, prefer_reinscription: bool = False) -> "EcheancierPaiement":
+def ensure_echeancier_for_eleve(
+    eleve: "Eleve",
+    *,
+    created_by=None,
+    prefer_reinscription: bool = False,
+    registration_kind: str = None,
+) -> "EcheancierPaiement":
     """Crée (silencieusement) un `EcheancierPaiement` pour l'élève s'il n'existe pas.
 
     - Utilise `eleves.GrilleTarifaire` pour pré-remplir les montants dus et l'année scolaire
     - Définit des dates d'échéance par défaut: inscription=today, T1=15/01, T2=15/03, T3=15/05
     - Retourne l'échéancier existant ou nouvellement créé
     """
-    try:
-        ech = getattr(eleve, 'echeancier', None)
-    except Exception:
-        ech = None
+    # Ne jamais réutiliser ni modifier l'échéancier d'une autre année. C'est
+    # indispensable après un transfert ou un passage en année supérieure.
+    annee_cible = getattr(getattr(eleve, 'classe', None), 'annee_scolaire', None)
+    if not annee_cible:
+        annee_cible = school_year_from_date(timezone.localdate())
+    ech = EcheancierPaiement.objects.filter(
+        eleve=eleve,
+        annee_scolaire=annee_cible,
+    ).first()
 
-    # Si un échéancier existe mais semble vide (tous les dues = 0), on tentera de le renseigner via la grille
+    # Si un échéancier existe mais semble vide (tous les dus = 0), on tentera de le renseigner via la grille.
+    # Un type inscription/réinscription explicite doit néanmoins pouvoir corriger le tarif déjà initialisé.
+    existing_has_due = False
     if ech is not None:
         try:
             total_du_exist = int((ech.frais_inscription_du or 0) + (ech.tranche_1_due or 0) + (ech.tranche_2_due or 0) + (ech.tranche_3_due or 0))
@@ -398,8 +417,8 @@ def ajax_montant_suggere(request):
         logging.getLogger(__name__).exception("ajax_montant_suggere failed")
         return JsonResponse({'ok': False, 'error': 'Erreur interne'}, status=500)
 
-def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
-    """Alloue intelligemment le montant d'un paiement dans l'échéancier de l'élève.
+def _allocate_payment_to_echeancier(paiement: "Paiement"):
+    """Affecte un paiement dans l'ordre inscription -> T1 -> T2 -> T3.
 
     Règles:
     - Commencer au poste visé par le type de paiement
@@ -412,8 +431,9 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
 
     try:
         eleve = paiement.eleve
+        type_name = getattr(paiement.type_paiement, 'nom', '') or ''
+        registration_kind = registration_kind_for_type(type_name)
 
-        # Tout le bloc d'allocation est atomique avec verrouillage (select_for_update)
         with transaction.atomic():
             # Verrouiller l'échéancier pour éviter les écritures concurrentes
             ech = EcheancierPaiement.objects.select_for_update().filter(
@@ -430,7 +450,7 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
                 logging.getLogger(__name__).error(
                     "Impossible de créer/verrouiller l'échéancier pour l'élève %s", eleve.id
                 )
-                return
+                return None
 
             if paiement.annee_scolaire != ech.annee_scolaire:
                 logging.getLogger(__name__).info(
@@ -456,7 +476,7 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
                 )
                 ech = EcheancierPaiement.objects.select_for_update().get(pk=ech.pk)
 
-            _allocation, updated_paid, remaining = allocate_amount(
+            allocation, updated_paid, remaining = allocate_amount(
                 montant,
                 echeancier_dues(ech),
                 echeancier_paid(ech),
@@ -480,26 +500,27 @@ def _allocate_payment_to_echeancier(paiement: "Paiement") -> None:
             if changed:
                 ech.save()
 
-                # Mettre à jour le statut/global de l'échéancier après allocation
-                try:
-                    _auto_validate_echeancier_for_eleve(eleve)
-                except Exception:
-                    logging.getLogger(__name__).exception("Auto-validation après allocation")
-
-            # Log pour debug si montant non alloué
-            if remaining > _ZERO:
+            if remaining > 0:
                 logging.getLogger(__name__).warning(
-                    "Allocation incomplète: %s GNF non alloués pour paiement %s "
-                    "(élève %s, type '%s')",
-                    remaining, paiement.id, eleve.id, type_nom
+                    "Allocation incomplète: %s GNF non alloués pour paiement %s (élève %s, type '%s')",
+                    remaining,
+                    paiement.id,
+                    eleve.id,
+                    type_name,
                 )
 
+            # Éviter qu'une relation OneToOne mise en cache masque les cumuls sauvés.
+            eleve._state.fields_cache.pop('echeancier', None)
+            _auto_validate_echeancier_for_eleve(eleve)
+            allocation['non_affecte'] = remaining
+            return allocation
     except Exception:
         logging.getLogger(__name__).exception("Erreur allocation paiement -> échéancier")
+        return None
 
-def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaiement" = None) -> None:
+def _allocate_combined_payment(paiement: "Paiement", echeancier: "EcheancierPaiement" = None):
     """CompatibilitÃ© avec les anciens tests et appels internes."""
-    _allocate_payment_to_echeancier(paiement)
+    return _allocate_payment_to_echeancier(paiement)
 
 
 def _sum_validated_payments_and_remises(eleve):
@@ -644,6 +665,7 @@ def twilio_status_callback(request):
 # ---------------------------------------------------------------
 # Tableau de bord Paiements – statistiques réelles + listes
 # ---------------------------------------------------------------
+
 
 def _compute_stats(user):
     """Calcule les statistiques affichées sur le tableau de bord en respectant l'école de l'utilisateur (sauf admin).
@@ -956,9 +978,12 @@ def liste_paiements(request):
     if annee_affichee:
         try:
             saisie_recente = timezone.now() - timedelta(days=30)
+            eleves_suivis = EcheancierPaiement.objects.filter(
+                annee_scolaire=annee_affichee
+            ).values('eleve_id')
             hors_annee_qs = filter_by_user_school(
                 Paiement.objects.filter(
-                    Q(eleve__echeancier__annee_scolaire=annee_affichee)
+                    Q(eleve_id__in=eleves_suivis)
                     | Q(date_creation__gte=saisie_recente)
                 ).exclude(annee_scolaire=annee_affichee).exclude(statut='ANNULE'),
                 request.user, 'eleve__classe__ecole'
@@ -1368,6 +1393,7 @@ def detail_paiement(request, paiement_id:int):
     Contexte pour `templates/paiements/detail_paiement.html`:
       - titre_page: str
       - paiement: instance `Paiement`
+      - paiements_eleve: historique de tous les paiements du même élève
       - is_admin: bool
       - user_permissions: dict avec `can_validate_payments`
     """
@@ -1377,6 +1403,15 @@ def detail_paiement(request, paiement_id:int):
     )
     paiement_qs = filter_by_user_school(paiement_qs, request.user, 'eleve__classe__ecole')
     paiement = get_object_or_404(paiement_qs, pk=paiement_id)
+
+    # Historique complet du même élève. Le paiement courant a déjà été contrôlé
+    # par école, donc tous les paiements de cet élève appartiennent au même périmètre.
+    paiements_eleve = (
+        Paiement.objects
+        .filter(eleve=paiement.eleve)
+        .select_related('type_paiement', 'mode_paiement')
+        .order_by('-date_paiement', '-date_creation', '-id')
+    )
 
     # Préparer les informations de permissions utilisées dans le template
     try:
@@ -1429,6 +1464,7 @@ def detail_paiement(request, paiement_id:int):
     context = {
         'titre_page': f"Détail du paiement #{paiement.id}",
         'paiement': paiement,
+        'paiements_eleve': paiements_eleve,
         'is_admin': user_is_admin(request.user) if request.user.is_authenticated else False,
         'user_permissions': perms_ctx,
         'is_comptable': is_comptable_flag,
@@ -1477,7 +1513,7 @@ def ajouter_paiement(request, eleve_id:int=None):
             type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
             prefer_reinscription = is_reinscription_payment(type_nom)
             try:
-                ech = getattr(paiement.eleve, 'echeancier', None)
+                ech = paiement.echeancier_annuel
             except Exception:
                 ech = None
             if not ech or prefer_reinscription:
@@ -1501,7 +1537,6 @@ def ajouter_paiement(request, eleve_id:int=None):
                 })
 
             # 1) Validation du montant saisi vs montant du type de paiement
-            type_nom = (getattr(paiement.type_paiement, 'nom', '') or '').strip().lower()
             try:
                 situation_avant = situation_echeancier(ech)
                 fi_due = int(situation_avant['dues'][INSCRIPTION])
@@ -1562,10 +1597,13 @@ def ajouter_paiement(request, eleve_id:int=None):
                     # anti-surpaiement par groupe et le plafond global empêcheront tout excès réel.
                     pass
 
-            # 2) Bloquer si la tranche ciblée est déjà soldée ou risque de sur-paiement
+            # Les excédents sont reportés automatiquement jusqu'à la dernière tranche.
+            # Ces anciens contrôles par poste sont conservés désactivés; le plafond
+            # global situé après ce bloc empêche toujours un véritable surpaiement.
+            cascade_allocation_enabled = True
             
             # Vérification pour l'inscription (seulement si type = inscription seule, pas combiné)
-            if ('inscription' in type_nom) and not (
+            if (not cascade_allocation_enabled) and ('inscription' in type_nom) and not (
                 'tranche' in type_nom or 'annuel' in type_nom
             ):
                 if (
@@ -1615,7 +1653,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     })
             
             # Vérification pour Tranche 1 + Tranche 2
-            elif ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom):
                 # Vérifier si les deux tranches sont complètement soldées
                 if (
                     ((t1_due > 0) and (t1_payee >= t1_due))
@@ -1663,7 +1701,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     })
             
             # Vérification pour Tranche 2 + Tranche 3
-            elif ('tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom):
                 # Vérifier si les deux tranches sont complètement soldées
                 if ((t2_due > 0) and (t2_payee >= t2_due)) and ((t3_due > 0) and (t3_payee >= t3_due)):
                     from django.utils.safestring import mark_safe
@@ -1703,7 +1741,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     })
             
             # Vérification pour Tranche 1 + Tranche 2 + Tranche 3
-            elif ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
                 # Vérifier si les trois tranches sont complètement soldées
                 if ((t1_due > 0) and (t1_payee >= t1_due)) and ((t2_due > 0) and (t2_payee >= t2_due)) and ((t3_due > 0) and (t3_payee >= t3_due)):
                     from django.utils.safestring import mark_safe
@@ -1744,7 +1782,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                     })
 
             # Vérification pour la 1ère tranche
-            elif ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 1' in type_nom or '1ère tranche' in type_nom or '1ere tranche' in type_nom):
                 # Bloquer uniquement si complètement soldée
                 if (
                     (t1_due > 0)
@@ -1769,7 +1807,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                 # unique, qui montre la répartition réelle sur T2/T3.
 
             # Vérification pour la 2ème tranche
-            elif ('tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 2' in type_nom or '2ème tranche' in type_nom or '2eme tranche' in type_nom):
                 # Bloquer uniquement si complètement soldée
                 if (
                     (t2_due > 0)
@@ -1794,7 +1832,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                 # ne trouverait aucune tranche suivante.
 
             # Vérification pour la 3ème tranche
-            elif ('tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom):
+            elif (not cascade_allocation_enabled) and ('tranche 3' in type_nom or '3ème tranche' in type_nom or '3eme tranche' in type_nom):
                 # Bloquer uniquement si complètement soldée
                 if (t3_due > 0) and (t3_payee >= t3_due):
                     from django.utils.safestring import mark_safe
@@ -1962,8 +2000,9 @@ def ajouter_paiement(request, eleve_id:int=None):
                     f"{paiement_partiel_info['montant_saisi']:,} GNF sur {paiement_partiel_info['montant_attendu']:,} GNF "
                     f"attendus (reste {reste:,} GNF)."
                 )
-            # Rediriger vers la page échéancier de l'élève
-            return redirect('paiements:echeancier_eleve', eleve_id=paiement.eleve_id)
+            # Le détail permet d'appliquer une remise, d'envoyer une relance puis
+            # de valider immédiatement le paiement avant de poursuivre les inscriptions.
+            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire.")
     else:
@@ -2113,6 +2152,17 @@ def valider_paiement(request, paiement_id:int):
         logging.getLogger(__name__).exception("Erreur lors de l'envoi du reçu après validation")
 
     messages.success(request, "Paiement validé avec succès.")
+
+    # Dans le parcours « nouvel élève », revenir automatiquement au formulaire
+    # d'inscription afin d'enchaîner avec l'élève suivant. Les validations lancées
+    # depuis les autres écrans conservent leur redirection vers le détail du paiement.
+    nouvel_eleve_id = request.session.get('nouvel_eleve_paiement_id')
+    if str(nouvel_eleve_id or '') == str(paiement.eleve_id):
+        request.session.pop('nouvel_eleve_paiement_id', None)
+        request.session.modified = True
+        messages.info(request, "Vous pouvez maintenant ajouter un nouvel élève.")
+        return redirect('eleves:ajouter_eleve')
+
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
 @login_required
@@ -2670,6 +2720,11 @@ def generer_recu_pdf(request, paiement_id:int):
     # Valider/synchroniser l'échéancier de l'élève avant génération du reçu
     try:
         with transaction.atomic():
+            ensure_echeancier_for_eleve(
+                paiement.eleve,
+                created_by=getattr(paiement, 'cree_par', None),
+                registration_kind=registration_kind_for_type(paiement.type_paiement),
+            )
             _auto_validate_echeancier_for_eleve(paiement.eleve)
     except Exception:
         logging.getLogger(__name__).exception("Validation automatique de l'échéancier avant reçu échouée")
@@ -2697,7 +2752,7 @@ def generer_recu_pdf(request, paiement_id:int):
     except Exception:
         _type_nom = ''
     try:
-        _nature_frais = paiement.eleve.echeancier.nature_frais
+        _nature_frais = paiement.echeancier_annuel.nature_frais
     except Exception:
         _nature_frais = ''
     label_insc = "Réinscription" if (
@@ -2937,7 +2992,7 @@ def generer_recu_pdf(request, paiement_id:int):
             draw_line(f"Observations : {obs}")
     # Calculer le montant global annuel à payer
     try:
-        echeancier = getattr(paiement.eleve, 'echeancier', None)
+        echeancier = paiement.echeancier_annuel
         if echeancier:
             montant_global_annuel = int(
                 (echeancier.frais_inscription_du or 0) +
@@ -2960,22 +3015,25 @@ def generer_recu_pdf(request, paiement_id:int):
 
     if remises_total and int(remises_total) > 0:
         draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
-    # Montant net (jamais négatif)
-    montant_net = max(0, int(montant_brut_recu - (remises_total or 0)))
+    # Le montant réellement encaissé est déjà stocké net lorsque l'option
+    # « Déduire la remise du montant du reçu » a été choisie. Sans cette option,
+    # soustraire encore la remise afficherait à tort un encaissement inférieur.
+    montant_net = max(0, int(paiement.montant or 0))
     draw_line(f"Montant net payé : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
 
     # Affectation lisible du paiement courant. Une remise non déduite du reçu
     # reste affichée dans le bloc « Remises appliquées » et ne doit pas glisser
     # visuellement sur la tranche suivante.
     try:
-        echeancier_for_alloc = getattr(paiement.eleve, 'echeancier', None)
+        echeancier_for_alloc = paiement.echeancier_annuel
     except Exception:
         echeancier_for_alloc = None
     if echeancier_for_alloc:
         try:
-            current_allocation = situation_echeancier(
-                echeancier_for_alloc
-            )['allocations_affichees'].get(paiement.id)
+            situation_allocation = situation_echeancier(echeancier_for_alloc)
+            current_allocation = situation_allocation.get(
+                'allocations_affichees', situation_allocation['allocations']
+            ).get(paiement.id)
             if current_allocation:
                 top -= 6
                 draw_line("Affectation du paiement", bold=True)
@@ -3001,7 +3059,7 @@ def generer_recu_pdf(request, paiement_id:int):
 
     # Échéances (si disponibles sur l'échéancier de l'élève)
     try:
-        echeancier = getattr(paiement.eleve, 'echeancier', None)
+        echeancier = paiement.echeancier_annuel
     except Exception:
         echeancier = None
     if echeancier:
@@ -3976,7 +4034,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
             excedent_prevu = Decimal('0')
             if not deduire and montant_effectif > 0:
                 try:
-                    situation = situation_echeancier(paiement.eleve.echeancier)
+                    situation = situation_echeancier(paiement.echeancier_annuel)
                     couverture_prevue = (
                         situation['total_encaisse']
                         + situation['total_remises']
@@ -4484,7 +4542,7 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
 
 @login_required
 def generer_toutes_notes_rappel_pdf(request):
-    """Génère les notes de rappel PDF pour TOUS les élèves avec impayés (toutes classes)."""
+    """Génère les notes de rappel PDF pour tous les élèves avec impayés."""
     from .note_rappel_generator import generer_note_rappel_eleve
 
     # Permissions

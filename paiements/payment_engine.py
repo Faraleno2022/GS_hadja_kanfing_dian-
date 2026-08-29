@@ -107,14 +107,18 @@ def realigner_annees_paiements(Paiement, EcheancierPaiement):
     reçu. Seuls ces versements-là sont réétiquetés ; aucune autre année n'est
     touchée. Retourne le nombre de paiements corrigés.
     """
-    annees_attendues = dict(
-        EcheancierPaiement.objects.values_list('eleve_id', 'annee_scolaire')
-    )
+    annees_par_eleve = {}
+    for eleve_id, annee in EcheancierPaiement.objects.values_list(
+        'eleve_id', 'annee_scolaire'
+    ):
+        annees_par_eleve.setdefault(eleve_id, set()).add(annee)
     corriges = 0
     for paiement in Paiement.objects.exclude(annee_scolaire='').iterator():
-        attendue = annees_attendues.get(paiement.eleve_id)
         date_paiement = paiement.date_paiement
-        if not attendue or not date_paiement:
+        if not date_paiement:
+            continue
+        attendue = school_year_from_date(date_paiement)
+        if attendue not in annees_par_eleve.get(paiement.eleve_id, set()):
             continue
         if paiement.annee_scolaire == attendue:
             continue
@@ -301,30 +305,6 @@ def paiements_valides_echeancier(echeancier, date_limite=None):
     return qs.order_by('date_validation', 'id')
 
 
-def montant_affectable_sans_report_remise(paiement):
-    """Montant à montrer dans les colonnes de tranches et sur le reçu.
-
-    Une remise non déduite laisse le reçu au brut. La rejouer telle quelle sur
-    les dus nets faisait glisser exactement son montant sur la tranche
-    suivante. Pour l'affichage seulement, on retire donc ces remises du montant
-    ventilé. Une remise déjà déduite ne l'est pas une seconde fois.
-    """
-    montant = max(ZERO, _decimal(getattr(paiement, 'montant', 0)))
-    try:
-        liens = list(paiement.remises.all())
-    except Exception:
-        return montant
-    non_deduites = sum(
-        (
-            max(ZERO, _decimal(lien.montant_remise))
-            for lien in liens
-            if not getattr(lien, 'deduite_du_paiement', False)
-        ),
-        ZERO,
-    )
-    return max(ZERO, montant - non_deduites)
-
-
 def paiements_annee_incoherente(echeancier, date_limite=None):
     """Paiements validés tombant dans l'année de l'échéancier mais étiquetés autrement.
 
@@ -437,16 +417,13 @@ def situation_echeancier(
         allocations, payes, non_alloues = replay_payment_allocations(
             paiements, dues_apres_remises
         )
-        montants_affichables = {
-            paiement.pk: montant_affectable_sans_report_remise(paiement)
-            for paiement in paiements
-        }
+        # Ventilation destinée aux documents remis aux familles. Les remises
+        # sont présentées dans leur rubrique dédiée et ne doivent pas donner
+        # l'impression qu'une partie du paiement a déjà glissé sur T2/T3. On
+        # rejoue donc le cash sur les dus bruts, sans modifier la ventilation
+        # comptable ci-dessus ni le solde global.
         allocations_affichees, payes_affiches, _non_alloues_affiches = (
-            replay_payment_allocations(
-                paiements,
-                dues_apres_remises,
-                amounts_by_payment=montants_affichables,
-            )
+            replay_payment_allocations(paiements, dues)
         )
     elif utiliser_cumuls_legacy:
         # Compatibilité avec les anciens dossiers importés qui ne possèdent
@@ -533,8 +510,17 @@ def recalculer_echeancier(eleve_ou_echeancier, date_reference=None):
     if isinstance(eleve_ou_echeancier, EcheancierPaiement):
         echeancier_id = eleve_ou_echeancier.pk
     else:
-        echeancier = getattr(eleve_ou_echeancier, 'echeancier', None)
-        echeancier_id = getattr(echeancier, 'pk', None)
+        annee = getattr(
+            getattr(eleve_ou_echeancier, 'classe', None),
+            'annee_scolaire',
+            None,
+        )
+        qs = EcheancierPaiement.objects.filter(eleve=eleve_ou_echeancier)
+        if annee:
+            qs = qs.filter(annee_scolaire=annee)
+        else:
+            qs = qs.order_by('-annee_scolaire', '-pk')
+        echeancier_id = qs.values_list('pk', flat=True).first()
     if not echeancier_id:
         return None
 

@@ -36,7 +36,7 @@ def _affectation_paiement(paiement: Paiement):
     """
     from .payment_engine import situation_echeancier
 
-    echeancier = getattr(paiement.eleve, "echeancier", None)
+    echeancier = paiement.echeancier_annuel
     if echeancier is None:
         return None
     return situation_echeancier(echeancier)["allocations"].get(paiement.pk)

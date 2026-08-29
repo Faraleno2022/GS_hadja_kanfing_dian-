@@ -5,6 +5,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
+        ('eleves', '0001_initial'),
         ('paiements', '0016_realigner_annee_paiements_ete'),
     ]
 
