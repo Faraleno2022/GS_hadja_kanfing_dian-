@@ -94,17 +94,66 @@ class GrilleTarifaireBus(SyncTrackedModel):
 
     def montant_pour(self, periodicite):
         return {
+            'ANNUEL': self.montant_annuel,
             'T1': self.tranche_1,
             'T2': self.tranche_2,
             'T3': self.tranche_3,
         }.get(periodicite, Decimal('0'))
 
     def echeance_pour(self, periodicite):
+        if periodicite == 'ANNUEL':
+            echeances = [
+                date_value for date_value in (
+                    self.date_echeance_tranche_1,
+                    self.date_echeance_tranche_2,
+                    self.date_echeance_tranche_3,
+                ) if date_value
+            ]
+            return max(echeances) if echeances else None
         return {
             'T1': self.date_echeance_tranche_1,
             'T2': self.date_echeance_tranche_2,
             'T3': self.date_echeance_tranche_3,
         }.get(periodicite)
+
+    def situation_paiements(self, eleve, exclude_pk=None):
+        """Répartit un paiement annuel sur T1, T2 puis T3 sans double compte."""
+        versements = AbonnementBus.objects.filter(eleve=eleve, grille=self)
+        if exclude_pk:
+            versements = versements.exclude(pk=exclude_pk)
+        directs = {
+            row['periodicite']: Decimal(row['total'] or 0)
+            for row in versements.values('periodicite').annotate(total=models.Sum('montant'))
+        }
+        annuel_restant = directs.get('ANNUEL', Decimal('0'))
+        situation = {}
+        for code, montant_du in (
+            ('T1', Decimal(self.tranche_1 or 0)),
+            ('T2', Decimal(self.tranche_2 or 0)),
+            ('T3', Decimal(self.tranche_3 or 0)),
+        ):
+            paiement_direct = directs.get(code, Decimal('0'))
+            manque = max(montant_du - paiement_direct, Decimal('0'))
+            part_annuelle = min(manque, annuel_restant)
+            annuel_restant -= part_annuelle
+            montant_paye = paiement_direct + part_annuelle
+            situation[code] = {
+                'du': montant_du,
+                'paye': montant_paye,
+                'reste': max(montant_du - montant_paye, Decimal('0')),
+            }
+        total_paye = (
+            directs.get('ANNUEL', Decimal('0'))
+            + directs.get('T1', Decimal('0'))
+            + directs.get('T2', Decimal('0'))
+            + directs.get('T3', Decimal('0'))
+        )
+        situation['ANNUEL'] = {
+            'du': Decimal(self.montant_annuel or 0),
+            'paye': total_paye,
+            'reste': max(Decimal(self.montant_annuel or 0) - total_paye, Decimal('0')),
+        }
+        return situation
 
 
 class AbonnementBus(SyncTrackedModel):
@@ -158,7 +207,13 @@ class AbonnementBus(SyncTrackedModel):
         help_text="Numéro du reçu externe, transaction Mobile Money, chèque, etc.",
     )
     montant = models.DecimalField(max_digits=10, decimal_places=0)
-    periodicite = models.CharField(max_length=10, choices=Periodicite.choices, default=Periodicite.MENSUEL)
+    periodicite = models.CharField(
+        max_length=10,
+        choices=Periodicite.choices,
+        default=Periodicite.MENSUEL,
+        verbose_name="Type de paiement / périodicité",
+        help_text="Choisissez Annuel pour régler la totalité des trois tranches.",
+    )
     date_debut = models.DateField(default=timezone.localdate)
     date_expiration = models.DateField(db_index=True)
     statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.ACTIF, db_index=True)
@@ -277,6 +332,9 @@ class AbonnementCantine(SyncTrackedModel):
         DEJEUNER = 'DEJEUNER', 'Déjeuner uniquement'
         GOUTER = 'GOUTER', 'Goûter uniquement'
         COMPLET = 'COMPLET', 'Déjeuner + Goûter'
+        REPAS_10H = 'REPAS_10H', 'Repas de 10 h'
+        REPAS_14H = 'REPAS_14H', 'Repas de 14 h'
+        REPAS_10H_14H = 'REPAS_10H_14H', 'Repas de 10 h + 14 h'
     
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='abonnements_cantine')
     montant = models.DecimalField(max_digits=10, decimal_places=0, verbose_name="Montant (GNF)")
@@ -286,8 +344,19 @@ class AbonnementCantine(SyncTrackedModel):
         verbose_name="Référence externe du paiement",
         help_text="Numéro du reçu externe, transaction Mobile Money, chèque, etc.",
     )
-    periodicite = models.CharField(max_length=15, choices=Periodicite.choices, default=Periodicite.MENSUEL)
-    type_repas = models.CharField(max_length=10, choices=TypeRepas.choices, default=TypeRepas.DEJEUNER)
+    periodicite = models.CharField(
+        max_length=15,
+        choices=Periodicite.choices,
+        default=Periodicite.MENSUEL,
+        verbose_name="Type de paiement / périodicité",
+    )
+    type_repas = models.CharField(
+        max_length=20,
+        choices=TypeRepas.choices,
+        default=TypeRepas.DEJEUNER,
+        verbose_name="Type ou horaire du repas",
+        help_text="Créneau de repas choisi pour l'élève.",
+    )
     
     date_debut = models.DateField(default=timezone.localdate, verbose_name="Date de début")
     date_expiration = models.DateField(db_index=True, verbose_name="Date d'expiration")

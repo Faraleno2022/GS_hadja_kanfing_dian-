@@ -1,9 +1,52 @@
 from django import forms
-from django.db.models import Sum
 
+from eleves.models import Classe, Eleve
 from paiements.models import ModePaiement
 
 from .models import AbonnementBus, AbonnementCantine, GrilleTarifaireBus
+
+
+class EleveAbonnementChoiceField(forms.ModelChoiceField):
+    """Affiche le matricule avant le prénom et le nom dans les listes."""
+
+    def label_from_instance(self, eleve):
+        matricule = eleve.matricule or "Sans matricule"
+        return f"{matricule} — {eleve.prenom} {eleve.nom}"
+
+
+class ClasseAbonnementChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, classe):
+        ecole = getattr(classe, 'ecole', None)
+        return f"{classe.nom} — {ecole.nom}" if ecole else classe.nom
+
+
+def _configurer_selection_eleve(form, ecole=None):
+    classes = Classe.objects.select_related('ecole')
+    eleves = Eleve.objects.select_related('classe', 'classe__ecole')
+    if ecole:
+        classes = classes.filter(ecole=ecole)
+        eleves = eleves.filter(classe__ecole=ecole)
+    form.fields['classe'].queryset = classes.order_by(
+        'ecole__nom', 'nom', '-annee_scolaire'
+    )
+    form.fields['eleve'].queryset = eleves.order_by(
+        'classe__nom', 'nom', 'prenom', 'matricule'
+    )
+    form.fields['classe'].empty_label = "Toutes les classes"
+    form.fields['eleve'].empty_label = "Sélectionner un élève"
+
+    eleve_initial = form.initial.get('eleve')
+    if getattr(form.instance, 'pk', None) and getattr(form.instance, 'eleve_id', None):
+        eleve_initial = form.instance.eleve
+    if eleve_initial:
+        if not isinstance(eleve_initial, Eleve):
+            try:
+                eleve_initial = eleves.get(pk=eleve_initial)
+            except (Eleve.DoesNotExist, TypeError, ValueError):
+                eleve_initial = None
+        if eleve_initial and eleve_initial.classe_id:
+            form.fields['classe'].initial = eleve_initial.classe_id
+            form.initial.setdefault('classe', eleve_initial.classe_id)
 
 
 class GrilleTarifaireBusForm(forms.ModelForm):
@@ -57,14 +100,25 @@ class GrilleTarifaireBusForm(forms.ModelForm):
 
 
 class AbonnementBusForm(forms.ModelForm):
+    classe = ClasseAbonnementChoiceField(
+        queryset=Classe.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Filtrer par classe",
+    )
+    eleve = EleveAbonnementChoiceField(
+        queryset=Eleve.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Élève",
+    )
+
     class Meta:
         model = AbonnementBus
         fields = [
-            'eleve', 'grille', 'periodicite', 'montant', 'date_debut',
+            'classe', 'eleve', 'grille', 'periodicite', 'montant', 'date_debut',
             'mode_paiement', 'reference_externe', 'observations',
         ]
         widgets = {
-            'eleve': forms.Select(attrs={'class': 'form-select'}),
             'grille': forms.Select(attrs={'class': 'form-select'}),
             'periodicite': forms.Select(attrs={'class': 'form-select'}),
             'montant': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
@@ -80,10 +134,7 @@ class AbonnementBusForm(forms.ModelForm):
     def __init__(self, *args, ecole=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.ecole_autorisee = ecole
-        if ecole:
-            self.fields['eleve'].queryset = self.fields['eleve'].queryset.filter(
-                classe__ecole=ecole
-            ).select_related('classe', 'classe__ecole')
+        _configurer_selection_eleve(self, ecole)
         grilles = GrilleTarifaireBus.objects.filter(actif=True).select_related('ecole')
         if ecole:
             grilles = grilles.filter(ecole=ecole)
@@ -95,13 +146,14 @@ class AbonnementBusForm(forms.ModelForm):
         self.fields['grille'].empty_label = "Sélectionner la zone et l'année"
         self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True).order_by('nom')
         self.fields['date_debut'].label = "Date du paiement"
-        self.fields['periodicite'].label = "Type / tranche"
+        self.fields['periodicite'].label = "Type de paiement / tranche"
         self.fields['periodicite'].choices = [
+            (AbonnementBus.Periodicite.ANNUEL, "Annuel — totalité des 3 tranches"),
             (AbonnementBus.Periodicite.TRANCHE_1, "1ère tranche"),
             (AbonnementBus.Periodicite.TRANCHE_2, "2ème tranche"),
             (AbonnementBus.Periodicite.TRANCHE_3, "3ème tranche"),
         ]
-        if self.instance and self.instance.pk and self.instance.periodicite not in {'T1', 'T2', 'T3'}:
+        if self.instance and self.instance.pk and self.instance.periodicite not in {'ANNUEL', 'T1', 'T2', 'T3'}:
             self.fields['periodicite'].choices = [
                 (self.instance.periodicite, self.instance.get_periodicite_display()),
                 *self.fields['periodicite'].choices,
@@ -114,12 +166,16 @@ class AbonnementBusForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         eleve = cleaned.get('eleve')
+        classe = cleaned.get('classe')
         grille = cleaned.get('grille')
         periodicite = cleaned.get('periodicite')
         montant = cleaned.get('montant')
 
         if montant is not None and montant <= 0:
             self.add_error('montant', "Le montant du paiement doit être supérieur à zéro.")
+
+        if classe and eleve and eleve.classe_id != classe.pk:
+            self.add_error('eleve', "L'élève sélectionné n'appartient pas à cette classe.")
 
         if not grille and not (self.instance and self.instance.pk):
             self.add_error('grille', "Sélectionnez une grille tarifaire bus.")
@@ -132,38 +188,43 @@ class AbonnementBusForm(forms.ModelForm):
             if self.ecole_autorisee and grille.ecole_id != self.ecole_autorisee.pk:
                 self.add_error('grille', "Cette grille n'appartient pas à votre école.")
 
-        if grille and eleve and periodicite in {'T1', 'T2', 'T3'} and montant is not None:
-            deja_paye = (
-                AbonnementBus.objects.filter(
-                    eleve=eleve,
-                    grille=grille,
-                    periodicite=periodicite,
-                )
-                .exclude(pk=self.instance.pk if self.instance and self.instance.pk else None)
-                .aggregate(total=Sum('montant'))['total']
-                or 0
+        if grille and eleve and periodicite in {'ANNUEL', 'T1', 'T2', 'T3'} and montant is not None:
+            situation = grille.situation_paiements(
+                eleve,
+                exclude_pk=self.instance.pk if self.instance and self.instance.pk else None,
             )
-            reste = max(grille.montant_pour(periodicite) - deja_paye, 0)
+            reste = situation[periodicite]['reste']
             if montant > reste:
                 self.add_error(
                     'montant',
-                    f"Le montant dépasse le reste de cette tranche ({reste:,.0f} GNF).".replace(',', ' '),
+                    f"Le montant dépasse le reste à payer ({reste:,.0f} GNF).".replace(',', ' '),
                 )
         return cleaned
 
 
 class AbonnementCantineForm(forms.ModelForm):
+    classe = ClasseAbonnementChoiceField(
+        queryset=Classe.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Filtrer par classe",
+    )
+    eleve = EleveAbonnementChoiceField(
+        queryset=Eleve.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Élève",
+    )
+
     class Meta:
         model = AbonnementCantine
         fields = [
-            'eleve', 'montant', 'periodicite', 'type_repas', 'date_debut', 'date_expiration', 
+            'classe', 'eleve', 'montant', 'periodicite', 'type_repas', 'date_debut', 'date_expiration',
             'statut', 'alerte_avant_jours', 'regime_alimentaire', 'allergies', 
             'contact_parent', 'reference_externe', 'observations'
         ]
         widgets = {
             'date_debut': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'date_expiration': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'eleve': forms.Select(attrs={'class': 'form-control'}),
             'montant': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': 'Montant en GNF'}),
             'periodicite': forms.Select(attrs={'class': 'form-control'}),
             'type_repas': forms.Select(attrs={'class': 'form-control'}),
@@ -178,3 +239,20 @@ class AbonnementCantineForm(forms.ModelForm):
             }),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, ecole=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ecole_autorisee = ecole
+        _configurer_selection_eleve(self, ecole)
+
+    def clean(self):
+        cleaned = super().clean()
+        classe = cleaned.get('classe')
+        eleve = cleaned.get('eleve')
+        if classe and eleve and eleve.classe_id != classe.pk:
+            self.add_error('eleve', "L'élève sélectionné n'appartient pas à cette classe.")
+        if self.ecole_autorisee and eleve:
+            ecole_eleve_id = getattr(getattr(eleve, 'classe', None), 'ecole_id', None)
+            if ecole_eleve_id != self.ecole_autorisee.pk:
+                self.add_error('eleve', "Cet élève n'appartient pas à votre école.")
+        return cleaned

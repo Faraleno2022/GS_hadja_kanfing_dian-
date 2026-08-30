@@ -263,8 +263,8 @@ def tarif_bus_json(request):
         return JsonResponse({'success': False, 'message': 'Paramètres invalides.'}, status=400)
 
     periodicite = request.GET.get('periodicite', '')
-    if periodicite not in {'T1', 'T2', 'T3'}:
-        return JsonResponse({'success': False, 'message': 'Tranche invalide.'}, status=400)
+    if periodicite not in {'ANNUEL', 'T1', 'T2', 'T3'}:
+        return JsonResponse({'success': False, 'message': 'Type de paiement invalide.'}, status=400)
 
     eleves = Eleve.objects.select_related('classe', 'classe__ecole')
     grilles = GrilleTarifaireBus.objects.all()
@@ -277,17 +277,12 @@ def tarif_bus_json(request):
     if getattr(eleve.classe, 'ecole_id', None) != grille.ecole_id:
         return JsonResponse({'success': False, 'message': "La grille ne correspond pas à l'école de l'élève."}, status=400)
 
-    versements = AbonnementBus.objects.filter(
-        eleve=eleve,
-        grille=grille,
-        periodicite=periodicite,
-    )
     modifier_id = request.GET.get('exclure')
-    if modifier_id and modifier_id.isdigit():
-        versements = versements.exclude(pk=int(modifier_id))
-    du = grille.montant_pour(periodicite)
-    paye = versements.aggregate(total=Sum('montant'))['total'] or 0
-    reste = max(du - paye, 0)
+    exclude_pk = int(modifier_id) if modifier_id and modifier_id.isdigit() else None
+    situation = grille.situation_paiements(eleve, exclude_pk=exclude_pk)[periodicite]
+    du = situation['du']
+    paye = situation['paye']
+    reste = situation['reste']
     echeance = grille.echeance_pour(periodicite)
     return JsonResponse({
         'success': True,
@@ -334,14 +329,6 @@ def abonnement_create(request):
     else:
         form = AbonnementBusForm(initial=initial, ecole=ecole)
 
-    # Sécurité : filtrer les élèves par école de l'utilisateur
-    if not user_is_superadmin(request.user):
-        form.fields['eleve'].queryset = filter_by_user_school(
-            Eleve.objects.all(),
-            request.user,
-            'classe__ecole'
-        )
-
     return render(request, 'bus/form.html', {
         'form': form,
         'titre_page': 'Nouveau paiement Bus',
@@ -367,14 +354,6 @@ def abonnement_edit(request, abo_id):
             return redirect('bus:liste')
     else:
         form = AbonnementBusForm(instance=abo, ecole=ecole)
-
-    # Sécurité : filtrer les élèves par école de l'utilisateur
-    if not user_is_superadmin(request.user):
-        form.fields['eleve'].queryset = filter_by_user_school(
-            Eleve.objects.all(),
-            request.user,
-            'classe__ecole'
-        )
 
     return render(request, 'bus/form.html', {
         'form': form,
@@ -628,20 +607,15 @@ def generer_recu_abonnement_pdf(request, abo_id):
 
         total_du = 0
         total_paye = 0
+        situation_grille = abo.grille.situation_paiements(abo.eleve)
         tranche_defs = [
             ('T1', 'Tranche 1', abo.grille.tranche_1, abo.grille.date_echeance_tranche_1),
             ('T2', 'Tranche 2', abo.grille.tranche_2, abo.grille.date_echeance_tranche_2),
             ('T3', 'Tranche 3', abo.grille.tranche_3, abo.grille.date_echeance_tranche_3),
         ]
         for code, label, montant_du, echeance in tranche_defs:
-            montant_paye = (
-                AbonnementBus.objects.filter(
-                    eleve=abo.eleve,
-                    grille=abo.grille,
-                    periodicite=code,
-                ).aggregate(total=Sum('montant'))['total'] or 0
-            )
-            reste = max(montant_du - montant_paye, 0)
+            montant_paye = situation_grille[code]['paye']
+            reste = situation_grille[code]['reste']
             total_du += montant_du
             total_paye += montant_paye
             if code == abo.periodicite:

@@ -16,7 +16,12 @@ import io
 from eleves.models import Eleve
 from .models import AbonnementCantine
 from .forms import AbonnementCantineForm
-from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school
+from utilisateurs.utils import (
+    filter_by_user_school,
+    user_is_admin,
+    user_is_superadmin,
+    user_school,
+)
 from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
 
@@ -62,6 +67,14 @@ def tableau_bord_cantine(request):
         'gouter': qs.filter(type_repas='GOUTER', statut='ACTIF').count(),
         'complet': qs.filter(type_repas='COMPLET', statut='ACTIF').count(),
     }
+    stats_type_repas_rows = [
+        {
+            'code': code,
+            'label': label,
+            'nombre': qs.filter(type_repas=code, statut='ACTIF').count(),
+        }
+        for code, label in AbonnementCantine.TypeRepas.choices
+    ]
     
     # Revenus mensuels estimés
     revenus_mensuel = qs.filter(
@@ -82,6 +95,7 @@ def tableau_bord_cantine(request):
         'nb_proche_expiration': len(abonnements_proche_expiration),
         'nb_critiques': len(abonnements_critiques),
         'stats_type_repas': stats_type_repas,
+        'stats_type_repas_rows': stats_type_repas_rows,
         'revenus_mensuel': revenus_mensuel,
     }
     return render(request, 'bus/cantine/tableau_bord.html', context)
@@ -142,6 +156,7 @@ def liste_abonnements_cantine(request):
         'q': q,
         'filtre': filtre,
         'type_repas': type_repas,
+        'type_repas_choices': AbonnementCantine.TypeRepas.choices,
     }
     return render(request, 'bus/cantine/liste.html', context)
 
@@ -149,34 +164,29 @@ def liste_abonnements_cantine(request):
 @login_required
 def creer_abonnement_cantine(request):
     """Créer un nouvel abonnement cantine"""
+    ecole = None if user_is_superadmin(request.user) else user_school(request.user)
+    initial = {}
+    eleve_id = request.GET.get('eleve')
+    if eleve_id:
+        eleves = Eleve.objects.select_related('classe', 'responsable_principal')
+        if ecole:
+            eleves = eleves.filter(classe__ecole=ecole)
+        try:
+            eleve = eleves.get(pk=eleve_id)
+            initial['eleve'] = eleve
+            initial['classe'] = eleve.classe_id
+            if eleve.responsable_principal:
+                initial['contact_parent'] = eleve.responsable_principal.telephone
+        except (Eleve.DoesNotExist, TypeError, ValueError):
+            pass
     if request.method == 'POST':
-        form = AbonnementCantineForm(request.POST)
+        form = AbonnementCantineForm(request.POST, ecole=ecole)
         if form.is_valid():
             abonnement = form.save()
             messages.success(request, f"Abonnement cantine créé pour {abonnement.eleve}")
             return redirect('bus:liste_abonnements_cantine')
     else:
-        form = AbonnementCantineForm()
-        
-        # Pré-remplir l'élève si fourni dans l'URL
-        eleve_id = request.GET.get('eleve')
-        if eleve_id:
-            try:
-                eleve = Eleve.objects.get(pk=eleve_id)
-                form.initial['eleve'] = eleve
-                if eleve.responsable_principal:
-                    form.initial['contact_parent'] = eleve.responsable_principal.telephone
-            except Eleve.DoesNotExist:
-                pass
-    
-    # Filtrer les élèves par école de l'utilisateur
-    # IMPORTANT: Seul le superuser peut voir toutes les écoles
-    if not user_is_superadmin(request.user):
-        form.fields['eleve'].queryset = filter_by_user_school(
-            Eleve.objects.all(), 
-            request.user, 
-            'classe__ecole'
-        )
+        form = AbonnementCantineForm(initial=initial, ecole=ecole)
     
     context = {
         'titre_page': 'Nouvel Abonnement Cantine',
@@ -190,24 +200,16 @@ def creer_abonnement_cantine(request):
 def modifier_abonnement_cantine(request, pk):
     """Modifier un abonnement cantine existant"""
     abonnement = get_object_or_404(AbonnementCantine, pk=pk)
-    
+    ecole = None if user_is_superadmin(request.user) else user_school(request.user)
+
     if request.method == 'POST':
-        form = AbonnementCantineForm(request.POST, instance=abonnement)
+        form = AbonnementCantineForm(request.POST, instance=abonnement, ecole=ecole)
         if form.is_valid():
             form.save()
             messages.success(request, f"Abonnement cantine modifié pour {abonnement.eleve}")
             return redirect('bus:liste_abonnements_cantine')
     else:
-        form = AbonnementCantineForm(instance=abonnement)
-    
-    # Filtrer les élèves par école de l'utilisateur
-    # IMPORTANT: Seul le superuser peut voir toutes les écoles
-    if not user_is_superadmin(request.user):
-        form.fields['eleve'].queryset = filter_by_user_school(
-            Eleve.objects.all(), 
-            request.user, 
-            'classe__ecole'
-        )
+        form = AbonnementCantineForm(instance=abonnement, ecole=ecole)
     
     context = {
         'titre_page': 'Modifier Abonnement Cantine',
