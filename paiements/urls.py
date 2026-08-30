@@ -24,6 +24,10 @@ urlpatterns = [
     
     # Gestion des paiements
     path('liste/', views.liste_paiements, name='liste_paiements'),
+    path('activite/modifications-suppressions/', views.historique_activite_paiements, name='historique_activite'),
+    path('admissions/<str:nature>/', views.liste_eleves_admission, name='liste_eleves_admission'),
+    path('admissions/<str:nature>/export/pdf/', views.export_eleves_admission_pdf, name='export_eleves_admission_pdf'),
+    path('admissions/<str:nature>/export/excel/', views.export_eleves_admission_excel, name='export_eleves_admission_excel'),
     path('detail/<int:paiement_id>/', views.detail_paiement, name='detail_paiement'),
     path('ajouter/', views.ajouter_paiement, name='ajouter_paiement'),
     path('ajouter/<int:eleve_id>/', views.ajouter_paiement, name='ajouter_paiement_eleve'),

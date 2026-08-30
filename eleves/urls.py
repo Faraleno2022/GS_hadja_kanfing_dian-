@@ -26,6 +26,7 @@ urlpatterns = [
     # Gestion des élèves
     path('ajouter/', views.ajouter_eleve, name='ajouter_eleve'),
     path('<int:eleve_id>/modifier/', views.modifier_eleve, name='modifier_eleve'),
+    path('<int:eleve_id>/evaluation-accueil/', views.definir_evaluation_accueil, name='definir_evaluation_accueil'),
     path('<int:eleve_id>/supprimer/', views.supprimer_eleve, name='supprimer_eleve'),
     path('supprimer-masse/', views.supprimer_eleves_masse, name='supprimer_eleves_masse'),
     
@@ -69,6 +70,8 @@ urlpatterns = [
     # Exports de tous les élèves
     path('export/tous/pdf/', views.export_tous_eleves_pdf, name='export_tous_eleves_pdf'),
     path('export/tous/excel/', views.export_tous_eleves_excel, name='export_tous_eleves_excel'),
+    path('export/test-accueil/<str:statut>/pdf/', views.export_evaluation_accueil_pdf, name='export_evaluation_accueil_pdf'),
+    path('export/test-accueil/<str:statut>/excel/', views.export_evaluation_accueil_excel, name='export_evaluation_accueil_excel'),
     
     # AJAX
     path('ajax/classes-par-ecole/<int:ecole_id>/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),

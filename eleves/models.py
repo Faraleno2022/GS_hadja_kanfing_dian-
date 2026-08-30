@@ -421,6 +421,11 @@ class Eleve(SyncTrackedModel):
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
     date_inscription = models.DateField(verbose_name="Date d'inscription", blank=True, null=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
+    evaluation_accueil_effectuee = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Évalué au test d'accueil",
+    )
     
     # Responsables
     responsable_principal = models.ForeignKey(

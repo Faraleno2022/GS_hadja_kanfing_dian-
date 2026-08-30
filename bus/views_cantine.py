@@ -102,6 +102,7 @@ def liste_abonnements_cantine(request):
             Q(eleve__nom__icontains=q) |
             Q(eleve__prenom__icontains=q) |
             Q(eleve__matricule__icontains=q) |
+            Q(reference_externe__icontains=q) |
             Q(contact_parent__icontains=q)
         )
     
@@ -264,7 +265,8 @@ def export_cantine_excel(request):
     headers = [
         'Matricule', 'Nom', 'Prénom', 'Classe', 'Type Repas', 'Périodicité', 
         'Montant (GNF)', 'Date Début', 'Date Expiration', 'Jours Restants', 
-        'Statut', 'Régime Alimentaire', 'Allergies', 'Contact Parent'
+        'Statut', 'Référence externe', 'Régime Alimentaire', 'Allergies',
+        'Contact Parent'
     ]
     ws.append(headers)
     
@@ -282,6 +284,7 @@ def export_cantine_excel(request):
             abo.date_expiration.strftime('%d/%m/%Y'),
             abo.jours_restants,
             abo.get_statut_display(),
+            abo.reference_externe or '',
             abo.regime_alimentaire or '',
             abo.allergies or '',
             abo.contact_parent or '',

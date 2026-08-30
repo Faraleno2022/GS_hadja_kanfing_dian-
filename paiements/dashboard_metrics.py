@@ -2,12 +2,17 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+import unicodedata
 
 from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from bus.models import AbonnementBus, AbonnementCantine
+from abonnements.models import (
+    AbonnementBus as AbonnementBusHistorique,
+    AbonnementCantine as AbonnementCantineHistorique,
+)
 from utilisateurs.utils import filter_by_user_school
 
 from .allocation import (
@@ -44,6 +49,27 @@ def _empty_period_values():
     }
 
 
+def _payment_service_category(payment_type):
+    """Classe les paiements de services qui ne relèvent pas de la scolarité."""
+    name = unicodedata.normalize(
+        "NFKD", getattr(payment_type, "nom", "") or ""
+    ).encode("ascii", "ignore").decode("ascii").lower()
+    if "cantine" in name:
+        return "cantine"
+    if any(token in name for token in ("bus", "transport", "abonnement")):
+        return "bus"
+    return None
+
+
+def _merge_period_values(*value_sets):
+    merged = _empty_period_values()
+    for values in value_sets:
+        for key, _label in PERIOD_LABELS:
+            merged[key]["amount"] += int(values[key]["amount"] or 0)
+            merged[key]["count"] += int(values[key]["count"] or 0)
+    return merged
+
+
 def _ordered_period_values(values):
     return [
         {
@@ -70,6 +96,8 @@ def _payment_period_metrics(user, today, starts):
     """Ventile les encaissements entre admission et tranches de scolarité."""
     categories = {
         "scolarite": _empty_period_values(),
+        "bus": _empty_period_values(),
+        "cantine": _empty_period_values(),
         "inscription": _empty_period_values(),
         "reinscription": _empty_period_values(),
     }
@@ -115,6 +143,15 @@ def _payment_period_metrics(user, today, starts):
 
     running_paid = {}
     for payment in history.iterator():
+        service_category = _payment_service_category(payment.type_paiement)
+        if service_category:
+            if payment.pk in target_ids:
+                _record_period_amount(
+                    categories[service_category], starts,
+                    payment.date_paiement, payment.montant, today,
+                )
+            continue
+
         payment_key = (payment.eleve_id, payment.annee_scolaire)
         schedule = schedules_by_key.get(payment_key)
         admission_amount = Decimal("0")
@@ -246,50 +283,80 @@ def _tuition_late_metrics(user, today):
     return {"amount": int(late_amount), "count": late_count}
 
 
-def _subscription_metrics(model, user, today, starts):
-    qs = model.objects.select_related(
-        "eleve", "eleve__classe", "eleve__classe__ecole"
-    )
-    qs = filter_by_user_school(qs, user, "eleve__classe__ecole")
+def _subscription_metrics(models, user, today, starts):
+    """Agrège les abonnements des modules courant et historique.
+
+    Le projet possède deux générations de modèles Bus/Cantine. Les écrans
+    historiques continuent à créer des données dans ``abonnements`` tandis
+    que les écrans principaux utilisent ``bus``. Le tableau financier doit
+    donc lire les deux sources.
+    """
     amount_field = DecimalField(max_digits=12, decimal_places=0)
-    aggregates = {}
-    for key, start in starts.items():
-        period_filter = Q(date_debut__gte=start, date_debut__lte=today)
-        aggregates[f"{key}_amount"] = Coalesce(
-            Sum("montant", filter=period_filter),
-            Value(0, output_field=amount_field),
-            output_field=amount_field,
-        )
-        aggregates[f"{key}_count"] = Count("id", filter=period_filter)
-    totals = qs.aggregate(**aggregates)
     values = {
-        key: {
-            "amount": int(totals.get(f"{key}_amount") or 0),
-            "count": int(totals.get(f"{key}_count") or 0),
-        }
+        key: {"amount": 0, "count": 0}
         for key, _label in PERIOD_LABELS
     }
 
     # Un élève n'est en retard que si son abonnement le plus récent est expiré.
-    # Cela évite de compter ses anciens abonnements déjà renouvelés.
+    # La comparaison couvre également un renouvellement réalisé depuis l'autre
+    # génération du module.
     latest_by_student = {}
-    for subscription in qs.order_by(
-        "eleve_id", "-date_expiration", "-created_at", "-pk"
-    ).iterator():
-        latest_by_student.setdefault(subscription.eleve_id, subscription)
-    suspended_status = getattr(model.Statut, "SUSPENDU", "SUSPENDU")
-    expired_status = getattr(model.Statut, "EXPIRE", "EXPIRE")
+    for model in models:
+        qs = model.objects.select_related(
+            "eleve", "eleve__classe", "eleve__classe__ecole"
+        )
+        qs = filter_by_user_school(qs, user, "eleve__classe__ecole")
+
+        aggregates = {}
+        for key, start in starts.items():
+            period_filter = Q(date_debut__gte=start, date_debut__lte=today)
+            aggregates[f"{key}_amount"] = Coalesce(
+                Sum("montant", filter=period_filter),
+                Value(0, output_field=amount_field),
+                output_field=amount_field,
+            )
+            aggregates[f"{key}_count"] = Count("id", filter=period_filter)
+        totals = qs.aggregate(**aggregates)
+        for key, _label in PERIOD_LABELS:
+            values[key]["amount"] += int(
+                totals.get(f"{key}_amount") or 0
+            )
+            values[key]["count"] += int(
+                totals.get(f"{key}_count") or 0
+            )
+
+        end_field = (
+            "date_expiration"
+            if hasattr(model, "date_expiration")
+            else "date_fin"
+        )
+        for subscription in qs.iterator():
+            end_date = getattr(subscription, end_field, None)
+            sort_key = (
+                end_date or date.min,
+                getattr(subscription, "date_debut", None) or date.min,
+                subscription.pk or 0,
+            )
+            current = latest_by_student.get(subscription.eleve_id)
+            if current is None or sort_key > current[0]:
+                latest_by_student[subscription.eleve_id] = (
+                    sort_key, subscription, end_date
+                )
+
     late_subscriptions = [
-        subscription
-        for subscription in latest_by_student.values()
-        if subscription.statut != suspended_status
+        (subscription, end_date)
+        for _sort_key, subscription, end_date in latest_by_student.values()
+        if subscription.statut != "SUSPENDU"
         and (
-            subscription.date_expiration < today
-            or subscription.statut == expired_status
+            (end_date is not None and end_date < today)
+            or subscription.statut == "EXPIRE"
         )
     ]
     late = {
-        "amount": sum(int(item.montant or 0) for item in late_subscriptions),
+        "amount": sum(
+            int(subscription.montant or 0)
+            for subscription, _end_date in late_subscriptions
+        ),
         "count": len(late_subscriptions),
     }
     return values, late
@@ -301,10 +368,14 @@ def build_payment_dashboard_metrics(user, today=None):
     starts = _period_starts(today)
     payment_metrics = _payment_period_metrics(user, today, starts)
     bus_values, bus_late = _subscription_metrics(
-        AbonnementBus, user, today, starts
+        (AbonnementBus, AbonnementBusHistorique), user, today, starts
     )
     cantine_values, cantine_late = _subscription_metrics(
-        AbonnementCantine, user, today, starts
+        (AbonnementCantine, AbonnementCantineHistorique), user, today, starts
+    )
+    bus_values = _merge_period_values(bus_values, payment_metrics["bus"])
+    cantine_values = _merge_period_values(
+        cantine_values, payment_metrics["cantine"]
     )
 
     return {

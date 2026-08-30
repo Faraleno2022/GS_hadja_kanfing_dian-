@@ -156,8 +156,8 @@ class EcoleAdmin(admin.ModelAdmin):
 class EleveAdmin(admin.ModelAdmin):
     """Gestion des élèves. Toute suppression passe par la corbeille."""
 
-    list_display = ("matricule", "prenom", "nom", "sexe", "classe", "statut", "date_inscription")
-    list_filter = ("statut", "sexe", "classe__ecole", "classe__annee_scolaire", "classe")
+    list_display = ("matricule", "prenom", "nom", "sexe", "classe", "statut", "evaluation_accueil_effectuee", "date_inscription")
+    list_filter = ("statut", "evaluation_accueil_effectuee", "sexe", "classe__ecole", "classe__annee_scolaire", "classe")
     search_fields = ("matricule", "nom", "prenom", "responsable_principal__telephone")
     list_select_related = ("classe", "classe__ecole")
     date_hierarchy = "date_inscription"
@@ -169,7 +169,7 @@ class EleveAdmin(admin.ModelAdmin):
             "fields": ("matricule", "prenom", "nom", "sexe", "date_naissance", "lieu_naissance", "photo")
         }),
         ("Scolarité", {
-            "fields": ("classe", "date_inscription", "statut")
+            "fields": ("classe", "date_inscription", "statut", "evaluation_accueil_effectuee")
         }),
         ("Responsables", {
             "fields": ("responsable_principal", "responsable_secondaire")
