@@ -13,6 +13,7 @@ from eleves.models import Classe, Ecole
 from .forms import EnseignantForm, EtatSalaireAjustementForm, PresenceForm
 from .models import (
     AffectationClasse,
+    AvanceSalaire,
     Enseignant,
     EtatSalaire,
     ModeCalculHoraire,
@@ -129,6 +130,135 @@ class MoteurPaieTests(TestCase):
             calcule_par=self.user,
         )
         self.assertEqual(etat.salaire_net, Decimal('1075000.00'))
+
+    def test_avance_est_deduite_du_salaire_net(self):
+        enseignant = self.creer_fixe()
+
+        response = self.client.post(
+            reverse('salaires:ajouter_avance'),
+            {
+                'enseignant': enseignant.id,
+                'periode': self.periode.id,
+                'montant': '200000',
+                'date_avance': '2026-07-10',
+                'mode_paiement': '',
+                'reference_externe': 'REC-AV-001',
+                'motif': 'Besoin familial',
+            },
+        )
+
+        self.assertRedirects(response, reverse('salaires:liste_avances'))
+        avance = AvanceSalaire.objects.get(enseignant=enseignant)
+        self.assertEqual(avance.montant, Decimal('200000'))
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant,
+            periode=self.periode,
+        )
+        self.assertEqual(etat.avances, Decimal('200000.00'))
+        self.assertEqual(etat.salaire_net, Decimal('800000.00'))
+
+    def test_modifier_et_supprimer_avance_recalcule_le_net(self):
+        enseignant = self.creer_fixe()
+        etat, _ = calculer_etat_salaire_reel(
+            enseignant, self.periode, self.user
+        )
+        avance = AvanceSalaire.objects.create(
+            enseignant=enseignant,
+            periode=self.periode,
+            montant=Decimal('100000'),
+            date_avance=date(2026, 7, 10),
+            cree_par=self.user,
+        )
+        etat.refresh_from_db()
+        self.assertEqual(etat.salaire_net, Decimal('900000.00'))
+
+        response = self.client.post(
+            reverse('salaires:modifier_avance', args=[avance.id]),
+            {
+                'enseignant': enseignant.id,
+                'periode': self.periode.id,
+                'montant': '250000',
+                'date_avance': '2026-07-10',
+                'mode_paiement': '',
+                'reference_externe': '',
+                'motif': 'Montant corrigé',
+            },
+        )
+        self.assertRedirects(response, reverse('salaires:liste_avances'))
+        etat.refresh_from_db()
+        self.assertEqual(etat.avances, Decimal('250000.00'))
+        self.assertEqual(etat.salaire_net, Decimal('750000.00'))
+
+        response = self.client.post(
+            reverse('salaires:supprimer_avance', args=[avance.id])
+        )
+        self.assertRedirects(response, reverse('salaires:liste_avances'))
+        self.assertFalse(AvanceSalaire.objects.filter(pk=avance.pk).exists())
+        etat.refresh_from_db()
+        self.assertEqual(etat.avances, Decimal('0.00'))
+        self.assertEqual(etat.salaire_net, Decimal('1000000.00'))
+
+    def test_avance_superieure_au_salaire_disponible_est_refusee(self):
+        enseignant = self.creer_fixe()
+        calculer_etat_salaire_reel(enseignant, self.periode, self.user)
+
+        response = self.client.post(
+            reverse('salaires:ajouter_avance'),
+            {
+                'enseignant': enseignant.id,
+                'periode': self.periode.id,
+                'montant': '1000001',
+                'date_avance': '2026-07-10',
+                'mode_paiement': '',
+                'reference_externe': '',
+                'motif': '',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'salaire disponible')
+        self.assertFalse(AvanceSalaire.objects.exists())
+
+    def test_avance_verrouillee_apres_validation_du_salaire(self):
+        enseignant = self.creer_fixe()
+        etat, _ = calculer_etat_salaire_reel(
+            enseignant, self.periode, self.user
+        )
+        avance = AvanceSalaire.objects.create(
+            enseignant=enseignant,
+            periode=self.periode,
+            montant=Decimal('100000'),
+            date_avance=date(2026, 7, 10),
+            cree_par=self.user,
+        )
+        etat.valide = True
+        etat.save()
+
+        response = self.client.post(
+            reverse('salaires:supprimer_avance', args=[avance.id])
+        )
+
+        self.assertRedirects(response, reverse('salaires:liste_avances'))
+        self.assertTrue(AvanceSalaire.objects.filter(pk=avance.pk).exists())
+
+    def test_liste_avances_affiche_historique_et_actions(self):
+        enseignant = self.creer_fixe()
+        calculer_etat_salaire_reel(enseignant, self.periode, self.user)
+        AvanceSalaire.objects.create(
+            enseignant=enseignant,
+            periode=self.periode,
+            montant=Decimal('125000'),
+            date_avance=date(2026, 7, 10),
+            reference_externe='AV-LISTE-001',
+            cree_par=self.user,
+        )
+
+        response = self.client.get(reverse('salaires:liste_avances'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Avances de salaire')
+        self.assertContains(response, 'AV-LISTE-001')
+        self.assertContains(response, enseignant.nom_complet)
 
     def test_salaire_horaire_utilise_le_pointage_reel(self):
         enseignant = self.creer_secondaire()

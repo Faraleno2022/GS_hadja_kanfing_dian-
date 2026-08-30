@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Supprimer une avance{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-6">
+            <div class="card border-danger shadow-sm">
+                <div class="card-body p-4 text-center">
+                    <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+                    <h1 class="h4">Supprimer cette avance ?</h1>
+                    <p class="mb-1"><strong>{{ avance.enseignant.nom_complet }}</strong></p>
+                    <p class="text-muted">{{ avance.periode.nom_periode }} — {{ avance.montant|floatformat:0|intcomma }} GNF</p>
+                    <p>Le salaire net sera recalculé automatiquement.</p>
+                    <form method="post" class="d-flex justify-content-center gap-2 mt-4">
+                        {% csrf_token %}
+                        <a href="{% url 'salaires:liste_avances' %}" class="btn btn-outline-secondary">Annuler</a>
+                        <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-1"></i>Supprimer</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

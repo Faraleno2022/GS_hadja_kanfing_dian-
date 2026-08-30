@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Avances de salaire{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h1 class="h3 mb-1"><i class="fas fa-hand-holding-usd text-warning me-2"></i>Avances de salaire</h1>
+            <p class="text-muted mb-0">Versements anticipés et retenues automatiques sur la paie</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'salaires:tableau_bord' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Salaires
+            </a>
+            <a href="{% url 'salaires:ajouter_avance' %}" class="btn btn-warning">
+                <i class="fas fa-plus me-1"></i>Nouvelle avance
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Avances affichées</div>
+                    <div class="fs-3 fw-bold">{{ totaux.nombre|intcomma }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Montant total affiché</div>
+                    <div class="fs-3 fw-bold text-warning">{{ totaux.montant|floatformat:0|intcomma }} GNF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">École</label>
+                    <select name="ecole" class="form-select">
+                        <option value="">Toutes les écoles</option>
+                        {% for ecole in ecoles %}
+                        <option value="{{ ecole.id }}" {% if request.GET.ecole == ecole.id|stringformat:'s' %}selected{% endif %}>{{ ecole.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">Enseignant</label>
+                    <select name="enseignant" class="form-select">
+                        <option value="">Tous les enseignants</option>
+                        {% for enseignant in enseignants %}
+                        <option value="{{ enseignant.id }}" {% if request.GET.enseignant == enseignant.id|stringformat:'s' %}selected{% endif %}>{{ enseignant.nom_complet }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">Période de retenue</label>
+                    <select name="periode" class="form-select">
+                        <option value="">Toutes les périodes</option>
+                        {% for periode in periodes %}
+                        <option value="{{ periode.id }}" {% if request.GET.periode == periode.id|stringformat:'s' %}selected{% endif %}>{{ periode }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label">Recherche</label>
+                    <div class="input-group">
+                        <input type="search" name="search" value="{{ request.GET.search }}" class="form-control" placeholder="Nom, référence, motif">
+                        <button class="btn btn-primary" type="submit"><i class="fas fa-search"></i></button>
+                        <a href="{% url 'salaires:liste_avances' %}" class="btn btn-outline-secondary"><i class="fas fa-times"></i></a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Enseignant</th>
+                        <th>Période</th>
+                        <th>Mode / référence</th>
+                        <th>Motif</th>
+                        <th class="text-end">Montant</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for avance in page_obj %}
+                    <tr>
+                        <td>{{ avance.date_avance|date:'d/m/Y' }}</td>
+                        <td>
+                            <a href="{% url 'salaires:detail_enseignant' avance.enseignant_id %}" class="fw-semibold text-decoration-none">{{ avance.enseignant.nom_complet }}</a>
+                            <small class="text-muted d-block">{{ avance.enseignant.ecole.nom }}</small>
+                        </td>
+                        <td>{{ avance.periode.nom_periode }}</td>
+                        <td>
+                            {{ avance.mode_paiement|default:'Non précisé' }}
+                            {% if avance.reference_externe %}<small class="text-muted d-block">{{ avance.reference_externe }}</small>{% endif %}
+                        </td>
+                        <td>{{ avance.motif|default:'—'|truncatechars:45 }}</td>
+                        <td class="text-end fw-bold text-warning">{{ avance.montant|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-end text-nowrap">
+                            {% if avance.peut_etre_modifiee %}
+                            <a href="{% url 'salaires:modifier_avance' avance.id %}" class="btn btn-sm btn-outline-primary" title="Modifier"><i class="fas fa-edit"></i></a>
+                            <a href="{% url 'salaires:supprimer_avance' avance.id %}" class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="fas fa-trash"></i></a>
+                            {% else %}
+                            <span class="badge bg-secondary"><i class="fas fa-lock me-1"></i>Verrouillée</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted py-5"><i class="fas fa-inbox fa-2x d-block mb-2"></i>Aucune avance trouvée.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <nav class="mt-4" aria-label="Pagination">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if filtres_pagination %}&{{ filtres_pagination }}{% endif %}">Précédent</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{% if filtres_pagination %}&{{ filtres_pagination }}{% endif %}">Suivant</a></li>{% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
