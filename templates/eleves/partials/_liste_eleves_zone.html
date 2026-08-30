@@ -50,6 +50,28 @@
     </div>
     <div class="row g-3 mt-2">
       <div class="col-12">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="fw-semibold me-1"><i class="fas fa-clipboard-check me-1"></i>Test d'accueil :</span>
+          <a href="{% url 'eleves:export_evaluation_accueil_pdf' 'evalues' %}" class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-file-pdf me-1"></i>Évalués PDF
+          </a>
+          <a href="{% url 'eleves:export_evaluation_accueil_excel' 'evalues' %}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-excel me-1"></i>Évalués Excel
+          </a>
+          <a href="{% url 'eleves:export_evaluation_accueil_pdf' 'non-evalues' %}" class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-file-pdf me-1"></i>Non évalués PDF
+          </a>
+          <a href="{% url 'eleves:export_evaluation_accueil_excel' 'non-evalues' %}" class="btn btn-outline-success btn-sm">
+            <i class="fas fa-file-excel me-1"></i>Non évalués Excel
+          </a>
+        </div>
+        <div class="form-text mt-1">
+          {{ stats.eleves_evalues|default:0 }} évalué(s) et {{ stats.eleves_non_evalues|default:0 }} non évalué(s) dans la sélection courante.
+        </div>
+      </div>
+    </div>
+    <div class="row g-3 mt-2">
+      <div class="col-12">
         <a href="{% url 'eleves:exporter_tous_eleves_template' %}" class="btn btn-outline-secondary">
           <i class="fas fa-file-export me-1"></i>Exporter tous les élèves (pour un autre poste)
         </a>

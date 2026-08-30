@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+<li class="breadcrumb-item active">Modifications et suppressions</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+        <h2 class="mb-1"><i class="fas fa-history me-2 text-warning"></i>{{ titre_page }}</h2>
+        <p class="text-muted mb-0">Traçabilité des corrections de montant et des paiements placés dans la corbeille.</p>
+    </div>
+    <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Tableau de bord
+    </a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase">Modifications</div>
+        <div class="fs-3 fw-bold text-warning">{{ totals.modified_count|intcomma }}</div>
+        <small>Écart net : {% if totals.modified_delta > 0 %}+{% endif %}{{ totals.modified_delta|floatformat:0|intcomma }} GNF</small>
+    </div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase">Suppressions</div>
+        <div class="fs-3 fw-bold text-danger">{{ totals.deleted_count|intcomma }}</div>
+        <small>{{ totals.deleted_amount|floatformat:0|intcomma }} GNF supprimés</small>
+    </div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase">Variation totale</div>
+        <div class="fs-4 fw-bold {% if totals.net_impact < 0 %}text-danger{% else %}text-success{% endif %}">
+            {% if totals.net_impact > 0 %}+{% endif %}{{ totals.net_impact|floatformat:0|intcomma }} GNF
+        </div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card h-100"><div class="card-body">
+        <div class="text-muted small text-uppercase">Lignes affichées</div>
+        <div class="fs-3 fw-bold text-primary">{{ page_obj.paginator.count|intcomma }}</div>
+    </div></div></div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label for="activity-q" class="form-label">Recherche</label>
+                <input id="activity-q" type="search" name="q" class="form-control" value="{{ q }}"
+                       placeholder="Reçu, élève, école, motif ou utilisateur">
+            </div>
+            <div class="col-md-3">
+                <label for="activity-action" class="form-label">Action</label>
+                <select id="activity-action" name="action" class="form-select">
+                    <option value="">Toutes</option>
+                    <option value="MODIFICATION" {% if action == 'MODIFICATION' %}selected{% endif %}>Modifications</option>
+                    <option value="SUPPRESSION" {% if action == 'SUPPRESSION' %}selected{% endif %}>Suppressions</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i>Filtrer</button>
+                <a class="btn btn-outline-secondary" href="{% url 'paiements:historique_activite' %}">Effacer</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th><th>Action</th><th>Reçu</th><th>Élève / école</th>
+                        <th>Avant</th><th>Après</th><th>Variation</th><th>Motif</th><th>Utilisateur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in page_obj %}
+                    <tr>
+                        <td class="text-nowrap">{{ row.event_at|date:'d/m/Y H:i' }}</td>
+                        <td>
+                            {% if row.kind == 'SUPPRESSION' %}
+                                <span class="badge bg-danger">Suppression</span>
+                                {% if row.restored %}<span class="badge bg-info">Restauré</span>{% endif %}
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Modification</span>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ row.receipt|default:'—' }}</strong></td>
+                        <td>{{ row.student|default:'—' }}{% if row.school %}<br><small class="text-muted">{{ row.school }}</small>{% endif %}</td>
+                        <td class="text-nowrap">{{ row.before_amount|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-nowrap">{{ row.after_amount|floatformat:0|intcomma }} GNF</td>
+                        <td class="text-nowrap fw-semibold {% if row.impact < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {% if row.impact > 0 %}+{% endif %}{{ row.impact|floatformat:0|intcomma }} GNF
+                        </td>
+                        <td>{{ row.reason|default:'Motif non renseigné' }}</td>
+                        <td>{{ row.user|default:'Système' }}</td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="9" class="text-center text-muted py-5">Aucune modification de montant ni suppression trouvée.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer"><nav><ul class="pagination justify-content-center mb-0">
+        {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&amp;q={{ q|urlencode }}&amp;action={{ action|urlencode }}">Précédent</a></li>{% endif %}
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&amp;q={{ q|urlencode }}&amp;action={{ action|urlencode }}">Suivant</a></li>{% endif %}
+    </ul></nav></div>
+    {% endif %}
+</div>
+{% endblock %}

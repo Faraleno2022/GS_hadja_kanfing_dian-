@@ -47,6 +47,10 @@ from .allocation import (
     reste_par_tranche_avec_couverture,
 )
 from .dashboard_metrics import build_payment_dashboard_metrics
+from .activity_metrics import (
+    build_payment_activity_metrics,
+    build_payment_activity_rows,
+)
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from eleves.utils_annee import get_annee_active
 from .forms import PaiementForm, EcheancierForm, ModifierPaiementForm, RechercheForm
@@ -1265,6 +1269,9 @@ def tableau_bord_paiements(request):
     financial_metrics = build_payment_dashboard_metrics(
         request.user, today=today
     )
+    payment_activity_metrics = build_payment_activity_metrics(
+        request.user, today=today
+    )
 
     try:
         from datetime import timedelta
@@ -1492,6 +1499,7 @@ def tableau_bord_paiements(request):
         'titre_page': 'Tableau de bord des paiements',
         'stats': stats,
         'financial_metrics': financial_metrics,
+        'payment_activity_metrics': payment_activity_metrics,
         'paiements_recents': paiements_recents,
         'eleves_en_retard': eleves_en_retard,
         'finance_direction': finance_direction,
@@ -1505,6 +1513,285 @@ def tableau_bord_paiements(request):
         ),
     }
     return render(request, 'paiements/tableau_bord.html', context)
+
+
+@login_required
+def historique_activite_paiements(request):
+    """Liste les modifications de montant et suppressions avec leurs motifs."""
+    query = (request.GET.get('q') or '').strip()
+    action = (request.GET.get('action') or '').strip().upper()
+    if action not in {'MODIFICATION', 'SUPPRESSION'}:
+        action = ''
+    rows = build_payment_activity_rows(request.user, query=query)
+    if action:
+        rows = [row for row in rows if row['kind'] == action]
+    totals = {
+        'modified_count': sum(1 for row in rows if row['kind'] == 'MODIFICATION'),
+        'modified_delta': sum(
+            row['impact'] for row in rows if row['kind'] == 'MODIFICATION'
+        ),
+        'deleted_count': sum(1 for row in rows if row['kind'] == 'SUPPRESSION'),
+        'deleted_amount': sum(
+            row['before_amount'] for row in rows if row['kind'] == 'SUPPRESSION'
+        ),
+        'net_impact': sum(row['impact'] for row in rows),
+    }
+    paginator = Paginator(rows, 50)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    return render(request, 'paiements/historique_activite.html', {
+        'titre_page': 'Modifications et suppressions de paiements',
+        'page_obj': page_obj,
+        'totals': totals,
+        'q': query,
+        'action': action,
+    })
+
+
+def _admission_config(nature):
+    return {
+        'inscription': (
+            EcheancierPaiement.NATURE_INSCRIPTION,
+            'Élèves inscrits',
+        ),
+        'reinscription': (
+            EcheancierPaiement.NATURE_REINSCRIPTION,
+            'Élèves réinscrits',
+        ),
+    }.get((nature or '').strip().lower())
+
+
+def _echeanciers_admission(request, nature):
+    """Échéanciers d'admission payés, limités au périmètre de l'utilisateur."""
+    config = _admission_config(nature)
+    if config is None:
+        return None
+    nature_code, _label = config
+    latest_payment = (
+        Paiement.objects
+        .filter(
+            eleve_id=OuterRef('eleve_id'),
+            annee_scolaire=OuterRef('annee_scolaire'),
+            statut='VALIDE',
+        )
+        .order_by('-date_paiement', '-date_creation', '-pk')
+    )
+    qs = (
+        EcheancierPaiement.objects
+        .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+        .filter(
+            nature_frais=nature_code,
+            frais_inscription_paye__gt=0,
+        )
+        .annotate(
+            derniere_date_paiement=Subquery(
+                latest_payment.values('date_paiement')[:1]
+            ),
+            dernier_numero_recu=Subquery(
+                latest_payment.values('numero_recu')[:1]
+            ),
+            derniere_reference_externe=Subquery(
+                latest_payment.values('reference_externe')[:1]
+            ),
+        )
+    )
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+
+    annee_scolaire = (request.GET.get('annee_scolaire') or '').strip()
+    if not annee_scolaire and not user_is_superadmin(request.user):
+        ecole = user_school(request.user)
+        if ecole:
+            annee_scolaire = get_annee_active(request, ecole) or ''
+    if annee_scolaire:
+        qs = qs.filter(annee_scolaire=annee_scolaire)
+
+    recherche = (request.GET.get('q') or '').strip()
+    if recherche:
+        qs = qs.filter(
+            Q(eleve__matricule__icontains=recherche)
+            | Q(eleve__nom__icontains=recherche)
+            | Q(eleve__prenom__icontains=recherche)
+            | Q(eleve__classe__nom__icontains=recherche)
+            | Q(dernier_numero_recu__icontains=recherche)
+            | Q(derniere_reference_externe__icontains=recherche)
+        )
+    return qs.order_by('-derniere_date_paiement', '-date_creation', '-pk')
+
+
+@login_required
+def liste_eleves_admission(request, nature):
+    """Affiche la liste des élèves inscrits ou réinscrits ayant payé."""
+    config = _admission_config(nature)
+    echeanciers = _echeanciers_admission(request, nature)
+    if config is None or echeanciers is None:
+        raise Http404("Nature d'admission invalide.")
+    _nature_code, label = config
+    totals = echeanciers.aggregate(
+        total_du=Coalesce(
+            Sum('frais_inscription_du'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        ),
+        total_paye=Coalesce(
+            Sum('frais_inscription_paye'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        ),
+    )
+    paginator = Paginator(echeanciers, 50)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+    return render(request, 'paiements/liste_eleves_admission.html', {
+        'titre_page': label,
+        'nature': nature,
+        'page_obj': page_obj,
+        'totals': totals,
+        'q': (request.GET.get('q') or '').strip(),
+        'annee_scolaire': (request.GET.get('annee_scolaire') or '').strip(),
+    })
+
+
+@login_required
+def export_eleves_admission_excel(request, nature):
+    """Exporte la liste des élèves inscrits/réinscrits au format Excel."""
+    config = _admission_config(nature)
+    echeanciers = _echeanciers_admission(request, nature)
+    if config is None or echeanciers is None:
+        raise Http404("Nature d'admission invalide.")
+    _nature_code, label = config
+    wb = Workbook()
+    ws = wb.active
+    ws.title = label[:31]
+    headers = [
+        'Matricule', 'Prénom', 'Nom', 'Classe', 'École', 'Année scolaire',
+        "Date d'inscription", "Frais dus (GNF)", "Frais payés (GNF)",
+        'Dernier paiement', 'Dernier reçu', 'Référence externe',
+    ]
+    ws.append(headers)
+    header_fill = PatternFill('solid', fgColor='1F4E78')
+    for cell in ws[1]:
+        cell.font = Font(color='FFFFFF', bold=True)
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal='center')
+    for echeancier in echeanciers:
+        eleve = echeancier.eleve
+        ws.append([
+            eleve.matricule or '',
+            eleve.prenom,
+            eleve.nom,
+            eleve.classe.nom if eleve.classe else '',
+            eleve.classe.ecole.nom if eleve.classe and eleve.classe.ecole else '',
+            echeancier.annee_scolaire,
+            eleve.date_inscription.strftime('%d/%m/%Y') if eleve.date_inscription else '',
+            int(echeancier.frais_inscription_du or 0),
+            int(echeancier.frais_inscription_paye or 0),
+            echeancier.derniere_date_paiement.strftime('%d/%m/%Y') if echeancier.derniere_date_paiement else '',
+            echeancier.dernier_numero_recu or '',
+            echeancier.derniere_reference_externe or '',
+        ])
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    for index, column in enumerate(ws.columns, 1):
+        max_length = max(len(str(cell.value or '')) for cell in column)
+        ws.column_dimensions[get_column_letter(index)].width = min(max(max_length + 2, 12), 34)
+    for row in ws.iter_rows(min_row=2, min_col=8, max_col=9):
+        for cell in row:
+            cell.number_format = '#,##0'
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="eleves_{nature}.xlsx"'
+    )
+    wb.save(response)
+    return response
+
+
+@login_required
+def export_eleves_admission_pdf(request, nature):
+    """Exporte la liste des élèves inscrits/réinscrits au format PDF."""
+    config = _admission_config(nature)
+    echeanciers = _echeanciers_admission(request, nature)
+    if config is None or echeanciers is None:
+        raise Http404("Nature d'admission invalide.")
+    if canvas is None:
+        return HttpResponse("ReportLab n'est pas installé sur le serveur.", status=500)
+    _nature_code, label = config
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="eleves_{nature}.pdf"'
+    )
+    page_size = (A4[1], A4[0])
+    c = canvas.Canvas(response, pagesize=page_size)
+    width, height = page_size
+    margin = 34
+    row_height = 18
+    col_widths = [25, 70, 105, 80, 100, 58, 68, 68, 75, 78]
+    headers = [
+        'N°', 'Matricule', 'Nom complet', 'Classe', 'École', 'Année',
+        'Dû', 'Payé', 'Date', 'Reçu',
+    ]
+
+    def texte_court(value, max_chars):
+        value = str(value or '')
+        return value if len(value) <= max_chars else value[:max_chars - 1] + '…'
+
+    def entete(page_number):
+        try:
+            draw_logo_watermark(
+                c, width, height, opacity=0.04, rotate=30, scale=1.5,
+                ecole=user_school(request.user),
+            )
+        except Exception:
+            pass
+        y = height - margin
+        c.setFont('Helvetica-Bold', 16)
+        c.drawString(margin, y, label)
+        c.setFont('Helvetica', 9)
+        c.drawRightString(width - margin, y, f'Page {page_number}')
+        y -= 24
+        c.setFillColorRGB(0.90, 0.93, 0.96)
+        c.rect(margin, y - 4, sum(col_widths), row_height, fill=1, stroke=0)
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont('Helvetica-Bold', 8)
+        x = margin + 3
+        for header, col_width in zip(headers, col_widths):
+            c.drawString(x, y + 2, header)
+            x += col_width
+        return y - row_height
+
+    page_number = 1
+    y = entete(page_number)
+    has_rows = False
+    for numero, echeancier in enumerate(echeanciers, 1):
+        has_rows = True
+        if y < margin + row_height:
+            c.showPage()
+            page_number += 1
+            y = entete(page_number)
+        eleve = echeancier.eleve
+        values = [
+            numero,
+            texte_court(eleve.matricule, 13),
+            texte_court(eleve.nom_complet, 25),
+            texte_court(eleve.classe.nom if eleve.classe else '', 18),
+            texte_court(eleve.classe.ecole.nom if eleve.classe and eleve.classe.ecole else '', 22),
+            echeancier.annee_scolaire,
+            f"{int(echeancier.frais_inscription_du or 0):,}".replace(',', ' '),
+            f"{int(echeancier.frais_inscription_paye or 0):,}".replace(',', ' '),
+            echeancier.derniere_date_paiement.strftime('%d/%m/%Y') if echeancier.derniere_date_paiement else '',
+            texte_court(echeancier.dernier_numero_recu, 14),
+        ]
+        c.setFont('Helvetica', 7.5)
+        x = margin + 3
+        for value, col_width in zip(values, col_widths):
+            c.drawString(x, y + 2, str(value or ''))
+            x += col_width
+        c.setStrokeColorRGB(0.85, 0.87, 0.89)
+        c.line(margin, y - 3, margin + sum(col_widths), y - 3)
+        y -= row_height
+    if not has_rows:
+        c.setFont('Helvetica-Oblique', 11)
+        c.drawString(margin, y, 'Aucun élève dans cette catégorie.')
+    c.save()
+    return response
 
 @login_required
 def liste_paiements(request):
@@ -4805,6 +5092,9 @@ def ajax_statistiques_paiements(request):
             'montant_total': montant_total,
             'stats': _compute_stats(request.user),
             'financial_metrics': build_payment_dashboard_metrics(
+                request.user, today=today
+            ),
+            'payment_activity_metrics': build_payment_activity_metrics(
                 request.user, today=today
             ),
         })

@@ -86,6 +86,8 @@ def liste_abonnements(request):
             Q(eleve__nom__icontains=q) |
             Q(eleve__prenom__icontains=q) |
             Q(eleve__matricule__icontains=q) |
+            Q(numero_recu__icontains=q) |
+            Q(reference_externe__icontains=q) |
             Q(zone__icontains=q) |
             Q(point_arret__icontains=q) |
             Q(contact_parent__icontains=q)
@@ -585,6 +587,8 @@ def generer_recu_abonnement_pdf(request, abo_id):
 
     el = abo.eleve
     line('Numéro de reçu', abo.numero_recu or f"BUS-{abo.id}")
+    if abo.reference_externe:
+        line('Référence externe', abo.reference_externe)
     line('Élève', f"{el.prenom} {el.nom} ({el.matricule})")
     line('Classe', getattr(el.classe, 'nom', ''))
     line('École', getattr(getattr(el.classe, 'ecole', None), 'nom', ''))

@@ -16,6 +16,9 @@
         <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-info">
             <i class="fas fa-list me-1"></i>Tous les Paiements
         </a>
+        <a href="{% url 'paiements:historique_activite' %}" class="btn btn-outline-warning">
+            <i class="fas fa-history me-1"></i>Modifications / suppressions
+        </a>
         <a href="{% url 'paiements:liste_eleves_soldes' %}" class="btn btn-outline-success">
             <i class="fas fa-check-circle me-1"></i>Élèves soldés
         </a>
@@ -169,11 +172,43 @@
         color: #842029;
         padding: 12px 16px;
     }
+    .metric-actions {
+        border-top: 1px solid #e9ecef;
+        padding: 12px 16px;
+    }
     .metric-primary { --metric-color: #0d6efd; }
     .metric-info { --metric-color: #0dcaf0; }
     .metric-success { --metric-color: #198754; }
     .metric-warning { --metric-color: #f0ad00; }
     .metric-secondary { --metric-color: #6c757d; }
+    .activity-period-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        background: #e9ecef;
+        border-top: 1px solid #e9ecef;
+    }
+    .activity-period {
+        background: #fff;
+        min-width: 0;
+        padding: 14px 16px;
+    }
+    .activity-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 5px 0;
+        border-bottom: 1px dashed #e9ecef;
+        font-size: .82rem;
+    }
+    .activity-line:last-child { border-bottom: 0; }
+    .activity-line strong { overflow-wrap: anywhere; text-align: right; }
+    @media (max-width: 1199.98px) {
+        .activity-period-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 575.98px) {
+        .activity-period-grid { grid-template-columns: 1fr; }
+    }
 </style>
 {% endblock %}
 
@@ -289,9 +324,77 @@
                         </div>
                         {% endfor %}
                     </div>
+                    <div class="metric-actions d-flex flex-wrap gap-2">
+                        <a class="btn btn-sm btn-outline-primary" href="{% url 'paiements:liste_eleves_admission' admission.key %}">
+                            <i class="fas fa-list me-1"></i>Afficher les élèves
+                        </a>
+                        <a class="btn btn-sm btn-outline-danger" href="{% url 'paiements:export_eleves_admission_pdf' admission.key %}">
+                            <i class="fas fa-file-pdf me-1"></i>PDF
+                        </a>
+                        <a class="btn btn-sm btn-outline-success" href="{% url 'paiements:export_eleves_admission_excel' admission.key %}">
+                            <i class="fas fa-file-excel me-1"></i>Excel
+                        </a>
+                    </div>
                 </div>
             </div>
             {% endfor %}
+        </div>
+    </div>
+
+    <!-- Modifications et suppressions de montants -->
+    <div class="mb-4">
+        <div class="finance-metric-card metric-warning">
+            <div class="metric-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                <div>
+                    <h5 class="metric-title">
+                        <i class="fas fa-history me-2"></i>Montants modifiés et supprimés
+                    </h5>
+                    <small class="text-muted">Variation des montants enregistrés dans l'historique</small>
+                </div>
+                <a class="btn btn-sm btn-outline-warning" href="{% url 'paiements:historique_activite' %}">
+                    <i class="fas fa-list me-1"></i>Afficher la liste et les motifs
+                </a>
+            </div>
+            <div class="activity-period-grid">
+                {% for period in payment_activity_metrics.period_values %}
+                <div class="activity-period">
+                    <div class="metric-period-label mb-2">{{ period.label }}</div>
+                    <div class="activity-line">
+                        <span>Modifications</span>
+                        <strong>
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="modified_count">{{ period.modified_count|intcomma }}</span>
+                        </strong>
+                    </div>
+                    <div class="activity-line">
+                        <span>Avant → après</span>
+                        <strong>
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="modified_before">{{ period.modified_before|floatformat:0|intcomma }}</span>
+                            →
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="modified_after">{{ period.modified_after|floatformat:0|intcomma }}</span> GNF
+                        </strong>
+                    </div>
+                    <div class="activity-line">
+                        <span>Écart modifié</span>
+                        <strong class="text-primary">
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="modified_delta">{% if period.modified_delta > 0 %}+{% endif %}{{ period.modified_delta|floatformat:0|intcomma }}</span> GNF
+                        </strong>
+                    </div>
+                    <div class="activity-line">
+                        <span>Suppressions</span>
+                        <strong class="text-danger">
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="deleted_amount">{{ period.deleted_amount|floatformat:0|intcomma }}</span> GNF
+                            (<span data-payment-activity data-period="{{ period.key }}" data-field="deleted_count">{{ period.deleted_count|intcomma }}</span>)
+                        </strong>
+                    </div>
+                    <div class="activity-line">
+                        <span>Variation totale</span>
+                        <strong>
+                            <span data-payment-activity data-period="{{ period.key }}" data-field="net_impact">{% if period.net_impact > 0 %}+{% endif %}{{ period.net_impact|floatformat:0|intcomma }}</span> GNF
+                        </strong>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
@@ -602,6 +705,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function setSignedMetricValue(selector, value) {
+        const element = document.querySelector(selector);
+        if (element) {
+            const number = Number(value || 0);
+            element.textContent = `${number > 0 ? '+' : ''}${numberFormatter.format(number)}`;
+        }
+    }
+
     function updateFinancialMetrics(metrics) {
         if (!metrics) return;
         (metrics.categories || []).forEach(category => {
@@ -616,6 +727,18 @@ document.addEventListener('DOMContentLoaded', function() {
             Object.entries(admission.values || {}).forEach(([period, values]) => {
                 setMetricValue(`[data-financial-admission="${admission.key}"][data-period="${period}"][data-field="amount"]`, values.amount);
                 setMetricValue(`[data-financial-admission="${admission.key}"][data-period="${period}"][data-field="count"]`, values.count);
+            });
+        });
+    }
+
+    function updatePaymentActivity(metrics) {
+        if (!metrics) return;
+        (metrics.period_values || []).forEach(period => {
+            ['modified_before', 'modified_after', 'modified_count', 'deleted_amount', 'deleted_count'].forEach(field => {
+                setMetricValue(`[data-payment-activity][data-period="${period.key}"][data-field="${field}"]`, period[field]);
+            });
+            ['modified_delta', 'net_impact'].forEach(field => {
+                setSignedMetricValue(`[data-payment-activity][data-period="${period.key}"][data-field="${field}"]`, period[field]);
             });
         });
     }
@@ -665,6 +788,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     updateFinancialMetrics(data.financial_metrics);
+                    updatePaymentActivity(data.payment_activity_metrics);
                     
                     console.log('Statistiques paiements mises à jour:', stats);
                 }

@@ -140,6 +140,17 @@
           </div>
         </div>
 
+        <div class="row">
+          <div class="col-12 mb-3">
+            <label class="form-label small-label" for="{{ form.reference_externe.id_for_label }}">
+              Référence externe du paiement <span class="text-muted">(facultatif)</span>
+            </label>
+            {{ form.reference_externe }}
+            <div class="form-text">Numéro du reçu externe, transaction Mobile Money, chèque, etc.</div>
+            {% if form.reference_externe.errors %}<div class="text-danger small">{{ form.reference_externe.errors.0 }}</div>{% endif %}
+          </div>
+        </div>
+
         <div id="tarifInfo" class="alert alert-info mb-0" style="display:none;">
           <div class="row text-center">
             <div class="col-md-4"><small>Dû pour la tranche</small><div class="fw-bold" id="tarifDu">0 GNF</div></div>

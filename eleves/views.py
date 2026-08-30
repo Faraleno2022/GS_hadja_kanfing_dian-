@@ -10,6 +10,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.db import transaction
 from django.core.cache import cache
@@ -53,7 +54,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 # Utilitaire PDF partagé (filigrane)
 from ecole_moderne.pdf_utils import draw_logo_watermark
-from ecole_moderne.security_decorators import delete_permission_required
+from ecole_moderne.security_decorators import (
+    delete_permission_required,
+    require_school_object,
+)
 
 # Excel
 try:
@@ -124,14 +128,16 @@ def liste_eleves(request):
             total_eleves=Count('id'),
             eleves_actifs=Count(Case(When(statut='ACTIF', then=1), output_field=IntegerField())),
             eleves_suspendus=Count(Case(When(statut='SUSPENDU', then=1), output_field=IntegerField())),
-            eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField()))
+            eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField())),
+            eleves_evalues=Count(Case(When(evaluation_accueil_effectuee=True, then=1), output_field=IntegerField())),
+            eleves_non_evalues=Count(Case(When(evaluation_accueil_effectuee=False, then=1), output_field=IntegerField())),
         )
         cache.set(stats_cache_key, stats, 120)  # Cache 2 minutes
     
     # Pagination optimisée
     page_number = request.GET.get('page', 1)
     page_obj, paginator = PaginationOptimizer.optimize_pagination(
-        eleves.order_by('nom', 'prenom'), 
+        eleves.order_by('-date_creation', '-id'),
         page_number, 
         per_page=15
     )
@@ -205,6 +211,187 @@ def liste_eleves(request):
     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response['Pragma'] = 'no-cache'
     response['Expires'] = '0'
+    return response
+
+
+def _eleves_evaluation_accueil(request, est_evalue):
+    """Retourne les élèves visibles par l'utilisateur pour le test d'accueil."""
+    eleves = Eleve.objects.select_related(
+        'classe', 'classe__ecole', 'responsable_principal'
+    ).filter(evaluation_accueil_effectuee=est_evalue)
+    if not user_is_superadmin(request.user):
+        ecole = user_school(request.user)
+        if ecole is None:
+            return Eleve.objects.none()
+        eleves = eleves.filter(classe__ecole=ecole)
+        annee_active = get_annee_active(request, ecole)
+        if annee_active:
+            eleves = eleves.filter(classe__annee_scolaire=annee_active)
+    return eleves.order_by('-date_creation', '-id')
+
+
+def _statut_evaluation_depuis_url(statut):
+    return {
+        'evalues': True,
+        'non-evalues': False,
+    }.get((statut or '').strip().lower())
+
+
+@login_required
+@require_http_methods(["POST"])
+@require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
+def definir_evaluation_accueil(request, eleve_id):
+    """Marque un élève comme évalué ou non évalué au test d'accueil."""
+    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    est_evalue = request.POST.get('est_evalue') == '1'
+    if eleve.evaluation_accueil_effectuee != est_evalue:
+        eleve.evaluation_accueil_effectuee = est_evalue
+        eleve.save(update_fields=['evaluation_accueil_effectuee', 'date_modification'])
+        messages.success(
+            request,
+            f"{eleve.nom_complet} est maintenant marqué(e) comme "
+            f"{'évalué(e)' if est_evalue else 'non évalué(e)'} au test d'accueil."
+        )
+
+    next_url = request.POST.get('next') or reverse('eleves:liste_eleves')
+    if not url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        next_url = reverse('eleves:liste_eleves')
+    return redirect(next_url)
+
+
+@login_required
+def export_evaluation_accueil_excel(request, statut):
+    """Exporte en Excel les élèves évalués ou non évalués au test d'accueil."""
+    est_evalue = _statut_evaluation_depuis_url(statut)
+    if est_evalue is None:
+        return HttpResponse("Statut d'évaluation invalide.", status=400)
+    if Workbook is None or get_column_letter is None:
+        return HttpResponse("Erreur: openpyxl n'est pas installé sur le serveur.", status=500)
+
+    eleves = _eleves_evaluation_accueil(request, est_evalue)
+    libelle = "Évalués" if est_evalue else "Non évalués"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = libelle[:31]
+    ws.append([
+        "Matricule", "Prénom", "Nom", "Sexe", "Classe", "École",
+        "Année scolaire", "Date d'inscription", "Statut test d'accueil",
+        "Responsable", "Téléphone",
+    ])
+    for eleve in eleves:
+        responsable = eleve.responsable_principal
+        ws.append([
+            eleve.matricule or '',
+            eleve.prenom,
+            eleve.nom,
+            eleve.get_sexe_display(),
+            eleve.classe.nom if eleve.classe else '',
+            eleve.classe.ecole.nom if eleve.classe and eleve.classe.ecole else '',
+            eleve.classe.annee_scolaire if eleve.classe else '',
+            eleve.date_inscription.strftime('%d/%m/%Y') if eleve.date_inscription else '',
+            libelle,
+            responsable.nom_complet if responsable else '',
+            responsable.telephone if responsable else '',
+        ])
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    for index, column in enumerate(ws.columns, 1):
+        max_length = max(len(str(cell.value or '')) for cell in column)
+        ws.column_dimensions[get_column_letter(index)].width = min(max(max_length + 2, 12), 35)
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = (
+        f'attachment; filename="test_accueil_{statut}.xlsx"'
+    )
+    wb.save(response)
+    return response
+
+
+@login_required
+def export_evaluation_accueil_pdf(request, statut):
+    """Exporte en PDF les élèves évalués ou non évalués au test d'accueil."""
+    est_evalue = _statut_evaluation_depuis_url(statut)
+    if est_evalue is None:
+        return HttpResponse("Statut d'évaluation invalide.", status=400)
+
+    eleves = _eleves_evaluation_accueil(request, est_evalue)
+    libelle = "Élèves évalués" if est_evalue else "Élèves non évalués"
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'attachment; filename="test_accueil_{statut}.pdf"'
+    )
+    c = canvas.Canvas(response, pagesize=landscape(A4))
+    width, height = landscape(A4)
+    margin = 1.2 * cm
+    row_height = 18
+    headers = ["N°", "Matricule", "Nom complet", "Sexe", "Classe", "École", "Année", "Téléphone"]
+    col_widths = [1.0*cm, 3.0*cm, 5.0*cm, 1.7*cm, 3.8*cm, 5.0*cm, 2.7*cm, 3.6*cm]
+
+    def texte_court(value, max_chars):
+        value = str(value or '')
+        return value if len(value) <= max_chars else value[:max_chars - 1] + '…'
+
+    def dessiner_entete(page_number):
+        try:
+            draw_logo_watermark(
+                c, width, height, opacity=0.04, rotate=30, scale=1.5,
+                ecole=user_school(request.user),
+            )
+        except Exception:
+            pass
+        y = height - margin
+        c.setFont('Helvetica-Bold', 16)
+        c.drawString(margin, y, f"Test d'accueil — {libelle}")
+        c.setFont('Helvetica', 9)
+        c.drawRightString(width - margin, y, f"Page {page_number}")
+        y -= 22
+        c.setFillColor(colors.HexColor('#e9ecef'))
+        c.rect(margin, y - 4, sum(col_widths), row_height, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.setFont('Helvetica-Bold', 8)
+        x = margin + 3
+        for header, col_width in zip(headers, col_widths):
+            c.drawString(x, y + 2, header)
+            x += col_width
+        return y - row_height
+
+    page_number = 1
+    y = dessiner_entete(page_number)
+    for numero, eleve in enumerate(eleves, 1):
+        if y < margin + row_height:
+            c.showPage()
+            page_number += 1
+            y = dessiner_entete(page_number)
+        responsable = eleve.responsable_principal
+        values = [
+            numero,
+            texte_court(eleve.matricule, 15),
+            texte_court(eleve.nom_complet, 29),
+            eleve.get_sexe_display(),
+            texte_court(eleve.classe.nom if eleve.classe else '', 22),
+            texte_court(eleve.classe.ecole.nom if eleve.classe and eleve.classe.ecole else '', 29),
+            eleve.classe.annee_scolaire if eleve.classe else '',
+            texte_court(responsable.telephone if responsable else '', 18),
+        ]
+        c.setFont('Helvetica', 8)
+        x = margin + 3
+        for value, col_width in zip(values, col_widths):
+            c.drawString(x, y + 2, str(value or ''))
+            x += col_width
+        c.setStrokeColor(colors.HexColor('#dee2e6'))
+        c.line(margin, y - 3, margin + sum(col_widths), y - 3)
+        y -= row_height
+
+    if not eleves.exists():
+        c.setFont('Helvetica-Oblique', 11)
+        c.drawString(margin, y, "Aucun élève dans cette catégorie.")
+    c.save()
     return response
 
 def creer_ecole(request):

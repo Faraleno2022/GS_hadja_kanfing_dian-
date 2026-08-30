@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+<li class="breadcrumb-item active">{{ titre_page }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-4">
+    <div>
+        <h2 class="mb-1"><i class="fas fa-user-check me-2 text-primary"></i>{{ titre_page }}</h2>
+        <p class="text-muted mb-0">Élèves ayant réglé tout ou partie des frais d'admission.</p>
+    </div>
+    <div class="btn-group">
+        <a class="btn btn-outline-secondary" href="{% url 'paiements:tableau_bord' %}">
+            <i class="fas fa-arrow-left me-1"></i>Tableau de bord
+        </a>
+        <a class="btn btn-outline-danger" href="{% url 'paiements:export_eleves_admission_pdf' nature %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+            <i class="fas fa-file-pdf me-1"></i>PDF
+        </a>
+        <a class="btn btn-outline-success" href="{% url 'paiements:export_eleves_admission_excel' nature %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+            <i class="fas fa-file-excel me-1"></i>Excel
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase">Élèves</div>
+            <div class="fs-3 fw-bold text-primary">{{ page_obj.paginator.count|intcomma }}</div>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase">Frais dus</div>
+            <div class="fs-4 fw-bold">{{ totals.total_du|floatformat:0|intcomma }} GNF</div>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <div class="text-muted small text-uppercase">Frais payés</div>
+            <div class="fs-4 fw-bold text-success">{{ totals.total_paye|floatformat:0|intcomma }} GNF</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label" for="admission-q">Recherche</label>
+                <input id="admission-q" type="search" name="q" class="form-control" value="{{ q }}"
+                       placeholder="Nom, matricule, classe, reçu ou référence externe">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="admission-annee">Année scolaire</label>
+                <input id="admission-annee" type="text" name="annee_scolaire" class="form-control"
+                       value="{{ annee_scolaire }}" placeholder="2026-2027">
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary" type="submit"><i class="fas fa-search me-1"></i>Filtrer</button>
+                <a class="btn btn-outline-secondary" href="{% url 'paiements:liste_eleves_admission' nature %}">Effacer</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Matricule</th><th>Élève</th><th>Classe</th><th>Année</th>
+                        <th>Frais dus</th><th>Frais payés</th><th>Dernier paiement</th>
+                        <th>Reçu / référence</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for echeancier in page_obj %}
+                    <tr>
+                        <td><strong>{{ echeancier.eleve.matricule }}</strong></td>
+                        <td>{{ echeancier.eleve.nom_complet }}<br><small class="text-muted">{{ echeancier.eleve.get_sexe_display }}</small></td>
+                        <td>{{ echeancier.eleve.classe.nom }}<br><small class="text-muted">{{ echeancier.eleve.classe.ecole.nom }}</small></td>
+                        <td>{{ echeancier.annee_scolaire }}</td>
+                        <td>{{ echeancier.frais_inscription_du|floatformat:0|intcomma }} GNF</td>
+                        <td><span class="text-success fw-semibold">{{ echeancier.frais_inscription_paye|floatformat:0|intcomma }} GNF</span></td>
+                        <td>{{ echeancier.derniere_date_paiement|date:'d/m/Y'|default:'—' }}</td>
+                        <td>
+                            {{ echeancier.dernier_numero_recu|default:'—' }}
+                            {% if echeancier.derniere_reference_externe %}<br><small class="text-muted">{{ echeancier.derniere_reference_externe }}</small>{% endif %}
+                        </td>
+                        <td><a class="btn btn-sm btn-outline-primary" href="{% url 'paiements:echeancier_eleve' echeancier.eleve.id %}" title="Voir l'échéancier"><i class="fas fa-eye"></i></a></td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="9" class="text-center text-muted py-5">Aucun élève trouvé.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if page_obj.has_other_pages %}
+    <div class="card-footer">
+        <nav><ul class="pagination justify-content-center mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&amp;q={{ q|urlencode }}&amp;annee_scolaire={{ annee_scolaire|urlencode }}">Précédent</a></li>{% endif %}
+            <li class="page-item active"><span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}&amp;q={{ q|urlencode }}&amp;annee_scolaire={{ annee_scolaire|urlencode }}">Suivant</a></li>{% endif %}
+        </ul></nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

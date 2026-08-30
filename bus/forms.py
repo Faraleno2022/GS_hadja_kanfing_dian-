@@ -61,7 +61,7 @@ class AbonnementBusForm(forms.ModelForm):
         model = AbonnementBus
         fields = [
             'eleve', 'grille', 'periodicite', 'montant', 'date_debut',
-            'mode_paiement', 'observations',
+            'mode_paiement', 'reference_externe', 'observations',
         ]
         widgets = {
             'eleve': forms.Select(attrs={'class': 'form-select'}),
@@ -70,6 +70,10 @@ class AbonnementBusForm(forms.ModelForm):
             'montant': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'date_debut': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'reference_externe': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'N° reçu externe, transaction Mobile Money, chèque…',
+            }),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
 
@@ -154,7 +158,7 @@ class AbonnementCantineForm(forms.ModelForm):
         fields = [
             'eleve', 'montant', 'periodicite', 'type_repas', 'date_debut', 'date_expiration', 
             'statut', 'alerte_avant_jours', 'regime_alimentaire', 'allergies', 
-            'contact_parent', 'observations'
+            'contact_parent', 'reference_externe', 'observations'
         ]
         widgets = {
             'date_debut': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
@@ -168,5 +172,9 @@ class AbonnementCantineForm(forms.ModelForm):
             'regime_alimentaire': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Végétarien, Halal, etc.'}),
             'allergies': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Indiquez les allergies alimentaires'}),
             'contact_parent': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+224XXXXXXXXX'}),
+            'reference_externe': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'N° reçu externe, transaction Mobile Money, chèque…',
+            }),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }

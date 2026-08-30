@@ -7,6 +7,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from bus.models import AbonnementBus, AbonnementCantine
+from abonnements.models import AbonnementCantine as AbonnementCantineHistorique
 from eleves.models import Classe, Ecole, Eleve, Responsable
 from paiements.dashboard_metrics import build_payment_dashboard_metrics
 from paiements.models import (
@@ -278,6 +279,89 @@ class PaymentDashboardMetricsTests(TestCase):
             "amount": 40000,
             "count": 1,
         })
+
+    def test_abonnements_cantine_historiques_alimentent_le_tableau(self):
+        student = self._student("CANTINE-HISTORIQUE")
+        AbonnementCantineHistorique.objects.create(
+            eleve=student,
+            duree="MENSUEL",
+            date_debut=self.today,
+            date_fin=self.today + timedelta(days=30),
+            montant=Decimal("12000"),
+            statut="ACTIF",
+            regime_alimentaire="NORMAL",
+            cree_par=self.user,
+        )
+
+        _metrics, categories, _admissions = self._metrics_by_key()
+
+        self.assertEqual(
+            categories["cantine"]["values"]["today"],
+            {"amount": 17000, "count": 2},
+        )
+
+    def test_paiements_bus_et_cantine_alimentent_leurs_cartes(self):
+        bus_type = TypePaiement.objects.create(
+            nom="Abonnement bus indicateurs"
+        )
+        cantine_type = TypePaiement.objects.create(
+            nom="Cantine indicateurs"
+        )
+        student = self._student("SERVICES")
+        self._payment(
+            student, "MET-SERVICE-001", 11000, self.today, bus_type
+        )
+        self._payment(
+            student, "MET-SERVICE-002", 12000, self.today, cantine_type
+        )
+
+        _metrics, categories, _admissions = self._metrics_by_key()
+
+        self.assertEqual(
+            categories["bus"]["values"]["today"],
+            {"amount": 21000, "count": 2},
+        )
+        self.assertEqual(
+            categories["cantine"]["values"]["today"],
+            {"amount": 17000, "count": 2},
+        )
+        self.assertEqual(
+            categories["scolarite"]["values"]["today"]["amount"],
+            100000,
+        )
+
+    def test_listes_et_exports_des_admissions(self):
+        EcheancierPaiement.objects.filter(
+            eleve__matricule="MET-TODAY"
+        ).update(frais_inscription_paye=Decimal("50000"))
+
+        response = self.client.get(
+            reverse("paiements:liste_eleves_admission", args=["inscription"])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "MET-TODAY")
+        self.assertContains(response, "Élèves inscrits")
+
+        excel_response = self.client.get(
+            reverse(
+                "paiements:export_eleves_admission_excel",
+                args=["inscription"],
+            )
+        )
+        self.assertEqual(excel_response.status_code, 200)
+        self.assertIn(
+            "spreadsheetml",
+            excel_response["Content-Type"],
+        )
+
+        pdf_response = self.client.get(
+            reverse(
+                "paiements:export_eleves_admission_pdf",
+                args=["inscription"],
+            )
+        )
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
 
     @patch("paiements.views.timezone.localdate", return_value=today)
     def test_page_affiche_les_nouvelles_cartes(self, _mock_today):

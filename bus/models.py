@@ -151,6 +151,12 @@ class AbonnementBus(SyncTrackedModel):
         blank=True,
         verbose_name="Numéro de reçu",
     )
+    reference_externe = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Référence externe du paiement",
+        help_text="Numéro du reçu externe, transaction Mobile Money, chèque, etc.",
+    )
     montant = models.DecimalField(max_digits=10, decimal_places=0)
     periodicite = models.CharField(max_length=10, choices=Periodicite.choices, default=Periodicite.MENSUEL)
     date_debut = models.DateField(default=timezone.localdate)
@@ -274,6 +280,12 @@ class AbonnementCantine(SyncTrackedModel):
     
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='abonnements_cantine')
     montant = models.DecimalField(max_digits=10, decimal_places=0, verbose_name="Montant (GNF)")
+    reference_externe = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Référence externe du paiement",
+        help_text="Numéro du reçu externe, transaction Mobile Money, chèque, etc.",
+    )
     periodicite = models.CharField(max_length=15, choices=Periodicite.choices, default=Periodicite.MENSUEL)
     type_repas = models.CharField(max_length=10, choices=TypeRepas.choices, default=TypeRepas.DEJEUNER)
     
