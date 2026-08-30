@@ -227,6 +227,18 @@
                         {% endif %}
                     </span>
                 </div>
+
+                {% if enseignant.est_taux_horaire %}
+                <div class="info-row">
+                    <span class="info-label">Calcul des heures :</span>
+                    <span class="info-value">
+                        {{ enseignant.get_mode_calcul_horaire_display }}
+                        {% if enseignant.mode_calcul_horaire == 'MENSUEL' %}
+                            ({{ enseignant.heures_mensuelles }} h/mois)
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
                 
                 <div class="info-row">
                     <span class="info-label">Ancienneté :</span>

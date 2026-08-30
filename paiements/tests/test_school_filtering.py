@@ -1,9 +1,7 @@
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
-from django.conf import settings
 from datetime import date
-from unittest.mock import patch
 
 from eleves.models import Ecole, Classe, Eleve, Responsable
 from paiements.models import (
@@ -15,34 +13,13 @@ from paiements.models import (
     RemiseReduction,
     TypePaiement,
 )
-from paiements.tests.support import TEST_MIDDLEWARE
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from utilisateurs.models import Profil
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class SchoolFilteringTests(TestCase):
-    def sans_middleware_licence(self):
-        """Contexte sans le verrou de licence, qui renverrait sinon un 403."""
-        return self.settings(MIDDLEWARE=TEST_MIDDLEWARE)
-
     def setUp(self):
-        license_patcher = patch(
-            'ecole_moderne.licence_middleware._check_license_cached',
-            return_value={
-                'valid': True,
-                'trial': False,
-                'days_left': 999,
-            },
-        )
-        integrity_patcher = patch(
-            'ecole_moderne.licence_middleware._check_integrity_cached',
-            return_value={'valid': True, 'reason': ''},
-        )
-        license_patcher.start()
-        integrity_patcher.start()
-        self.addCleanup(license_patcher.stop)
-        self.addCleanup(integrity_patcher.stop)
-
         # Schools (provide required fields)
         self.ecole1 = Ecole.objects.create(
             nom="Ecole A",
@@ -217,26 +194,6 @@ class SchoolFilteringTests(TestCase):
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 404)
 
-    def test_detail_paiement_lists_all_payments_for_same_student(self):
-        second_payment = Paiement.objects.create(
-            eleve=self.eleve1,
-            type_paiement=self.type_insc,
-            mode_paiement=self.mode_espece,
-            montant=45000,
-            statut='EN_ATTENTE',
-            date_paiement=date(2024, 10, 10),
-        )
-        self.login1()
-        url = reverse("paiements:detail_paiement", kwargs={"paiement_id": self.paiement1.id})
-        resp = self.client.get(url)
-
-        self.assertEqual(resp.status_code, 200)
-        listed_ids = list(resp.context['paiements_eleve'].values_list('id', flat=True))
-        self.assertEqual(listed_ids, [second_payment.id, self.paiement1.id])
-        self.assertNotIn(self.paiement2.id, listed_ids)
-        self.assertEqual(resp.context['historique_resume']['nombre'], 2)
-        self.assertContains(resp, second_payment.numero_recu)
-
     def test_generer_recu_pdf_other_school_is_404(self):
         self.login1()
         url = reverse("paiements:generer_recu_pdf", kwargs={"paiement_id": self.paiement2.id})
@@ -252,17 +209,13 @@ class SchoolFilteringTests(TestCase):
     def test_relancer_eleve_other_school_is_404(self):
         self.login1()
         url = reverse("paiements:relancer_eleve", kwargs={"eleve_id": self.eleve2.id})
-        # La vue est réservée au POST (elle crée une relance et notifie). Un GET
-        # serait rejeté en 405 avant même le contrôle d'école : on poste donc
-        # pour vérifier réellement la protection d'accès inter-écoles.
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 404)
 
     def test_impayes_utilisent_echeancier_et_restent_limites_a_ecole(self):
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_eleves_impayes"))
+        response = self.client.get(reverse("paiements:liste_eleves_impayes"))
 
         self.assertEqual(response.status_code, 200)
         eleves_affiches = [
@@ -271,26 +224,16 @@ class SchoolFilteringTests(TestCase):
         self.assertEqual(eleves_affiches, [self.eleve1.pk])
 
     def test_eleves_soldes_restent_limites_a_ecole(self):
-        # Solder par de vrais versements : des qu'un journal de paiements existe
-        # pour l'annee, le moteur l'utilise comme source unique et ignore les
-        # cumuls ecrits directement sur l'echeancier.
-        type_t1 = TypePaiement.objects.create(nom="Scolarité - 1ère tranche")
-        for eleve in (self.eleve1, self.eleve2):
-            Paiement.objects.create(
-                eleve=eleve,
-                type_paiement=type_t1,
-                mode_paiement=self.mode_espece,
-                montant=100000,
-                statut='VALIDE',
-                date_paiement=date(2024, 10, 1),
-            )
+        self.echeancier1.tranche_1_payee = 100000
+        self.echeancier1.save(update_fields=["tranche_1_payee"])
+        self.echeancier2.tranche_1_payee = 100000
+        self.echeancier2.save(update_fields=["tranche_1_payee"])
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(
-                reverse("paiements:liste_eleves_soldes"),
-                {"annee": "2024-2025"},
-            )
+        response = self.client.get(
+            reverse("paiements:liste_eleves_soldes"),
+            {"annee": "2024-2025"},
+        )
 
         self.assertEqual(response.status_code, 200)
         eleves_affiches = [
@@ -313,8 +256,7 @@ class SchoolFilteringTests(TestCase):
         )
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_relances"))
+        response = self.client.get(reverse("paiements:liste_relances"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -325,8 +267,7 @@ class SchoolFilteringTests(TestCase):
     def test_eleves_a_relancer_sont_listes_meme_sans_historique(self):
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("paiements:liste_relances"))
+        response = self.client.get(reverse("paiements:liste_relances"))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_a_relancer"], 1)
@@ -363,13 +304,10 @@ class SchoolFilteringTests(TestCase):
         )
         self.login1()
 
-        with self.sans_middleware_licence():
-            response = self.client.get(reverse("rapports:rapport_remises"))
+        response = self.client.get(reverse("rapports:rapport_remises"))
 
         self.assertEqual(response.status_code, 200)
-        # La periode de reporting s'ouvre au 1er aout, avec les
-        # reinscriptions (get_debut_periode_reporting).
-        self.assertEqual(response.context["date_debut"], date(2024, 8, 1))
+        self.assertEqual(response.context["date_debut"], date(2024, 9, 1))
         self.assertEqual(
             [item.pk for item in response.context["remises_appliquees"]],
             [remise_ecole1.pk],

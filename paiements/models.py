@@ -1,20 +1,25 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator, RegexValidator
 from decimal import Decimal
-from ecole_moderne.validators import valider_annee_scolaire
 from eleves.models import Eleve
 from synchronisation.mixins import SyncTrackedModel
+
+ANNEE_SCOLAIRE_VALIDATOR = RegexValidator(
+    regex=r'^\d{4}-\d{4}$',
+    message="L'année scolaire doit être au format AAAA-AAAA.",
+)
 
 class TypePaiement(SyncTrackedModel):
     """Modèle pour les types de paiements"""
     nom = models.CharField(max_length=100, unique=True, verbose_name="Nom du type")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
     actif = models.BooleanField(default=True, verbose_name="Actif")
-    
+
     class Meta:
         verbose_name = "Type de paiement"
         verbose_name_plural = "Types de paiements"
-    
+
     def __str__(self):
         return self.nom
 
@@ -27,11 +32,11 @@ class ModePaiement(SyncTrackedModel):
         verbose_name="Frais supplémentaires (GNF)"
     )
     actif = models.BooleanField(default=True, verbose_name="Actif")
-    
+
     class Meta:
         verbose_name = "Mode de paiement"
         verbose_name_plural = "Modes de paiements"
-    
+
     def __str__(self):
         return self.nom
 
@@ -43,30 +48,28 @@ class Paiement(SyncTrackedModel):
         ('REJETE', 'Rejeté'),
         ('REMBOURSE', 'Remboursé'),
     ]
-    
+
     # Références
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='paiements')
     type_paiement = models.ForeignKey(TypePaiement, on_delete=models.CASCADE)
     mode_paiement = models.ForeignKey(ModePaiement, on_delete=models.CASCADE)
-    
+
     # Informations du paiement
     numero_recu = models.CharField(max_length=20, unique=True, verbose_name="Numéro de reçu")
     montant = models.DecimalField(
         max_digits=10, decimal_places=0,
-        verbose_name="Montant (GNF)"
+        verbose_name="Montant (GNF)",
+        validators=[MinValueValidator(Decimal('1'))],
     )
     date_paiement = models.DateField(verbose_name="Date de paiement", db_index=True)
     annee_scolaire = models.CharField(
         max_length=9,
-        blank=True,
-        default='',
         db_index=True,
-        validators=[valider_annee_scolaire],
+        validators=[ANNEE_SCOLAIRE_VALIDATOR],
         verbose_name="Année scolaire",
-        help_text="Année comptable à laquelle ce paiement doit être affecté.",
     )
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut", db_index=True)
-    
+
     # Informations complémentaires
     reference_externe = models.CharField(
         max_length=100, blank=True, null=True,
@@ -74,7 +77,7 @@ class Paiement(SyncTrackedModel):
         help_text="Numéro de transaction Mobile Money, chèque, etc."
     )
     observations = models.TextField(blank=True, null=True, verbose_name="Observations")
-    
+
     # Métadonnées
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
@@ -87,7 +90,7 @@ class Paiement(SyncTrackedModel):
         related_name='paiements_valides'
     )
     date_validation = models.DateTimeField(null=True, blank=True, verbose_name="Date de validation")
-    
+
     class Meta:
         verbose_name = "Paiement"
         verbose_name_plural = "Paiements"
@@ -100,10 +103,16 @@ class Paiement(SyncTrackedModel):
             models.Index(fields=['date_paiement']),         # Filtrage par date seule
             models.Index(fields=['date_creation']),         # Tri par date de création
         ]
-    
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(montant__gt=0),
+                name='paiement_montant_strictement_positif',
+            ),
+        ]
+
     def __str__(self):
         return f"{self.numero_recu} - {self.eleve.nom_complet} - {self.montant:,.0f} GNF"
-    
+
     def save(self, *args, **kwargs):
         """Génère automatiquement un numéro de reçu si non défini"""
         # Figer l'année sur le paiement. La classe de l'élève peut changer au
@@ -125,10 +134,10 @@ class Paiement(SyncTrackedModel):
         if not self.numero_recu:
             from django.utils import timezone
             from django.db import transaction, IntegrityError
-            
+
             annee = timezone.now().year
             prefix = f"REC{annee}"
-            
+
             # Réessayer quelques fois en cas de collision concurrente
             for _ in range(10):
                 dernier = (
@@ -157,7 +166,7 @@ class Paiement(SyncTrackedModel):
                 raise ValueError("Impossible de générer un numéro de reçu unique après 10 tentatives")
         else:
             super().save(*args, **kwargs)
-    
+
     @property
     def montant_avec_frais(self):
         return self.montant + self.mode_paiement.frais_supplementaires
@@ -187,74 +196,78 @@ class EcheancierPaiement(SyncTrackedModel):
         ('PAYE_COMPLET', 'Payé complètement'),
         ('EN_RETARD', 'En retard'),
     ]
-    
-    eleve = models.ForeignKey(
-        Eleve,
-        on_delete=models.CASCADE,
-        related_name='echeanciers',
-        related_query_name='echeancier',
-    )
+
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='echeanciers')
     annee_scolaire = models.CharField(
         max_length=9,
-        validators=[valider_annee_scolaire],
+        validators=[ANNEE_SCOLAIRE_VALIDATOR],
         verbose_name="Année scolaire",
     )
     nature_frais = models.CharField(
         max_length=20,
         choices=NATURE_FRAIS_CHOICES,
         default=NATURE_INSCRIPTION,
+        db_index=True,
         verbose_name="Nature des frais d'admission",
     )
-    
+
     # Montants dus
     frais_inscription_du = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="Frais d'inscription dus (GNF)"
+        verbose_name="Frais d'inscription dus (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_1_due = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="1ère tranche due (GNF)"
+        verbose_name="1ère tranche due (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_2_due = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="2ème tranche due (GNF)"
+        verbose_name="2ème tranche due (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_3_due = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="3ème tranche due (GNF)"
+        verbose_name="3ème tranche due (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     # Dates d'échéance
     date_echeance_inscription = models.DateField(verbose_name="Échéance inscription")
     date_echeance_tranche_1 = models.DateField(verbose_name="Échéance 1ère tranche")
     date_echeance_tranche_2 = models.DateField(verbose_name="Échéance 2ème tranche")
     date_echeance_tranche_3 = models.DateField(verbose_name="Échéance 3ème tranche")
-    
+
     # Montants payés
     frais_inscription_paye = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="Frais d'inscription payés (GNF)"
+        verbose_name="Frais d'inscription payés (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_1_payee = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="1ère tranche payée (GNF)"
+        verbose_name="1ère tranche payée (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_2_payee = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="2ème tranche payée (GNF)"
+        verbose_name="2ème tranche payée (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     tranche_3_payee = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
-        verbose_name="3ème tranche payée (GNF)"
+        verbose_name="3ème tranche payée (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='A_PAYER', verbose_name="Statut")
-    
+
     # Métadonnées
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
     class Meta:
         verbose_name = "Échéancier de paiement"
         verbose_name_plural = "Échéanciers de paiements"
@@ -268,19 +281,36 @@ class EcheancierPaiement(SyncTrackedModel):
                 fields=['eleve', 'annee_scolaire'],
                 name='echeancier_unique_eleve_annee',
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(frais_inscription_du__gte=0)
+                    & models.Q(tranche_1_due__gte=0)
+                    & models.Q(tranche_2_due__gte=0)
+                    & models.Q(tranche_3_due__gte=0)
+                    & models.Q(frais_inscription_paye__gte=0)
+                    & models.Q(tranche_1_payee__gte=0)
+                    & models.Q(tranche_2_payee__gte=0)
+                    & models.Q(tranche_3_payee__gte=0)
+                ),
+                name='echeancier_montants_non_negatifs',
+            ),
         ]
 
     def __str__(self):
         return f"Échéancier {self.eleve.nom_complet} - {self.annee_scolaire}"
-    
+
+    @property
+    def est_reinscription(self):
+        return self.nature_frais == self.NATURE_REINSCRIPTION
+
     @property
     def total_du(self):
         return self.frais_inscription_du + self.tranche_1_due + self.tranche_2_due + self.tranche_3_due
-    
+
     @property
     def total_paye(self):
         return self.frais_inscription_paye + self.tranche_1_payee + self.tranche_2_payee + self.tranche_3_payee
-    
+
     @property
     def total_remises_valides(self):
         """Somme des remises valides de cette année, bornées par tranche.
@@ -324,15 +354,22 @@ class RemiseReduction(SyncTrackedModel):
         ('POURCENTAGE', 'Pourcentage'),
         ('MONTANT_FIXE', 'Montant fixe'),
     ]
-    
+
     MOTIF_CHOICES = [
         ('FRATRIE', 'Réduction fratrie'),
         ('MERITE', 'Réduction mérite'),
         ('SOCIALE', 'Réduction sociale'),
         ('EMPLOYEE', 'Enfant d\'employé'),
+        ('CLIENT_FIDELE', 'Client fidèle'),
+        ('PROMOTION', 'Promotion'),
+        ('ERREUR_COMMERCIALE', 'Erreur commerciale'),
+        ('PARTENAIRE', 'Partenaire'),
+        ('GESTE_COMMERCIAL', 'Geste commercial'),
+        ('NE_PAIE_RIEN', 'Ne paie rien'),
+        ('MOITIE', 'La moitié'),
         ('AUTRE', 'Autre'),
     ]
-    
+
     nom = models.CharField(max_length=100, verbose_name="Nom de la remise")
     type_remise = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type de remise")
     valeur = models.DecimalField(
@@ -342,26 +379,26 @@ class RemiseReduction(SyncTrackedModel):
     )
     motif = models.CharField(max_length=20, choices=MOTIF_CHOICES, verbose_name="Motif")
     description = models.TextField(blank=True, null=True, verbose_name="Description")
-    
+
     # Conditions d'application
     date_debut = models.DateField(verbose_name="Date de début")
     date_fin = models.DateField(verbose_name="Date de fin")
     actif = models.BooleanField(default=True, verbose_name="Actif")
-    
+
     # Métadonnées
     date_creation = models.DateTimeField(auto_now_add=True)
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
     class Meta:
         verbose_name = "Remise/Réduction"
         verbose_name_plural = "Remises/Réductions"
-    
+
     def __str__(self):
         if self.type_remise == 'POURCENTAGE':
             return f"{self.nom} - {self.valeur}%"
         else:
             return f"{self.nom} - {self.valeur:,.0f} GNF"
-    
+
     def calculer_remise(self, montant_base):
         """Calcule le montant de la remise sur un montant de base.
 
@@ -571,7 +608,7 @@ class TwilioInboundMessage(SyncTrackedModel):
 class ConfigurationPaiement(SyncTrackedModel):
     """Configuration des frais de scolarité par classe"""
     from eleves.models import Classe
-    
+
     classe = models.OneToOneField(
         Classe,
         on_delete=models.CASCADE,
@@ -603,20 +640,20 @@ class ConfigurationPaiement(SyncTrackedModel):
         blank=True,
         related_name='configurations_paiement_crees'
     )
-    
+
     class Meta:
         verbose_name = "Configuration de paiement"
         verbose_name_plural = "Configurations de paiement"
         ordering = ['classe__nom']
-    
+
     def __str__(self):
         return f"Config {self.classe.nom} - {self.montant_total} GNF"
-    
+
     @property
     def montant_total(self):
         """Calcule le montant total (inscription + scolarité)"""
         return self.montant_inscription + self.montant_scolarite
-    
+
     @property
     def montant_par_tranche(self):
         """Montant standard d'une tranche de scolarité (arrondi au GNF).

@@ -177,18 +177,18 @@ class PaiementRemiseForm(forms.Form):
         """Calcule le montant total des remises sélectionnées"""
         remises = self.cleaned_data.get('remises', [])
         total_remise = Decimal('0')
-        
+
         for remise in remises:
             montant_remise = remise.calculer_remise(montant_base)
             total_remise += montant_remise
-        
+
         return min(total_remise, montant_base)  # La remise ne peut pas dépasser le montant
-    
+
     def get_remises_details(self, montant_base):
         """Retourne les détails de chaque remise appliquée"""
         remises = self.cleaned_data.get('remises', [])
         details = []
-        
+
         for remise in remises:
             montant_remise = remise.calculer_remise(montant_base)
             details.append({
@@ -196,13 +196,13 @@ class PaiementRemiseForm(forms.Form):
                 'montant': montant_remise,
                 'description': f"{remise.nom} - {montant_remise:,.0f} GNF".replace(',', ' ')
             })
-        
+
         return details
 
 
 class CalculateurRemiseForm(forms.Form):
     """Formulaire pour calculer les remises en temps réel"""
-    
+
     montant = forms.DecimalField(
         widget=forms.NumberInput(attrs={
             'class': 'form-control',
@@ -212,7 +212,7 @@ class CalculateurRemiseForm(forms.Form):
         }),
         label="Montant du paiement"
     )
-    
+
     remise_id = forms.ModelChoiceField(
         queryset=RemiseReduction.objects.filter(actif=True),
         widget=forms.Select(attrs={
@@ -222,21 +222,21 @@ class CalculateurRemiseForm(forms.Form):
         empty_label="Sélectionner une remise",
         label="Remise à appliquer"
     )
-    
+
     def calculate_remise_preview(self):
         """Calcule un aperçu de la remise"""
         if not self.is_valid():
             return None
-            
+
         montant = self.cleaned_data.get('montant')
         remise = self.cleaned_data.get('remise_id')
-        
+
         if not montant or not remise:
             return None
-            
+
         montant_remise = remise.calculer_remise(montant)
         montant_final = montant - montant_remise
-        
+
         return {
             'montant_original': montant,
             'montant_remise': montant_remise,

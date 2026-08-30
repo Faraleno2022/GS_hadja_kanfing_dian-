@@ -11,15 +11,8 @@ from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 import logging
 
-from .models import Paiement
-from .allocation import (
-    INSCRIPTION,
-    TRANCHE_1,
-    TRANCHE_2,
-    TRANCHE_3,
-    echeancier_dues,
-    replay_payment_allocations,
-)
+from .models import EcheancierPaiement, Paiement
+from .allocation import get_payment_allocation, registration_kind_for_type
 from eleves.models import Eleve
 
 logger = logging.getLogger(__name__)
@@ -169,34 +162,37 @@ def recu_public_pdf(request, paiement_id):
             paiement.eleve,
             created_by=getattr(paiement, 'cree_par', None),
             registration_kind=registration_kind_for_type(paiement.type_paiement),
+            annee_scolaire=paiement.annee_scolaire,
         )
-        _auto_validate_echeancier_for_eleve(paiement.eleve)
-        paiement.eleve._state.fields_cache.pop('echeancier', None)
+        _auto_validate_echeancier_for_eleve(
+            paiement.eleve,
+            annee_scolaire=paiement.annee_scolaire,
+            strict=True,
+        )
         
-        # Calcul total remises. Le brut sert de base: une remise déjà déduite du
-        # reçu serait sinon retranchée une seconde fois.
-        from .remise_utils import montant_brut_paiement
+        # Calcul total remises
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-        montant_brut = montant_brut_paiement(paiement)
-        montant_net = montant_brut - remises_total if remises_total > 0 else montant_brut
 
         # Situation financière globale de l'élève (via échéancier)
-        from .models import EcheancierPaiement
         from decimal import Decimal
-        ech = None
-        try:
-            ech = paiement.echeancier_annuel
-        except EcheancierPaiement.DoesNotExist:
-            ech = None
+        ech = EcheancierPaiement.objects.filter(
+            eleve=paiement.eleve,
+            annee_scolaire=paiement.annee_scolaire,
+        ).first()
+        if ech:
+            ech.refresh_from_db()
         total_du = ech.total_du if ech else Decimal('0')
         total_paye = ech.total_paye if ech else Decimal('0')
-        solde_restant = ech.solde_restant if ech else Decimal('0')
-        allocation_courante = None
-        if ech:
-            from .payment_engine import situation_echeancier
-            allocation_courante = situation_echeancier(ech)[
-                'allocations'
-            ].get(paiement.id)
+        remises_valides = (
+            Paiement.objects.filter(
+                eleve=paiement.eleve,
+                annee_scolaire=paiement.annee_scolaire,
+                statut='VALIDE',
+            )
+            .aggregate(total=Sum('remises__montant_remise'))
+            .get('total') or Decimal('0')
+        )
+        solde_restant = max(Decimal('0'), total_du - total_paye - remises_valides)
 
         # Préparer le buffer et le canvas
         buffer = BytesIO()
@@ -265,7 +261,7 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h
         c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom if paiement.mode_paiement else 'N/A'}")
         top -= line_h
-        c.drawString(left, top, f"Montant: {montant_brut:,.0f} GNF".replace(",", " "))
+        c.drawString(left, top, f"Montant encaissé: {paiement.montant:,.0f} GNF".replace(",", " "))
         top -= line_h
 
         # Répartition de ce paiement selon l'ordre inscription -> T1 -> T2 -> T3.
@@ -290,32 +286,6 @@ def recu_public_pdf(request, paiement_id):
                 c.drawString(left + 12, top, f"{label}: {amount:,.0f} GNF".replace(",", " "))
                 top -= 14
 
-        if remises_total > 0:
-            c.drawString(left, top, f"Remises: -{remises_total:,.0f} GNF".replace(",", " "))
-            top -= line_h
-            c.setFont('Helvetica-Bold', 11)
-            c.drawString(left, top, f"Net payé: {montant_net:,.0f} GNF".replace(",", " "))
-            c.setFont('Helvetica', 11)
-            top -= line_h
-
-        if allocation_courante:
-            label_admission = (
-                "Réinscription" if ech.nature_frais == 'REINSCRIPTION' else "Inscription"
-            )
-            c.setFont('Helvetica-Bold', 11)
-            c.drawString(left, top, "AFFECTATION DU PAIEMENT")
-            top -= line_h
-            c.setFont('Helvetica', 10)
-            for label, bucket in (
-                (label_admission, INSCRIPTION),
-                ("1ère tranche", TRANCHE_1),
-                ("2ème tranche", TRANCHE_2),
-                ("3ème tranche", TRANCHE_3),
-            ):
-                amount = allocation_courante[bucket]
-                c.drawString(left, top, f"{label}: {amount:,.0f} GNF".replace(",", " "))
-                top -= 15
-
         top -= 10
 
         # Situation financière globale
@@ -338,6 +308,22 @@ def recu_public_pdf(request, paiement_id):
                 c.drawString(left, top, "Scolarité entièrement payée")
                 c.setFillColorRGB(0, 0, 0)
             top -= line_h
+
+        if remises_total > 0:
+            top -= 10
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, top, "REMISES APPLIQUÉES")
+            top -= line_h
+            c.setFont('Helvetica', 10)
+            for payment_discount in paiement.remises.select_related('remise').all():
+                discount_name = getattr(payment_discount.remise, 'nom', 'Remise')
+                discount_amount = f"{payment_discount.montant_remise:,.0f}".replace(',', ' ')
+                c.drawString(
+                    left + 12,
+                    top,
+                    f"- {discount_name} : -{discount_amount} GNF",
+                )
+                top -= 14
 
         top -= 10
         c.setFont('Helvetica-Bold', 11)
@@ -402,11 +388,9 @@ def note_rappel_public_pdf(request, eleve_id):
             ech = None
 
         if ech and ech.total_du > 0:
-            from .payment_engine import situation_echeancier
-            situation = situation_echeancier(ech)
-            montant_total = situation['total_du']
-            montant_paye = situation['total_encaisse']
-            reste_a_payer = situation['solde_restant']
+            montant_total = ech.total_du
+            montant_paye = ech.total_paye
+            reste_a_payer = ech.solde_restant
         else:
             # Fallback: ConfigurationPaiement
             try:
@@ -415,8 +399,11 @@ def note_rappel_public_pdf(request, eleve_id):
             except (ConfigurationPaiement.DoesNotExist, Exception):
                 montant_total = Decimal('0')
 
+            annee_scolaire = getattr(getattr(eleve, 'classe', None), 'annee_scolaire', '')
             montant_paye = Paiement.objects.filter(
-                eleve=eleve, statut='VALIDE'
+                eleve=eleve,
+                annee_scolaire=annee_scolaire,
+                statut='VALIDE',
             ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
             reste_a_payer = max(montant_total - montant_paye, Decimal('0'))
         

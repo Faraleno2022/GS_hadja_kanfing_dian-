@@ -1,13 +1,10 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-
-from paiements.tests.support import TEST_MIDDLEWARE
 
 from eleves.models import Ecole, Classe, Responsable, Eleve
 from paiements.models import (
@@ -18,9 +15,10 @@ from paiements.models import (
     RemiseReduction,
     PaiementRemise,
 )
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class ValiderEcheancierRedirectTests(TestCase):
     def setUp(self):
         # Auth user (superuser bypasses granular permission checks)
@@ -28,8 +26,6 @@ class ValiderEcheancierRedirectTests(TestCase):
         self.user = User.objects.create_superuser(
             username="admin", email="admin@example.com", password="pass1234"
         )
-        # force_login : django-axes exige un objet request dans authenticate(),
-        # que le client de test ne fournit pas via login().
         self.client.force_login(self.user)
 
         # Minimal school data
@@ -151,19 +147,12 @@ class ValiderEcheancierRedirectTests(TestCase):
             statut="EN_ATTENTE",
             numero_recu="",
         )
-        middleware_sans_licence = [
-            middleware
-            for middleware in settings.MIDDLEWARE
-            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
-        ]
-
-        with self.settings(MIDDLEWARE=middleware_sans_licence):
-            response = self.client.get(
-                reverse(
-                    "paiements:detail_paiement",
-                    kwargs={"paiement_id": paiement_consulte.pk},
-                )
+        response = self.client.get(
+            reverse(
+                "paiements:detail_paiement",
+                kwargs={"paiement_id": paiement_consulte.pk},
             )
+        )
 
         self.assertEqual(response.status_code, 200)
         paiements_affiches = list(response.context["paiements_eleve"])
@@ -181,17 +170,10 @@ class ValiderEcheancierRedirectTests(TestCase):
         session = self.client.session
         session["nouvel_eleve_paiement_id"] = self.eleve.pk
         session.save()
-        middleware_sans_licence = [
-            middleware
-            for middleware in settings.MIDDLEWARE
-            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
-        ]
-
-        with self.settings(MIDDLEWARE=middleware_sans_licence):
-            response = self.client.post(
-                reverse("paiements:valider_paiement", kwargs={"paiement_id": paiement.pk}),
-                follow=False,
-            )
+        response = self.client.post(
+            reverse("paiements:valider_paiement", kwargs={"paiement_id": paiement.pk}),
+            follow=False,
+        )
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("eleves:ajouter_eleve"))

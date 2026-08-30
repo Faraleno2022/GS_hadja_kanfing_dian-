@@ -12,6 +12,13 @@
         margin-bottom: 15px;
         background-color: #f8f9fa;
     }
+    .tranche-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px 15px;
+        margin-bottom: 10px;
+        background-color: #fff;
+    }
     .remise-preview {
         background-color: #e3f2fd;
         border: 1px solid #2196f3;
@@ -49,7 +56,7 @@
                         <i class="fas fa-arrow-left me-1"></i>Retour
                     </a>
                 </div>
-                
+
                 <div class="card-body">
                     {% if form.errors %}
                     <div class="alert alert-danger">
@@ -77,16 +84,16 @@
                                     <p class="mb-1"><strong>Élève:</strong> {{ paiement.eleve.nom_complet }}</p>
                                     <p class="mb-1"><strong>Type:</strong> {{ paiement.type_paiement.nom }}</p>
                                     <p class="mb-1"><strong>Date:</strong> {{ paiement.date_paiement|date:"d/m/Y" }}</p>
-                                    <p class="mb-1"><strong>Montant actuel:</strong> 
+                                    <p class="mb-1"><strong>Montant actuel:</strong>
                                         <span class="text-primary fw-bold">{{ paiement.montant|floatformat:0 }} GNF</span>
                                     </p>
-                                    <p class="mb-0"><strong>Statut:</strong> 
+                                    <p class="mb-0"><strong>Statut:</strong>
                                         <span class="badge bg-warning">{{ paiement.get_statut_display }}</span>
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="col-md-6">
                             {% if remises_existantes %}
                             <div class="card bg-info text-white">
@@ -96,13 +103,6 @@
                                     <p class="mb-1">
                                         • {{ remise_paiement.remise.nom }}:
                                         <strong>{{ remise_paiement.montant_remise|floatformat:0 }} GNF</strong>
-                                        <small class="d-block ms-3">
-                                            Portée : {{ remise_paiement.libelle_portee }}
-                                            ({{ remise_paiement.get_base_calcul_display }})
-                                        </small>
-                                        <small class="d-block ms-3">
-                                            Motif : {{ remise_paiement.libelle_motif }}
-                                        </small>
                                     </p>
                                     {% endfor %}
                                 </div>
@@ -110,13 +110,79 @@
                             {% endif %}
                         </div>
                     </div>
-                    
+
                     <!-- Formulaire d'application des remises -->
                     <form method="post" id="remiseForm">
                         {% csrf_token %}
-                        
+
                         <div class="row">
                             <div class="col-md-8">
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Tranches concernées</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="alert alert-info py-2 mb-3">
+                                            <i class="fas fa-info-circle me-1"></i>
+                                            La remise s'applique uniquement à la scolarité : jamais sur les frais d'inscription ni de réinscription.
+                                        </div>
+                                        {% for t in tranches_info %}
+                                        <div class="tranche-card">
+                                            <div class="form-check">
+                                                <input class="form-check-input tranche-checkbox"
+                                                       type="checkbox"
+                                                       name="tranches"
+                                                       value="{{ t.num }}"
+                                                       id="tranche_{{ t.num }}"
+                                                       data-due="{{ t.due }}"
+                                                       data-sur-ce-paiement="{{ t.sur_ce_paiement }}"
+                                                       {% if t.num|stringformat:"s" in form.tranches.value %}checked{% endif %}>
+                                                <label class="form-check-label" for="tranche_{{ t.num }}">
+                                                    <strong>
+                                                        {% if t.num == 1 %}1ère tranche{% elif t.num == 2 %}2ème tranche{% else %}3ème tranche{% endif %}
+                                                    </strong>
+                                                </label>
+                                            </div>
+                                            <div class="mt-1">
+                                                <small class="text-muted">Montant de la tranche : <strong>{{ t.due|floatformat:0 }} GNF</strong></small><br>
+                                                <small class="text-muted">Sur ce paiement : <strong>{{ t.sur_ce_paiement|floatformat:0 }} GNF</strong></small>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                        <div class="mt-2">
+                                            <small class="text-muted d-block mb-1">Sélection rapide :</small>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" id="btnTranchesToutes">Toutes</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" id="btnTranchesCePaiement">Tranches de ce paiement</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="btnTranchesAucune">Aucune</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card mb-3">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Base de calcul</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input base-calcul-radio" type="radio" name="base_calcul" id="base_paiement_echeance" value="paiement_echeance" {% if form.base_calcul.value == 'paiement_echeance' or not form.base_calcul.value %}checked{% endif %}>
+                                            <label class="form-check-label" for="base_paiement_echeance">
+                                                <strong>Paiement à l'échéance</strong>
+                                            </label>
+                                            <small class="text-muted d-block">Le calcul porte sur la part de ce reçu affectée aux tranches cochées (hors inscription).</small>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input base-calcul-radio" type="radio" name="base_calcul" id="base_tranches_dues" value="tranches_dues" {% if form.base_calcul.value == 'tranches_dues' %}checked{% endif %}>
+                                            <label class="form-check-label" for="base_tranches_dues">
+                                                <strong>Montant des tranches sélectionnées</strong>
+                                            </label>
+                                            <small class="text-muted d-block">Le calcul porte sur ce qui est dû pour ces tranches.</small>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">Base retenue : <strong id="baseRetenueLabel">0 GNF</strong></small>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="card">
                                     <div class="card-header">
                                         <h6 class="mb-0">Sélectionner les remises à appliquer</h6>
@@ -124,108 +190,14 @@
                                     <div class="card-body">
                                         {{ form.montant_original.as_hidden }}
 
-                                        <!-- Portée de la remise: tranches concernées -->
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                <i class="fas fa-layer-group me-1"></i>Tranches concernées
-                                            </label>
-                                            <div class="alert alert-secondary py-2 px-3 small mb-2">
-                                                <i class="fas fa-info-circle me-1"></i>
-                                                La remise s'applique uniquement à la scolarité : jamais sur les frais
-                                                d'inscription ni de réinscription.
-                                            </div>
-                                            <div class="row g-2">
-                                                {% for t in tranches_info %}
-                                                <div class="col-md-4 mb-2">
-                                                    <div class="remise-card h-100">
-                                                        <div class="form-check">
-                                                            <input class="form-check-input tranche-checkbox"
-                                                                   type="checkbox"
-                                                                   name="tranches"
-                                                                   value="{{ t.numero }}"
-                                                                   id="tranche_{{ t.numero }}"
-                                                                   data-montant-tranche="{{ t.montant_du }}"
-                                                                   data-montant-echeance="{{ t.montant_echeance }}"
-                                                                   {% if t.checked %}checked{% endif %}>
-                                                            <label class="form-check-label" for="tranche_{{ t.numero }}">
-                                                                <strong>{{ t.label }}</strong>
-                                                            </label>
-                                                        </div>
-                                                        <div class="mt-2">
-                                                            <small class="text-muted d-block">
-                                                                Montant de la tranche : <strong>{{ t.montant_du|floatformat:0 }} GNF</strong>
-                                                            </small>
-                                                            <small class="text-muted d-block">
-                                                                Sur ce paiement : <strong>{{ t.montant_echeance|floatformat:0 }} GNF</strong>
-                                                            </small>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                {% endfor %}
-                                            </div>
-                                            {% if form.tranches.errors %}
-                                            <div class="text-danger small mt-1">{{ form.tranches.errors.0 }}</div>
-                                            {% endif %}
-                                            <div class="mt-1">
-                                                <span class="text-muted small me-2">Sélection rapide :</span>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="1">T1</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="2">T2</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="3">T3</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="1,2">T1+T2</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="2,3">T2+T3</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm preset-tranches" data-tranches="1,2,3">Les 3 tranches</button>
-                                            </div>
-                                        </div>
-
-                                        <!-- Base de calcul de la remise -->
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                <i class="fas fa-calculator me-1"></i>Base de calcul
-                                            </label>
-                                            <div class="form-check">
-                                                <input class="form-check-input base-calcul-radio" type="radio"
-                                                       name="base_calcul" value="{{ base_tranche_code }}"
-                                                       id="base_calcul_tranche"
-                                                       {% if base_calcul_choisi == base_tranche_code %}checked{% endif %}>
-                                                <label class="form-check-label" for="base_calcul_tranche">
-                                                    Montant des tranches sélectionnées
-                                                    <small class="text-muted d-block">Le calcul porte sur ce qui est dû pour ces tranches.</small>
-                                                </label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input base-calcul-radio" type="radio"
-                                                       name="base_calcul" value="{{ base_echeance_code }}"
-                                                       id="base_calcul_echeance"
-                                                       {% if base_calcul_choisi == base_echeance_code %}checked{% endif %}>
-                                                <label class="form-check-label" for="base_calcul_echeance">
-                                                    Paiement à l'échéance
-                                                    <small class="text-muted d-block">
-                                                        Le calcul porte sur la part de ce reçu affectée aux tranches cochées
-                                                        ({{ total_echeance_tranches|floatformat:0 }} GNF au total, hors inscription).
-                                                    </small>
-                                                </label>
-                                            </div>
-                                            <div class="mt-2">
-                                                <span class="text-muted small">Base retenue :</span>
-                                                <strong id="baseRetenue">0 GNF</strong>
-                                            </div>
-                                        </div>
-
-                                        <!-- Motif obligatoire de la remise -->
                                         <div class="mb-3">
                                             <label class="form-label" for="id_motif">
-                                                <i class="fas fa-comment-dots me-1"></i>Motif de la remise
-                                                <span class="text-danger">*</span>
+                                                <i class="fas fa-file-signature me-1"></i>Motif de la remise <span class="text-danger">*</span>
                                             </label>
                                             {{ form.motif }}
                                             <small class="text-muted d-block mt-1">
-                                                Obligatoire : toute remise doit être justifiée.
-                                                « Ne paie rien » applique 100 % et « La moitié » 50 % si aucun
-                                                pourcentage n'est choisi ci-dessous.
+                                                Obligatoire : toute remise doit être justifiée. « Ne paie rien » applique 100% et « La moitié » 50% si aucun pourcentage n'est choisi ci-dessous.
                                             </small>
-                                            {% if form.motif.errors %}
-                                            <div class="text-danger small mt-1">{{ form.motif.errors.0 }}</div>
-                                            {% endif %}
                                         </div>
 
                                         <!-- Sélecteur de remise scolarité (%) 1-100 -->
@@ -240,27 +212,8 @@
                                             <!-- Avertissement 100% -->
                                             <div id="pct100Warning" class="alert alert-warning mt-2 d-none" role="alert">
                                                 <i class="fas fa-exclamation-triangle me-1"></i>
-                                                Attention: vous avez sélectionné <strong>100%</strong> de remise. Cela annulera entièrement les tranches cochées pour l'année en cours. Vérifiez que vous avez l'autorisation nécessaire avant de confirmer.
+                                                Attention: vous avez sélectionné <strong>100%</strong> de remise sur les tranches sélectionnées. Vérifiez que vous avez l'autorisation nécessaire avant de confirmer.
                                             </div>
-                                        </div>
-
-                                        <!-- Déduction de la remise sur le reçu -->
-                                        <div class="mb-3 p-3 rounded border bg-light">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox"
-                                                       name="deduire_du_paiement"
-                                                       id="id_deduire_du_paiement" value="1"
-                                                       {% if form.deduire_du_paiement.value %}checked{% endif %}>
-                                                <label class="form-check-label fw-bold" for="id_deduire_du_paiement">
-                                                    <i class="fas fa-receipt me-1"></i>Déduire la remise du montant du reçu
-                                                </label>
-                                            </div>
-                                            <small class="text-muted d-block mt-1">
-                                                Le reçu est ramené à son montant net ({{ montant_brut|floatformat:0 }} GNF −
-                                                remise). La couverture de l'année reste identique : la remise remplace
-                                                l'encaissement au lieu de s'y ajouter. Sans cette option, la somme déjà
-                                                versée peut se retrouver sans poste à couvrir.
-                                            </small>
                                         </div>
 
                                         {% if form.remises.field.queryset %}
@@ -269,10 +222,10 @@
                                                 <div class="col-md-6 mb-3">
                                                     <div class="remise-card">
                                                         <div class="form-check">
-                                                            <input class="form-check-input remise-checkbox" 
-                                                                   type="checkbox" 
-                                                                   name="remises" 
-                                                                   value="{{ remise.id }}" 
+                                                            <input class="form-check-input remise-checkbox"
+                                                                   type="checkbox"
+                                                                   name="remises"
+                                                                   value="{{ remise.id }}"
                                                                    id="remise_{{ remise.id }}"
                                                                    data-remise-id="{{ remise.id }}"
                                                                    data-remise-type="{{ remise.type_remise }}"
@@ -316,7 +269,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="col-md-4">
                                 <div class="card sticky-top">
                                     <div class="card-header">
@@ -324,26 +277,13 @@
                                     </div>
                                     <div class="card-body">
                                         <div id="calculPreview">
-                                            <div id="alerteTranches" class="alert alert-warning py-2 px-2 small d-none">
-                                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                                Cochez au moins une tranche pour appliquer la remise.
-                                            </div>
-                                            <div id="alerteMotif" class="alert alert-warning py-2 px-2 small d-none">
-                                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                                Choisissez le motif de la remise : il est obligatoire.
-                                            </div>
                                             <p class="mb-2">
-                                                <strong>Montant encaissé:</strong><br>
-                                                <span id="montantOriginal">{{ montant_brut|floatformat:0 }} GNF</span>
-                                                <small class="text-muted d-block" id="noteRecu">Le reçu n'est pas modifié par la remise.</small>
-                                            </p>
-                                            <p class="mb-2 d-none" id="blocRecuNet">
-                                                <strong>Nouveau montant du reçu:</strong><br>
-                                                <span class="text-primary fw-bold" id="recuNet">{{ montant_brut|floatformat:0 }} GNF</span>
+                                                <strong>Montant encaissé (ce reçu):</strong><br>
+                                                <span class="montant-original" id="montantOriginal">{{ paiement.montant|floatformat:0 }} GNF</span>
                                             </p>
                                             <p class="mb-2">
                                                 <strong>Base de calcul:</strong><br>
-                                                <span id="baseRemise">0 GNF</span>
+                                                <span id="baseCalculPreview">0 GNF</span>
                                             </p>
                                             <p class="mb-2">
                                                 <strong>Total des remises:</strong><br>
@@ -352,12 +292,14 @@
                                             <hr>
                                             <p class="mb-2">
                                                 <strong>Reste dû sur les tranches cochées:</strong><br>
-                                                <span class="montant-final" id="montantFinal">0 GNF</span>
-                                                <small class="text-muted d-block">Après remise, avant imputation de ce reçu.</small>
+                                                <span class="montant-final" id="resteDu">0 GNF</span>
                                             </p>
+                                            <small class="text-muted d-block mb-2">
+                                                Après remise, avant imputation de ce reçu.
+                                            </small>
                                             <div id="remisesDetails" class="mt-3"></div>
                                         </div>
-                                        
+
                                         <div class="d-grid gap-2 mt-3">
                                             <button type="submit" class="btn btn-success" id="btnAppliquer" disabled>
                                                 <i class="fas fa-check me-1"></i>Appliquer les remises
@@ -381,128 +323,131 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const checkboxes = document.querySelectorAll('.remise-checkbox');
     const trancheCheckboxes = document.querySelectorAll('.tranche-checkbox');
-    const baseRadios = document.querySelectorAll('.base-calcul-radio');
+    const remiseCheckboxes = document.querySelectorAll('.remise-checkbox');
+    const baseCalculRadios = document.querySelectorAll('.base-calcul-radio');
     const montantOriginalInput = document.getElementById('id_montant_original');
     const montantOriginal = parseFloat(montantOriginalInput && montantOriginalInput.value ? montantOriginalInput.value.replace(/\s/g, '') : '0');
     const btnAppliquer = document.getElementById('btnAppliquer');
     const selectPct = document.getElementById('id_pourcentage_scolarite');
     const selectMotif = document.getElementById('id_motif');
-    const checkDeduire = document.getElementById('id_deduire_du_paiement');
-    // Motifs qui fixent eux-mêmes le pourcentage (miroir de PaiementRemiseForm)
-    const POURCENTAGE_PAR_MOTIF = {'NE_PAIE_RIEN': '100', 'LA_MOITIE': '50'};
 
-    function baseCalculChoisi() {
-        for (const radio of baseRadios) {
-            if (radio.checked) { return radio.value; }
-        }
-        return 'TRANCHE';
+    function getBaseCalculMode() {
+        const checked = document.querySelector('.base-calcul-radio:checked');
+        return checked ? checked.value : 'paiement_echeance';
     }
 
-    function tranchesCochees() {
-        return Array.from(trancheCheckboxes).filter(cb => cb.checked);
+    function getBaseRetenue() {
+        const mode = getBaseCalculMode();
+        let total = 0;
+        trancheCheckboxes.forEach(cb => {
+            if (cb.checked) {
+                const due = parseFloat(cb.dataset.due) || 0;
+                const surCePaiement = parseFloat(cb.dataset.surCePaiement) || 0;
+                total += (mode === 'tranches_dues') ? due : surCePaiement;
+            }
+        });
+        return total;
     }
 
-    function motifChoisi() {
-        return selectMotif && selectMotif.value ? selectMotif.value : '';
+    function getResteDuTranches() {
+        let total = 0;
+        trancheCheckboxes.forEach(cb => {
+            if (cb.checked) {
+                total += parseFloat(cb.dataset.due) || 0;
+            }
+        });
+        return total;
     }
 
-    // Pourcentage retenu: celui choisi, sinon celui porté par le motif
-    function pourcentageEffectif() {
-        if (selectPct && selectPct.value) {
-            return parseFloat(selectPct.value);
-        }
-        const parMotif = POURCENTAGE_PAR_MOTIF[motifChoisi()];
-        return parMotif ? parseFloat(parMotif) : NaN;
+    // Raccourcis motif -> pourcentage suggéré si aucun pourcentage explicite
+    if (selectMotif) {
+        selectMotif.addEventListener('change', function() {
+            if (!selectPct || selectPct.value) return;
+            if (selectMotif.value === 'NE_PAIE_RIEN') {
+                selectPct.value = '100';
+            } else if (selectMotif.value === 'MOITIE') {
+                selectPct.value = '50';
+            }
+            updatePreview();
+        });
     }
 
-    // Base retenue = somme des tranches cochées, selon la base de calcul choisie
-    function calculerBase() {
-        const attribut = baseCalculChoisi() === 'ECHEANCE' ? 'montantEcheance' : 'montantTranche';
-        return tranchesCochees().reduce(function(total, cb) {
-            const montant = parseFloat(cb.dataset[attribut] || '0');
-            return total + (isNaN(montant) ? 0 : montant);
-        }, 0);
+    // Sélection rapide des tranches
+    const btnToutes = document.getElementById('btnTranchesToutes');
+    const btnCePaiement = document.getElementById('btnTranchesCePaiement');
+    const btnAucune = document.getElementById('btnTranchesAucune');
+    if (btnToutes) {
+        btnToutes.addEventListener('click', function() {
+            trancheCheckboxes.forEach(cb => { cb.checked = true; });
+            updatePreview();
+        });
+    }
+    if (btnCePaiement) {
+        btnCePaiement.addEventListener('click', function() {
+            trancheCheckboxes.forEach(cb => {
+                cb.checked = (parseFloat(cb.dataset.surCePaiement) || 0) > 0;
+            });
+            updatePreview();
+        });
+    }
+    if (btnAucune) {
+        btnAucune.addEventListener('click', function() {
+            trancheCheckboxes.forEach(cb => { cb.checked = false; });
+            updatePreview();
+        });
     }
 
-    // Le bouton reste désactivé tant qu'aucune sélection n'est faite; voir updatePreview()
     function updatePreview() {
+        const baseRetenue = getBaseRetenue();
         let totalRemises = 0;
         let remisesDetails = [];
-        let hasRemise = false;
-        const base = calculerBase();
-        const nbTranches = tranchesCochees().length;
+        let hasSelection = false;
 
-        checkboxes.forEach(checkbox => {
+        remiseCheckboxes.forEach(checkbox => {
             if (checkbox.checked) {
-                hasRemise = true;
+                hasSelection = true;
                 const remiseType = checkbox.dataset.remiseType;
                 const remiseValeur = parseFloat(checkbox.dataset.remiseValeur);
                 const remiseLabel = checkbox.nextElementSibling.textContent.trim();
 
                 let montantRemise = 0;
                 if (remiseType === 'POURCENTAGE') {
-                    montantRemise = (base * remiseValeur) / 100;
+                    montantRemise = (baseRetenue * remiseValeur) / 100;
                 } else {
-                    montantRemise = Math.min(remiseValeur, base);
+                    montantRemise = Math.min(remiseValeur, baseRetenue);
                 }
 
                 totalRemises += montantRemise;
-                remisesDetails.push({
-                    nom: remiseLabel,
-                    montant: montantRemise
-                });
+                remisesDetails.push({ nom: remiseLabel, montant: montantRemise });
             }
         });
 
-        // Appliquer le pourcentage scolarité si choisi (aperçu basé sur les tranches cochées)
-        const pct = pourcentageEffectif();
-        if (!isNaN(pct) && pct > 0) {
-            hasRemise = true;
-            const montantPct = (base * pct) / 100;
-            totalRemises += montantPct;
-            remisesDetails.push({
-                nom: `Remise scolarité ${pct}%`,
-                montant: montantPct
-            });
-        }
-        // Afficher/masquer l'avertissement 100%
-        const warn = document.getElementById('pct100Warning');
-        if (warn) {
-            warn.classList.toggle('d-none', !(pct === 100));
+        if (selectPct && selectPct.value) {
+            const pct = parseFloat(selectPct.value);
+            if (!isNaN(pct) && pct > 0) {
+                hasSelection = true;
+                const montantPct = (baseRetenue * pct) / 100;
+                totalRemises += montantPct;
+                remisesDetails.push({ nom: `Remise scolarité ${pct}%`, montant: montantPct });
+                const warn = document.getElementById('pct100Warning');
+                if (warn) {
+                    if (pct === 100) {
+                        warn.classList.remove('d-none');
+                    } else {
+                        warn.classList.add('d-none');
+                    }
+                }
+            }
         }
 
-        totalRemises = Math.min(totalRemises, base);
-        // Ce qui reste dû sur les tranches cochées une fois la remise accordée.
-        // Le montant encaissé, lui, n'est jamais modifié par la remise.
-        const resteDu = Math.max(0, base - totalRemises);
+        const resteDu = Math.max(0, getResteDuTranches() - totalRemises);
 
-        // Mettre à jour l'affichage
-        const baseRetenue = document.getElementById('baseRetenue');
-        if (baseRetenue) {
-            baseRetenue.textContent = base.toLocaleString('fr-FR') + ' GNF';
-        }
-        document.getElementById('baseRemise').textContent = base.toLocaleString('fr-FR') + ' GNF';
+        document.getElementById('baseRetenueLabel').textContent = baseRetenue.toLocaleString('fr-FR') + ' GNF';
+        document.getElementById('baseCalculPreview').textContent = baseRetenue.toLocaleString('fr-FR') + ' GNF';
         document.getElementById('totalRemises').textContent = totalRemises.toLocaleString('fr-FR') + ' GNF';
-        document.getElementById('montantFinal').textContent = resteDu.toLocaleString('fr-FR') + ' GNF';
+        document.getElementById('resteDu').textContent = resteDu.toLocaleString('fr-FR') + ' GNF';
 
-        // Reçu ramené au net quand la déduction est demandée
-        const deduire = checkDeduire && checkDeduire.checked;
-        const blocRecuNet = document.getElementById('blocRecuNet');
-        const noteRecu = document.getElementById('noteRecu');
-        if (blocRecuNet) {
-            blocRecuNet.classList.toggle('d-none', !(deduire && totalRemises > 0));
-            const net = Math.max(0, montantOriginal - totalRemises);
-            document.getElementById('recuNet').textContent = net.toLocaleString('fr-FR') + ' GNF';
-        }
-        if (noteRecu) {
-            noteRecu.textContent = deduire
-                ? 'Montant brut, avant déduction de la remise.'
-                : "Le reçu n'est pas modifié par la remise.";
-        }
-
-        // Afficher les détails des remises
         const detailsDiv = document.getElementById('remisesDetails');
         if (remisesDetails.length > 0) {
             let html = '<small class="text-muted"><strong>Détail des remises:</strong></small><br>';
@@ -514,101 +459,51 @@ document.addEventListener('DOMContentLoaded', function() {
             detailsDiv.innerHTML = '';
         }
 
-        // Rappel si aucune tranche n'est cochée
-        const alerteTranches = document.getElementById('alerteTranches');
-        if (alerteTranches) {
-            alerteTranches.classList.toggle('d-none', !(hasRemise && nbTranches === 0));
-        }
-
-        // Rappel si le motif n'est pas renseigné
-        const alerteMotif = document.getElementById('alerteMotif');
-        if (alerteMotif) {
-            alerteMotif.classList.toggle('d-none', !(hasRemise && !motifChoisi()));
-        }
-
-        // Activer/désactiver le bouton: motif + remise + au moins une tranche
-        btnAppliquer.disabled = !(hasRemise && motifChoisi() && nbTranches > 0 && base > 0);
+        const hasTranche = Array.from(trancheCheckboxes).some(cb => cb.checked);
+        const hasMotif = !selectMotif || selectMotif.value;
+        btnAppliquer.disabled = !hasSelection || !hasTranche || !hasMotif;
     }
 
-    // Écouter les changements sur les checkboxes
-    checkboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updatePreview);
-    });
-    trancheCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updatePreview);
-    });
-    baseRadios.forEach(radio => {
-        radio.addEventListener('change', updatePreview);
-    });
-    if (selectPct) {
-        selectPct.addEventListener('change', updatePreview);
-    }
-    if (selectMotif) {
-        selectMotif.addEventListener('change', updatePreview);
-    }
-    if (checkDeduire) {
-        checkDeduire.addEventListener('change', updatePreview);
-    }
+    trancheCheckboxes.forEach(cb => cb.addEventListener('change', updatePreview));
+    remiseCheckboxes.forEach(cb => cb.addEventListener('change', updatePreview));
+    baseCalculRadios.forEach(r => r.addEventListener('change', updatePreview));
+    if (selectPct) selectPct.addEventListener('change', updatePreview);
+    if (selectMotif) selectMotif.addEventListener('change', updatePreview);
 
-    // Boutons de sélection rapide (T1, T1+T2, les 3 tranches, ...)
-    document.querySelectorAll('.preset-tranches').forEach(function(bouton) {
-        bouton.addEventListener('click', function() {
-            const voulues = (bouton.dataset.tranches || '').split(',').map(v => v.trim());
-            trancheCheckboxes.forEach(cb => {
-                cb.checked = voulues.indexOf(cb.value) !== -1;
-            });
-            updatePreview();
-        });
-    });
-
-    // Initialiser l'aperçu au chargement
     updatePreview();
 
-    // Confirmation avant soumission
     document.getElementById('remiseForm').addEventListener('submit', function(e) {
         const selectedRemises = document.querySelectorAll('.remise-checkbox:checked');
-        const motif = motifChoisi();
-        if (!motif) {
-            e.preventDefault();
-            alert("Veuillez choisir le motif de la remise : il est obligatoire.");
-            return;
-        }
+        const pctValue = selectPct ? selectPct.value : '';
+        const selectedTranches = document.querySelectorAll('.tranche-checkbox:checked');
 
-        const pctEffectif = pourcentageEffectif();
-        const pctValue = (!isNaN(pctEffectif) && pctEffectif > 0) ? String(pctEffectif) : '';
         if (selectedRemises.length === 0 && !pctValue) {
             e.preventDefault();
             alert('Veuillez sélectionner au moins une remise ou choisir un pourcentage.');
             return;
         }
-
-        const tranches = tranchesCochees();
-        if (tranches.length === 0) {
+        if (selectedTranches.length === 0) {
             e.preventDefault();
-            alert("Veuillez cocher au moins une tranche (1, 2 ou 3). La remise ne s'applique jamais à l'inscription ou à la réinscription.");
+            alert('Veuillez sélectionner au moins une tranche concernée par la remise.');
+            return;
+        }
+        if (selectMotif && !selectMotif.value) {
+            e.preventDefault();
+            alert('Veuillez sélectionner un motif pour justifier la remise.');
             return;
         }
 
-        const libellePortee = tranches.map(cb => 'T' + cb.value).join(' + ');
-        const base = calculerBase();
         const totalRemises = parseFloat(document.getElementById('totalRemises').textContent.replace(/[^\d]/g, ''));
-        const resteDu = parseFloat(document.getElementById('montantFinal').textContent.replace(/[^\d]/g, ''));
-        const libelleBase = baseCalculChoisi() === 'ECHEANCE' ? "paiement à l'échéance" : 'montant des tranches';
-
-        const libelleMotif = selectMotif.options[selectMotif.selectedIndex].text;
+        const baseRetenue = parseFloat(document.getElementById('baseCalculPreview').textContent.replace(/[^\d]/g, ''));
 
         let message = (
             `Confirmer l'application des remises ?\n\n` +
-            `Motif: ${libelleMotif}\n` +
-            `Portée: ${libellePortee} (${libelleBase})\n` +
-            `Base de calcul: ${base.toLocaleString('fr-FR')} GNF\n` +
-            `Total des remises: ${totalRemises.toLocaleString('fr-FR')} GNF\n` +
-            `Reste dû sur ${libellePortee}: ${resteDu.toLocaleString('fr-FR')} GNF\n\n` +
-            `Le montant encaissé reste ${montantOriginal.toLocaleString('fr-FR')} GNF.`
+            `Montant encaissé (ce reçu, inchangé): ${montantOriginal.toLocaleString('fr-FR')} GNF\n` +
+            `Base de calcul: ${baseRetenue.toLocaleString('fr-FR')} GNF\n` +
+            `Total des remises: ${totalRemises.toLocaleString('fr-FR')} GNF`
         );
-        // Alerte spécifique 100%
         if (pctValue && parseFloat(pctValue) === 100) {
-            message += `\n\nATTENTION: Vous appliquez 100% de remise sur ${libellePortee}.`;
+            message += `\n\nATTENTION: Vous appliquez 100% de remise sur les tranches sélectionnées.`;
         }
         const confirmation = confirm(message);
 

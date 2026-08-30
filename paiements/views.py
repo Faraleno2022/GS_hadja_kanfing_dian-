@@ -91,6 +91,7 @@ def ensure_echeancier_for_eleve(
     created_by=None,
     prefer_reinscription: bool = False,
     registration_kind: str = None,
+    annee_scolaire: str = None,
 ) -> "EcheancierPaiement":
     """Crée (silencieusement) un `EcheancierPaiement` pour l'élève s'il n'existe pas.
 
@@ -98,9 +99,16 @@ def ensure_echeancier_for_eleve(
     - Définit des dates d'échéance par défaut: inscription=today, T1=15/01, T2=15/03, T3=15/05
     - Retourne l'échéancier existant ou nouvellement créé
     """
+    if registration_kind:
+        prefer_reinscription = (
+            prefer_reinscription or registration_kind == 'REINSCRIPTION'
+        )
+
     # Ne jamais réutiliser ni modifier l'échéancier d'une autre année. C'est
     # indispensable après un transfert ou un passage en année supérieure.
-    annee_cible = getattr(getattr(eleve, 'classe', None), 'annee_scolaire', None)
+    annee_cible = annee_scolaire or getattr(
+        getattr(eleve, 'classe', None), 'annee_scolaire', None
+    )
     if not annee_cible:
         annee_cible = school_year_from_date(timezone.localdate())
     ech = EcheancierPaiement.objects.filter(
@@ -126,7 +134,7 @@ def ensure_echeancier_for_eleve(
     try:
         niveau = getattr(eleve.classe, 'niveau', None)
         ecole = getattr(eleve.classe, 'ecole', None)
-        annee_classe = getattr(eleve.classe, 'annee_scolaire', None)
+        annee_classe = annee_scolaire or getattr(eleve.classe, 'annee_scolaire', None)
     except Exception:
         niveau = None
         ecole = None
@@ -532,7 +540,12 @@ def _sum_validated_payments_and_remises(eleve):
     return int(situation['total_encaisse']), int(situation['total_remises'])
 
 
-def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
+def _auto_validate_echeancier_for_eleve(
+    eleve: "Eleve",
+    *,
+    annee_scolaire: str = None,
+    strict: bool = False,
+) -> None:
     """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
 
     Règles conservatrices:
@@ -544,8 +557,18 @@ def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
     Cette fonction évite les incohérences si l'allocation manuelle par tranche a été oubliée.
     """
     try:
-        recalculer_echeancier(eleve)
+        if annee_scolaire:
+            echeancier = EcheancierPaiement.objects.filter(
+                eleve=eleve,
+                annee_scolaire=annee_scolaire,
+            ).first()
+            if echeancier:
+                recalculer_echeancier(echeancier)
+        else:
+            recalculer_echeancier(eleve)
     except Exception:
+        if strict:
+            raise
         # Ne jamais bloquer l'impression du reçu à cause de cette étape
         logging.getLogger(__name__).exception("Erreur lors de la validation automatique de l'échéancier")
 
@@ -625,7 +648,7 @@ def twilio_inbound(request):
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt
-@require_http_methods(["POST"]) 
+@require_http_methods(["POST"])
 def twilio_status_callback(request):
     """Réception des callbacks de statut Twilio (optionnel).
     Journalise l'événement et répond 200.
@@ -934,7 +957,7 @@ def tableau_bord_paiements(request):
 def liste_paiements(request):
     """Liste des paiements optimisée avec cache intelligent et requêtes optimisées"""
     from ecole_moderne.performance_config import get_cached_or_set, CACHE_TTL, OptimizedQueryMixin
-    
+
     titre_page = "Liste des paiements"
     q = (request.GET.get('q') or '').strip()
     statut = (request.GET.get('statut') or '').strip()
@@ -1601,7 +1624,7 @@ def ajouter_paiement(request, eleve_id:int=None):
             # Ces anciens contrôles par poste sont conservés désactivés; le plafond
             # global situé après ce bloc empêche toujours un véritable surpaiement.
             cascade_allocation_enabled = True
-            
+
             # Vérification pour l'inscription (seulement si type = inscription seule, pas combiné)
             if (not cascade_allocation_enabled) and ('inscription' in type_nom) and not (
                 'tranche' in type_nom or 'annuel' in type_nom
@@ -1651,7 +1674,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                         'form': form,
                         'eleve': eleve,
                     })
-            
+
             # Vérification pour Tranche 1 + Tranche 2
             elif (not cascade_allocation_enabled) and ('tranche 1 + tranche 2' in type_nom or 'tranche1 + tranche2' in type_nom):
                 # Vérifier si les deux tranches sont complètement soldées
@@ -1699,7 +1722,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                         'form': form,
                         'eleve': eleve,
                     })
-            
+
             # Vérification pour Tranche 2 + Tranche 3
             elif (not cascade_allocation_enabled) and ('tranche 2 + tranche 3' in type_nom or 'tranche2 + tranche3' in type_nom):
                 # Vérifier si les deux tranches sont complètement soldées
@@ -1739,7 +1762,7 @@ def ajouter_paiement(request, eleve_id:int=None):
                         'form': form,
                         'eleve': eleve,
                     })
-            
+
             # Vérification pour Tranche 1 + Tranche 2 + Tranche 3
             elif (not cascade_allocation_enabled) and ('tranche 1 + tranche 2 + tranche 3' in type_nom or 'tranche1 + tranche2 + tranche3' in type_nom):
                 # Vérifier si les trois tranches sont complètement soldées
@@ -2796,11 +2819,11 @@ def generer_recu_pdf(request, paiement_id:int):
                 logo_img = ImageReader(logo_path)
                 logo_w, logo_h = 80, 80
                 c.drawImage(logo_img, left, top - logo_h, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
-                
+
                 # Titre à côté du logo
                 c.setFont('Helvetica-Bold', 18)
                 c.drawString(left + logo_w + 20, top - 25, "REÇU DE PAIEMENT")
-                
+
                 # Nom de l'école sous le titre
                 c.setFont('Helvetica-Bold', 11)
                 ecole_nom = getattr(ecole_obj, 'nom', "")
@@ -2830,7 +2853,7 @@ def generer_recu_pdf(request, paiement_id:int):
                     c.setFillGray(0.0)
                 except Exception:
                     pass
-                
+
                 # Ajuster le top après le bloc en-tête
                 top -= (logo_h + 26)
             except Exception:
@@ -3004,12 +3027,12 @@ def generer_recu_pdf(request, paiement_id:int):
             montant_global_annuel = 0
     except Exception:
         montant_global_annuel = 0
-    
+
     # Afficher le montant global annuel
     if montant_global_annuel > 0:
         draw_line(f"Montant global annuel : {str(f'{montant_global_annuel:,}').replace(',', ' ')} GNF", bold=True)
         top -= 5  # Petit espace
-    
+
     # Afficher le montant payé
     draw_line(f"Montant payé : {str(f'{montant_brut_recu:,.0f}').replace(',', ' ')} GNF", bold=True)
 
@@ -3112,9 +3135,7 @@ def generer_recu_pdf(request, paiement_id:int):
         for pr in paiement.remises.select_related('remise').all():
             nom = getattr(pr.remise, 'nom', 'Remise')
             montant = str(f"{int(pr.montant_remise):,}").replace(',', ' ')
-            portee = getattr(pr, 'libelle_portee', '') or ''
-            suffixe = f" ({portee})" if portee else ''
-            draw_line(f"- {nom}{suffixe} : -{montant} GNF")
+            draw_line(f"- {nom} : -{montant} GNF")
 
     # Bloc signatures
     top -= 20
@@ -3650,7 +3671,7 @@ def eleves_soldes_simple(request):
             ecoles_qs = ecoles_qs.filter(pk=ecole_id_user) if ecole_id_user else ecoles_qs.none()
     except Exception:
         ecoles_qs = []
-    
+
     try:
         classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
         classes = filter_by_user_school(classes, request.user, 'ecole')
@@ -4363,28 +4384,28 @@ def _template_exists(path:str)->bool:
 def generer_note_rappel_pdf(request, eleve_id):
     """Génère une note de rappel de paiement pour un élève"""
     from .note_rappel_generator import generer_note_rappel_eleve
-    
+
     # Récupérer l'élève
     eleve = get_object_or_404(Eleve, id=eleve_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         ecole_user = user_school(request.user)
         if ecole_user != eleve.classe.ecole:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:detail_eleve', eleve_id=eleve_id)
-    
+
     # Créer la réponse PDF
     response = HttpResponse(content_type='application/pdf')
     filename = f"note_rappel_{eleve.matricule}_{datetime.now().strftime('%Y%m%d')}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    
+
     # Générer le PDF
     generer_note_rappel_eleve(eleve, response)
-    
+
     # Log de l'action
     messages.success(request, f"Note de rappel générée pour {eleve.nom_complet}")
-    
+
     return response
 
 
@@ -4485,17 +4506,17 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import SimpleDocTemplate, PageBreak
     from io import BytesIO
-    
+
     # Récupérer la classe
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         ecole_user = user_school(request.user)
         if ecole_user != classe.ecole:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:classe_detail', classe_id=classe_id)
-    
+
     eleves_avec_impayes = [
         echeancier.eleve
         for echeancier in _echeanciers_impayes_utilisateur(
@@ -4506,7 +4527,7 @@ def generer_notes_rappel_classe_pdf(request, classe_id):
     if not eleves_avec_impayes:
         messages.info(request, "Aucun élève avec des impayés dans cette classe.")
         return redirect('eleves:classe_detail', classe_id=classe_id)
-    
+
     # Fusionner les PDFs individuels
     try:
         from PyPDF2 import PdfMerger

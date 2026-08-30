@@ -1,12 +1,10 @@
-"""Règles communes de ventilation des paiements scolaires.
-
-Ce module ne dépend pas des vues afin que la même logique soit utilisée pour
-mettre à jour l'échéancier et pour afficher l'affectation sur les reçus.
-"""
+"""Règles communes d'affectation des paiements sur un échéancier."""
 
 from decimal import Decimal
 import re
 import unicodedata
+
+from .models import Paiement
 
 
 INSCRIPTION = "inscription"
@@ -16,6 +14,8 @@ TRANCHE_3 = "tranche_3"
 
 ALL_BUCKETS = (INSCRIPTION, TRANCHE_1, TRANCHE_2, TRANCHE_3)
 TRANCHE_BUCKETS = (TRANCHE_1, TRANCHE_2, TRANCHE_3)
+
+
 ALLOCATION_COMPONENTS = (
     (INSCRIPTION, "frais_inscription_du", "frais_inscription_paye"),
     (TRANCHE_1, "tranche_1_due", "tranche_1_payee"),
@@ -24,19 +24,20 @@ ALLOCATION_COMPONENTS = (
 )
 
 
+def _decimal(value):
+    return Decimal(str(value or 0))
+
+
 def normalize_payment_type(value):
-    """Retourne un libellé minuscule sans accents et aux espaces normalisés."""
-    text = unicodedata.normalize("NFKD", str(value or ""))
-    text = "".join(char for char in text if not unicodedata.combining(char))
-    return " ".join(text.casefold().split())
-
-
-def is_reinscription_payment(value):
-    return "reinscription" in normalize_payment_type(value)
+    """Normalise un libellé pour reconnaître inscription/réinscription."""
+    if not isinstance(value, str):
+        value = getattr(value, "nom", "") or ""
+    normalized = unicodedata.normalize("NFKD", value).casefold()
+    return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
 def registration_kind_for_type(value):
-    """Retourne le tarif d'admission explicitement demandé par un type."""
+    """Retourne le tarif d'inscription explicitement demandé par le type."""
     normalized = normalize_payment_type(value)
     if "reinscription" in normalized:
         return "reinscription"
@@ -45,87 +46,167 @@ def registration_kind_for_type(value):
     return None
 
 
-def _mentions_tranche(normalized_value, number):
-    patterns = (
-        rf"tranche\s*{number}",
-        rf"t\s*{number}(?:\b|$)",
+def is_reinscription_payment(value):
+    return "reinscription" in normalize_payment_type(value)
+
+
+# Un type qui vise « ce qu'il reste » couvre tous les postes de l'échéancier.
+MOTIFS_SOLDE = (
+    r"\bsolde\b", r"\bsolder\b", r"\breliquat\b", r"\bcomplement\b",
+    r"\breste\s*a\s*payer\b", r"\btotalite\b", r"\bintegralite\b",
+    r"\bintegral(?:e|ement)?\b", r"\bpaiement\s+total\b", r"\btout\s+le\s+reste\b",
+)
+
+# « 1ère », « 1re », « 1er », « premiere », « t1 »… ramenés au seul numéro.
+ORDINAUX = {
+    "premiere": 1, "premier": 1, "1ere": 1, "1er": 1, "1re": 1, "1e": 1,
+    "deuxieme": 2, "seconde": 2, "second": 2, "2eme": 2, "2e": 2, "2nd": 2,
+    "troisieme": 3, "3eme": 3, "3e": 3,
+}
+
+# Nombres écrits en toutes lettres. Ils ne sont convertis qu'accolés à un mot
+# d'échéance : « un » est trop courant pour être traduit partout.
+NOMBRES_LETTRES = {"un": 1, "une": 1, "deux": 2, "trois": 3}
+
+# « Tranche » est le terme officiel ; les écoles saisissent aussi « trimestre »,
+# « versement » ou « échéance » dans les types qu'elles créent elles-mêmes.
+TERME_TRANCHE = r"(?:tranches?|trimestres?|versements?|echeances?)"
+
+# Le libellé peut retirer un poste au lieu de l'ajouter : « Scolarité sans
+# inscription », « Solde hors frais d'inscription », « Annuel sauf tranche 3 ».
+TERME_EXCLUSION = r"\b(?:sans|hors|sauf|excepte[e]?s?|hormis)\b"
+
+# Un poste d'admission : inscription, réinscription ou frais d'admission.
+TERME_ADMISSION = r"\b(?:re)?inscriptions?\b|\badmissions?\b"
+
+# « + », « , », « et », « plus »… séparent les postes d'un libellé combiné.
+SEPARATEURS = r"[+,;/&]|\bet\b|\bplus\b"
+
+
+def _developper_plages(texte):
+    """Remplace « 1 à 3 » ou « T1-T3 » par la liste des tranches couvertes."""
+    motif = re.compile(
+        r"\b(?:t\s*)?([123])\s*(?:-|a|au|jusqu\s*'?\s*a(?:u)?)\s*(?:t\s*)?([123])\b"
     )
-    if number == 1:
-        patterns += (r"1ere\s+tranche", r"premiere\s+tranche")
-    elif number == 2:
-        patterns += (r"2eme\s+tranche", r"deuxieme\s+tranche")
-    else:
-        patterns += (r"3eme\s+tranche", r"troisieme\s+tranche")
-    return any(re.search(pattern, normalized_value) for pattern in patterns)
+
+    def remplacer(correspondance):
+        debut, fin = int(correspondance.group(1)), int(correspondance.group(2))
+        if debut >= fin:
+            return correspondance.group(0)
+        return " ".join(f"t{numero}" for numero in range(debut, fin + 1))
+
+    return motif.sub(remplacer, texte)
 
 
-def allocation_order_for_type(value):
-    """Détermine le premier poste visé puis les postes suivants autorisés.
+def _preparer_texte(normalized):
+    """Ramène toutes les écritures d'un numéro de tranche à « t<n> »."""
+    texte = normalized
+    for mot, numero in ORDINAUX.items():
+        texte = re.sub(rf"\b{mot}\b", str(numero), texte)
+    for mot, numero in NOMBRES_LETTRES.items():
+        texte = re.sub(rf"\b({TERME_TRANCHE})\s+{mot}\b", rf"\1 {numero}", texte)
+        texte = re.sub(rf"\b{mot}\s+({TERME_TRANCHE})\b", rf"{numero} \1", texte)
+    return _developper_plages(texte)
 
-    Une tranche simple peut déborder sur toutes les tranches suivantes. Un
-    paiement d'inscription ou de réinscription continue lui aussi sur T1, T2
-    puis T3 lorsque le montant dépasse les frais d'admission.
+
+def _couper_exclusion(segment):
+    """Sépare un segment en (postes demandés, postes explicitement retirés)."""
+    coupure = re.search(TERME_EXCLUSION, segment)
+    if not coupure:
+        return segment, ""
+    return segment[:coupure.start()], segment[coupure.end():]
+
+
+def _lire_postes(texte, mentionne_tranche):
+    """Retourne les tranches et l'admission portées par un fragment de libellé."""
+    tranches = {int(n) for n in re.findall(r"\bt\s*([123])\b", texte)}
+    for segment in re.split(SEPARATEURS, texte):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if re.search(rf"\b{TERME_TRANCHE}\b", segment):
+            tranches |= {int(n) for n in re.findall(r"\b([123])\b", segment)}
+        elif mentionne_tranche and re.fullmatch(r"[123]", segment):
+            # « Tranches 1, 2 et 3 » : le mot n'est écrit qu'une fois.
+            tranches.add(int(segment))
+    return tranches, bool(re.search(TERME_ADMISSION, texte))
+
+
+def payment_type_plan(value):
+    """Décode un type de paiement en postes métier explicites.
+
+    Les accents, la casse et les variantes usuelles sont acceptés :
+    « 1ère tranche », « T1 », « tranche deux », « tranches 1 à 3 »,
+    « 2ème trimestre », mais aussi les retraits (« Scolarité sans
+    inscription »). Le plan retourné est partagé par la suggestion et la
+    validation serveur afin d'éviter deux répartitions contradictoires.
     """
     normalized = normalize_payment_type(value)
-    has_admission_fee = "inscription" in normalized
-    has_t1 = _mentions_tranche(normalized, 1)
-    has_t2 = _mentions_tranche(normalized, 2)
-    has_t3 = _mentions_tranche(normalized, 3)
-    is_annual = "annuel" in normalized
+    texte = _preparer_texte(normalized)
+    mentionne_tranche = bool(re.search(rf"\b{TERME_TRANCHE}\b", texte))
 
-    if has_admission_fee:
-        return ALL_BUCKETS
-    if has_t1:
-        return TRANCHE_BUCKETS
-    if has_t2:
-        return (TRANCHE_2, TRANCHE_3)
-    if has_t3:
-        return (TRANCHE_3,)
-    if is_annual or "scolarite" in normalized:
-        return TRANCHE_BUCKETS
+    demandes, retraits = [], []
+    for segment in re.split(SEPARATEURS, texte):
+        demande, retrait = _couper_exclusion(segment)
+        demandes.append(demande)
+        retraits.append(retrait)
+    texte_demande = " , ".join(demandes)
+    texte_retrait = " , ".join(retraits)
 
-    # Compatibilité avec les anciens types non standardisés.
-    return ALL_BUCKETS
+    tranches, admission = _lire_postes(texte_demande, mentionne_tranche)
+    tranches_retirees, admission_retiree = _lire_postes(texte_retrait, mentionne_tranche)
 
+    registration_kind = registration_kind_for_type(texte_demande)
+    is_annual = "annuel" in texte_demande
+    is_tuition = "scolarite" in texte_demande
+    # « Solde », « reliquat », « complément »… visent tout ce qui reste dû.
+    is_solde = any(re.search(motif, texte_demande) for motif in MOTIFS_SOLDE)
 
-def _decimal(value):
-    return Decimal(str(value or 0))
+    # « Solde tranche 2 » vise cette seule tranche : un poste nommé dans le
+    # libellé prime toujours sur l'élargissement au reste de l'année.
+    postes_explicites = bool(tranches) or admission
+    couvre_tout = is_solde and not postes_explicites
+
+    if is_annual or couvre_tout or (is_tuition and not tranches):
+        tranches.update((1, 2, 3))
+    if couvre_tout:
+        admission = True
+
+    tranches -= tranches_retirees
+
+    return {
+        "normalized": normalized,
+        "registration_kind": registration_kind,
+        "include_registration": (
+            (admission or registration_kind is not None) and not admission_retiree
+        ),
+        "covers_balance": couvre_tout,
+        "tranches": tuple(sorted(tranches)),
+    }
 
 
 def scope_for_type(value):
-    """Postes que le libellé du type annonce couvrir.
-
-    À ne pas confondre avec :func:`allocation_order_for_type`, qui dit jusqu'où
-    un excédent a le droit de glisser. « Réinscription + Tranche 1 » vise
-    l'inscription et T1 ; son excédent peut atteindre T2/T3, mais T2/T3 ne font
-    pas partie de ce que le type réclame.
-
-    Retourne un tuple vide pour un libellé non standard (« Scolarité »,
-    « Divers »…) : aucun montant de référence ne peut alors être déduit.
-    """
-    normalized = normalize_payment_type(value)
-    tranches = [
-        bucket
-        for number, bucket in ((1, TRANCHE_1), (2, TRANCHE_2), (3, TRANCHE_3))
-        if _mentions_tranche(normalized, number)
-    ]
-    # « Annuel » / « Scolarité » couvrent les trois tranches, mais seulement
-    # quand aucune tranche n'est nommée: « Scolarité - 2ème tranche » ne vise
-    # que T2.
-    if not tranches and ("annuel" in normalized or "scolarite" in normalized):
-        tranches = list(TRANCHE_BUCKETS)
-    scope = [INSCRIPTION] if "inscription" in normalized else []
-    scope.extend(tranches)
+    """Postes explicitement visés par un type de paiement."""
+    plan = payment_type_plan(value)
+    scope = [INSCRIPTION] if plan["include_registration"] else []
+    scope.extend(f"tranche_{numero}" for numero in plan["tranches"])
     return tuple(scope)
 
 
-def montant_attendu_pour_type(value, dues, paid=None):
-    """Reste exact à payer pour les postes visés par le type.
+def allocation_order_for_type(value):
+    """Ordre des postes sur lesquels un versement peut être affecté."""
+    plan = payment_type_plan(value)
+    if plan["include_registration"]:
+        return ALL_BUCKETS
+    if plan["tranches"]:
+        premiere = min(plan["tranches"])
+        return tuple(f"tranche_{numero}" for numero in range(premiere, 4))
+    # Compatibilité avec les anciens types libres non normalisés.
+    return ALL_BUCKETS
 
-    C'est le montant qu'un guichetier devrait saisir: ce qui est déjà couvert
-    en est retranché, poste par poste. Retourne ``(total, detail)`` où
-    ``detail`` liste ``(poste, reste)`` dans l'ordre des postes visés.
-    """
+
+def montant_attendu_pour_type(value, dues, paid=None):
+    """Calcule le reste exact des postes explicitement visés."""
     paid = paid or {}
     detail = []
     total = Decimal("0")
@@ -140,73 +221,31 @@ def montant_attendu_pour_type(value, dues, paid=None):
 
 
 def allocate_amount(amount, dues, paid=None, payment_type=""):
-    """Ventile ``amount`` et retourne (affectation, nouveaux_payés, reliquat)."""
+    """Ventile un montant et retourne affectation, cumuls et reliquat."""
     paid = paid or {}
     remaining = max(Decimal("0"), _decimal(amount))
-    updated_paid = {bucket: _decimal(paid.get(bucket, 0)) for bucket in ALL_BUCKETS}
+    updated_paid = {
+        bucket: _decimal(paid.get(bucket, 0)) for bucket in ALL_BUCKETS
+    }
     allocation = {bucket: Decimal("0") for bucket in ALL_BUCKETS}
 
     for bucket in allocation_order_for_type(payment_type):
         if remaining <= 0:
             break
-        room = max(Decimal("0"), _decimal(dues.get(bucket, 0)) - updated_paid[bucket])
+        room = max(
+            Decimal("0"),
+            _decimal(dues.get(bucket, 0)) - updated_paid[bucket],
+        )
         taken = min(remaining, room)
         if taken > 0:
             allocation[bucket] += taken
             updated_paid[bucket] += taken
             remaining -= taken
-
     return allocation, updated_paid, remaining
 
 
-def allocate_amount_sequentially(echeancier, amount, initial_paid=None):
-    """Ventile un total de l'inscription vers T1, T2 puis T3."""
-    initial_paid = initial_paid or {}
-    return allocate_amount(
-        amount,
-        echeancier_dues(echeancier),
-        {key: _decimal(initial_paid.get(key, 0)) for key in ALL_BUCKETS},
-        payment_type="",
-    )
-
-
-def allocate_discounts(echeancier, discounts, balances=None):
-    """Ventile les remises sur les tranches encore dues après encaissement."""
-    current_balances = dict(balances or {
-        key: max(
-            Decimal("0"),
-            _decimal(getattr(echeancier, due_field, 0))
-            - _decimal(getattr(echeancier, paid_field, 0)),
-        )
-        for key, due_field, paid_field in ALLOCATION_COMPONENTS
-    })
-    allocation = {key: Decimal("0") for key in ALL_BUCKETS}
-
-    for discount in discounts:
-        numeros = getattr(discount, 'tranches_concernees_liste', None)
-        if numeros is None:
-            numeros = getattr(discount, 'tranches_appliquees', None)
-        numeros = list(numeros or [1, 2, 3])
-        selected = [f"tranche_{number}" for number in numeros if number in (1, 2, 3)]
-        amount = max(Decimal("0"), _decimal(getattr(discount, 'montant_remise', 0)))
-        for key in selected:
-            if amount <= 0:
-                break
-            available = max(Decimal("0"), _decimal(current_balances.get(key, 0)))
-            take = min(amount, available)
-            allocation[key] += take
-            current_balances[key] = available - take
-            amount -= take
-
-    return allocation, current_balances
-
-
 def replay_payment_allocations(payments, dues, amounts_by_payment=None):
-    """Rejoue des paiements ordonnés et retourne leur ventilation individuelle.
-
-    ``amounts_by_payment`` permet aux rapports d'utiliser un montant net
-    d'affichage sans modifier le montant réellement encaissé du paiement.
-    """
+    """Rejoue les paiements ordonnés et conserve leur ventilation individuelle."""
     amounts_by_payment = amounts_by_payment or {}
     paid = {bucket: Decimal("0") for bucket in ALL_BUCKETS}
     allocations = {}
@@ -227,38 +266,87 @@ def replay_payment_allocations(payments, dues, amounts_by_payment=None):
 
 def echeancier_dues(echeancier):
     return {
-        INSCRIPTION: _decimal(echeancier.frais_inscription_du),
-        TRANCHE_1: _decimal(echeancier.tranche_1_due),
-        TRANCHE_2: _decimal(echeancier.tranche_2_due),
-        TRANCHE_3: _decimal(echeancier.tranche_3_due),
+        key: _decimal(getattr(echeancier, due_field, 0))
+        for key, due_field, _paid_field in ALLOCATION_COMPONENTS
     }
 
 
 def echeancier_paid(echeancier):
     return {
-        INSCRIPTION: _decimal(echeancier.frais_inscription_paye),
-        TRANCHE_1: _decimal(echeancier.tranche_1_payee),
-        TRANCHE_2: _decimal(echeancier.tranche_2_payee),
-        TRANCHE_3: _decimal(echeancier.tranche_3_payee),
+        key: _decimal(getattr(echeancier, paid_field, 0))
+        for key, _due_field, paid_field in ALLOCATION_COMPONENTS
+    }
+
+
+def allocate_amount_sequentially(echeancier, amount, initial_paid=None):
+    """Affecte un montant: inscription, T1, T2 puis T3.
+
+    La fonction ne sauvegarde rien. Elle retourne l'affectation du montant,
+    les nouveaux cumuls payés et l'éventuel reliquat au-delà du total dû.
+    """
+    remaining = max(Decimal("0"), _decimal(amount))
+    paid = {
+        key: _decimal((initial_paid or {}).get(key, getattr(echeancier, paid_field, 0)))
+        for key, _due_field, paid_field in ALLOCATION_COMPONENTS
+    }
+    allocation = {key: Decimal("0") for key, _due, _paid in ALLOCATION_COMPONENTS}
+
+    for key, due_field, _paid_field in ALLOCATION_COMPONENTS:
+        if remaining <= 0:
+            break
+        due = _decimal(getattr(echeancier, due_field, 0))
+        available = max(Decimal("0"), due - paid[key])
+        applied = min(remaining, available)
+        if applied > 0:
+            allocation[key] = applied
+            paid[key] += applied
+            remaining -= applied
+
+    return allocation, paid, remaining
+
+
+def reste_par_tranche_avec_couverture(echeancier, couverture_totale):
+    """Répartit une couverture totale (encaissements + remises) sur les postes.
+
+    Utilise le même ordre en cascade (inscription -> T1 -> T2 -> T3) que
+    l'allocation réelle des paiements, pour que le "reste" par tranche
+    reste cohérent avec le solde global (qui, lui, déduit les remises).
+    Sans cette répartition, une remise réduit le solde global sans jamais
+    réduire aucune tranche, et l'écart affiché induit le caissier en erreur
+    sur le montant réellement encore payable.
+
+    Retourne un dict {key: reste} pour chaque poste de ALLOCATION_COMPONENTS.
+    """
+    zero_paid = {key: Decimal('0') for key, _due, _paid in ALLOCATION_COMPONENTS}
+    _allocation, paid, _remaining = allocate_amount_sequentially(
+        echeancier, couverture_totale, initial_paid=zero_paid
+    )
+    return {
+        key: max(Decimal('0'), _decimal(getattr(echeancier, due_field, 0)) - paid[key])
+        for key, due_field, _paid_field in ALLOCATION_COMPONENTS
     }
 
 
 def get_payment_allocation(paiement, echeancier=None):
     """Reconstruit l'affectation exacte d'un paiement validé pour les reçus."""
-    from .models import Paiement
-
     if echeancier is None:
         try:
             echeancier = paiement.eleve.echeancier
         except Exception:
             return None
 
-    running_paid = {bucket: Decimal("0") for bucket in ALL_BUCKETS}
+    running_paid = {key: Decimal("0") for key, _due, _paid in ALLOCATION_COMPONENTS}
     target_allocation = None
     validated = (
-        Paiement.objects.filter(eleve=paiement.eleve, statut="VALIDE")
+        Paiement.objects
+        .filter(
+            eleve=paiement.eleve,
+            annee_scolaire=paiement.annee_scolaire,
+            statut="VALIDE",
+        )
         .order_by("date_paiement", "date_creation", "pk")
     )
+
     for current in validated.iterator():
         allocation, running_paid, unapplied = allocate_amount_sequentially(
             echeancier,
@@ -268,4 +356,46 @@ def get_payment_allocation(paiement, echeancier=None):
         allocation["non_affecte"] = unapplied
         if current.pk == paiement.pk:
             target_allocation = allocation
+
     return target_allocation
+
+
+def allocate_discounts(echeancier, discounts, balances=None):
+    """Ventile les remises validées sur les tranches réellement concernées.
+
+    Les remises ne couvrent jamais l'inscription/réinscription. Les anciennes
+    remises sans information de tranche sont appliquées à T1, T2 puis T3 afin
+    de rester compatibles avec les données antérieures.
+    """
+    current_balances = dict(balances or {
+        key: max(
+            Decimal('0'),
+            _decimal(getattr(echeancier, due_field, 0))
+            - _decimal(getattr(echeancier, paid_field, 0)),
+        )
+        for key, due_field, paid_field in ALLOCATION_COMPONENTS
+    })
+    allocation = {
+        key: Decimal('0') for key, _due, _paid in ALLOCATION_COMPONENTS
+    }
+
+    for discount in discounts:
+        selected = [
+            f"tranche_{number}"
+            for number in getattr(discount, 'tranches_concernees_liste', [])
+            if number in (1, 2, 3)
+        ]
+        if not selected:
+            selected = ['tranche_1', 'tranche_2', 'tranche_3']
+
+        amount = max(Decimal('0'), _decimal(getattr(discount, 'montant_remise', 0)))
+        for key in selected:
+            if amount <= 0:
+                break
+            available = max(Decimal('0'), _decimal(current_balances.get(key, 0)))
+            take = min(amount, available)
+            allocation[key] += take
+            current_balances[key] = available - take
+            amount -= take
+
+    return allocation, current_balances

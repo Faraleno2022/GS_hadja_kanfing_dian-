@@ -8,6 +8,7 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta
 from django.conf import settings
+from django.db.models import Sum
 from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 import logging
@@ -92,9 +93,12 @@ def abonnement_public_pdf(request, abonnement_id):
         from io import BytesIO
         from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
         
         abonnement = get_object_or_404(
-            AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'),
+            AbonnementBus.objects.select_related(
+                'eleve', 'eleve__classe', 'eleve__classe__ecole', 'grille', 'mode_paiement'
+            ),
             id=abonnement_id
         )
         eleve = abonnement.eleve
@@ -156,17 +160,22 @@ def abonnement_public_pdf(request, abonnement_id):
         c.drawString(left, top, "DÉTAILS DE L'ABONNEMENT")
         top -= line_h
         c.setFont('Helvetica', 11)
-        c.drawString(left, top, f"Périodicité: {abonnement.get_periodicite_display()}")
+        c.drawString(left, top, f"Numéro de reçu: {abonnement.numero_recu or f'BUS-{abonnement.id}'}")
+        top -= line_h
+        c.drawString(left, top, f"Type / tranche: {abonnement.get_periodicite_display()}")
         top -= line_h
         c.drawString(left, top, f"Montant: {abonnement.montant:,.0f} GNF".replace(",", " "))
         top -= line_h
-        c.drawString(left, top, f"Date début: {abonnement.date_debut.strftime('%d/%m/%Y')}")
+        c.drawString(left, top, f"Date de paiement: {abonnement.date_debut.strftime('%d/%m/%Y')}")
         top -= line_h
-        c.drawString(left, top, f"Date expiration: {abonnement.date_expiration.strftime('%d/%m/%Y')}")
+        c.drawString(left, top, f"Mode de paiement: {getattr(abonnement.mode_paiement, 'nom', '') or 'Non renseigné'}")
         top -= line_h
-        c.setFont('Helvetica-Bold', 11)
-        c.drawString(left, top, f"Statut: {abonnement.get_statut_display()}")
-        top -= line_h
+        if abonnement.grille_id:
+            c.drawString(left, top, f"Grille: {abonnement.grille.zone} - {abonnement.grille.annee_scolaire}")
+            top -= line_h
+        else:
+            c.drawString(left, top, f"Date expiration: {abonnement.date_expiration.strftime('%d/%m/%Y')}")
+            top -= line_h
         
         if abonnement.zone:
             c.setFont('Helvetica', 11)
@@ -175,6 +184,46 @@ def abonnement_public_pdf(request, abonnement_id):
         if abonnement.point_arret:
             c.drawString(left, top, f"Point d'arrêt: {abonnement.point_arret}")
             top -= line_h
+
+        if abonnement.grille_id:
+            top -= 10
+            c.setFont('Helvetica-Bold', 11)
+            c.drawString(left, top, "SITUATION DES TRANCHES DE L'ANNÉE")
+            top -= 20
+            c.setFillColor(colors.HexColor('#1f4e78'))
+            c.rect(left - 2, top - 4, 515, 20, fill=1, stroke=0)
+            c.setFillColor(colors.white)
+            c.setFont('Helvetica-Bold', 8)
+            for titre, x_value in [('TRANCHE', left), ('DÛ', 280), ('PAYÉ', 385), ('RESTE', 490)]:
+                c.drawString(x_value, top + 2, titre)
+            top -= 22
+            total_du = 0
+            total_paye = 0
+            for code, libelle, montant_du in (
+                ('T1', 'Tranche 1', abonnement.grille.tranche_1),
+                ('T2', 'Tranche 2', abonnement.grille.tranche_2),
+                ('T3', 'Tranche 3', abonnement.grille.tranche_3),
+            ):
+                montant_paye = AbonnementBus.objects.filter(
+                    eleve=abonnement.eleve,
+                    grille=abonnement.grille,
+                    periodicite=code,
+                ).aggregate(total=Sum('montant'))['total'] or 0
+                reste = max(montant_du - montant_paye, 0)
+                total_du += montant_du
+                total_paye += montant_paye
+                c.setFillColor(colors.black)
+                c.setFont('Helvetica-Bold' if code == abonnement.periodicite else 'Helvetica', 8)
+                c.drawString(left, top, libelle + (' (ce reçu)' if code == abonnement.periodicite else ''))
+                c.drawRightString(350, top, f"{int(montant_du):,}".replace(',', ' '))
+                c.drawRightString(455, top, f"{int(montant_paye):,}".replace(',', ' '))
+                c.drawRightString(555, top, 'Soldée' if not reste else f"{int(reste):,}".replace(',', ' '))
+                top -= 18
+            c.setFont('Helvetica-Bold', 8)
+            c.drawString(left, top, 'TOTAL ANNÉE')
+            c.drawRightString(350, top, f"{int(total_du):,}".replace(',', ' '))
+            c.drawRightString(455, top, f"{int(total_paye):,}".replace(',', ' '))
+            c.drawRightString(555, top, f"{int(max(total_du - total_paye, 0)):,}".replace(',', ' '))
         
         # Finaliser
         c.showPage()

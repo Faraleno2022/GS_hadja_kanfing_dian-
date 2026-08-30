@@ -55,6 +55,14 @@
         border-color: #007bff;
         box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
     }
+    .post-save-choice {
+        background: linear-gradient(135deg, #f0fff4, #ffffff);
+        border: 1px solid #b7e4c7;
+        border-left: 5px solid #198754;
+        border-radius: 10px;
+        box-shadow: 0 6px 18px rgba(25, 135, 84, 0.08);
+        padding: 24px;
+    }
 </style>
 {% endblock %}
 
@@ -100,8 +108,38 @@
         </div>
     {% endif %}
 
+    {% if eleve_ajoute %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="post-save-choice" role="region" aria-label="Choix après l'ajout de l'élève">
+                    <div class="d-flex align-items-start gap-3 flex-wrap">
+                        <i class="fas fa-check-circle fa-2x text-success mt-1"></i>
+                        <div class="flex-grow-1">
+                            <h4 class="text-success mb-2">Que souhaitez-vous faire maintenant ?</h4>
+                            <p class="mb-3">
+                                <strong>{{ eleve_ajoute.prenom }} {{ eleve_ajoute.nom }}</strong>
+                                a bien été enregistré
+                                (Matricule : <strong>{{ eleve_ajoute.matricule }}</strong>).
+                            </p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                <a href="{% url 'paiements:ajouter_paiement_eleve' eleve_ajoute.id %}?origine=ajout_eleve"
+                                   class="btn btn-success">
+                                    <i class="fas fa-money-bill-wave me-2"></i>Ajouter un paiement
+                                </a>
+                                <a href="{% url 'eleves:ajouter_eleve' %}?classe_id={{ eleve_ajoute.classe_id }}&amp;continuer=1#formulaire-ajout-eleve"
+                                   class="btn btn-outline-primary">
+                                    <i class="fas fa-user-plus me-2"></i>Continuer l'ajout des élèves
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
     <!-- Nouveau Formulaire Simple -->
-    <div class="row justify-content-center">
+    <div class="row justify-content-center" id="formulaire-ajout-eleve">
         <div class="col-lg-8">
             <div class="form-container">
                 <form method="post" enctype="multipart/form-data">

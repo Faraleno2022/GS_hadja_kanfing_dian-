@@ -21,8 +21,8 @@ from utilisateurs.permissions import can_add_expenses, can_modify_expenses, can_
 from ecole_moderne.security_decorators import require_school_object
 
 @login_required
-def tableau_bord(request):
-    """Tableau de bord principal du module dépenses"""
+def dashboard_courantes(request):
+    """Tableau de bord du sous-module Dépenses courantes (module Recouvrement)"""
     # Base filtrée par école - seul le superuser voit toutes les écoles
     base_qs = Depense.objects.all()
     if not user_is_superadmin(request.user):
@@ -100,7 +100,7 @@ def tableau_bord(request):
         'stats_categories': stats_categories,
     }
     
-    return render(request, 'depenses/tableau_bord.html', context)
+    return render(request, 'depenses/dashboard_courantes.html', context)
 
 @login_required
 def liste_depenses(request):

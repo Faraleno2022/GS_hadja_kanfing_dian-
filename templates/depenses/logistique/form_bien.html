@@ -1,58 +1,48 @@
 {% extends 'base.html' %}
-{% load humanize %}
 
 {% block title %}{{ titre_page }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid"><div class="row justify-content-center"><div class="col-xl-9">
-  <div class="d-flex justify-content-between align-items-center mb-4"><div><h2 class="mb-1"><i class="fas fa-building text-primary me-2"></i>{{ titre_page }}</h2><p class="text-muted mb-0">Exemple : tables, chaises, marqueurs, ordinateurs.</p></div><a href="{% url 'depenses:liste_biens' %}" class="btn btn-outline-secondary">Retour</a></div>
-  <div class="card shadow-sm"><div class="card-body p-4">
-    <form method="post" enctype="multipart/form-data" novalidate>{% csrf_token %}
-      {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
-      {% if ecoles %}<div class="mb-3"><label class="form-label">Établissement *</label><select name="ecole" class="form-select" required><option value="">Sélectionner</option>{% for ecole in ecoles %}<option value="{{ ecole.id }}" {% if ecole_selectionnee == ecole.id %}selected{% endif %}>{{ ecole.nom }}</option>{% endfor %}</select></div>{% endif %}
-      <div class="row g-3">
-        <div class="col-md-4"><label class="form-label">Code</label>{{ form.code_bien }}{{ form.code_bien.errors }}</div>
-        <div class="col-md-8"><label class="form-label">Nom / désignation *</label>{{ form.nom }}{{ form.nom.errors }}</div>
-        <div class="col-md-6"><label class="form-label">Type *</label>{{ form.type_bien }}{{ form.type_bien.errors }}</div>
-        <div class="col-md-6"><label class="form-label">Marque</label>{{ form.marque }}{{ form.marque.errors }}</div>
-      </div>
-      <hr class="my-4"><h5 class="mb-3">Achat et quantités</h5>
-      <div class="row g-3">
-        <div class="col-md-3"><label class="form-label">Quantité achetée *</label>{{ form.quantite_achetee }}{{ form.quantite_achetee.errors }}</div>
-        <div class="col-md-3"><label class="form-label">Prix unitaire (GNF) *</label>{{ form.prix_achat_unitaire }}{{ form.prix_achat_unitaire.errors }}</div>
-        <div class="col-md-3"><label class="form-label">Quantité utilisée</label>{{ form.quantite_utilisee }}{{ form.quantite_utilisee.errors }}</div>
-        <div class="col-md-3"><label class="form-label">Quantité gâtée/perdue</label>{{ form.quantite_endommagee }}{{ form.quantite_endommagee.errors }}</div>
-      </div>
-      <div class="alert alert-light border mt-3 mb-0"><div class="row"><div class="col-md-6">Disponible calculé : <strong id="disponibleCalcule">0</strong></div><div class="col-md-6">Valeur totale : <strong id="valeurCalculee">0 GNF</strong></div></div></div>
-      <hr class="my-4"><div class="row g-3">
-        <div class="col-md-4"><label class="form-label">Date d'achat</label>{{ form.date_acquisition }}{{ form.date_acquisition.errors }}</div>
-        <div class="col-md-4"><label class="form-label">Localisation</label>{{ form.localisation }}{{ form.localisation.errors }}</div>
-        <div class="col-md-4"><label class="form-label">État</label>{{ form.etat }}{{ form.etat.errors }}</div>
-        <div class="col-md-6"><label class="form-label">Photo</label>{{ form.photo }}{{ form.photo.errors }}{% if bien.photo %}<img src="{{ bien.photo.url }}" class="img-thumbnail mt-2" style="max-height:120px" alt="Photo du bien">{% endif %}</div>
-        <div class="col-md-6"><label class="form-label">Observations</label>{{ form.observations }}{{ form.observations.errors }}</div>
-      </div>
-      <div class="d-flex justify-content-end gap-2 mt-4"><a href="{% url 'depenses:liste_biens' %}" class="btn btn-outline-secondary">Annuler</a><button class="btn btn-success"><i class="fas fa-save me-1"></i>Enregistrer</button></div>
-    </form>
-  </div></div>
-</div></div></div>
-{% endblock %}
+<div class="container py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div><h2 class="mb-1"><i class="fas fa-chair text-primary"></i> {{ titre_page }}</h2><p class="text-muted mb-0">Enregistrez simplement les quantités et le prix d'achat.</p></div>
+        <a href="{% url 'depenses:liste_biens' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left"></i> Retour</a>
+    </div>
 
-{% block extra_js %}
-<script>
-(() => {
-  const achetee = document.getElementById('id_quantite_achetee');
-  const utilisee = document.getElementById('id_quantite_utilisee');
-  const gatee = document.getElementById('id_quantite_endommagee');
-  const prix = document.getElementById('id_prix_achat_unitaire');
-  const disponible = document.getElementById('disponibleCalcule');
-  const valeur = document.getElementById('valeurCalculee');
-  function calculer() {
-    const q = Number(achetee?.value || 0), u = Number(utilisee?.value || 0), g = Number(gatee?.value || 0), p = Number(prix?.value || 0);
-    disponible.textContent = Math.max(0, q - u - g).toLocaleString('fr-FR');
-    valeur.textContent = (q * p).toLocaleString('fr-FR') + ' GNF';
-  }
-  [achetee, utilisee, gatee, prix].forEach(el => el?.addEventListener('input', calculer));
-  calculer();
-})();
-</script>
+    <form method="post" enctype="multipart/form-data" class="card shadow-sm">
+        {% csrf_token %}
+        <div class="card-body p-4">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+            <h5 class="mb-3">Identification</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-md-4"><label class="form-label">Code</label>{{ form.code_bien }}<small class="text-muted">Facultatif : généré automatiquement.</small>{{ form.code_bien.errors }}</div>
+                <div class="col-md-8"><label class="form-label">Nom / désignation *</label>{{ form.nom }}{{ form.nom.errors }}</div>
+                <div class="col-md-4"><label class="form-label">Type *</label>{{ form.type_bien }}{{ form.type_bien.errors }}</div>
+                <div class="col-md-4"><label class="form-label">Unité *</label>{{ form.unite_mesure }}{{ form.unite_mesure.errors }}</div>
+                <div class="col-md-4"><label class="form-label">État *</label>{{ form.etat }}{{ form.etat.errors }}</div>
+                <div class="col-md-8"><label class="form-label">Emplacement *</label>{{ form.localisation }}{{ form.localisation.errors }}</div>
+                <div class="col-md-4"><label class="form-label">Date d'achat</label>{{ form.date_acquisition }}{{ form.date_acquisition.errors }}</div>
+            </div>
+
+            <h5 class="mb-3">Quantités et achat</h5>
+            <div class="row g-3 mb-4">
+                <div class="col-6 col-md-3"><label class="form-label">Quantité achetée *</label>{{ form.quantite_achetee }}{{ form.quantite_achetee.errors }}</div>
+                <div class="col-6 col-md-3"><label class="form-label">Quantité utilisée</label>{{ form.quantite_utilisee }}{{ form.quantite_utilisee.errors }}</div>
+                <div class="col-6 col-md-3"><label class="form-label">Quantité gâtée / perdue</label>{{ form.quantite_gatee }}{{ form.quantite_gatee.errors }}</div>
+                <div class="col-6 col-md-3"><label class="form-label">Prix unitaire (GNF)</label>{{ form.prix_achat_unitaire }}{{ form.prix_achat_unitaire.errors }}</div>
+            </div>
+            <div class="alert alert-info py-2"><i class="fas fa-calculator"></i> La quantité disponible est calculée automatiquement : achetée − utilisée − gâtée.</div>
+
+            <div class="row g-3">
+                <div class="col-md-5"><label class="form-label">Photo</label>{{ form.photo }}{{ form.photo.errors }}{% if bien and bien.photo %}<img src="{{ bien.photo.url }}" alt="{{ bien.nom }}" class="img-thumbnail mt-2" style="max-height:140px">{% endif %}</div>
+                <div class="col-md-7"><label class="form-label">Observations</label>{{ form.observations }}{{ form.observations.errors }}</div>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2 py-3">
+            <a href="{% url 'depenses:liste_biens' %}" class="btn btn-secondary">Annuler</a>
+            <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Enregistrer le bien</button>
+        </div>
+    </form>
+</div>
 {% endblock %}

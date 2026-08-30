@@ -4,6 +4,7 @@ from .models import (
     AffectationClasse,
     Enseignant,
     EtatSalaire,
+    ModeCalculHoraire,
     PresenceEnseignant,
     StatutEnseignant,
     TypeEnseignant,
@@ -13,13 +14,14 @@ from eleves.models import Ecole, Classe
 
 class EnseignantForm(forms.ModelForm):
     """Formulaire pour créer/modifier un enseignant"""
-    
+
     class Meta:
         model = Enseignant
         fields = [
             'nom', 'prenoms', 'telephone', 'adresse',
-            'ecole', 'type_enseignant', 'statut', 
-            'taux_horaire', 'salaire_fixe', 'heures_mensuelles', 'date_embauche'
+            'ecole', 'type_enseignant', 'statut',
+            'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe',
+            'heures_mensuelles', 'date_embauche'
         ]
         widgets = {
             'nom': forms.TextInput(attrs={
@@ -51,14 +53,15 @@ class EnseignantForm(forms.ModelForm):
             'taux_horaire': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Taux horaire en GNF',
-                'step': '0.01',
-                'min': '0.01',
+                'step': '0.01'
+            }),
+            'mode_calcul_horaire': forms.Select(attrs={
+                'class': 'form-select'
             }),
             'salaire_fixe': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Salaire fixe en GNF',
-                'step': '0.01',
-                'min': '0.01',
+                'step': '0.01'
             }),
             'heures_mensuelles': forms.NumberInput(attrs={
                 'class': 'form-control',
@@ -80,16 +83,19 @@ class EnseignantForm(forms.ModelForm):
             'type_enseignant': 'Type d\'enseignant *',
             'statut': 'Statut',
             'taux_horaire': 'Taux horaire (GNF)',
+            'mode_calcul_horaire': 'Calcul des heures',
             'salaire_fixe': 'Salaire fixe (GNF)',
-            'heures_mensuelles': 'Heures mensuelles prévues (facultatif)',
+            'heures_mensuelles': 'Heures mensuelles',
             'date_embauche': 'Date d\'embauche *',
         }
         help_texts = {
             'taux_horaire': 'Pour les enseignants du secondaire uniquement',
-            'salaire_fixe': 'Pour garderie, maternelle, primaire, cadres et administrateurs',
+            'mode_calcul_horaire': (
+                "Choisissez le pointage arrivée/départ ou la saisie d'un total mensuel."
+            ),
+            'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
             'heures_mensuelles': (
-                "Volume indicatif du contrat. Les heures réellement payées sont "
-                "issues des pointages ou de la saisie globale de la période."
+                "Total global du mois multiplié par le taux horaire."
             ),
             'date_embauche': 'Date d\'entrée en fonction',
         }
@@ -97,14 +103,14 @@ class EnseignantForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
-        
+
         # Rendre certains champs obligatoires
         self.fields['nom'].required = True
         self.fields['prenoms'].required = True
         self.fields['ecole'].required = True
         self.fields['type_enseignant'].required = True
         self.fields['date_embauche'].required = True
-        
+
         # Restreindre les écoles visibles selon l'utilisateur
         if self.user:
             from utilisateurs.utils import user_is_admin, user_school
@@ -113,7 +119,7 @@ class EnseignantForm(forms.ModelForm):
                 if ecole_user:
                     self.fields['ecole'].queryset = Ecole.objects.filter(id=ecole_user.id)
                     self.fields['ecole'].initial = ecole_user
-        
+
         # Définir le statut par défaut
         if not self.instance.pk:
             self.fields['statut'].initial = StatutEnseignant.ACTIF
@@ -124,6 +130,9 @@ class EnseignantForm(forms.ModelForm):
         taux_horaire = cleaned_data.get('taux_horaire')
         salaire_fixe = cleaned_data.get('salaire_fixe')
         heures_mensuelles = cleaned_data.get('heures_mensuelles')
+        mode_calcul = cleaned_data.get(
+            'mode_calcul_horaire', ModeCalculHoraire.POINTAGE
+        )
 
         # Validation selon le type d'enseignant
         if type_enseignant == TypeEnseignant.SECONDAIRE:
@@ -131,23 +140,36 @@ class EnseignantForm(forms.ModelForm):
                 raise ValidationError({
                     'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
                 })
+            if (
+                mode_calcul == ModeCalculHoraire.MENSUEL
+                and not heures_mensuelles
+            ):
+                raise ValidationError({
+                    'heures_mensuelles': (
+                        "Le total d'heures mensuelles est obligatoire pour le mode mensuel global."
+                    )
+                })
             if salaire_fixe:
                 cleaned_data['salaire_fixe'] = None  # Effacer le salaire fixe
-        else:
+            if mode_calcul == ModeCalculHoraire.POINTAGE:
+                cleaned_data['heures_mensuelles'] = None
+        elif type_enseignant:
             if not salaire_fixe:
                 raise ValidationError({
                     'salaire_fixe': f'Le salaire fixe est obligatoire pour les enseignants de type {type_enseignant}.'
                 })
             if taux_horaire:
                 cleaned_data['taux_horaire'] = None  # Effacer le taux horaire
-        
+            cleaned_data['mode_calcul_horaire'] = ModeCalculHoraire.POINTAGE
+            cleaned_data['heures_mensuelles'] = None
+
         # Validation des heures mensuelles
-        if heures_mensuelles and heures_mensuelles <= 0:
+        if heures_mensuelles is not None and heures_mensuelles <= 0:
             raise ValidationError({
                 'heures_mensuelles': 'Le nombre d\'heures mensuelles doit être supérieur à 0.'
             })
-        
-        if heures_mensuelles and heures_mensuelles > 200:
+
+        if heures_mensuelles is not None and heures_mensuelles > 200:
             raise ValidationError({
                 'heures_mensuelles': 'Le nombre d\'heures mensuelles ne peut pas dépasser 200 heures par mois.'
             })
@@ -256,7 +278,7 @@ class AffectationClasseForm(forms.ModelForm):
 
 class PresenceForm(forms.ModelForm):
     """Formulaire pour pointer/modifier une présence"""
-    
+
     class Meta:
         model = PresenceEnseignant
         fields = [
@@ -274,7 +296,6 @@ class PresenceForm(forms.ModelForm):
                 'class': 'form-control',
                 'step': '0.25',
                 'min': '0',
-                'max': '24',
                 'placeholder': 'Calculé automatiquement si vide'
             }),
             'observations': forms.Textarea(attrs={
@@ -294,11 +315,11 @@ class PresenceForm(forms.ModelForm):
             'observations': 'Observations',
             'justifie': 'Absence/Retard justifié',
         }
-    
+
     def __init__(self, *args, **kwargs):
         ecole = kwargs.pop('ecole', None)
         super().__init__(*args, **kwargs)
-        
+
         # Filtrer les enseignants par école
         if ecole:
             self.fields['enseignant'].queryset = Enseignant.objects.filter(
@@ -306,74 +327,66 @@ class PresenceForm(forms.ModelForm):
                 statut='ACTIF'
             ).order_by('nom', 'prenoms')
 
+    def clean(self):
+        cleaned_data = super().clean()
+        heure_arrivee = cleaned_data.get('heure_arrivee')
+        heure_depart = cleaned_data.get('heure_depart')
+        heures_travaillees = cleaned_data.get('heures_travaillees')
+        statut = cleaned_data.get('statut')
+
+        if bool(heure_arrivee) != bool(heure_depart):
+            raise ValidationError(
+                "L'heure d'arrivée et l'heure de départ doivent être renseignées ensemble."
+            )
+
+        if statut in {'PRESENT', 'RETARD'}:
+            if not (heure_arrivee and heure_depart) and not (
+                heures_travaillees is not None and heures_travaillees > 0
+            ):
+                raise ValidationError(
+                    "Renseignez les heures d'arrivée et de départ, ou le total travaillé."
+                )
+
+        if statut in {'ABSENT', 'CONGE', 'MALADIE'}:
+            if heure_arrivee or heure_depart or (
+                heures_travaillees is not None and heures_travaillees > 0
+            ):
+                raise ValidationError(
+                    'Aucune heure travaillée ne peut être enregistrée pour ce statut.'
+                )
+
+        return cleaned_data
+
 
 class EtatSalaireAjustementForm(forms.ModelForm):
-    """Modification contrôlée des ajustements avant validation de la paie."""
+    """Modification contrôlée des primes et retenues avant validation."""
 
     class Meta:
         model = EtatSalaire
-        fields = [
-            'heures_mensuelles_saisies', 'primes', 'deductions', 'observations'
-        ]
+        fields = ['primes', 'deductions', 'observations']
         widgets = {
-            'heures_mensuelles_saisies': forms.NumberInput(attrs={
-                'class': 'form-control', 'step': '0.25', 'min': '0', 'max': '744',
-                'placeholder': 'Vide = calcul depuis les pointages',
-            }),
             'primes': forms.NumberInput(attrs={
-                'class': 'form-control', 'step': '0.01', 'min': '0'
+                'class': 'form-control', 'min': '0', 'step': '0.01'
             }),
             'deductions': forms.NumberInput(attrs={
-                'class': 'form-control', 'step': '0.01', 'min': '0'
+                'class': 'form-control', 'min': '0', 'step': '0.01'
             }),
             'observations': forms.Textarea(attrs={
-                'class': 'form-control', 'rows': 3,
+                'class': 'form-control', 'rows': 4,
                 'placeholder': 'Motif des primes ou retenues',
             }),
-        }
-        labels = {
-            'heures_mensuelles_saisies': 'Total réel du mois',
-        }
-        help_texts = {
-            'heures_mensuelles_saisies': (
-                "Renseignez le total global du mois, ou laissez vide pour calculer "
-                "depuis les heures d'arrivée et de départ."
-            ),
         }
 
     def clean(self):
         cleaned_data = super().clean()
         primes = cleaned_data.get('primes') or 0
         deductions = cleaned_data.get('deductions') or 0
-        heures_saisies = cleaned_data.get('heures_mensuelles_saisies')
-        if heures_saisies is not None and heures_saisies > 744:
-            self.add_error(
-                'heures_mensuelles_saisies',
-                'Le total mensuel ne peut pas dépasser 744 heures.',
-            )
-
         salaire_base = self.instance.salaire_base or 0
-        if self.instance.enseignant.est_taux_horaire:
-            if heures_saisies is None:
-                from .services import _heures_reelles, bornes_periode
 
-                debut, fin = bornes_periode(self.instance.periode)
-                debut = max(debut, self.instance.enseignant.date_embauche)
-                heures_calculees = _heures_reelles(
-                    self.instance.enseignant, debut, fin
-                )
-            else:
-                heures_calculees = heures_saisies
-            salaire_base = (
-                heures_calculees * (self.instance.enseignant.taux_horaire or 0)
-            )
-            # ModelForm exécutera ensuite la validation du modèle. Lui fournir
-            # dès maintenant le salaire projeté évite de comparer les retenues
-            # au montant antérieur à la nouvelle saisie d'heures.
-            self.instance.salaire_base = salaire_base
         if deductions > salaire_base + primes:
             self.add_error(
                 'deductions',
-                'Les retenues ne peuvent pas dépasser le salaire brut.',
+                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.',
             )
+
         return cleaned_data

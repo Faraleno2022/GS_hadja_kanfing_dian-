@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active">Corbeille mémoire</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{% url 'administration:corbeille_eleves' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-trash me-1"></i>Corbeille des élèves
+        </a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle me-2"></i>
+    Cette corbeille mémoire conserve <strong>toutes les modifications</strong> effectuées dans le système :
+    pour chaque champ modifié, la valeur avant et la valeur après, l'auteur et la date.
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5">
+                <label for="q" class="form-label">Rechercher</label>
+                <input type="text" class="form-control" id="q" name="q" value="{{ recherche }}"
+                       placeholder="Objet, motif ou utilisateur">
+            </div>
+            <div class="col-md-3">
+                <label for="modele" class="form-label">Type d'objet</label>
+                <select class="form-select" id="modele" name="modele">
+                    <option value="">Tous</option>
+                    {% for m in modeles %}
+                        <option value="{{ m }}" {% if modele == m %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label for="action" class="form-label">Action</label>
+                <select class="form-select" id="action" name="action">
+                    <option value="">Toutes</option>
+                    {% for valeur, libelle in actions %}
+                        <option value="{{ valeur }}" {% if action == valeur %}selected{% endif %}>{{ libelle }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-1"></i>Filtrer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0"><i class="fas fa-history me-2"></i>Modifications enregistrées</h5>
+        <small class="text-muted">{{ page_obj.paginator.count }} entrée(s)</small>
+    </div>
+    <div class="card-body p-0">
+        {% if page_obj %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Action</th>
+                        <th>Objet</th>
+                        <th>Détail des changements</th>
+                        <th>Auteur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entree in page_obj %}
+                    <tr>
+                        <td><small>{{ entree.date_modification|date:"d/m/Y H:i" }}</small></td>
+                        <td>
+                            {% if entree.action == 'SUPPRESSION' %}
+                                <span class="badge bg-danger">{{ entree.get_action_display }}</span>
+                            {% elif entree.action == 'CREATION' %}
+                                <span class="badge bg-success">{{ entree.get_action_display }}</span>
+                            {% elif entree.action == 'RESTAURATION' %}
+                                <span class="badge bg-info">{{ entree.get_action_display }}</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">{{ entree.get_action_display }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ entree.objet_repr }}</strong><br>
+                            <small class="text-muted">{{ entree.libelle_modele }} #{{ entree.objet_id }}</small>
+                        </td>
+                        <td>
+                            {% if entree.commentaire %}
+                                <div class="small fst-italic mb-1">« {{ entree.commentaire }} »</div>
+                            {% endif %}
+                            {% for changement in entree.liste_changements %}
+                                <div class="small">
+                                    <span class="badge bg-light text-dark">{{ changement.champ }}</span>
+                                    <span class="text-danger">{{ changement.avant|default:"—" }}</span>
+                                    <i class="fas fa-arrow-right mx-1 text-muted"></i>
+                                    <span class="text-success">{{ changement.apres|default:"—" }}</span>
+                                </div>
+                            {% empty %}
+                                <small class="text-muted">—</small>
+                            {% endfor %}
+                        </td>
+                        <td><small>{{ entree.utilisateur|default:"Système" }}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+        <div class="card-footer">
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ recherche }}&modele={{ modele }}&action={{ action }}">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                    <li class="page-item active">
+                        <span class="page-link">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ recherche }}&modele={{ modele }}&action={{ action }}">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-history fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Aucune modification enregistrée</h5>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

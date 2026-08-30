@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class GestionnaireRappels:
     """Gestionnaire principal pour les rappels de paiement"""
-    
+
     def __init__(self):
         self.templates_messages = {
             'SMS': {
@@ -29,14 +29,14 @@ Votre enfant a un solde impayé de {solde:,.0f} GNF.
 Échéance dépassée: {date_echeance}
 Merci de régulariser rapidement.
 Contact: {telephone_ecole}""",
-                
+
                 'DEUXIEME_RAPPEL': """🏫 École Moderne - RAPPEL URGENT
 Cher(e) parent de {prenom} {nom},
 Solde impayé: {solde:,.0f} GNF
 Échéance dépassée depuis {jours_retard} jours.
 Merci de nous contacter rapidement.
 Contact: {telephone_ecole}""",
-                
+
                 'DERNIER_RAPPEL': """🏫 École Moderne - DERNIER RAPPEL
 Cher(e) parent de {prenom} {nom},
 Solde impayé: {solde:,.0f} GNF
@@ -45,7 +45,7 @@ Risque de suspension des cours.
 Contactez-nous IMMÉDIATEMENT.
 Contact: {telephone_ecole}"""
             },
-            
+
             'WHATSAPP': {
                 'PREMIER_RAPPEL': """🏫 *École Moderne*
 
@@ -60,7 +60,7 @@ Merci de régulariser ce paiement dans les plus brefs délais.
 
 📞 Contact: {telephone_ecole}
 🏫 Administration""",
-                
+
                 'DEUXIEME_RAPPEL': """🏫 *École Moderne - RAPPEL URGENT*
 
 Bonjour,
@@ -76,7 +76,7 @@ Merci de nous contacter rapidement pour régulariser cette situation.
 
 📞 Contact: {telephone_ecole}
 🏫 Administration""",
-                
+
                 'DERNIER_RAPPEL': """🏫 *École Moderne - DERNIER RAPPEL*
 
 Bonjour,
@@ -93,27 +93,27 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
 📞 Contact: {telephone_ecole}
 🏫 Administration"""
             },
-            
+
             'EMAIL': {
                 'PREMIER_RAPPEL': """Rappel de paiement - {prenom} {nom}""",
                 'DEUXIEME_RAPPEL': """URGENT - Rappel de paiement - {prenom} {nom}""",
                 'DERNIER_RAPPEL': """DERNIER RAPPEL - Paiement en retard - {prenom} {nom}"""
             }
         }
-    
+
     def detecter_eleves_en_retard(self, jours_grace=7):
         """
         Détecte les élèves en retard de paiement
-        
+
         Args:
             jours_grace: Nombre de jours de grâce après l'échéance
-        
+
         Returns:
             QuerySet des élèves en retard
         """
         aujourd_hui = timezone.now().date()
         date_limite = aujourd_hui - timedelta(days=jours_grace)
-        
+
         candidats = EcheancierPaiement.objects.select_related(
             'eleve', 'eleve__classe'
         )
@@ -125,11 +125,11 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             )['retard_total'] > 0
         ]
         return candidats.filter(pk__in=ids)
-    
+
     def calculer_niveau_rappel(self, eleve_id):
         """
         Calcule le niveau de rappel selon l'historique
-        
+
         Returns:
             str: 'PREMIER_RAPPEL', 'DEUXIEME_RAPPEL', ou 'DERNIER_RAPPEL'
         """
@@ -140,14 +140,14 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             date_creation__gte=date_limite,
             statut__in=['ENREGISTREE', 'ENVOYEE']
         ).count()
-        
+
         if nb_rappels == 0:
             return 'PREMIER_RAPPEL'
         elif nb_rappels == 1:
             return 'DEUXIEME_RAPPEL'
         else:
             return 'DERNIER_RAPPEL'
-    
+
     def calculer_jours_retard(self, echeancier):
         """Calcule le nombre de jours de retard maximum"""
         aujourd_hui = timezone.now().date()
@@ -165,28 +165,28 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             for bucket, echeance in postes
             if echeance and situation['retards'][bucket] > 0
         ), default=0)
-    
+
     def generer_message_rappel(self, eleve, echeancier, canal='SMS', niveau_rappel='PREMIER_RAPPEL'):
         """
         Génère le message de rappel personnalisé
-        
+
         Args:
             eleve: Instance Eleve
             echeancier: Instance EcheancierPaiement
             canal: 'SMS', 'WHATSAPP', ou 'EMAIL'
             niveau_rappel: 'PREMIER_RAPPEL', 'DEUXIEME_RAPPEL', ou 'DERNIER_RAPPEL'
-        
+
         Returns:
             str: Message formaté
         """
         # Calculer les données du message
         solde_restant = echeancier.solde_restant
         jours_retard = self.calculer_jours_retard(echeancier)
-        
+
         # Trouver la date d'échéance la plus ancienne dépassée
         aujourd_hui = timezone.now().date()
         date_echeance = None
-        
+
         situation = situation_echeancier(
             echeancier, date_reference=aujourd_hui
         )
@@ -201,7 +201,7 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             if echeance and situation['retards'][bucket] > 0
         ]
         date_echeance = min(dates_retard) if dates_retard else None
-        
+
         # Données pour le template
         context = {
             'prenom': eleve.prenom,
@@ -212,25 +212,25 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             'date_echeance': date_echeance.strftime('%d/%m/%Y') if date_echeance else 'N/A',
             'telephone_ecole': getattr(eleve.classe.ecole, 'telephone', 'N/A') if eleve.classe and eleve.classe.ecole else 'N/A'
         }
-        
+
         # Récupérer le template
         template = self.templates_messages.get(canal, {}).get(niveau_rappel, '')
-        
+
         if template:
             return template.format(**context)
         else:
             return f"Rappel de paiement pour {eleve.prenom} {eleve.nom} - Solde: {solde_restant:,.0f} GNF"
-    
+
     def creer_rappel(self, eleve, canal='SMS', message=None, utilisateur=None):
         """
         Crée un rappel dans la base de données
-        
+
         Args:
             eleve: Instance Eleve
             canal: Canal de communication
             message: Message personnalisé (optionnel)
             utilisateur: Utilisateur qui crée le rappel
-        
+
         Returns:
             Relance: Instance créée
         """
@@ -239,12 +239,12 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         except EcheancierPaiement.DoesNotExist:
             logger.warning(f"Pas d'échéancier pour l'élève {eleve.id}")
             return None
-        
+
         # Générer le message si non fourni
         if not message:
             niveau_rappel = self.calculer_niveau_rappel(eleve.id)
             message = self.generer_message_rappel(eleve, echeancier, canal, niveau_rappel)
-        
+
         # Créer la relance
         relance = Relance.objects.create(
             eleve=eleve,
@@ -254,19 +254,19 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             cree_par=utilisateur,
             statut='ENREGISTREE'
         )
-        
+
         logger.info(f"Rappel créé pour {eleve.nom_complet} via {canal}")
         return relance
-    
+
     def generer_rappels_automatiques(self, canal='SMS', utilisateur=None, limite=50):
         """
         Génère automatiquement les rappels pour tous les élèves en retard
-        
+
         Args:
             canal: Canal de communication
             utilisateur: Utilisateur qui lance la génération
             limite: Nombre maximum de rappels à créer
-        
+
         Returns:
             dict: Statistiques de génération
         """
@@ -276,31 +276,31 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             'erreurs': 0,
             'eleves_traites': []
         }
-        
+
         # Détecter les élèves en retard
         echeanciers_retard = self.detecter_eleves_en_retard()
         stats['total_eleves_retard'] = echeanciers_retard.count()
-        
+
         # Limiter le nombre de rappels
         echeanciers_retard = echeanciers_retard[:limite]
-        
+
         for echeancier in echeanciers_retard:
             try:
                 eleve = echeancier.eleve
-                
+
                 # Vérifier si un rappel récent existe déjà
                 dernier_rappel = Relance.objects.filter(
                     eleve=eleve,
                     date_creation__gte=timezone.now() - timedelta(days=7)
                 ).first()
-                
+
                 if dernier_rappel:
                     logger.info(f"Rappel récent existe pour {eleve.nom_complet}, ignoré")
                     continue
-                
+
                 # Créer le rappel
                 relance = self.creer_rappel(eleve, canal, utilisateur=utilisateur)
-                
+
                 if relance:
                     stats['rappels_crees'] += 1
                     stats['eleves_traites'].append({
@@ -308,17 +308,17 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
                         'solde': echeancier.solde_restant,
                         'canal': canal
                     })
-                
+
             except Exception as e:
                 logger.error(f"Erreur lors de la création du rappel pour {echeancier.eleve.nom_complet}: {e}")
                 stats['erreurs'] += 1
-        
+
         return stats
-    
+
     def marquer_rappel_envoye(self, relance_id, succes=True, erreur=None):
         """
         Marque un rappel comme envoyé ou en échec
-        
+
         Args:
             relance_id: ID de la relance
             succes: True si envoyé avec succès
@@ -326,34 +326,34 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         """
         try:
             relance = Relance.objects.get(id=relance_id)
-            
+
             if succes:
                 relance.statut = 'ENVOYEE'
                 relance.date_envoi = timezone.now()
             else:
                 relance.statut = 'ECHEC'
-            
+
             relance.save()
-            
+
             logger.info(f"Rappel {relance_id} marqué comme {'envoyé' if succes else 'en échec'}")
-            
+
         except Relance.DoesNotExist:
             logger.error(f"Relance {relance_id} introuvable")
-    
+
     def obtenir_statistiques_rappels(self, periode_jours=30):
         """
         Obtient les statistiques des rappels sur une période
-        
+
         Args:
             periode_jours: Nombre de jours à analyser
-        
+
         Returns:
             dict: Statistiques détaillées
         """
         date_debut = timezone.now() - timedelta(days=periode_jours)
-        
+
         rappels = Relance.objects.filter(date_creation__gte=date_debut)
-        
+
         stats = {
             'total_rappels': rappels.count(),
             'rappels_envoyes': rappels.filter(statut='ENVOYEE').count(),
@@ -363,16 +363,16 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             'montant_total_impaye': Decimal('0'),
             'eleves_concernes': rappels.values('eleve').distinct().count()
         }
-        
+
         # Statistiques par canal
         for canal, _ in Relance.CANAL_CHOICES:
             stats['par_canal'][canal] = rappels.filter(canal=canal).count()
-        
+
         # Montant total des impayés
         stats['montant_total_impaye'] = sum(
             rappel.solde_estime for rappel in rappels if rappel.solde_estime
         )
-        
+
         return stats
 
 # Instance globale du gestionnaire

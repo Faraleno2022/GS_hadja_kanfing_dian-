@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppRecuSender:
     """Classe pour gérer l'envoi de reçus via WhatsApp"""
-    
+
     def _get_telephone_parent(self, eleve):
         """Récupère le numéro de téléphone du parent"""
         if eleve.responsable_principal and eleve.responsable_principal.telephone:
@@ -31,15 +31,15 @@ class WhatsAppRecuSender:
         elif hasattr(eleve, 'responsable_secondaire') and eleve.responsable_secondaire and eleve.responsable_secondaire.telephone:
             return eleve.responsable_secondaire.telephone
         return None
-    
+
     def _formater_numero_whatsapp(self, telephone):
         """Formate le numéro pour WhatsApp (format international)"""
         if not telephone:
             return None
-        
+
         # Nettoyer le numéro
         clean_number = telephone.replace(' ', '').replace('-', '').replace('.', '')
-        
+
         # Ajouter le code pays si nécessaire
         if not clean_number.startswith('+'):
             if clean_number.startswith('00'):
@@ -48,9 +48,9 @@ class WhatsAppRecuSender:
                 clean_number = '+' + clean_number
             else:
                 clean_number = '+224' + clean_number
-        
+
         return clean_number
-    
+
     def _generer_message_recu(self, paiement, pdf_url=None):
         """Génère le message WhatsApp pour le reçu de paiement"""
         eleve = paiement.eleve
@@ -58,10 +58,10 @@ class WhatsAppRecuSender:
         nom_ecole = ecole.nom if ecole else "École"
         tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
-        
+
         # Formater le montant avec séparateur de milliers
         montant_formate = f"{paiement.montant:,.0f}".replace(",", " ")
-        
+
         message = f"""🏫 *{nom_ecole} - Reçu de Paiement*
 
 Bonjour Cher Parent,
@@ -113,17 +113,17 @@ def apercu_message_whatsapp_recu(request):
     """Aperçu du message WhatsApp pour un reçu de paiement"""
     try:
         paiement_id = request.GET.get('paiement_id')
-        
+
         if not paiement_id:
             return JsonResponse({
                 'success': False,
                 'error': 'ID paiement manquant'
             })
-        
+
         paiement = get_object_or_404(Paiement, id=paiement_id)
         eleve = paiement.eleve
         telephone = whatsapp_recu_sender._get_telephone_parent(eleve)
-        
+
         # Générer l'URL PUBLIQUE du PDF du reçu (sans authentification requise)
         pdf_url = None
         try:
@@ -131,22 +131,22 @@ def apercu_message_whatsapp_recu(request):
             pdf_url = generer_url_recu_public(request, paiement.id)
         except Exception as e:
             logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
-        
+
         # Générer le message
         message = whatsapp_recu_sender._generer_message_recu(paiement, pdf_url)
-        
+
         # Formater le numéro pour WhatsApp
         whatsapp_number = whatsapp_recu_sender._formater_numero_whatsapp(telephone)
-        
+
         # Générer le lien WhatsApp
         whatsapp_link = None
         if whatsapp_number:
             encoded_message = urllib.parse.quote(message)
             whatsapp_link = f"https://wa.me/{whatsapp_number.replace('+', '')}?text={encoded_message}"
-        
+
         # Formater le montant pour l'affichage
         montant_formate = f"{paiement.montant:,.0f}".replace(",", " ")
-        
+
         return JsonResponse({
             'success': True,
             'message': message,
@@ -161,7 +161,7 @@ def apercu_message_whatsapp_recu(request):
             'date_paiement': paiement.date_paiement.strftime('%d/%m/%Y'),
             'statut': paiement.get_statut_display()
         })
-        
+
     except Exception as e:
         logger.error(f"Erreur aperçu message WhatsApp reçu: {e}")
         return JsonResponse({
@@ -172,7 +172,7 @@ def apercu_message_whatsapp_recu(request):
 
 class WhatsAppNoteRappelSender:
     """Classe pour gérer l'envoi de notes de rappel via WhatsApp"""
-    
+
     def _get_telephone_parent(self, eleve):
         """Récupère le numéro de téléphone du parent"""
         if eleve.responsable_principal and eleve.responsable_principal.telephone:
@@ -180,14 +180,14 @@ class WhatsAppNoteRappelSender:
         elif hasattr(eleve, 'responsable_secondaire') and eleve.responsable_secondaire and eleve.responsable_secondaire.telephone:
             return eleve.responsable_secondaire.telephone
         return None
-    
+
     def _formater_numero_whatsapp(self, telephone):
         """Formate le numéro pour WhatsApp (format international)"""
         if not telephone:
             return None
-        
+
         clean_number = telephone.replace(' ', '').replace('-', '').replace('.', '')
-        
+
         if not clean_number.startswith('+'):
             if clean_number.startswith('00'):
                 clean_number = '+' + clean_number[2:]
@@ -195,9 +195,9 @@ class WhatsAppNoteRappelSender:
                 clean_number = '+' + clean_number
             else:
                 clean_number = '+224' + clean_number
-        
+
         return clean_number
-    
+
     def _calculer_solde_eleve(self, eleve):
         """Calcule la situation financière réelle depuis l'échéancier."""
         today = timezone.localdate()
@@ -262,14 +262,14 @@ class WhatsAppNoteRappelSender:
             'prochain_montant': prochain['montant'] if prochain else Decimal('0'),
             'prochaine_echeance': prochain['echeance'] if prochain else None,
         }
-    
+
     def _generer_message_note_rappel(self, eleve, solde_info, pdf_url=None):
         """Génère le message WhatsApp pour la note de rappel"""
         ecole = eleve.classe.ecole if eleve.classe else None
         nom_ecole = ecole.nom if ecole else "École"
         tel_ecole = ecole.tous_telephones if ecole else ""
         email_ecole = ecole.email if ecole else ""
-        
+
         # Formater les montants
         montant_total = f"{solde_info['montant_total']:,.0f}".replace(",", " ")
         montant_paye = f"{solde_info['montant_paye']:,.0f}".replace(",", " ")
@@ -279,7 +279,7 @@ class WhatsAppNoteRappelSender:
         retard_reel = f"{solde_info.get('retard_reel', 0):,.0f}".replace(",", " ")
         prochaine_echeance = solde_info.get('prochaine_echeance')
         prochaine_echeance_txt = prochaine_echeance.strftime('%d/%m/%Y') if prochaine_echeance else 'Non définie'
-        
+
         message = f"""🏫 *{nom_ecole} - Note de Rappel de Paiement*
 
 Bonjour Cher Parent,
@@ -342,19 +342,19 @@ def apercu_message_whatsapp_note_rappel(request):
     """Aperçu du message WhatsApp pour une note de rappel"""
     try:
         eleve_id = request.GET.get('eleve_id')
-        
+
         if not eleve_id:
             return JsonResponse({
                 'success': False,
                 'error': 'ID élève manquant'
             })
-        
+
         eleve = get_object_or_404(Eleve, id=eleve_id)
         telephone = whatsapp_note_rappel_sender._get_telephone_parent(eleve)
-        
+
         # Calculer le solde
         solde_info = whatsapp_note_rappel_sender._calculer_solde_eleve(eleve)
-        
+
         # Générer l'URL PUBLIQUE du PDF (sans authentification requise)
         pdf_url = None
         try:
@@ -362,19 +362,19 @@ def apercu_message_whatsapp_note_rappel(request):
             pdf_url = generer_url_note_rappel_public(request, eleve.id)
         except Exception as e:
             logger.warning(f"Impossible de générer l'URL publique du PDF: {e}")
-        
+
         # Générer le message
         message = whatsapp_note_rappel_sender._generer_message_note_rappel(eleve, solde_info, pdf_url)
-        
+
         # Formater le numéro pour WhatsApp
         whatsapp_number = whatsapp_note_rappel_sender._formater_numero_whatsapp(telephone)
-        
+
         # Générer le lien WhatsApp
         whatsapp_link = None
         if whatsapp_number:
             encoded_message = urllib.parse.quote(message)
             whatsapp_link = f"https://wa.me/{whatsapp_number.replace('+', '')}?text={encoded_message}"
-        
+
         # Formater les montants pour l'affichage
         montant_total = f"{solde_info['montant_total']:,.0f}".replace(",", " ")
         montant_paye = f"{solde_info['montant_paye']:,.0f}".replace(",", " ")
@@ -384,7 +384,7 @@ def apercu_message_whatsapp_note_rappel(request):
         retard_reel = f"{solde_info.get('retard_reel', 0):,.0f}".replace(",", " ")
         prochain_montant = f"{solde_info.get('prochain_montant', 0):,.0f}".replace(",", " ")
         prochaine_echeance = solde_info.get('prochaine_echeance')
-        
+
         return JsonResponse({
             'success': True,
             'message': message,
@@ -404,7 +404,7 @@ def apercu_message_whatsapp_note_rappel(request):
             'prochain_montant': prochain_montant,
             'prochaine_echeance': prochaine_echeance.strftime('%d/%m/%Y') if prochaine_echeance else '',
         })
-        
+
     except Exception as e:
         logger.error(f"Erreur aperçu message WhatsApp note de rappel: {e}")
         return JsonResponse({

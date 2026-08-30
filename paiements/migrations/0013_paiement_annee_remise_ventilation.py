@@ -96,17 +96,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='paiement',
-            name='annee_scolaire',
-            field=models.CharField(
-                blank=True,
-                db_index=True,
-                default='',
-                help_text='Année comptable à laquelle ce paiement doit être affecté.',
-                max_length=9,
-                verbose_name='Année scolaire',
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddField(
+                    model_name='paiement',
+                    name='annee_scolaire',
+                    field=models.CharField(
+                        blank=True,
+                        db_index=True,
+                        default='',
+                        help_text='Année comptable à laquelle ce paiement doit être affecté.',
+                        max_length=9,
+                        verbose_name='Année scolaire',
+                    ),
+                ),
+            ],
         ),
         migrations.AddField(
             model_name='paiementremise',

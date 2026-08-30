@@ -59,9 +59,9 @@ def liste_eleves(request):
     """Vue optimisée pour afficher la liste des élèves avec cache intelligent"""
     from ecole_moderne.query_optimizer import QueryOptimizer, PaginationOptimizer
     from ecole_moderne.decorators import cache_user_data
-    
+
     form_recherche = RechercheEleveForm(request.GET or None)
-    
+
     # Cache de l'école utilisateur
     user_school_cache_key = f'user_school_{request.user.id}'
     user_school_obj = cache.get(user_school_cache_key)
@@ -69,7 +69,7 @@ def liste_eleves(request):
         user_school_obj = user_school(request.user)
         if user_school_obj:
             cache.set(user_school_cache_key, user_school_obj, 300)
-    
+
     # Queryset optimisé avec relations pré-chargées
     eleves = QueryOptimizer.get_optimized_eleves(
         school=user_school_obj if not user_is_admin(request.user) else None,
@@ -96,7 +96,7 @@ def liste_eleves(request):
                 Q(responsable_principal__nom__icontains=recherche) |
                 Q(responsable_principal__prenom__icontains=recherche)
             )
-    
+
     # Filtre par classe optimisé
     classe_id = request.GET.get('classe_id')
     if classe_id:
@@ -105,11 +105,11 @@ def liste_eleves(request):
             eleves = eleves.filter(classe_id=classe_id)
         except (TypeError, ValueError):
             classe_id = None
-    
+
     # Statistiques optimisées avec cache
     stats_cache_key = f'eleves_stats_{request.user.id}_{hash(str(eleves.query))}'
     stats = cache.get(stats_cache_key)
-    
+
     if stats is None:
         stats = eleves.aggregate(
             total_eleves=Count('id'),
@@ -118,15 +118,15 @@ def liste_eleves(request):
             eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField()))
         )
         cache.set(stats_cache_key, stats, 120)  # Cache 2 minutes
-    
+
     # Pagination optimisée
     page_number = request.GET.get('page', 1)
     page_obj, paginator = PaginationOptimizer.optimize_pagination(
-        eleves.order_by('nom', 'prenom'), 
-        page_number, 
+        eleves.order_by('nom', 'prenom'),
+        page_number,
         per_page=15
     )
-    
+
     # Log de l'activité
     JournalActivite.objects.create(
         user=request.user,
@@ -136,7 +136,7 @@ def liste_eleves(request):
         adresse_ip=request.META.get('REMOTE_ADDR', ''),
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
-    
+
     # Liste des classes pour export (restreinte si besoin)
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if user_is_superadmin(request.user):
@@ -221,7 +221,7 @@ def creer_ecole(request):
                     # Marquer le compte comme inactif en attente de validation par un administrateur
                     user.is_active = False
                     user.save()
-                    
+
                     # Créer le profil utilisateur avec validation en attente (éviter les doublons)
                     from utilisateurs.models import Profil
                     profil, created = Profil.objects.get_or_create(
@@ -233,7 +233,7 @@ def creer_ecole(request):
                             'actif': False
                         }
                     )
-                    
+
                     # Ne PAS connecter l'utilisateur. Informer de la validation requise.
                     messages.success(request, "Compte créé. Un administrateur doit valider votre demande avant connexion.")
                 except Exception as e:
@@ -274,7 +274,7 @@ def creer_ecole(request):
                     pass
                 # etat par défaut EN_ATTENTE via modèle
                 ecole.save()
-                
+
                 # Traiter la création de classes fournies dans ce formulaire (si présentes)
                 try:
                     from decimal import Decimal
@@ -545,17 +545,17 @@ def detail_eleve(request, eleve_id):
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
     eleve = get_object_or_404(qs, id=eleve_id)
-    
+
     # Statistiques des paiements
     paiements_stats = {
         'total_paiements': eleve.paiements.count(),
         'paiements_valides': eleve.paiements.filter(statut='VALIDE').count(),
         'montant_total': sum(p.montant for p in eleve.paiements.filter(statut='VALIDE')),
     }
-    
+
     # Historique récent
     historique_recent = eleve.historique.all()[:10]
-    
+
     # Log de l'activité
     JournalActivite.objects.create(
         user=request.user,
@@ -566,14 +566,14 @@ def detail_eleve(request, eleve_id):
         adresse_ip=request.META.get('REMOTE_ADDR', ''),
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
-    
+
     context = {
         'eleve': eleve,
         'paiements_stats': paiements_stats,
         'historique_recent': historique_recent,
         'titre_page': f'Profil de {eleve.nom_complet}'
     }
-    
+
     return render(request, 'eleves/detail_eleve.html', context)
 
 @login_required
@@ -583,20 +583,20 @@ def ajouter_eleve(request):
     # Cache de l'école utilisateur pour éviter les requêtes répétées
     user_school_cache_key = f'user_school_{request.user.id}'
     user_school_obj = cache.get(user_school_cache_key)
-    
+
     if user_school_obj is None and not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if user_school_obj:
             cache.set(user_school_cache_key, user_school_obj, 300)  # Cache 5 minutes
-    
+
     # Vérification d'accès rapide
     if not user_is_admin(request.user) and user_school_obj is None:
         return render(request, 'utilisateurs/acces_refuse_ecole.html', status=403)
-    
+
     if request.method == 'POST':
         # Optimisation: Créer les formulaires seulement si nécessaire
         form = EleveForm(request.POST, request.FILES, user=request.user)
-        
+
         # Cache des classes pour éviter les requêtes répétées (filtrées par année active)
         if not user_is_admin(request.user):
             annee_active = get_annee_active(request, user_school_obj)
@@ -609,25 +609,25 @@ def ajouter_eleve(request):
                 classes_qs = qs
                 cache.set(classes_cache_key, classes_qs, 600)  # Cache 10 minutes
             form.fields['classe'].queryset = classes_qs
-        
+
         # Gestion optimisée des responsables
         responsable_principal_form = None
         responsable_secondaire_form = None
-        
+
         creer_resp_principal = request.POST.get('responsable_principal_nouveau') == 'on'
         creer_resp_secondaire = request.POST.get('responsable_secondaire_nouveau') == 'on'
-        
+
         if creer_resp_principal:
             responsable_principal_form = ResponsableForm(request.POST, prefix='resp_principal', user=request.user)
-        
+
         if creer_resp_secondaire:
             responsable_secondaire_form = ResponsableForm(request.POST, prefix='resp_secondaire', user=request.user)
-        
+
         # Validation rapide
         form_valide = form.is_valid()
         resp_principal_valide = responsable_principal_form.is_valid() if responsable_principal_form else True
         resp_secondaire_valide = responsable_secondaire_form.is_valid() if responsable_secondaire_form else True
-        
+
         # Exigences minimales côté serveur pour un nouveau responsable principal
         # (évite les erreurs de contrainte NOT NULL au moment du save())
         if creer_resp_principal and responsable_principal_form:
@@ -641,10 +641,10 @@ def ajouter_eleve(request):
                 if not val:
                     responsable_principal_form.add_error(field, "Ce champ est obligatoire.")
                     resp_principal_valide = False
-        
+
         # Responsable principal maintenant optionnel - pas de validation obligatoire
         # Les écoles peuvent ajouter des élèves sans responsable si nécessaire
-        
+
         if form_valide and resp_principal_valide and resp_secondaire_valide:
             # Transaction atomique pour performance maximale
             try:
@@ -653,15 +653,15 @@ def ajouter_eleve(request):
                     if responsable_principal_form:
                         responsable_principal = responsable_principal_form.save()
                         form.instance.responsable_principal = responsable_principal
-                    
+
                     if responsable_secondaire_form:
                         responsable_secondaire = responsable_secondaire_form.save()
                         form.instance.responsable_secondaire = responsable_secondaire
-                    
+
                     # Sauvegarder l'élève
                     eleve = form.save(commit=False)
                     eleve.cree_par = request.user
-                    
+
                     # Gérer la saisie manuelle du matricule
                     saisie_manuelle = form.cleaned_data.get('saisie_manuelle_matricule', False)
                     if saisie_manuelle and form.cleaned_data.get('matricule'):
@@ -669,9 +669,9 @@ def ajouter_eleve(request):
                         eleve.matricule = form.cleaned_data['matricule']
                         # Marquer pour éviter la génération automatique
                         eleve._skip_matricule_generation = True
-                    
+
                     eleve.save()
-                    
+
                     # Créer historique et journal en batch (plus rapide)
                     HistoriqueEleve.objects.create(
                         eleve=eleve,
@@ -679,7 +679,7 @@ def ajouter_eleve(request):
                         description=f"Création du profil de {eleve.prenom} {eleve.nom}",
                         utilisateur=request.user
                     )
-                    
+
                     # Log optimisé
                     JournalActivite.objects.create(
                         user=request.user,
@@ -690,18 +690,18 @@ def ajouter_eleve(request):
                         adresse_ip=request.META.get('REMOTE_ADDR', ''),
                         user_agent=request.META.get('HTTP_USER_AGENT', '')[:200]  # Limiter la taille
                     )
-                    
+
                     # Invalider les caches pertinents
                     cache.delete_many([
                         f'stats_eleves_{request.user.id}',
                         f'classes_ecole_{user_school_obj.id if user_school_obj else "admin"}'
                     ])
-                    
+
                 # Utiliser une page intermédiaire (Post/Redirect/Get) afin que
                 # l'utilisateur choisisse la prochaine action sans risquer de
                 # créer l'élève une seconde fois en actualisant la page.
                 return redirect('eleves:ajout_eleve_succes', eleve_id=eleve.id)
-                
+
             except Exception as e:
                 logger.exception("Erreur lors de l'enregistrement d'un élève")
                 messages.error(request, "Une erreur est survenue lors de l'enregistrement.")
@@ -734,35 +734,35 @@ def ajouter_eleve(request):
 
         responsable_principal_form = ResponsableForm(prefix='resp_principal', user=request.user)
         responsable_secondaire_form = ResponsableForm(prefix='resp_secondaire', user=request.user)
-    
+
     # Statistiques optimisées avec cache
     stats_cache_key = f'stats_eleves_{request.user.id}'
     stats = cache.get(stats_cache_key)
-    
+
     if stats is None:
         # Requête optimisée avec agrégation
         from django.db.models import Count, Case, When, IntegerField
-        
+
         eleves_qs = Eleve.objects.all()
         if not user_is_admin(request.user) and user_school_obj:
             eleves_qs = eleves_qs.filter(classe__ecole=user_school_obj)
-        
+
         # Agrégation en une seule requête
         stats_result = eleves_qs.aggregate(
             total_eleves=Count('id'),
             eleves_actifs=Count(Case(When(statut='ACTIF', then=1), output_field=IntegerField())),
             eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField()))
         )
-        
+
         stats = {
             'total_eleves': stats_result['total_eleves'] or 0,
             'eleves_actifs': stats_result['eleves_actifs'] or 0,
             'eleves_exclus': stats_result['eleves_exclus'] or 0,
         }
-        
+
         # Cache les stats pour 2 minutes
         cache.set(stats_cache_key, stats, 120)
-    
+
     context = {
         'form': form,
         'responsable_principal_form': responsable_principal_form,
@@ -771,7 +771,7 @@ def ajouter_eleve(request):
         'titre_page': 'Ajouter un Élève',
         'action': 'Ajouter'
     }
-    
+
     return render(request, 'eleves/ajouter_eleve.html', context)
 
 
@@ -809,13 +809,13 @@ def modifier_eleve(request, eleve_id):
     qs = Eleve.objects.all()
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    
+
     try:
         eleve = qs.get(id=eleve_id)
     except Eleve.DoesNotExist:
         messages.error(request, f"L'élève avec l'ID {eleve_id} n'existe pas.")
         return redirect('eleves:liste_eleves')
-    
+
     if request.method == 'POST':
         form = EleveForm(request.POST, request.FILES, instance=eleve)
         if not user_is_admin(request.user):
@@ -1078,7 +1078,7 @@ def export_eleves_classe_pdf(request, classe_id):
     c = canvas.Canvas(response, pagesize=landscape(A4))
     width, height = landscape(A4)
     c.setPageCompression(1)
-    
+
     # Ajouter le filigrane (spécifique à l'école de la classe)
     try:
         from ecole_moderne.pdf_utils import draw_logo_watermark
@@ -1089,7 +1089,7 @@ def export_eleves_classe_pdf(request, classe_id):
     # Polices (Calibri/Arial si dispo, sinon Helvetica par défaut)
     font_name = 'Helvetica'
     font_bold = 'Helvetica-Bold'
-    
+
     try:
         calibri_path = 'C:/Windows/Fonts/calibri.ttf'
         calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
@@ -1203,12 +1203,12 @@ def export_eleves_classe_excel(request, classe_id):
         # En-têtes avec style
         headers = ["Matricule", "Nom complet", "Sexe", "Date de naissance", "Responsable principal", "Téléphone"]
         ws.append(headers)
-        
+
         # Style pour les en-têtes
         from openpyxl.styles import Font, PatternFill
         header_font = Font(bold=True)
         header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-        
+
         for cell in ws[1]:
             cell.font = header_font
             cell.fill = header_fill
@@ -1235,7 +1235,7 @@ def export_eleves_classe_excel(request, classe_id):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         wb.save(response)
         return response
-        
+
     except Exception as e:
         logger.exception("Erreur lors de la génération du fichier Excel")
         return HttpResponse("Une erreur est survenue lors de la génération du fichier Excel.", status=500)
@@ -1256,7 +1256,7 @@ def export_tous_eleves_pdf(request):
             eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
                 classe__ecole=ecole
             )
-    
+
     eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
 
     # Log activité
@@ -1277,7 +1277,7 @@ def export_tous_eleves_pdf(request):
         c = canvas.Canvas(response, pagesize=landscape(A4))
         width, height = landscape(A4)
         c.setPageCompression(1)
-        
+
         # Ajouter le filigrane (au périmètre de l'utilisateur)
         try:
             draw_logo_watermark(c, width, height, ecole=user_school(request.user))
@@ -1287,7 +1287,7 @@ def export_tous_eleves_pdf(request):
         # Configuration des polices
         font_name = 'Helvetica'
         font_bold = 'Helvetica-Bold'
-        
+
         try:
             calibri_path = 'C:/Windows/Fonts/calibri.ttf'
             calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
@@ -1309,12 +1309,12 @@ def export_tous_eleves_pdf(request):
         c.setFont(font_bold, 18)
         c.drawString(margin, y, "Liste complète des élèves")
         y -= 25
-        
+
         c.setFont(font_name, 12)
         from datetime import datetime
         c.drawString(margin, y, f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
         y -= 15
-        
+
         c.setFillColor(colors.grey)
         c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
         c.setFillColor(colors.black)
@@ -1323,9 +1323,9 @@ def export_tous_eleves_pdf(request):
         # En-têtes du tableau
         headers = ["École", "Classe", "Matricule", "Nom", "Responsable", "Téléphone"]
         col_widths = [4.5*cm, 4.5*cm, 3*cm, 5.5*cm, 5*cm, 3*cm]
-        
+
         current_ecole = None
-        
+
         for eleve in eleves:
             # Nouvelle école
             if current_ecole != eleve.classe.ecole.nom:
@@ -1334,14 +1334,14 @@ def export_tous_eleves_pdf(request):
                     # Filigrane sur chaque nouvelle page (au périmètre de l'utilisateur)
                     draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=user_school(request.user))
                     y = height - margin
-                
+
                 current_ecole = eleve.classe.ecole.nom
-                
+
                 # Titre de l'école
                 c.setFont(font_bold, 14)
                 c.drawString(margin, y, f"École: {current_ecole}")
                 y -= 20
-                
+
                 # En-têtes du tableau
                 c.setFont(font_bold, 10)
                 x = margin
@@ -1349,40 +1349,40 @@ def export_tous_eleves_pdf(request):
                     c.drawString(x, y, header)
                     x += col_widths[i+1]
                 y -= 15
-                
+
                 c.setFillColor(colors.lightgrey)
                 c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
                 c.setFillColor(colors.black)
                 y -= 8
-            
+
             # Vérifier l'espace pour une nouvelle ligne
             if y < margin + 40:
                 c.showPage()
                 # Filigrane sur chaque nouvelle page (au périmètre de l'utilisateur)
                 draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=user_school(request.user))
                 y = height - margin
-                
+
                 # Répéter le titre de l'école et les en-têtes
                 c.setFont(font_bold, 14)
                 c.drawString(margin, y, f"École: {current_ecole} (suite)")
                 y -= 20
-                
+
                 c.setFont(font_bold, 10)
                 x = margin
                 for i, header in enumerate(headers[1:]):
                     c.drawString(x, y, header)
                     x += col_widths[i+1]
                 y -= 18
-            
+
             # Ligne de données
             c.setFont(font_name, 9)
             x = margin
-            
+
             # Récupérer le téléphone du responsable
             telephone = ''
             if eleve.responsable_principal:
                 telephone = eleve.responsable_principal.telephone or ''
-            
+
             values = [
                 eleve.classe.nom,
                 eleve.matricule or '',
@@ -1390,10 +1390,10 @@ def export_tous_eleves_pdf(request):
                 eleve.responsable_principal.nom_complet if eleve.responsable_principal else '',
                 telephone,
             ]
-            
+
             # Limites de caractères par colonne pour éviter le chevauchement
             max_chars = [27, 13, 28, 25, 13]  # Classe, Matricule, Nom, Responsable, Téléphone
-            
+
             for i, val in enumerate(values):
                 # Tronquer si trop long selon la colonne
                 text = str(val)
@@ -1406,7 +1406,7 @@ def export_tous_eleves_pdf(request):
         c.showPage()
         c.save()
         return response
-        
+
     except Exception as e:
         return HttpResponse(f"Erreur lors de la génération du PDF: {str(e)}", status=500)
 
@@ -1428,7 +1428,7 @@ def export_tous_eleves_excel(request):
             eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
                 classe__ecole=ecole
             )
-    
+
     eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
 
     # Log activité
@@ -1449,13 +1449,13 @@ def export_tous_eleves_excel(request):
         # En-têtes avec style
         headers = ["École", "Classe", "Matricule", "Nom complet", "Sexe", "Date de naissance", "Responsable principal", "Téléphone"]
         ws.append(headers)
-        
+
         # Style pour les en-têtes
         from openpyxl.styles import Font, PatternFill, Alignment
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         header_alignment = Alignment(horizontal="center")
-        
+
         for cell in ws[1]:
             cell.font = header_font
             cell.fill = header_fill
@@ -1485,7 +1485,7 @@ def export_tous_eleves_excel(request):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         wb.save(response)
         return response
-        
+
     except Exception as e:
         logger.exception("Erreur lors de la génération du fichier Excel")
         return HttpResponse("Une erreur est survenue lors de la génération du fichier Excel.", status=500)
@@ -1616,14 +1616,14 @@ def supprimer_eleves_masse(request):
     """Vue pour supprimer définitivement plusieurs élèves en masse"""
     # Vérifier la permission de suppression définitive
     peut_supprimer_definitivement = user_is_admin(request.user) or (
-        hasattr(request.user, 'profil') and 
+        hasattr(request.user, 'profil') and
         request.user.profil.peut_supprimer_eleves_definitivement
     )
-    
+
     if not peut_supprimer_definitivement:
         messages.error(request, "Vous n'avez pas la permission de supprimer définitivement des élèves.")
         return redirect('eleves:liste_eleves')
-    
+
     # Vérifier le code de sécurité
     code_verification = request.POST.get('code_verification', '').strip()
     from django.conf import settings as django_settings
@@ -1631,64 +1631,64 @@ def supprimer_eleves_masse(request):
     if not expected_code or code_verification != expected_code:
         messages.error(request, "Code de vérification incorrect. Suppression annulée.")
         return redirect('eleves:liste_eleves')
-    
+
     # Récupérer les IDs des élèves
     eleve_ids_str = request.POST.get('eleve_ids', '')
     if not eleve_ids_str:
         messages.error(request, "Aucun élève sélectionné.")
         return redirect('eleves:liste_eleves')
-    
+
     try:
         eleve_ids = [int(x) for x in eleve_ids_str.split(',') if x.strip()]
     except ValueError:
         messages.error(request, "IDs d'élèves invalides.")
         return redirect('eleves:liste_eleves')
-    
+
     if not eleve_ids:
         messages.error(request, "Aucun élève sélectionné.")
         return redirect('eleves:liste_eleves')
-    
+
     # Récupérer les élèves
     qs = Eleve.objects.filter(id__in=eleve_ids)
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
-    
+
     eleves = list(qs)
     if not eleves:
         messages.error(request, "Aucun élève trouvé avec les IDs fournis.")
         return redirect('eleves:liste_eleves')
-    
+
     import logging
     logger = logging.getLogger(__name__)
-    
+
     try:
         with transaction.atomic():
             eleves_supprimes = []
             total_paiements = 0
             total_abonnements_bus = 0
             total_abonnements_cantine = 0
-            
+
             for eleve in eleves:
                 nom_complet = f"{eleve.prenom} {eleve.nom}"
                 matricule = eleve.matricule
-                
+
                 paiements_count = eleve.paiements.count()
                 abonnements_bus_count = eleve.abonnements_bus.count()
                 abonnements_cantine_count = eleve.abonnements_cantine.count()
-                
+
                 # Collecter les informations avant suppression
                 paiements_supprimes = []
                 for paiement in eleve.paiements.all():
                     paiements_supprimes.append(f"{paiement.numero_recu} - {paiement.montant} GNF")
-                
+
                 abonnements_bus_supprimes = []
                 for abo in eleve.abonnements_bus.all():
                     abonnements_bus_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                
+
                 abonnements_cantine_supprimes = []
                 for abo in eleve.abonnements_cantine.all():
                     abonnements_cantine_supprimes.append(f"{abo.get_periodicite_display()} - {abo.montant} GNF")
-                
+
                 eleves_supprimes.append({
                     'eleve_id': eleve.id,
                     'matricule': matricule,
@@ -1698,7 +1698,7 @@ def supprimer_eleves_masse(request):
                     'abonnements_bus_supprimes': abonnements_bus_supprimes,
                     'abonnements_cantine_supprimes': abonnements_cantine_supprimes,
                 })
-                
+
                 total_paiements += paiements_count
                 total_abonnements_bus += abonnements_bus_count
                 total_abonnements_cantine += abonnements_cantine_count
@@ -1711,12 +1711,12 @@ def supprimer_eleves_masse(request):
                 eleve.paiements.all().delete()
                 eleve.abonnements_bus.all().delete()
                 eleve.abonnements_cantine.all().delete()
-                
+
                 # Supprimer l'élève
                 eleve.delete()
-                
+
                 logger.info(f"Suppression définitive en masse: {nom_complet} ({matricule}) par {request.user.username}")
-            
+
             # Créer l'entrée dans la corbeille
             from administration.models import SystemLog
             SystemLog.objects.create(
@@ -1732,7 +1732,7 @@ def supprimer_eleves_masse(request):
                     'user_agent': request.META.get('HTTP_USER_AGENT', '')
                 }
             )
-            
+
             # Log dans le journal d'activité
             noms = ', '.join([e['nom_complet'] for e in eleves_supprimes])
             JournalActivite.objects.create(
@@ -1743,13 +1743,13 @@ def supprimer_eleves_masse(request):
                 adresse_ip=request.META.get('REMOTE_ADDR', ''),
                 user_agent=request.META.get('HTTP_USER_AGENT', '')
             )
-            
+
             messages.success(request, f"{len(eleves_supprimes)} élève(s) ont été supprimés définitivement avec toutes leurs données associées.")
-            
+
     except Exception as e:
         logger.error(f"Erreur lors de la suppression en masse: {e}")
         messages.error(request, f"Erreur lors de la suppression en masse: {e}")
-    
+
     return redirect('eleves:liste_eleves')
 
 
@@ -1838,7 +1838,7 @@ def ajax_statistiques_eleves(request):
             'eleves_actifs': eleves.filter(statut='ACTIF').count(),
             'eleves_exclus': eleves.filter(statut='EXCLU').count(),
         }
-        
+
         return JsonResponse({
             'success': True,
             'stats': stats
@@ -1855,7 +1855,7 @@ def statistiques_eleves(request):
     from django.db.models import Sum, Avg, Max, Min
     from datetime import datetime, date
     from dateutil.relativedelta import relativedelta
-    
+
     # 1. STATISTIQUES GÉNÉRALES
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if user_is_superadmin(request.user):
@@ -1897,7 +1897,7 @@ def statistiques_eleves(request):
         'total_classes': classes_base.count(),
         'total_responsables': responsables_base.count(),
     }
-    
+
     # 2. STATISTIQUES DÉMOGRAPHIQUES
     stats_demographiques = {
         'garcons': eleves_base.filter(sexe='M').count(),
@@ -1905,18 +1905,18 @@ def statistiques_eleves(request):
         'pourcentage_garcons': 0,
         'pourcentage_filles': 0,
     }
-    
+
     if total_eleves > 0:
         stats_demographiques['pourcentage_garcons'] = round((stats_demographiques['garcons'] / total_eleves) * 100, 1)
         stats_demographiques['pourcentage_filles'] = round((stats_demographiques['filles'] / total_eleves) * 100, 1)
-    
+
     # 3. STATISTIQUES D'ÂGE
     eleves_avec_age = eleves_base.exclude(date_naissance__isnull=True)
     ages = []
     for eleve in eleves_avec_age:
         age = relativedelta(date.today(), eleve.date_naissance).years
         ages.append(age)
-    
+
     stats_age = {
         'age_moyen': round(sum(ages) / len(ages), 1) if ages else 0,
         'age_min': min(ages) if ages else 0,
@@ -1925,13 +1925,13 @@ def statistiques_eleves(request):
         'eleves_10_15': len([a for a in ages if 10 <= a <= 15]),
         'eleves_plus_15': len([a for a in ages if a > 15]),
     }
-    
+
     # 4. RÉPARTITION PAR ÉCOLE (détaillée)
     stats_par_ecole = []
     for ecole in ecoles_base:
         eleves_ecole = eleves_base.filter(classe__ecole=ecole)
         classes_ecole = classes_base.filter(ecole=ecole)
-        
+
         ecole_stats = {
             'ecole': ecole,
             'total_eleves': eleves_ecole.count(),
@@ -1942,10 +1942,10 @@ def statistiques_eleves(request):
             'classes_actives': classes_ecole.filter(eleves__isnull=False).distinct().count(),
             'moyenne_eleves_par_classe': 0,
         }
-        
+
         if ecole_stats['total_classes'] > 0:
             ecole_stats['moyenne_eleves_par_classe'] = round(ecole_stats['total_eleves'] / ecole_stats['total_classes'], 1)
-        
+
         # Pourcentages pour cette école
         if ecole_stats['total_eleves'] > 0:
             ecole_stats['pourcentage_garcons'] = round((ecole_stats['garcons'] / ecole_stats['total_eleves']) * 100, 1)
@@ -1953,17 +1953,17 @@ def statistiques_eleves(request):
         else:
             ecole_stats['pourcentage_garcons'] = 0
             ecole_stats['pourcentage_filles'] = 0
-        
+
         stats_par_ecole.append(ecole_stats)
-    
+
     # 5. RÉPARTITION PAR NIVEAU (détaillée)
     stats_par_niveau = []
     total_pour_pourcentage = total_eleves if total_eleves > 0 else 1
-    
+
     for niveau_code, niveau_nom in Classe.NIVEAUX_CHOICES:
         eleves_niveau = eleves_base.filter(classe__niveau=niveau_code)
         count = eleves_niveau.count()
-        
+
         if count > 0:
             niveau_stats = {
                 'niveau_code': niveau_code,
@@ -1977,13 +1977,13 @@ def statistiques_eleves(request):
                 'classes': classes_base.filter(niveau=niveau_code, eleves__isnull=False).distinct().count(),
             }
             stats_par_niveau.append(niveau_stats)
-    
+
     # 6. STATISTIQUES PAR CLASSE (top 10)
     stats_par_classe = []
     classes_avec_eleves = classes_base.annotate(
         nb_eleves=Count('eleves')
     ).filter(nb_eleves__gt=0).order_by('-nb_eleves')[:10]
-    
+
     for classe in classes_avec_eleves:
         eleves_classe = eleves_base.filter(classe=classe)
         classe_stats = {
@@ -1994,11 +1994,11 @@ def statistiques_eleves(request):
             'actifs': eleves_classe.filter(statut='ACTIF').count(),
         }
         stats_par_classe.append(classe_stats)
-    
+
     # 7. STATISTIQUES TEMPORELLES
     current_year = datetime.now().year
     current_month = datetime.now().month
-    
+
     # Utiliser eleves_base pour respecter le filtrage par école
     stats_temporelles = {
         'inscriptions_cette_annee': eleves_base.filter(date_inscription__year=current_year).count(),
@@ -2010,7 +2010,7 @@ def statistiques_eleves(request):
             date_inscription__gte=date.today() - relativedelta(days=7)
         ).count(),
     }
-    
+
     # Évolution mensuelle (6 derniers mois)
     evolution_mensuelle = []
     for i in range(6):
@@ -2020,15 +2020,15 @@ def statistiques_eleves(request):
             date_inscription__year=mois_date.year,
             date_inscription__month=mois_date.month
         ).count()
-        
+
         evolution_mensuelle.append({
             'mois': mois_date.strftime('%B %Y'),
             'mois_court': mois_date.strftime('%b'),
             'inscriptions': nb_inscriptions
         })
-    
+
     evolution_mensuelle.reverse()  # Du plus ancien au plus récent
-    
+
     # 8. STATISTIQUES DE RESPONSABLES
     stats_responsables = {
         'total_responsables': responsables_base.count(),
@@ -2037,7 +2037,7 @@ def statistiques_eleves(request):
         'eleves_avec_deux_responsables': eleves_base.filter(responsable_secondaire__isnull=False).count(),
         'eleves_avec_un_responsable': eleves_base.filter(responsable_secondaire__isnull=True).count(),
     }
-    
+
     # Répartition par relation
     relations_stats = []
     for relation_code, relation_nom in Responsable.RELATION_CHOICES:
@@ -2049,10 +2049,10 @@ def statistiques_eleves(request):
                 'count': count,
                 'pourcentage': round((count / stats_responsables['total_responsables']) * 100, 1) if stats_responsables['total_responsables'] > 0 else 0
             })
-    
+
     # 9. STATISTIQUES FINANCIÈRES (basiques)
     from paiements.models import Paiement
-    
+
     paiements_qs = Paiement.objects.all()
     if not user_is_admin(request.user):
         paiements_qs = paiements_qs.filter(eleve__classe__ecole=user_school(request.user))
@@ -2063,14 +2063,14 @@ def statistiques_eleves(request):
         'paiements_valides': paiements_qs.filter(statut='VALIDE').count(),
         'paiements_en_attente': paiements_qs.filter(statut='EN_ATTENTE').count(),
     }
-    
+
     if stats_financieres['total_paiements'] > 0:
         stats_financieres['taux_validation'] = round(
             (stats_financieres['paiements_valides'] / stats_financieres['total_paiements']) * 100, 1
         )
     else:
         stats_financieres['taux_validation'] = 0
-    
+
     # 10. INDICATEURS DE PERFORMANCE
     indicateurs = {
         'taux_activite': round((stats_generales['eleves_actifs'] / total_eleves) * 100, 1) if total_eleves > 0 else 0,
@@ -2078,7 +2078,7 @@ def statistiques_eleves(request):
         'ratio_eleves_classes': round(total_eleves / stats_generales['total_classes'], 1) if stats_generales['total_classes'] > 0 else 0,
         'ratio_eleves_responsables': round(total_eleves / stats_responsables['total_responsables'], 1) if stats_responsables['total_responsables'] > 0 else 0,
     }
-    
+
     context = {
         'stats_generales': stats_generales,
         'stats_demographiques': stats_demographiques,
@@ -2094,7 +2094,7 @@ def statistiques_eleves(request):
         'indicateurs': indicateurs,
         'titre_page': 'Statistiques Complètes des Élèves'
     }
-    
+
     return render(request, 'eleves/statistiques.html', context)
 
 @login_required
@@ -2106,7 +2106,7 @@ def fiche_inscription_pdf(request, eleve_id):
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
     eleve = get_object_or_404(qs, id=eleve_id)
-    
+
     # Log de l'activité
     JournalActivite.objects.create(
         user=request.user,
@@ -2117,45 +2117,45 @@ def fiche_inscription_pdf(request, eleve_id):
         adresse_ip=request.META.get('REMOTE_ADDR', ''),
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
-    
+
     # Créer la réponse HTTP pour le PDF
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="fiche_inscription_{eleve.matricule}.pdf"'
-    
+
     # Créer le PDF
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
-    
+
     # Ajouter le filigrane
     try:
         from ecole_moderne.pdf_utils import draw_logo_watermark
         draw_logo_watermark(c, width, height)
     except Exception:
         pass
-    
+
     # Configuration des polices avec détection cross-platform
     main_font_registered = False
     try:
         # Chemins possibles pour les polices selon l'OS
         font_paths = []
-        
+
         # Windows
         if os.name == 'nt':
             font_paths.extend([
                 ('C:/Windows/Fonts/calibri.ttf', 'C:/Windows/Fonts/calibrib.ttf'),
                 ('C:/Windows/Fonts/arial.ttf', 'C:/Windows/Fonts/arialbd.ttf'),
             ])
-        
+
         # Linux/Unix (PythonAnywhere, Ubuntu, etc.)
         else:
             font_paths.extend([
-                ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', 
+                ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
                  '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'),
-                ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 
+                ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
                  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
                 ('/System/Library/Fonts/Arial.ttf', '/System/Library/Fonts/Arial Bold.ttf'),  # macOS
             ])
-        
+
         # Essayer chaque paire de polices
         for regular_path, bold_path in font_paths:
             if os.path.exists(regular_path) and os.path.exists(bold_path):
@@ -2166,20 +2166,20 @@ def fiche_inscription_pdf(request, eleve_id):
                     break
                 except Exception:
                     continue
-        
+
         # Si aucune police système trouvée, utiliser les polices par défaut de ReportLab
         if not main_font_registered:
             # Les polices Helvetica sont déjà disponibles par défaut dans ReportLab
             # On n'a pas besoin de les enregistrer, juste de s'assurer qu'elles existent
             pass
-            
+
     except Exception:
         # En cas d'erreur, s'assurer que les alias existent
         main_font_registered = False
-    
+
     # Compression PDF pour meilleure qualité
     c.setPageCompression(1)
-    
+
     # Filigrane avec logo de l'école (même taille que les autres exports PDF)
     c.saveState()
     try:
@@ -2199,18 +2199,18 @@ def fiche_inscription_pdf(request, eleve_id):
             wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
-            
+
             # Opacité visible mais discrète (comme dans les reçus de paiement)
             try:
                 c.setFillAlpha(0.15)
             except Exception:
                 pass
-            
+
             # Légère rotation pour l'effet filigrane
             c.translate(width / 2.0, height / 2.0)
             c.rotate(30)
             c.translate(-width / 2.0, -height / 2.0)
-            
+
             c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
         else:
             # Fallback vers texte si logo non trouvé
@@ -2224,10 +2224,10 @@ def fiche_inscription_pdf(request, eleve_id):
             c.rotate(-45)
     finally:
         c.restoreState()
-    
+
     # En-tête avec logo de l'école
     y = height - 2*cm
-    
+
     # Logo en en-tête (côté gauche)
     try:
         from django.contrib.staticfiles import finders
@@ -2237,30 +2237,30 @@ def fiche_inscription_pdf(request, eleve_id):
             logo_path = school_logo.path
         else:
             logo_path = finders.find('logos/logo.jpeg')
-        
+
         if logo_path:
             try:
                 logo_w, logo_h = 80, 80
                 c.drawImage(logo_path, 2*cm, y - logo_h, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
-                
+
                 # Titre à côté du logo
                 try:
                     c.setFont("MainFont-Bold", 18)
                 except:
                     c.setFont("Helvetica-Bold", 18)
-                
+
                 text = eleve.classe.ecole.nom.upper()
                 c.drawString(2*cm + logo_w + 20, y - 25, text)
-                
+
                 # Sous-titre
                 try:
                     c.setFont("MainFont-Bold", 16)
                 except:
                     c.setFont("Helvetica-Bold", 16)
-                
+
                 text = "FICHE D'INSCRIPTION"
                 c.drawString(2*cm + logo_w + 20, y - 50, text)
-                
+
                 y -= (logo_h + 20)
             except Exception:
                 # Fallback sans logo
@@ -2268,12 +2268,12 @@ def fiche_inscription_pdf(request, eleve_id):
                     c.setFont("MainFont-Bold", 16)
                 except:
                     c.setFont("Helvetica-Bold", 16)
-                
+
                 text = eleve.classe.ecole.nom.upper()
                 text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
                 c.drawString((width - text_width) / 2, y, text)
                 y -= 0.8*cm
-                
+
                 text = "FICHE D'INSCRIPTION"
                 text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
                 c.drawString((width - text_width) / 2, y, text)
@@ -2283,12 +2283,12 @@ def fiche_inscription_pdf(request, eleve_id):
                 c.setFont("MainFont-Bold", 16)
             except:
                 c.setFont("Helvetica-Bold", 16)
-            
+
             text = eleve.classe.ecole.nom.upper()
             text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
             c.drawString((width - text_width) / 2, y, text)
             y -= 0.8*cm
-            
+
             text = "FICHE D'INSCRIPTION"
             text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
             c.drawString((width - text_width) / 2, y, text)
@@ -2298,24 +2298,24 @@ def fiche_inscription_pdf(request, eleve_id):
             c.setFont("MainFont-Bold", 16)
         except:
             c.setFont("Helvetica-Bold", 16)
-        
+
         text = eleve.classe.ecole.nom.upper()
         text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
         c.drawString((width - text_width) / 2, y, text)
         y -= 0.8*cm
-        
+
         text = "FICHE D'INSCRIPTION"
         text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
         c.drawString((width - text_width) / 2, y, text)
-    
+
     y -= 1.5*cm
-    
+
     # Photo de l'élève (si disponible)
     photo_x = width - 4*cm
     photo_y = y - 3*cm
     photo_width = 3*cm
     photo_height = 4*cm
-    
+
     if eleve.photo:
         try:
             c.drawImage(eleve.photo.path, photo_x, photo_y, width=photo_width, height=photo_height)
@@ -2339,27 +2339,27 @@ def fiche_inscription_pdf(request, eleve_id):
         text = "Photo"
         text_width = c.stringWidth(text, "MainFont", 12) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 12)
         c.drawString(photo_x + (photo_width - text_width)/2, photo_y + photo_height/2, text)
-    
+
     # Informations de l'élève
     try:
         c.setFont("MainFont-Bold", 14)
     except:
         c.setFont("Helvetica-Bold", 14)
-    
+
     # Section Informations personnelles
     c.drawString(2*cm, y, "INFORMATIONS PERSONNELLES")
     y -= 0.8*cm
-    
+
     try:
         c.setFont("MainFont", 12)
     except:
         c.setFont("Helvetica", 12)
-    
+
     # Colonne gauche
     left_col = 2*cm
     right_col = 10*cm
     line_height = 0.6*cm
-    
+
     _date_insc = eleve.date_inscription.strftime('%d/%m/%Y') if eleve.date_inscription else '-'
     _date_naiss = eleve.date_naissance.strftime('%d/%m/%Y') if eleve.date_naissance else '-'
 
@@ -2374,53 +2374,53 @@ def fiche_inscription_pdf(request, eleve_id):
     c.drawString(left_col, y, f"Sexe: {eleve.get_sexe_display()}")
     c.drawString(right_col, y, f"Date de naissance: {_date_naiss}")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Lieu de naissance: {eleve.lieu_naissance or '-'}")
     _age = eleve.age
     c.drawString(right_col, y, f"Âge: {_age} ans" if _age is not None else "Âge: -")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Statut: {eleve.get_statut_display()}")
     y -= line_height * 1.5
-    
+
     # Section Informations scolaires
     try:
         c.setFont("MainFont-Bold", 14)
     except:
         c.setFont("Helvetica-Bold", 14)
-    
+
     c.drawString(left_col, y, "INFORMATIONS SCOLAIRES")
     y -= 0.8*cm
-    
+
     try:
         c.setFont("MainFont", 12)
     except:
         c.setFont("Helvetica", 12)
-    
+
     c.drawString(left_col, y, f"École: {eleve.classe.ecole.nom}")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Classe: {eleve.classe.nom}")
     c.drawString(right_col, y, f"Niveau: {eleve.classe.get_niveau_display()}")
     y -= line_height
-    
+
     c.drawString(left_col, y, f"Année scolaire: {eleve.classe.annee_scolaire}")
     y -= line_height * 1.5
-    
+
     # Section Responsable principal
     try:
         c.setFont("MainFont-Bold", 14)
     except:
         c.setFont("Helvetica-Bold", 14)
-    
+
     c.drawString(left_col, y, "RESPONSABLE PRINCIPAL")
     y -= 0.8*cm
-    
+
     try:
         c.setFont("MainFont", 12)
     except:
         c.setFont("Helvetica", 12)
-    
+
     resp_principal = eleve.responsable_principal
     if resp_principal:
         c.drawString(left_col, y, f"Nom complet: {resp_principal.nom_complet}")
@@ -2443,61 +2443,61 @@ def fiche_inscription_pdf(request, eleve_id):
         c.drawString(left_col, y, "Nom complet: -")
         c.drawString(right_col, y, "Relation: -")
         y -= line_height
-    
+
     # Section Responsable secondaire (si existe)
     if eleve.responsable_secondaire:
         y -= line_height * 0.5
-        
+
         try:
             c.setFont("MainFont-Bold", 14)
         except:
             c.setFont("Helvetica-Bold", 14)
-        
+
         c.drawString(left_col, y, "RESPONSABLE SECONDAIRE")
         y -= 0.8*cm
-        
+
         try:
             c.setFont("MainFont", 12)
         except:
             c.setFont("Helvetica", 12)
-        
+
         resp_secondaire = eleve.responsable_secondaire
         c.drawString(left_col, y, f"Nom complet: {resp_secondaire.nom_complet}")
         c.drawString(right_col, y, f"Relation: {resp_secondaire.get_relation_display()}")
         y -= line_height
-        
+
         c.drawString(left_col, y, f"Téléphone: {resp_secondaire.telephone}")
         if resp_secondaire.email:
             c.drawString(right_col, y, f"Email: {resp_secondaire.email}")
         y -= line_height
-        
+
         if resp_secondaire.profession:
             c.drawString(left_col, y, f"Profession: {resp_secondaire.profession}")
             y -= line_height
-        
+
         if resp_secondaire.adresse:
             c.drawString(left_col, y, f"Adresse: {resp_secondaire.adresse}")
             y -= line_height
-    
+
     # Pied de page
     y = 3*cm
     try:
         c.setFont("MainFont", 10)
     except:
         c.setFont("Helvetica", 10)
-    
+
     text = f"Fiche générée le {timezone.now().strftime('%d/%m/%Y à %H:%M')}"
     text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
     c.drawString((width - text_width) / 2, y, text)
     y -= 0.5*cm
-    
+
     text = f"Système de Gestion Scolaire - {eleve.classe.ecole.nom}"
     text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
     c.drawString((width - text_width) / 2, y, text)
-    
+
     # Finaliser le PDF
     c.save()
-    
+
     return response
 
 @login_required
@@ -2505,52 +2505,52 @@ def ajax_rechercher_responsable_telephone(request):
     """Vue AJAX optimisée pour rechercher un responsable par numéro de téléphone (cache géré manuellement)"""
     if request.method != 'GET':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
-    
+
     telephone = request.GET.get('telephone', '').strip()
     if not telephone or len(telephone) < 3:  # Minimum 3 caractères
         return JsonResponse({'success': False, 'error': 'Numéro de téléphone requis (min. 3 caractères)'})
-    
+
     try:
         # Cache de l'école utilisateur
         user_school_cache_key = f'user_school_{request.user.id}'
         user_school_obj = cache.get(user_school_cache_key)
-        
+
         if user_school_obj is None and not user_is_admin(request.user):
             user_school_obj = user_school(request.user)
             if user_school_obj:
                 cache.set(user_school_cache_key, user_school_obj, 300)
-        
+
         # Cache de la recherche
         search_cache_key = f'search_resp_{request.user.id}_{telephone}'
         responsables_list = cache.get(search_cache_key)
-        
+
         if responsables_list is None:
             # Base queryset optimisée
             base_qs = Responsable.objects.select_related()
-            
+
             # Filtrer par école pour les non-admins
             if not user_is_admin(request.user) and user_school_obj:
                 base_qs = base_qs.filter(
-                    Q(eleves_principal__classe__ecole=user_school_obj) | 
+                    Q(eleves_principal__classe__ecole=user_school_obj) |
                     Q(eleves_secondaire__classe__ecole=user_school_obj)
                 )
             elif not user_is_admin(request.user):
                 base_qs = base_qs.none()
-            
+
             # Recherche optimisée par téléphone
             search_conditions = Q(telephone__icontains=telephone)
             if len(telephone) >= 8:
                 search_conditions |= Q(telephone__endswith=telephone[-8:])
-            
+
             responsables = base_qs.filter(search_conditions).distinct().values(
                 'id', 'prenom', 'nom', 'relation', 'telephone', 'email', 'profession', 'adresse'
             )[:5]
-            
+
             responsables_list = list(responsables)
-            
+
             # Cache le résultat pour 30 secondes
             cache.set(search_cache_key, responsables_list, 30)
-        
+
         # Log optimisé (asynchrone si possible)
         if len(responsables_list) > 0:  # Log seulement si résultats trouvés
             try:
@@ -2564,13 +2564,13 @@ def ajax_rechercher_responsable_telephone(request):
                 )
             except:
                 pass  # Ne pas faire échouer la recherche pour un problème de log
-        
+
         return JsonResponse({
             'success': True,
             'responsables': responsables_list,
             'count': len(responsables_list)
         })
-        
+
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -2585,30 +2585,30 @@ def generer_ticket_retrait_pdf(request, eleve_id):
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
         id=eleve_id
     )
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
-    
+
     # Vérifier que c'est un élève du primaire
     niveau = eleve.classe.niveau.upper() if eleve.classe.niveau else ''
     if not any(x in niveau for x in ['PRIMAIRE', 'PN', 'MATERNELLE', 'GARDERIE']):
         messages.warning(request, "Les tickets de retrait sont réservés aux élèves du primaire et de la maternelle.")
         return redirect('eleves:detail_eleve', eleve_id=eleve_id)
-    
+
     # Créer le PDF
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ticket_retrait_{eleve.matricule}.pdf"'
-    
+
     # Format carte bancaire standard (86mm x 54mm)
     from reportlab.lib.units import mm
     width, height = 86*mm, 54*mm
-    
+
     c = canvas.Canvas(response, pagesize=(width, height))
-    
+
     # Enregistrer les polices
     try:
         pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
@@ -2618,7 +2618,7 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     except:
         main_font = 'Helvetica'
         main_font_bold = 'Helvetica-Bold'
-    
+
     _dessiner_ticket_retrait(c, eleve, 0, 0, width, height, main_font, main_font_bold)
     c.showPage()
     c.save()
@@ -2641,7 +2641,7 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     # Extraire les couleurs du logo
     primary_color = '#3b82f6'
     light_color = '#dbeafe'
-    
+
     try:
         if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
             logo_path = eleve.classe.ecole.logo.path
@@ -2649,16 +2649,16 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                 primary_color, light_color = _extraire_couleurs_logo(logo_path)
     except:
         pass
-    
+
     # Fond blanc
     c.setFillColor(colors.white)
     c.rect(0, 0, width, height, stroke=0, fill=1)
-    
+
     # Ajouter le logo en filigrane au centre
     c.saveState()
     try:
         logo_path = None
-        
+
         # Récupérer le logo de l'école
         if eleve.classe and eleve.classe.ecole and eleve.classe.ecole.logo:
             try:
@@ -2667,35 +2667,35 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                         logo_path = eleve.classe.ecole.logo.path
             except Exception:
                 pass
-        
+
         if logo_path and os.path.exists(logo_path):
             # Centrer le logo
             c.translate(width/2, height/2)
             c.rotate(25)  # Rotation légère
-            
+
             # Taille du filigrane (plus grand)
             watermark_size = min(width, height) * 0.7
-            
+
             # Dessiner le logo en filigrane avec opacité visible
             c.setFillAlpha(0.12)
-            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2, 
+            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2,
                       watermark_size, watermark_size, preserveAspectRatio=True)
     except Exception:
         pass
     c.restoreState()
-    
+
     # Formes géométriques décoratives en arrière-plan (cercles)
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.15)
     c.circle(width - 20, height - 20, 40, stroke=0, fill=1)
     c.circle(15, 15, 30, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Bordure avec coins arrondis
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(2, 2, width-4, height-4, 10, stroke=1, fill=0)
-    
+
     # Bande diagonale décorative en haut à gauche
     c.saveState()
     c.translate(0, height)
@@ -2705,11 +2705,11 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     c.rect(-10, -15, 60, 25, stroke=0, fill=1)
     c.setFillAlpha(1)
     c.restoreState()
-    
+
     # En-tête rempli avec couleur (rectangle plein)
     c.setFillColor(colors.HexColor(primary_color))
     c.roundRect(5, height-45, width-10, 40, 8, stroke=0, fill=1)
-    
+
     # Logo de l'école en haut à droite (petit format visible)
     try:
         logo_path_visible = None
@@ -2720,64 +2720,64 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                         logo_path_visible = eleve.classe.ecole.logo.path
             except Exception:
                 pass
-        
+
         if logo_path_visible and os.path.exists(logo_path_visible):
             from PIL import Image, ImageDraw
-            
+
             # Position et taille du logo
             logo_size = 25
             logo_x = width - logo_size - 8
             logo_y = height - logo_size - 10
-            
+
             # Ouvrir et traiter l'image
             img = Image.open(logo_path_visible)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            
+
             # Créer une image circulaire
             size = (logo_size, logo_size)
             img = img.resize(size, Image.Resampling.LANCZOS)
-            
+
             # Créer un masque circulaire
             mask = Image.new('L', size, 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0) + size, fill=255)
-            
+
             # Appliquer le masque
             output = Image.new('RGB', size, (255, 255, 255))
             output.paste(img, (0, 0))
             output.putalpha(mask)
-            
+
             # Sauvegarder temporairement
             temp_buffer = io.BytesIO()
             output.save(temp_buffer, format='PNG')
             temp_buffer.seek(0)
-            
+
             # Cercle blanc derrière le logo
             c.setFillColor(colors.white)
             c.circle(logo_x + logo_size/2, logo_y + logo_size/2, logo_size/2 + 2, stroke=0, fill=1)
-            
+
             # Dessiner le logo
             c.drawImage(temp_buffer, logo_x, logo_y, width=logo_size, height=logo_size, mask='auto')
     except Exception:
         pass
-    
+
     # Titre
     c.setFillColor(colors.white)
     c.setFont(main_font_bold, 13)
     c.drawCentredString(width/2, height-20, "TICKET DE RETRAIT")
-    
+
     # Sous-titre école
     c.setFont(main_font, 7)
     c.setFillAlpha(0.9)
     c.drawCentredString(width/2, height-32, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
-    
+
     # Photo de l'élève (côté droit) - affichage direct uniquement si disponible
     photo_x = width - 45
     photo_y = height/2 - 8
     photo_radius = 30
-    
+
     # Afficher la photo UNIQUEMENT si elle existe
     if eleve.photo:
         try:
@@ -2789,17 +2789,17 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                 c.setFillAlpha(0.1)
                 c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
                 c.setFillAlpha(1)
-                
+
                 # Cercle de fond blanc avec double bordure
                 c.setFillColor(colors.white)
                 c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
                 c.setStrokeColor(colors.HexColor(primary_color))
                 c.setLineWidth(3)
                 c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-                
+
                 # Ouvrir l'image avec PIL
                 img = Image.open(photo_path)
-                
+
                 # Convertir en RGB si nécessaire
                 if img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
@@ -2809,56 +2809,56 @@ def generer_ticket_retrait_pdf(request, eleve_id):
                     img = background
                 elif img.mode != 'RGB':
                     img = img.convert('RGB')
-                
+
                 # Calculer la taille en pixels
                 from reportlab.lib.units import cm
                 pixel_size = int(photo_radius * 2 * 28.35)
                 size = (pixel_size, pixel_size)
-                
+
                 # Redimensionner
                 img = img.resize(size, Image.Resampling.LANCZOS)
-                
+
                 # Créer un masque circulaire
                 mask = Image.new('L', size, 0)
                 draw = ImageDraw.Draw(mask)
                 draw.ellipse((0, 0, size[0], size[1]), fill=255)
-                
+
                 # Appliquer le masque
                 output = Image.new('RGBA', size, (255, 255, 255, 0))
                 output.paste(img, (0, 0))
                 output.putalpha(mask)
-                
+
                 # Sauvegarder temporairement
                 temp_buffer = io.BytesIO()
                 output.save(temp_buffer, format='PNG')
                 temp_buffer.seek(0)
-                
+
                 # Dessiner sur le PDF avec ImageReader
                 from reportlab.lib.utils import ImageReader
                 img_reader = ImageReader(temp_buffer)
-                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius, 
+                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius,
                            width=photo_radius * 2, height=photo_radius * 2, mask='auto')
         except Exception as e:
             # Ne rien afficher en cas d'erreur
             print(f"Erreur photo retrait: {e}")
             pass
     # Si pas de photo, on n'affiche rien (pas de cercle ni de placeholder)
-    
+
     # Carte d'information avec fond coloré (style moderne)
     info_box_x = 8
     info_box_y = 8
     info_box_width = width - 50
     info_box_height = height - 52
-    
+
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.08)
     c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Informations de l'élève (poussées vers la droite)
     x_start = 12
     y_start = height/2 + 5
-    
+
     # Nom complet (taille encore réduite)
     c.setFillColor(colors.HexColor('#1f2937'))
     c.setFont(main_font_bold, 9)
@@ -2866,30 +2866,30 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     if len(nom_complet) > 20:
         nom_complet = nom_complet[:17] + "..."
     c.drawString(x_start, y_start, nom_complet)
-    
+
     # Ligne décorative sous le nom (ajustée à la longueur du nom)
     nom_width = c.stringWidth(nom_complet, main_font_bold, 9)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + nom_width, y_start - 2)
-    
+
     # Informations détaillées avec espacement
     y = y_start - 16
     c.setFillColor(colors.HexColor('#374151'))
-    
+
     # Matricule avec espacement après deux-points
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y, "N° :  ")
     c.setFont(main_font, 9)
     c.drawString(x_start + 25, y, eleve.matricule or "N/A")
-    
+
     y -= 13
     # Classe avec espacement après deux-points
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y, "Classe :  ")
     c.setFont(main_font, 9)
     c.drawString(x_start + 35, y, eleve.classe.nom)
-    
+
     y -= 13
     # Responsable avec espacement après deux-points
     c.setFont(main_font_bold, 9)
@@ -2902,7 +2902,7 @@ def generer_ticket_retrait_pdf(request, eleve_id):
         c.drawString(x_start + 35, y, resp_nom)
     else:
         c.drawString(x_start + 35, y, "Non renseigné")
-    
+
     y -= 13
     # Téléphone du parent avec espacement après deux-points
     c.setFont(main_font_bold, 9)
@@ -2913,20 +2913,20 @@ def generer_ticket_retrait_pdf(request, eleve_id):
         c.drawString(x_start + 25, y, tel)
     else:
         c.drawString(x_start + 25, y, "Non renseigné")
-    
+
     # Pied de page moderne
     c.setFillColor(colors.HexColor(primary_color))
     c.setFillAlpha(0.05)
     c.roundRect(6, 4, width-12, 9, 4, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     c.setFont(main_font, 6)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawCentredString(width/2, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
+
     c.showPage()
     c.save()
-    
+
     # Log de l'action
     try:
         JournalActivite.objects.create(
@@ -2939,7 +2939,7 @@ def generer_ticket_retrait_pdf(request, eleve_id):
         )
     except:
         pass
-    
+
     return response
 
 
@@ -2947,39 +2947,39 @@ def generer_ticket_retrait_pdf(request, eleve_id):
 def generer_ticket_bus_pdf(request, eleve_id):
     """Génère un ticket d'abonnement bus pour un élève"""
     from bus.models import AbonnementBus
-    
+
     eleve = get_object_or_404(
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
         id=eleve_id
     )
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
-    
+
     # Récupérer l'abonnement bus actif
     abonnement = AbonnementBus.objects.filter(
         eleve=eleve,
         statut='ACTIF'
     ).order_by('-date_debut').first()
-    
+
     if not abonnement:
         messages.warning(request, "Cet élève n'a pas d'abonnement bus actif.")
         return redirect('eleves:detail_eleve', eleve_id=eleve_id)
-    
+
     # Créer le PDF
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ticket_bus_{eleve.matricule}.pdf"'
-    
+
     # Format carte bancaire standard (86mm x 54mm)
     from reportlab.lib.units import mm
     width, height = 86*mm, 54*mm
-    
+
     c = canvas.Canvas(response, pagesize=(width, height))
-    
+
     # Enregistrer les polices
     try:
         pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
@@ -2989,7 +2989,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
     except:
         main_font = 'Helvetica'
         main_font_bold = 'Helvetica-Bold'
-    
+
     _dessiner_ticket_bus(c, eleve, abonnement, 0, 0, width, height, main_font, main_font_bold)
     c.showPage()
     c.save()
@@ -3012,7 +3012,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
     # Extraire les couleurs du logo (thème orange pour bus)
     primary_color = '#f59e0b'
     light_color = '#fef3c7'
-    
+
     try:
         if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
             logo_path = eleve.classe.ecole.logo.path
@@ -3020,16 +3020,16 @@ def generer_ticket_bus_pdf(request, eleve_id):
                 primary_color, light_color = _extraire_couleurs_logo(logo_path)
     except:
         pass
-    
+
     # Fond blanc
     c.setFillColor(colors.white)
     c.rect(0, 0, width, height, stroke=0, fill=1)
-    
+
     # Ajouter le logo en filigrane au centre
     c.saveState()
     try:
         logo_path = None
-        
+
         # Récupérer le logo de l'école
         if eleve.classe and eleve.classe.ecole and eleve.classe.ecole.logo:
             try:
@@ -3038,35 +3038,35 @@ def generer_ticket_bus_pdf(request, eleve_id):
                         logo_path = eleve.classe.ecole.logo.path
             except Exception:
                 pass
-        
+
         if logo_path and os.path.exists(logo_path):
             # Centrer le logo
             c.translate(width/2, height/2)
             c.rotate(25)  # Rotation légère
-            
+
             # Taille du filigrane
             watermark_size = min(width, height) * 0.7
-            
+
             # Dessiner le logo en filigrane avec opacité visible
             c.setFillAlpha(0.12)
-            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2, 
+            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2,
                       watermark_size, watermark_size, preserveAspectRatio=True)
     except Exception:
         pass
     c.restoreState()
-    
+
     # Formes géométriques décoratives en arrière-plan (cercles)
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.15)
     c.circle(width - 20, height - 20, 40, stroke=0, fill=1)
     c.circle(15, 15, 30, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Bordure avec coins arrondis
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(2, 2, width-4, height-4, 10, stroke=1, fill=0)
-    
+
     # Bande diagonale décorative en haut à gauche
     c.saveState()
     c.translate(0, height)
@@ -3076,11 +3076,11 @@ def generer_ticket_bus_pdf(request, eleve_id):
     c.rect(-10, -15, 60, 25, stroke=0, fill=1)
     c.setFillAlpha(1)
     c.restoreState()
-    
+
     # En-tête rempli avec couleur (rectangle plein)
     c.setFillColor(colors.HexColor(primary_color))
     c.roundRect(5, height-45, width-10, 40, 8, stroke=0, fill=1)
-    
+
     # Logo de l'école en haut à droite (petit format visible)
     try:
         logo_path_visible = None
@@ -3091,64 +3091,64 @@ def generer_ticket_bus_pdf(request, eleve_id):
                         logo_path_visible = eleve.classe.ecole.logo.path
             except Exception:
                 pass
-        
+
         if logo_path_visible and os.path.exists(logo_path_visible):
             from PIL import Image, ImageDraw
-            
+
             # Position et taille du logo
             logo_size = 25
             logo_x = width - logo_size - 8
             logo_y = height - logo_size - 10
-            
+
             # Ouvrir et traiter l'image
             img = Image.open(logo_path_visible)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            
+
             # Créer une image circulaire
             size = (logo_size, logo_size)
             img = img.resize(size, Image.Resampling.LANCZOS)
-            
+
             # Créer un masque circulaire
             mask = Image.new('L', size, 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0) + size, fill=255)
-            
+
             # Appliquer le masque
             output = Image.new('RGB', size, (255, 255, 255))
             output.paste(img, (0, 0))
             output.putalpha(mask)
-            
+
             # Sauvegarder temporairement
             temp_buffer = io.BytesIO()
             output.save(temp_buffer, format='PNG')
             temp_buffer.seek(0)
-            
+
             # Cercle blanc derrière le logo
             c.setFillColor(colors.white)
             c.circle(logo_x + logo_size/2, logo_y + logo_size/2, logo_size/2 + 2, stroke=0, fill=1)
-            
+
             # Dessiner le logo
             c.drawImage(temp_buffer, logo_x, logo_y, width=logo_size, height=logo_size, mask='auto')
     except Exception:
         pass
-    
+
     # Titre
     c.setFillColor(colors.white)
     c.setFont(main_font_bold, 13)
     c.drawCentredString(width/2, height-20, "ABONNEMENT BUS")
-    
+
     # Sous-titre école
     c.setFont(main_font, 7)
     c.setFillAlpha(0.9)
     c.drawCentredString(width/2, height-32, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
-    
+
     # Photo de l'élève (côté droit) - affichage direct uniquement si disponible
     photo_x = width - 45
     photo_y = height/2 - 8
     photo_radius = 30
-    
+
     # Afficher la photo UNIQUEMENT si elle existe
     if eleve.photo:
         try:
@@ -3160,17 +3160,17 @@ def generer_ticket_bus_pdf(request, eleve_id):
                 c.setFillAlpha(0.1)
                 c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
                 c.setFillAlpha(1)
-                
+
                 # Cercle de fond blanc avec double bordure
                 c.setFillColor(colors.white)
                 c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
                 c.setStrokeColor(colors.HexColor(primary_color))
                 c.setLineWidth(3)
                 c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-                
+
                 # Ouvrir l'image avec PIL
                 img = Image.open(photo_path)
-                
+
                 # Convertir en RGB si nécessaire
                 if img.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', img.size, (255, 255, 255))
@@ -3180,56 +3180,56 @@ def generer_ticket_bus_pdf(request, eleve_id):
                     img = background
                 elif img.mode != 'RGB':
                     img = img.convert('RGB')
-                
+
                 # Calculer la taille en pixels
                 from reportlab.lib.units import cm
                 pixel_size = int(photo_radius * 2 * 28.35)
                 size = (pixel_size, pixel_size)
-                
+
                 # Redimensionner
                 img = img.resize(size, Image.Resampling.LANCZOS)
-                
+
                 # Créer un masque circulaire
                 mask = Image.new('L', size, 0)
                 draw = ImageDraw.Draw(mask)
                 draw.ellipse((0, 0, size[0], size[1]), fill=255)
-                
+
                 # Appliquer le masque
                 output = Image.new('RGBA', size, (255, 255, 255, 0))
                 output.paste(img, (0, 0))
                 output.putalpha(mask)
-                
+
                 # Sauvegarder temporairement
                 temp_buffer = io.BytesIO()
                 output.save(temp_buffer, format='PNG')
                 temp_buffer.seek(0)
-                
+
                 # Dessiner sur le PDF avec ImageReader
                 from reportlab.lib.utils import ImageReader
                 img_reader = ImageReader(temp_buffer)
-                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius, 
+                c.drawImage(img_reader, photo_x - photo_radius, photo_y - photo_radius,
                            width=photo_radius * 2, height=photo_radius * 2, mask='auto')
         except Exception as e:
             # Ne rien afficher en cas d'erreur
             print(f"Erreur photo bus: {e}")
             pass
     # Si pas de photo, on n'affiche rien (pas de cercle ni de placeholder)
-    
+
     # Carte d'information avec fond coloré (style moderne)
     info_box_x = 8
     info_box_y = 8
     info_box_width = width - 50
     info_box_height = height - 52
-    
+
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.08)
     c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Informations de l'élève (poussées vers la droite)
     x_start = 12
     y_start = height/2 + 5
-    
+
     # Nom complet (taille encore réduite)
     c.setFillColor(colors.HexColor('#1f2937'))
     c.setFont(main_font_bold, 9)
@@ -3237,30 +3237,30 @@ def generer_ticket_bus_pdf(request, eleve_id):
     if len(nom_complet) > 18:
         nom_complet = nom_complet[:15] + "..."
     c.drawString(x_start, y_start, nom_complet)
-    
+
     # Ligne décorative sous le nom (ajustée à la longueur du nom)
     nom_width = c.stringWidth(nom_complet, main_font_bold, 9)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + nom_width, y_start - 2)
-    
+
     # Informations détaillées avec espacement
     y = y_start - 16
     c.setFillColor(colors.HexColor('#374151'))
-    
+
     # Matricule avec espacement
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y, "N° :  ")
     c.setFont(main_font, 9)
     c.drawString(x_start + 25, y, eleve.matricule or "N/A")
-    
+
     y -= 12
     # Classe avec espacement
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y, "Classe :  ")
     c.setFont(main_font, 9)
     c.drawString(x_start + 35, y, eleve.classe.nom)
-    
+
     y -= 12
     # Zone avec espacement
     zone_text = abonnement.zone or "Non spécifiée"
@@ -3270,7 +3270,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
     c.drawString(x_start, y, "Zone :  ")
     c.setFont(main_font, 8)
     c.drawString(x_start + 28, y, zone_text)
-    
+
     y -= 12
     # Point d'arrêt avec espacement
     point_arret = abonnement.point_arret or "Non spécifié"
@@ -3280,7 +3280,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
     c.drawString(x_start, y, "Arrêt :  ")
     c.setFont(main_font, 7)
     c.drawString(x_start + 28, y, point_arret)
-    
+
     y -= 12
     # Période de validité avec espacement
     validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
@@ -3288,20 +3288,20 @@ def generer_ticket_bus_pdf(request, eleve_id):
     c.drawString(x_start, y, "Validité :  ")
     c.setFont(main_font, 6)
     c.drawString(x_start + 35, y, validite)
-    
+
     # Pied de page moderne
     c.setFillColor(colors.HexColor(primary_color))
     c.setFillAlpha(0.05)
     c.roundRect(6, 4, width-12, 9, 4, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     c.setFont(main_font, 6)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawCentredString(width/2, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
+
     c.showPage()
     c.save()
-    
+
     # Log de l'action
     try:
         JournalActivite.objects.create(
@@ -3314,7 +3314,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
         )
     except:
         pass
-    
+
     return response
 
 
@@ -3322,30 +3322,30 @@ def generer_ticket_bus_pdf(request, eleve_id):
 def generer_tickets_retrait_classe_pdf(request, classe_id):
     """Génère tous les tickets de retrait pour une classe (primaire/maternelle) en un seul PDF"""
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:liste_eleves')
-    
+
     # Vérifier que c'est une classe du primaire/maternelle
     niveau = classe.niveau.upper() if classe.niveau else ''
     if not any(x in niveau for x in ['PRIMAIRE', 'PN', 'MATERNELLE', 'GARDERIE']):
         messages.warning(request, "Les tickets de retrait sont réservés aux classes du primaire et de la maternelle.")
         return redirect('eleves:liste_eleves')
-    
+
     # Récupérer tous les élèves actifs de la classe
     eleves = Eleve.objects.filter(
         classe=classe,
         statut='ACTIF'
     ).select_related('classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
-    
+
     if not eleves.exists():
         messages.warning(request, "Aucun élève actif trouvé dans cette classe.")
         return redirect('eleves:liste_eleves')
-    
+
     # Créer le PDF avec tous les tickets (8 par page A4)
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tickets_retrait_{classe.nom}.pdf"'
@@ -3368,35 +3368,35 @@ def generer_tickets_retrait_classe_pdf(request, classe_id):
 def generer_tickets_bus_classe_pdf(request, classe_id):
     """Génère tous les tickets bus pour une classe en un seul PDF"""
     from bus.models import AbonnementBus
-    
+
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     # Vérifier les permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:liste_eleves')
-    
+
     # Récupérer les élèves avec abonnement bus actif
     eleves_ids = AbonnementBus.objects.filter(
         eleve__classe=classe,
         statut='ACTIF'
     ).values_list('eleve_id', flat=True)
-    
+
     eleves = Eleve.objects.filter(
         id__in=eleves_ids,
         statut='ACTIF'
     ).select_related('classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
-    
+
     if not eleves.exists():
         messages.warning(request, "Aucun élève avec abonnement bus actif trouvé dans cette classe.")
         return redirect('eleves:liste_eleves')
-    
+
     # Créer le PDF avec tous les tickets (2 par page)
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="tickets_bus_{classe.nom}.pdf"'
-    
+
     c = canvas.Canvas(response, pagesize=A4)
     main_font, main_font_bold = enregistrer_polices()
 
@@ -3467,54 +3467,54 @@ def _extraire_couleurs_logo(logo_path):
     try:
         from PIL import Image
         import colorsys
-        
+
         img = Image.open(logo_path)
         img = img.convert('RGB')
         img.thumbnail((100, 100))
-        
+
         # Obtenir les pixels
         pixels = list(img.getdata())
-        
+
         # Filtrer les pixels trop clairs ou trop sombres
         filtered_pixels = []
         for r, g, b in pixels:
             brightness = (r + g + b) / 3
             if 30 < brightness < 220:  # Éviter blanc et noir
                 filtered_pixels.append((r, g, b))
-        
+
         if not filtered_pixels:
             filtered_pixels = pixels
-        
+
         # Compter les couleurs
         from collections import Counter
         color_counts = Counter(filtered_pixels)
         most_common = color_counts.most_common(5)
-        
+
         # Trouver la couleur la plus saturée (plus vive)
         best_color = None
         best_saturation = 0
-        
+
         for color, count in most_common:
             r, g, b = color
             h, s, v = colorsys.rgb_to_hsv(r/255, g/255, b/255)
             if s > best_saturation and v > 0.3:  # Saturation et luminosité minimales
                 best_saturation = s
                 best_color = color
-        
+
         if best_color:
             r, g, b = best_color
             # Créer une version plus claire pour l'arrière-plan
             light_r = min(255, r + 80)
             light_g = min(255, g + 80)
             light_b = min(255, b + 80)
-            
+
             primary = f'#{r:02x}{g:02x}{b:02x}'
             light = f'#{light_r:02x}{light_g:02x}{light_b:02x}'
-            
+
             return primary, light
     except:
         pass
-    
+
     # Couleurs par défaut si extraction échoue
     return '#6366f1', '#e0e7ff'
 
@@ -3615,11 +3615,11 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
     )
 
     c.saveState()
-    
+
     # Extraire les couleurs du logo
     primary_color = '#6366f1'
     light_color = '#e0e7ff'
-    
+
     try:
         if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
             logo_path = eleve.classe.ecole.logo.path
@@ -3627,23 +3627,23 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
                 primary_color, light_color = _extraire_couleurs_logo(logo_path)
     except:
         pass
-    
+
     # Fond avec dégradé simulé
     c.setFillColor(colors.white)
     c.rect(x, y, width, height, stroke=0, fill=1)
-    
+
     # Forme géométrique décorative en arrière-plan (cercles)
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.15)
     c.circle(x + width - 20, y + height - 20, 40, stroke=0, fill=1)
     c.circle(x + 15, y + 15, 30, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Bordure avec coins arrondis et ombre
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(x+2, y+2, width-4, height-4, 10, stroke=1, fill=0)
-    
+
     # Bande diagonale décorative en haut à gauche
     c.saveState()
     c.translate(x, y + height)
@@ -3653,7 +3653,7 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
     c.rect(-10, -15, 60, 25, stroke=0, fill=1)
     c.setFillAlpha(1)
     c.restoreState()
-    
+
     # En-tête moderne avec forme ondulée
     c.setFillColor(colors.HexColor(primary_color))
     path = c.beginPath()
@@ -3665,87 +3665,87 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
     path.curveTo(x+width*0.15, y+height-40, x+5, y+height-38, x+5, y+height-42)
     path.close()
     c.drawPath(path, fill=1, stroke=0)
-    
+
     # Titre avec effet
     c.setFillColor(colors.white)
     c.setFont(main_font_bold, 14)
     c.drawCentredString(x+width/2, y+height-20, "TICKET DE RETRAIT")
-    
+
     # Sous-titre école
     c.setFont(main_font, 7)
     c.setFillAlpha(0.9)
     c.drawCentredString(x+width/2, y+height-32, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
-    
+
     # Photo avec cadre moderne hexagonal simulé
     photo_x = x + width - 28
     photo_y = y + 26
     photo_radius = 18
-    
+
     # Ombre de la photo
     c.setFillColor(colors.HexColor('#000000'))
     c.setFillAlpha(0.1)
     c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Cercle de la photo avec double bordure
     c.setFillColor(colors.white)
     c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(3)
     c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
+
     # Placeholder photo
     c.setFillColor(colors.HexColor(light_color))
     c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
     c.setFillColor(colors.HexColor(primary_color))
     c.setFont(main_font, 7)
     c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    
+
     # Carte d'information avec fond coloré
     info_box_x = x + 8
     info_box_y = y + 8
     info_box_width = width - 50
     info_box_height = height - 52
-    
+
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.08)
     c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Nom de l'élève avec style moderne
     x_start = x + 12
     y_start = y + height - 50
-    
+
     c.setFillColor(colors.HexColor('#1f2937'))
     c.setFont(main_font_bold, 12)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 24:
         nom_complet = nom_complet[:21] + "..."
     c.drawString(x_start, y_start, nom_complet)
-    
+
     # Ligne décorative sous le nom
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + 55, y_start - 2)
-    
+
     # Informations avec icônes et style moderne
     y_info = y_start - 16
     c.setFillColor(colors.HexColor('#374151'))
-    
+
     # Matricule
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y_info, "N°")
     c.setFont(main_font, 9)
     c.drawString(x_start + 12, y_info, eleve.matricule or "N/A")
-    
+
     y_info -= 12
     # Classe
     c.setFont(main_font_bold, 9)
     c.drawString(x_start, y_info, "Classe")
     c.setFont(main_font, 9)
     c.drawString(x_start + 25, y_info, eleve.classe.nom)
-    
+
     y_info -= 12
     # Responsable
     if eleve.responsable_principal:
@@ -3756,17 +3756,17 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
             resp_nom = resp_nom[:21] + "..."
         c.setFont(main_font, 8)
         c.drawString(x_start + 25, y_info, resp_nom)
-    
+
     # Pied de page moderne
     c.setFillColor(colors.HexColor(primary_color))
     c.setFillAlpha(0.05)
     c.roundRect(x+6, y+4, width-12, 9, 4, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     c.setFont(main_font, 6)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawCentredString(x+width/2, y+6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
+
     c.restoreState()
 
 
@@ -3789,11 +3789,11 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     )
 
     c.saveState()
-    
+
     # Extraire les couleurs du logo (version orange pour bus)
     primary_color = '#f59e0b'
     light_color = '#fef3c7'
-    
+
     try:
         if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
             logo_path = eleve.classe.ecole.logo.path
@@ -3804,11 +3804,11 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
                 light_color = extracted_light
     except:
         pass
-    
+
     # Fond avec motif géométrique
     c.setFillColor(colors.white)
     c.rect(x, y, width, height, stroke=0, fill=1)
-    
+
     # Motif de lignes diagonales en arrière-plan
     c.setStrokeColor(colors.HexColor(light_color))
     c.setLineWidth(15)
@@ -3816,12 +3816,12 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     for i in range(0, int(width + height), 25):
         c.line(x + i, y, x + i - height, y + height)
     c.setStrokeAlpha(1)
-    
+
     # Bordure moderne avec double ligne
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(x+2, y+2, width-4, height-4, 10, stroke=1, fill=0)
-    
+
     # Accent coins
     corner_size = 8
     c.setFillColor(colors.HexColor(primary_color))
@@ -3829,7 +3829,7 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     c.rect(x+2, y+height-corner_size-2, corner_size, corner_size, stroke=0, fill=1)
     # Coin bas droit
     c.rect(x+width-corner_size-2, y+2, corner_size, corner_size, stroke=0, fill=1)
-    
+
     # En-tête avec forme moderne
     c.setFillColor(colors.HexColor(primary_color))
     path = c.beginPath()
@@ -3841,93 +3841,93 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     path.curveTo(x+width*0.2, y+height-40, x+5, y+height-42, x+5, y+height-44)
     path.close()
     c.drawPath(path, fill=1, stroke=0)
-    
+
     # Icône bus stylisée
     c.setFillColor(colors.white)
     c.setFillAlpha(0.3)
     c.roundRect(x+width-45, y+height-32, 18, 22, 3, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Titre
     c.setFillColor(colors.white)
     c.setFont(main_font_bold, 13)
     c.drawCentredString(x+width/2, y+height-20, "ABONNEMENT BUS")
-    
+
     # Sous-titre
     c.setFont(main_font, 7)
     c.setFillAlpha(0.9)
     c.drawCentredString(x+width/2, y+height-33, eleve.classe.ecole.nom[:50])
     c.setFillAlpha(1)
-    
+
     # Photo avec style moderne
     photo_x = x + width - 28
     photo_y = y + 26
     photo_radius = 18
-    
+
     # Ombre
     c.setFillColor(colors.HexColor('#000000'))
     c.setFillAlpha(0.15)
     c.circle(photo_x + 1, photo_y - 1, photo_radius + 2, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Photo avec double bordure
     c.setFillColor(colors.white)
     c.circle(photo_x, photo_y, photo_radius + 2, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(3)
     c.circle(photo_x, photo_y, photo_radius, stroke=1, fill=1)
-    
+
     # Placeholder
     c.setFillColor(colors.HexColor(light_color))
     c.circle(photo_x, photo_y, photo_radius - 2, stroke=0, fill=1)
     c.setFillColor(colors.HexColor(primary_color))
     c.setFont(main_font, 7)
     c.drawCentredString(photo_x, photo_y - 2, "PHOTO")
-    
+
     # Zone d'information avec fond subtil
     info_box_x = x + 8
     info_box_y = y + 8
     info_box_width = width - 50
     info_box_height = height - 52
-    
+
     c.setFillColor(colors.HexColor(light_color))
     c.setFillAlpha(0.1)
     c.roundRect(info_box_x, info_box_y, info_box_width, info_box_height, 8, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     # Nom élève
     x_start = x + 12
     y_start = y + height - 52
-    
+
     c.setFillColor(colors.HexColor('#1f2937'))
     c.setFont(main_font_bold, 11)
     nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
     if len(nom_complet) > 22:
         nom_complet = nom_complet[:19] + "..."
     c.drawString(x_start, y_start, nom_complet)
-    
+
     # Ligne décorative
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2)
     c.line(x_start, y_start - 2, x_start + 50, y_start - 2)
-    
+
     # Informations détaillées
     y_info = y_start - 15
     c.setFillColor(colors.HexColor('#374151'))
-    
+
     # Matricule
     c.setFont(main_font_bold, 8)
     c.drawString(x_start, y_info, "N°")
     c.setFont(main_font, 8)
     c.drawString(x_start + 10, y_info, eleve.matricule or "N/A")
-    
+
     y_info -= 10
     # Classe
     c.setFont(main_font_bold, 8)
     c.drawString(x_start, y_info, "Classe")
     c.setFont(main_font, 8)
     c.drawString(x_start + 22, y_info, eleve.classe.nom)
-    
+
     y_info -= 10
     # Zone
     zone_text = abonnement.zone or "Non spécifiée"
@@ -3937,7 +3937,7 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     c.drawString(x_start, y_info, "Zone")
     c.setFont(main_font, 8)
     c.drawString(x_start + 18, y_info, zone_text)
-    
+
     y_info -= 10
     # Arrêt
     point_arret = abonnement.point_arret or "Non spécifié"
@@ -3947,7 +3947,7 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     c.drawString(x_start, y_info, "Arrêt")
     c.setFont(main_font, 7)
     c.drawString(x_start + 18, y_info, point_arret)
-    
+
     y_info -= 10
     # Validité
     validite = f"{abonnement.date_debut.strftime('%d/%m')} - {abonnement.date_expiration.strftime('%d/%m/%Y')}"
@@ -3955,17 +3955,17 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     c.drawString(x_start, y_info, "Validité")
     c.setFont(main_font, 6)
     c.drawString(x_start + 25, y_info, validite)
-    
+
     # Pied de page moderne
     c.setFillColor(colors.HexColor(primary_color))
     c.setFillAlpha(0.05)
     c.roundRect(x+6, y+4, width-12, 9, 4, stroke=0, fill=1)
     c.setFillAlpha(1)
-    
+
     c.setFont(main_font, 6)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawCentredString(x+width/2, y+6, f"Généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}")
-    
+
     c.restoreState()
 
 
@@ -3976,14 +3976,14 @@ def carte_scolaire_preview(request, eleve_id):
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
         id=eleve_id
     )
-    
+
     # Vérifier permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
-    
+
     context = {
         'eleve': eleve,
         'titre_page': f'Carte Scolaire - {eleve.nom_complet}'
@@ -3995,26 +3995,26 @@ def carte_scolaire_preview(request, eleve_id):
 def generer_carte_scolaire_pdf(request, eleve_id):
     """Génère une carte scolaire moderne pour un élève"""
     from .carte_scolaire_generator import generer_carte_scolaire_moderne, generer_carte_pvc_haute_qualite
-    
+
     eleve = get_object_or_404(
         Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal'),
         id=eleve_id
     )
-    
+
     # Vérifier permissions
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
-    
+
     # Par défaut, utiliser le format PVC pour les cartes individuelles
     # Le format standard n'est utilisé que si explicitement demandé
     format_standard = request.GET.get('format') == 'standard'
-    
+
     # Créer le PDF avec le nouveau design
     response = HttpResponse(content_type='application/pdf')
-    
+
     if format_standard:
         # Format standard (si explicitement demandé)
         response['Content-Disposition'] = f'attachment; filename="carte_scolaire_{eleve.matricule}.pdf"'
@@ -4024,7 +4024,7 @@ def generer_carte_scolaire_pdf(request, eleve_id):
         response['Content-Disposition'] = f'attachment; filename="carte_pvc_{eleve.matricule}.pdf"'
         # Utiliser le générateur moderne qui est déjà au format carte bancaire (86mm x 54mm)
         return generer_carte_scolaire_moderne(eleve, response)
-    
+
     # Polices
     try:
         pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
@@ -4034,21 +4034,21 @@ def generer_carte_scolaire_pdf(request, eleve_id):
     except:
         main_font = 'Helvetica'
         main_font_bold = 'Helvetica-Bold'
-    
+
     primary_color = '#2563eb'
     light_color = '#dbeafe'
-    
+
     # Fond et bordure
     c.setFillColor(colors.white)
     c.rect(0, 0, width, height, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(2, 2, width-4, height-4, 10, stroke=1, fill=0)
-    
+
     # Bande supérieure (plus grande)
     c.setFillColor(colors.HexColor(primary_color))
     c.roundRect(5, height-42, width-10, 37, 8, stroke=0, fill=1)
-    
+
     # Logo école (plus grand)
     try:
         if eleve.classe.ecole.logo and hasattr(eleve.classe.ecole.logo, 'path'):
@@ -4056,29 +4056,29 @@ def generer_carte_scolaire_pdf(request, eleve_id):
                 logo_size = 30
                 c.setFillColor(colors.white)
                 c.circle(10 + logo_size/2, height - 35 + logo_size/2, logo_size/2 + 1, stroke=0, fill=1)
-                c.drawImage(eleve.classe.ecole.logo.path, 10, height - 35, 
+                c.drawImage(eleve.classe.ecole.logo.path, 10, height - 35,
                           width=logo_size, height=logo_size, preserveAspectRatio=True, mask='auto')
     except:
         pass
-    
+
     # Nom école (texte plus grand)
     c.setFillColor(colors.white)
     c.setFont(main_font_bold, 11)
     c.drawString(45, height-15, eleve.classe.ecole.nom[:40])
     c.setFont(main_font, 9)
     c.drawString(45, height-30, f"Année Scolaire: {eleve.classe.annee_scolaire}")
-    
+
     # Photo élève (plus grande)
     photo_x = width - 48
     photo_y = height/2 + 3
     photo_size = 42
-    
+
     c.setFillColor(colors.white)
     c.roundRect(photo_x, photo_y, photo_size, photo_size, 6, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor(primary_color))
     c.setLineWidth(2.5)
     c.roundRect(photo_x, photo_y, photo_size, photo_size, 6, stroke=1, fill=0)
-    
+
     if eleve.photo:
         try:
             from PIL import Image
@@ -4090,23 +4090,23 @@ def generer_carte_scolaire_pdf(request, eleve_id):
                 temp_buffer = io.BytesIO()
                 img.save(temp_buffer, format='JPEG')
                 temp_buffer.seek(0)
-                c.drawImage(temp_buffer, photo_x + 2.5, photo_y + 2.5, 
+                c.drawImage(temp_buffer, photo_x + 2.5, photo_y + 2.5,
                           width=photo_size - 5, height=photo_size - 5, preserveAspectRatio=True)
         except:
             c.setFillColor(colors.HexColor(primary_color))
             c.setFont(main_font_bold, 18)
-            c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5, 
+            c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5,
                               f"{eleve.prenom[0]}{eleve.nom[0]}")
     else:
         c.setFillColor(colors.HexColor(primary_color))
         c.setFont(main_font_bold, 18)
-        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5, 
+        c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 5,
                           f"{eleve.prenom[0]}{eleve.nom[0]}")
-    
+
     # Section informations élève (plus d'espace, plus d'infos)
     y_pos = height - 58
     x_margin = 10
-    
+
     # Nom et prénom (plus grand)
     c.setFillColor(colors.HexColor('#1f2937'))
     c.setFont(main_font_bold, 13)
@@ -4114,24 +4114,24 @@ def generer_carte_scolaire_pdf(request, eleve_id):
     if len(nom_complet) > 25:
         nom_complet = nom_complet[:25] + "."
     c.drawString(x_margin, y_pos, nom_complet)
-    
+
     # Ligne de séparation
     y_pos -= 8
     c.setStrokeColor(colors.HexColor(light_color))
     c.setLineWidth(1)
     c.line(x_margin, y_pos, width - photo_size - 15, y_pos)
-    
+
     # Informations principales (2 colonnes)
     y_pos -= 10
     c.setFont(main_font_bold, 9)
     c.setFillColor(colors.HexColor('#374151'))
-    
+
     # Colonne 1
     c.drawString(x_margin, y_pos, "Matricule:")
     c.setFont(main_font, 9)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawString(x_margin + 32, y_pos, eleve.matricule)
-    
+
     # Colonne 2
     c.setFont(main_font_bold, 9)
     c.setFillColor(colors.HexColor('#374151'))
@@ -4140,7 +4140,7 @@ def generer_carte_scolaire_pdf(request, eleve_id):
     c.setFont(main_font, 9)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawString(x_margin + 32, y_pos - 9, sexe_display)
-    
+
     # Ligne 2
     c.setFont(main_font_bold, 9)
     c.setFillColor(colors.HexColor('#374151'))
@@ -4148,14 +4148,14 @@ def generer_carte_scolaire_pdf(request, eleve_id):
     c.setFont(main_font, 9)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawString(x_margin + 32, y_pos - 18, eleve.classe.nom)
-    
+
     c.setFont(main_font_bold, 9)
     c.setFillColor(colors.HexColor('#374151'))
     c.drawString(x_margin, y_pos - 27, "Né(e) le:")
     c.setFont(main_font, 9)
     c.setFillColor(colors.HexColor('#6b7280'))
     c.drawString(x_margin + 32, y_pos - 27, eleve.date_naissance.strftime('%d/%m/%Y'))
-    
+
     # Contact d'urgence
     if eleve.responsable_principal:
         c.setFont(main_font_bold, 8)
@@ -4165,20 +4165,20 @@ def generer_carte_scolaire_pdf(request, eleve_id):
         c.setFillColor(colors.HexColor('#6b7280'))
         tel = eleve.responsable_principal.telephone or "Non renseigné"
         c.drawString(x_margin + 50, y_pos - 37, tel[:20])
-    
+
     # Pied de page avec adresse école
     c.setFont(main_font, 7)
     c.setFillColor(colors.HexColor('#9ca3af'))
     if eleve.classe.ecole.adresse:
         adresse_courte = eleve.classe.ecole.adresse[:45]
         c.drawString(x_margin, 10, adresse_courte)
-    
+
     if eleve.classe.ecole.telephone:
         c.drawString(x_margin, 4, f"Tél: {eleve.classe.ecole.tous_telephones}")
-    
+
     c.setFont(main_font, 6)
     c.drawRightString(width - 5, 6, f"Généré le {timezone.now().strftime('%d/%m/%Y')}")
-    
+
     c.showPage()
     c.save()
     return response
@@ -4188,25 +4188,25 @@ def generer_carte_scolaire_pdf(request, eleve_id):
 def generer_cartes_classe_pdf(request, classe_id):
     """Génère toutes les cartes d'une classe (8 cartes par page A4)"""
     from .carte_scolaire_generator import generer_cartes_classe_moderne
-    
+
     classe = get_object_or_404(Classe, id=classe_id)
-    
+
     if not user_is_admin(request.user):
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
             return redirect('eleves:liste_eleves')
-    
+
     eleves = Eleve.objects.filter(classe=classe, statut='ACTIF').select_related(
         'classe', 'classe__ecole', 'responsable_principal').order_by('nom', 'prenom')
-    
+
     if not eleves.exists():
         messages.warning(request, "Aucun élève actif dans cette classe.")
         return redirect('eleves:liste_eleves')
-    
+
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="cartes_scolaires_{classe.nom}.pdf"'
-    
+
     # Planche A4 de 8 cartes
     return generer_cartes_classe_moderne(classe, eleves, response)
 

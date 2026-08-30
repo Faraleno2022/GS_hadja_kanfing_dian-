@@ -22,17 +22,17 @@ def importer_eleves(request):
     """
     # Vérifier les permissions
     peut_importer = (
-        request.user.is_staff or 
+        request.user.is_staff or
         request.user.is_superuser or
         request.user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
         (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves) or
         (hasattr(request.user, 'profil') and request.user.profil.role == 'COMPTABLE')
     )
-    
+
     if not peut_importer:
         messages.error(request, "Vous n'avez pas la permission d'importer des élèves.")
         return redirect('eleves:liste_eleves')
-    
+
     # Déterminer l'année scolaire à utiliser : on prend la plus récente existante
     annee_courante = Classe.objects.order_by('-annee_scolaire').values_list('annee_scolaire', flat=True).first()
 
@@ -41,7 +41,7 @@ def importer_eleves(request):
     if annee_courante:
         classes = classes.filter(annee_scolaire=annee_courante)
     classes = classes.order_by('nom')
-    
+
     # Filtrage par école. Un utilisateur sans école rattachée ne se voit
     # proposer aucune classe : sans cela il aurait accès à toutes les écoles.
     from utilisateurs.utils import filter_by_user_school
@@ -51,10 +51,10 @@ def importer_eleves(request):
         'classes': classes,
         'annee_courante': annee_courante,
     }
-    
+
     if request.method == 'POST':
         return _traiter_import_eleves(request)
-    
+
     return render(request, 'eleves/importer_eleves.html', context)
 
 
@@ -72,9 +72,25 @@ def _traiter_import_eleves(request):
     try:
         # Récupérer les paramètres
         classe_id = request.POST.get('classe_id')
+        repartition_auto = request.POST.get('repartition_auto') == 'on'
         generer_matricules = request.POST.get('generer_matricules') == 'on'
         fichier = request.FILES.get('fichier')
-        
+
+        # Un export global contient déjà École / Classe / Année scolaire. Dans
+        # ce mode, la classe du formulaire sert seulement de repli au moteur et
+        # ne doit pas être obligatoire. On choisit donc une classe autorisée ;
+        # chaque ligne sera ensuite résolue et contrôlée séparément.
+        if not classe_id and repartition_auto:
+            from utilisateurs.utils import filter_by_user_school
+
+            classe_id = (
+                filter_by_user_school(
+                    Classe.objects.order_by('id'), request.user
+                )
+                .values_list('id', flat=True)
+                .first()
+            )
+
         if not classe_id:
             messages.error(request, "Veuillez sélectionner une classe.")
             return redirect('eleves:importer_eleves')
@@ -103,14 +119,14 @@ def _traiter_import_eleves(request):
             for chunk in fichier.chunks():
                 tmp_file.write(chunk)
             tmp_path = tmp_file.name
-        
+
         try:
             # Lire le fichier
             df = lire_fichier_eleves(tmp_path)
-            
+
             # Valider les données
             validator = ImportElevesValidator(df, classe_id)
-            
+
             if not validator.valider():
                 # Afficher les erreurs
                 for erreur in validator.erreurs[:5]:  # Limiter à 5 erreurs
@@ -118,11 +134,11 @@ def _traiter_import_eleves(request):
                 if len(validator.erreurs) > 5:
                     messages.error(request, f"... et {len(validator.erreurs) - 5} autres erreurs")
                 return redirect('eleves:importer_eleves')
-            
+
             # Afficher les avertissements
             for avertissement in validator.avertissements[:3]:
                 messages.warning(request, avertissement)
-            
+
             # Importer les données
             processor = ImportElevesProcessor(
                 df=df,
@@ -130,9 +146,9 @@ def _traiter_import_eleves(request):
                 user=request.user,
                 generer_matricules=generer_matricules
             )
-            
+
             stats = processor.importer()
-            
+
             # Afficher les résultats
             classe = classe_cible
 
@@ -141,25 +157,25 @@ def _traiter_import_eleves(request):
             else:
                 resultat_import = f"la classe {classe.nom}"
             messages.success(request, f"✅ Importation terminée pour {resultat_import} !")
-            
+
             if stats['crees'] > 0:
                 messages.success(
                     request,
                     f"📝 {stats['crees']} élève(s) créé(s)"
                 )
-            
+
             if stats['modifies'] > 0:
                 messages.info(
                     request,
                     f"✏️ {stats['modifies']} élève(s) mis à jour"
                 )
-            
+
             if stats['matricules_generes'] > 0:
                 messages.info(
                     request,
                     f"🔢 {stats['matricules_generes']} matricule(s) généré(s) automatiquement"
                 )
-            
+
             if stats.get('doublons_ignores', 0) > 0:
                 details = stats.get('doublons_details') or []
                 messages.warning(
@@ -195,27 +211,27 @@ def _traiter_import_eleves(request):
                     request,
                     f"⚠️ {stats['erreurs']} erreur(s) rencontrée(s)"
                 )
-            
+
             messages.info(
                 request,
                 f"📊 Total traité: {stats['total']} élève(s)"
             )
-            
+
             # Rediriger vers la liste des élèves de la classe
             return redirect('eleves:gestion_classes')
-            
+
         finally:
             # Nettoyer le fichier temporaire
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
-    
+
     except ImportElevesError as e:
         messages.error(request, f"Erreur d'importation: {e}")
     except Exception as e:
         messages.error(request, f"Erreur inattendue: {e}")
         import traceback
         print(traceback.format_exc())
-    
+
     return redirect('eleves:importer_eleves')
 
 
@@ -229,31 +245,31 @@ def telecharger_template_eleves(request):
     """
     try:
         classe_id = request.GET.get('classe_id')
-        
+
         # Générer le template
         df = generer_template_eleves(classe_id)
-        
+
         # Créer la réponse Excel
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        
+
         # Nom du fichier
         if classe_id:
             classe = Classe.objects.get(id=classe_id)
             filename = f"template_eleves_{classe.nom.replace(' ', '_')}.xlsx"
         else:
             filename = f"template_eleves_{datetime.now().strftime('%Y%m%d')}.xlsx"
-        
+
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
+
         # Écrire le DataFrame dans la réponse
         with pd.ExcelWriter(response, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Élèves', index=False)
-            
+
             # Obtenir la feuille pour la formater
             worksheet = writer.sheets['Élèves']
-            
+
             # Ajuster la largeur des colonnes
             for idx, col in enumerate(df.columns, 1):
                 column_letter = chr(64 + idx) if idx <= 26 else 'A' + chr(64 + idx - 26)
@@ -265,19 +281,19 @@ def telecharger_template_eleves(request):
                     worksheet.column_dimensions[column_letter].width = 18
                 else:
                     worksheet.column_dimensions[column_letter].width = 15
-            
+
             # Ajouter un style à l'en-tête
             from openpyxl.styles import Font, PatternFill, Alignment
-            
+
             header_font = Font(bold=True, color="FFFFFF")
             header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
             header_alignment = Alignment(horizontal="center", vertical="center")
-            
+
             for cell in worksheet[1]:
                 cell.font = header_font
                 cell.fill = header_fill
                 cell.alignment = header_alignment
-            
+
             # Ajouter des instructions dans une nouvelle feuille
             instructions_sheet = writer.book.create_sheet('Instructions')
             instructions = [
@@ -319,21 +335,21 @@ def telecharger_template_eleves(request):
                 ["   - Vérifier que les téléphones sont valides"],
                 ["   - S'assurer qu'il n'y a pas de doublons"]
             ]
-            
+
             for row_idx, instruction in enumerate(instructions, 1):
                 for col_idx, text in enumerate(instruction, 1):
                     instructions_sheet.cell(row=row_idx, column=col_idx, value=text)
-            
+
             # Formater la feuille d'instructions
             instructions_sheet.column_dimensions['A'].width = 80
             title_cell = instructions_sheet['A1']
             title_cell.font = Font(bold=True, size=14, color="366092")
-            
+
             for row in [3, 14, 21, 27, 32]:
                 instructions_sheet.cell(row=row, column=1).font = Font(bold=True, color="366092")
-        
+
         return response
-    
+
     except Exception as e:
         messages.error(request, f"Erreur lors de la génération du template: {e}")
         return redirect('eleves:importer_eleves')
@@ -459,7 +475,7 @@ def exporter_eleves_classe(request, classe_id):
     """
     try:
         classe = get_object_or_404(Classe, id=classe_id)
-        
+
         # Vérifier les permissions
         if not request.user.is_superuser:
             from utilisateurs.utils import user_school
@@ -467,40 +483,40 @@ def exporter_eleves_classe(request, classe_id):
             if ecole and classe.ecole != ecole:
                 messages.error(request, "Vous n'avez pas accès à cette classe.")
                 return redirect('eleves:liste_eleves')
-        
+
         # Exporter les élèves
         df = exporter_liste_eleves(classe_id)
-        
+
         # Créer la réponse Excel
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        
+
         filename = f"eleves_{classe.nom.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
+
         # Écrire le DataFrame
         with pd.ExcelWriter(response, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name=f'Élèves {classe.nom}', index=False)
-            
+
             # Formater
             worksheet = writer.sheets[f'Élèves {classe.nom}']
-            
+
             # Largeur des colonnes
             for idx, col in enumerate(df.columns, 1):
                 column_letter = chr(64 + idx) if idx <= 26 else 'A' + chr(64 + idx - 26)
                 worksheet.column_dimensions[column_letter].width = 18
-            
+
             # Style de l'en-tête
             from openpyxl.styles import Font, PatternFill, Alignment
-            
+
             for cell in worksheet[1]:
                 cell.font = Font(bold=True, color="FFFFFF")
                 cell.fill = PatternFill(start_color="28a745", end_color="28a745", fill_type="solid")
                 cell.alignment = Alignment(horizontal="center")
-        
+
         return response
-    
+
     except Exception as e:
         messages.error(request, f"Erreur lors de l'export: {e}")
         return redirect('eleves:gestion_classes')

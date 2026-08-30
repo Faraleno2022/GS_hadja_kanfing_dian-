@@ -14,8 +14,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
 from eleves.models import Eleve, Ecole
-from paiements.models import Paiement, EcheancierPaiement, PaiementRemise
-from paiements.allocation import is_reinscription_payment
+from paiements.models import Paiement, EcheancierPaiement, PaiementRemise, RemiseReduction
+from paiements.allocation import registration_kind_for_type
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
 from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
@@ -43,7 +43,7 @@ def _get_logo_path(ecole=None):
 
 
 def _draw_logo_watermark(c, logo_path, width, height, opacity=0.08):
-    """Dessine le logo centré derrière le contenu, sans gêner la lecture."""
+    """Dessine le logo centré derrière le contenu sans gêner la lecture."""
     if not logo_path:
         return
 
@@ -55,14 +55,9 @@ def _draw_logo_watermark(c, logo_path, width, height, opacity=0.08):
         image_width, image_height = image.getSize()
         if not image_width or not image_height:
             return
-
-        max_width = width * 0.52
-        max_height = height * 0.52
-        scale = min(max_width / image_width, max_height / image_height)
+        scale = min((width * 0.52) / image_width, (height * 0.52) / image_height)
         watermark_width = image_width * scale
         watermark_height = image_height * scale
-
-        # Sans transparence, le logo masquerait le tableau : ne pas le dessiner.
         c.setFillAlpha(opacity)
         c.translate(width / 2, height / 2)
         c.rotate(-18)
@@ -84,13 +79,49 @@ def _draw_logo_watermark(c, logo_path, width, height, opacity=0.08):
 def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
     """Dessine l'entête (logo + titre) et un filigrane logo géant sur chaque page.
 
-    - Filigrane: logo centré, redimensionné et dessiné avec une faible opacité
+    - Filigrane: logo agrandi (~500% largeur) centré, faible opacité si disponible
     - Entête: logo à gauche + nom de l'établissement
     """
-    width, height = getattr(c, '_pagesize', None) or getattr(doc, 'pagesize', A4)
+    # Utiliser la taille réelle du document. Avec A4 en dur, l'en-tête des
+    # exports paysage était dessiné au-dessus de la page et le logo restait
+    # donc invisible.
+    width, height = getattr(doc, 'pagesize', None) or A4
     logo_path = _get_logo_path(ecole)
 
-    _draw_logo_watermark(c, logo_path, width, height)
+    c.saveState()
+    try:
+        # Filigrane
+        if logo_path:
+            # Taille ~500%: on couvre 1.5x la largeur de page (grand watermark)
+            wm_width = width * 1.5
+            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+            wm_x = (width - wm_width) / 2
+            wm_y = (height - wm_height) / 2
+
+            # Opacité visible mais discrète (comme dans les reçus de paiement)
+            try:
+                c.setFillAlpha(0.15)
+            except Exception:
+                # Certaines versions de reportlab ne supportent pas l'alpha, on continue sans transparence
+                pass
+
+            # Légère rotation pour l'effet filigrane
+            c.translate(width / 2.0, height / 2.0)
+            c.rotate(30)
+            c.translate(-width / 2.0, -height / 2.0)
+
+            c.drawImage(
+                logo_path,
+                wm_x,
+                wm_y,
+                width=wm_width,
+                height=wm_height,
+                preserveAspectRatio=True,
+                mask='auto'
+            )
+    finally:
+        # Restaurer l'état avant de dessiner l'entête
+        c.restoreState()
 
     # Entête (après restauration, pas d'opacité)
     c.saveState()
@@ -117,6 +148,28 @@ def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
     finally:
         c.restoreState()
 
+def remises_par_categorie(paiements_qs):
+    """Retourne {libellé du motif: montant total} des remises appliquées aux
+    paiements donnés, en respectant l'ordre de RemiseReduction.MOTIF_CHOICES."""
+    motif_labels = dict(RemiseReduction.MOTIF_CHOICES)
+    ordre_motifs = [code for code, _label in RemiseReduction.MOTIF_CHOICES]
+    totaux_par_code = {}
+    for row in (
+        PaiementRemise.objects.filter(paiement__in=paiements_qs)
+        .values('remise__motif')
+        .annotate(total=Sum('montant_remise'))
+    ):
+        code = row.get('remise__motif') or 'AUTRE'
+        totaux_par_code[code] = totaux_par_code.get(code, Decimal('0')) + (row.get('total') or Decimal('0'))
+
+    return {
+        motif_labels.get(code, code): montant
+        for code in ordre_motifs
+        for montant in [totaux_par_code.get(code)]
+        if montant
+    }
+
+
 def collecter_donnees_periode(debut, fin, type_periode, user=None):
     """Collecte les données pour une période donnée"""
     donnees = {
@@ -142,13 +195,13 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
     depenses_periode_global = Depense.objects.filter(
         date_facture__range=[debut, fin]
     ).exclude(statut='ANNULEE')  # Exclure seulement les annulées
-    
+
     # Si pas de dépenses dans la période, essayer avec toutes les dépenses validées
     if not depenses_periode_global.exists():
         depenses_periode_global = Depense.objects.filter(
             statut='VALIDEE'
         )
-    
+
     donnees['depenses_globales']['nombre'] = depenses_periode_global.count()
     donnees['depenses_globales']['montant_total'] = depenses_periode_global.aggregate(
         total=Sum('montant_ttc')
@@ -192,7 +245,7 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
                 'montant_total': Decimal('0')
             }
         }
-        
+
         # Paiements de la période (liaison via Eleve -> Classe -> École)
         paiements_periode = Paiement.objects.filter(
             eleve__classe__ecole=ecole,
@@ -213,31 +266,24 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         donnees_ecole['paiements']['montant_total'] = montant_total_paiements
         donnees_ecole['paiements']['total_remises'] = total_remises
         donnees_ecole['paiements']['montant_original'] = montant_total_paiements + total_remises
+        donnees_ecole['paiements']['remises_par_categorie'] = remises_par_categorie(paiements_periode)
 
         # Classification sans double comptage
         frais_inscription = Decimal('0')
-        reinscription = Decimal('0')
+        frais_reinscription = Decimal('0')
         scolarite = Decimal('0')
         non_categorises = Decimal('0')
 
         for p in paiements_periode.select_related('type_paiement'):
             montant = p.montant or Decimal('0')
             nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
+            kind = registration_kind_for_type(p.type_paiement)
 
-            is_reinsc = is_reinscription_payment(nom)
-            has_inscription = 'inscription' in nom
+            has_inscription = kind == 'inscription'
+            has_reinscription = kind == 'reinscription'
             has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
 
-            if is_reinsc and has_scolarite:
-                # Paiement combiné: 30 000 GNF pour réinscription, reste en scolarité
-                part_ins = min(Decimal('30000'), montant)
-                part_sco = montant - part_ins
-                reinscription += part_ins
-                scolarite += part_sco
-            elif is_reinsc:
-                # Pur frais de réinscription
-                reinscription += montant
-            elif has_inscription and has_scolarite:
+            if has_inscription and has_scolarite:
                 # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
                 part_ins = min(Decimal('30000'), montant)
                 part_sco = montant - part_ins
@@ -246,6 +292,12 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
             elif has_inscription:
                 # Pur frais d'inscription
                 frais_inscription += montant
+            elif has_reinscription:
+                # Le tarif de réinscription varie par grille tarifaire (pas de
+                # forfait unique comme pour l'inscription) : un paiement combiné
+                # réinscription + scolarité, rare, est donc compté intégralement
+                # en réinscription plutôt que deviné.
+                frais_reinscription += montant
             elif has_scolarite:
                 scolarite += montant
             else:
@@ -275,23 +327,8 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         scolarite += non_categorises
 
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
-        donnees_ecole['paiements']['reinscription'] = reinscription
+        donnees_ecole['paiements']['reinscription'] = frais_reinscription
         donnees_ecole['paiements']['scolarite'] = scolarite
-
-        # Totaux des remises par catégorie (motif de la remise appliquée)
-        try:
-            motif_labels = dict(PaiementRemise.MOTIF_CHOICES)
-            remises_categorie_map = {}
-            for row in (
-                PaiementRemise.objects.filter(paiement__in=paiements_periode)
-                .values('motif')
-                .annotate(total=Sum('montant_remise'))
-            ):
-                label = motif_labels.get(row.get('motif') or '', 'Non précisé')
-                remises_categorie_map[label] = remises_categorie_map.get(label, Decimal('0')) + (row.get('total') or Decimal('0'))
-            donnees_ecole['paiements']['remises_par_categorie'] = remises_categorie_map
-        except Exception:
-            donnees_ecole['paiements']['remises_par_categorie'] = {}
 
         # Élèves concernés de la période (paiements dans période + inscriptions dans période)
         eleves_concernes_ids = set(paiements_periode.values_list('eleve_id', flat=True).distinct())
@@ -375,31 +412,31 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         donnees_ecole['paiements']['total_du_concernes'] = total_du_concernes
         donnees_ecole['paiements']['reste_a_payer'] = reste_a_payer
         donnees_ecole['classes'] = sorted(classes_map.values(), key=lambda x: x['classe'])
-        
+
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
-        
+
         # États de salaire de la période
         etats_periode = EtatSalaire.objects.filter(
             enseignant__ecole=ecole,
             date_validation__range=[debut, fin],
             valide=True
         )
-        
+
         # Si pas d'états dans la période, essayer avec tous les états validés de l'école
         if not etats_periode.exists():
             etats_periode = EtatSalaire.objects.filter(
                 enseignant__ecole=ecole,
                 valide=True
             )
-        
+
         donnees_ecole['salaires']['etats_valides'] = etats_periode.count()
         donnees_ecole['salaires']['montant_total'] = etats_periode.aggregate(
             total=Sum('salaire_net')
         )['total'] or Decimal('0')
-        
+
         donnees['ecoles'][ecole.id] = donnees_ecole
-    
+
     return donnees
 
 def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
@@ -408,7 +445,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     story = []
-    
+
     # Titre
     titre_style = ParagraphStyle(
         'TitreRapport',
@@ -417,16 +454,16 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
         textColor=colors.darkblue,
         alignment=1
     )
-    
+
     titre = f"RAPPORT {type_periode.upper()} - {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
     story.append(Paragraph(titre, titre_style))
     story.append(Spacer(1, 20))
-    
+
     # Pour chaque école
     for ecole_id, donnees_ecole in donnees['ecoles'].items():
         story.append(Paragraph(f"École: {donnees_ecole['nom']}", styles['Heading2']))
         story.append(Spacer(1, 10))
-        
+
         # Tableau des données (aligné avec le journalier)
         data = [
             ['Indicateur', 'Valeur'],
@@ -435,7 +472,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
             ['Scolarité normale', f"{donnees_ecole['paiements'].get('total_du_concernes', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ['Frais d\'inscription', f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
-            ['Réinscription', f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
+            ['Frais de réinscription', f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Reste à payer', f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
@@ -445,7 +482,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
             ['États de salaire validés', str(donnees_ecole['salaires']['etats_valides'])],
             ['Montant total des salaires', f"{donnees_ecole['salaires']['montant_total']:,} GNF".replace(',', ' ')],
         ]
-        
+
         table = Table(data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -457,7 +494,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
-        
+
         story.append(table)
         story.append(Spacer(1, 12))
 
@@ -491,15 +528,16 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
             story.append(class_table)
             story.append(Spacer(1, 16))
 
-        # Totaux des remises par catégorie
-        remises_cat = donnees_ecole['paiements'].get('remises_par_categorie') or {}
-        if remises_cat:
+        # Remises par catégorie (motif)
+        remises_categorie = donnees_ecole['paiements'].get('remises_par_categorie') or {}
+        if remises_categorie:
             story.append(Paragraph("Remises par catégorie", styles['Heading3']))
             story.append(Spacer(1, 6))
-            remises_data = [['Catégorie', 'Total remises']]
-            for label, total in sorted(remises_cat.items(), key=lambda item: -item[1]):
-                remises_data.append([label, f"{total:,} GNF".replace(',', ' ')])
-            remises_table = Table(remises_data, colWidths=[200, 120])
+            remises_data = [['Catégorie (motif)', 'Montant']]
+            for categorie, montant in remises_categorie.items():
+                remises_data.append([categorie, f"{montant:,} GNF".replace(',', ' ')])
+
+            remises_table = Table(remises_data, colWidths=[220, 120])
             remises_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
@@ -534,17 +572,17 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
     total_paiements = sum(d['paiements']['montant_total'] for d in donnees['ecoles'].values())
     total_depenses = donnees['depenses_globales']['montant_total']
     total_salaires = sum(d['salaires']['montant_total'] for d in donnees['ecoles'].values())
-    
+
     story.append(Paragraph("RÉSUMÉ GLOBAL", styles['Heading2']))
     story.append(Spacer(1, 10))
-    
+
     resume_data = [
         ['Total des paiements', f"{total_paiements:,} GNF".replace(',', ' ')],
         ['Total des dépenses', f"{total_depenses:,} GNF".replace(',', ' ')],
         ['Total des salaires', f"{total_salaires:,} GNF".replace(',', ' ')],
         ['Solde net', f"{total_paiements - total_depenses - total_salaires:,} GNF".replace(',', ' ')],
     ]
-    
+
     resume_table = Table(resume_data, colWidths=[3*inch, 2*inch])
     resume_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
@@ -552,9 +590,9 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
         ('FONTSIZE', (0, 0), (-1, -1), 12),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
-    
+
     story.append(resume_table)
-    
+
     # Ajout entête + filigrane sur toutes les pages
     # Injecter un wrapper pour passer ecole et un titre
     def _header_wrapper(canvas, doc_):

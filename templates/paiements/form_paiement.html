@@ -140,7 +140,7 @@
         <div class="col-lg-8">
             <form method="post" id="paiementForm">
                 {% csrf_token %}
-                
+
                 <!-- Informations de l'élève -->
                 {% if eleve %}
                 <div class="eleve-info">
@@ -212,7 +212,7 @@
                             Montant suggéré: <span id="montantSuggestionValue">0</span> GNF
                         </span>
                     </h5>
-                    
+
                     <div class="row">
                         {% if not eleve %}
                         <!-- Recherche par matricule -->
@@ -229,7 +229,7 @@
                             <div id="matriculeHelp" class="form-text">Saisissez le matricule et cliquez sur Rechercher pour charger les informations de l'élève.</div>
                             <div id="matriculeError" class="text-danger small" style="display:none;"></div>
                         </div>
-                        
+
                         <!-- Sélection manuelle (alternative) -->
                         <div class="col-md-6 mb-3">
                             <label for="eleveInput" class="form-label">
@@ -244,7 +244,7 @@
                             </datalist>
                             <div id="eleveHelp" class="form-text">Alternative: choisissez depuis la liste.</div>
                         </div>
-                        
+
                         <!-- Informations de l'élève chargées -->
                         <div class="col-md-12 mb-3" id="eleveInfoSection" style="display:none;">
                             <div class="eleve-info">
@@ -266,7 +266,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <!-- Échéancier résumé -->
                                 <div id="echeancierResume" class="mt-3" style="display:none;">
                                     <h6><i class="fas fa-money-bill-wave me-2"></i>Situation financière :</h6>
@@ -298,7 +298,7 @@
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Select réel masqué pour la soumission -->
                         <div class="d-none">
                             {{ form.eleve }}
@@ -310,7 +310,7 @@
                         {% else %}
                             {{ form.eleve.as_hidden }}
                         {% endif %}
-                        
+
                         <div class="col-md-6 mb-3">
                             <label for="{{ form.type_paiement.id_for_label }}" class="form-label">
                                 Type de paiement <span class="required-field">*</span>
@@ -329,7 +329,7 @@
                                 <div class="text-danger small">{{ form.type_paiement.errors.0 }}</div>
                             {% endif %}
                         </div>
-                        
+
                         <div class="col-md-6 mb-3">
                             <label for="{{ form.mode_paiement.id_for_label }}" class="form-label">
                                 Mode de paiement <span class="required-field">*</span>
@@ -349,7 +349,7 @@
                             {% endif %}
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="{{ form.montant.id_for_label }}" class="form-label">
@@ -364,6 +364,7 @@
                                     <i class="fas fa-magic me-1"></i>Remplir le montant suggéré
                                 </button>
                             </div>
+                            <div class="form-text">{{ form.montant.help_text }}</div>
                             {% if form.montant.errors %}
                                 <div class="text-danger small">{{ form.montant.errors.0 }}</div>
                             {% endif %}
@@ -378,15 +379,14 @@
                                 <div class="card border-info">
                                     <div class="card-body py-2">
                                         <div class="d-flex flex-wrap small" style="gap: 12px 24px;">
-                                            <div><span class="text-muted">FI restant:</span> <strong id="sbFi">0 GNF</strong></div>
+                                            <div><span id="sbFiLabel" class="text-muted">Inscription restante:</span> <strong id="sbFi">0 GNF</strong></div>
                                             <div><span class="text-muted">T1 restant:</span> <strong id="sbT1">0 GNF</strong></div>
                                             <div><span class="text-muted">T2 restant:</span> <strong id="sbT2">0 GNF</strong></div>
                                             <div><span class="text-muted">T3 restant:</span> <strong id="sbT3">0 GNF</strong></div>
                                         </div>
-                                        <!-- Ce que le type sélectionné couvre exactement -->
-                                        <div class="small mt-2" id="sbCompositionBloc" style="display:none;">
-                                            <span class="text-muted">Ce type couvre :</span>
-                                            <span id="sbComposition" class="fw-bold"></span>
+                                        <div id="sbCalcul" class="small mt-1" style="display:none;">
+                                            <i class="fas fa-calculator me-1 text-info"></i>
+                                            <span id="sbCalculTexte"></span>
                                         </div>
                                         <div class="small text-muted mt-1">
                                             <i class="fas fa-info-circle me-1"></i>
@@ -395,8 +395,12 @@
                                     </div>
                                 </div>
                             </div>
+                            <div id="montantAvertissement" class="alert alert-warning py-2 px-3 mt-2 small" style="display:none;">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                <span id="montantAvertissementTexte"></span>
+                            </div>
                         </div>
-                        
+
                         <div class="col-md-6 mb-3">
                             <label for="{{ form.date_paiement.id_for_label }}" class="form-label">
                                 Date de paiement <span class="required-field">*</span>
@@ -407,7 +411,7 @@
                             {% endif %}
                         </div>
                     </div>
-                    
+
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="{{ form.reference_externe.id_for_label }}" class="form-label">
@@ -420,7 +424,7 @@
                             <small class="form-text text-muted">Numéro de transaction, chèque, etc.</small>
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="{{ form.observations.id_for_label }}" class="form-label">
                             <i class="fas fa-comment me-1"></i>Observations
@@ -436,7 +440,7 @@
                 <!-- Résumé et validation -->
                 <div class="form-section">
                     <h5><i class="fas fa-check-circle me-2"></i>Résumé</h5>
-                    
+
                     <div class="alert alert-info">
                         <h6><i class="fas fa-info-circle me-2"></i>Informations importantes</h6>
                         <ul class="mb-0">
@@ -445,35 +449,116 @@
                             <li>L'échéancier de l'élève sera mis à jour automatiquement</li>
                         </ul>
                     </div>
-                    
-                    <!-- Confirmation pour montant supérieur au type sélectionné -->
-                    {% if show_superior_confirmation %}
-                    <div class="alert alert-warning mt-3" style="border: 2px solid #f39c12;">
-                        <h6 style="color: #f39c12; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ CONFIRMATION REQUISE - MONTANT SUPÉRIEUR</h6>
-                        <p class="mb-3" style="color: #856404; font-weight: bold; font-size: 1.05em;">
-                            Le montant saisi (<span style="color: #dc3545;">{{ montant_saisi|floatformat:0 }} GNF</span>)
-                            dépasse le montant standard pour {{ type_description }}
-                            (<span style="color: #dc3545;">{{ montant_attendu|floatformat:0 }} GNF</span>).
-                        </p>
 
-                        <div class="bg-info bg-opacity-10 p-3 rounded border border-info mb-3">
-                            <h6 class="text-info mb-2"><i class="fas fa-list-ol me-2"></i>Répartition qui sera enregistrée :</h6>
-                            <ul class="mb-0">
-                                {% for ligne in repartition %}
-                                <li><strong>{{ ligne.label }}</strong> : {{ ligne.montant|floatformat:0 }} GNF</li>
-                                {% endfor %}
-                            </ul>
+                    <!-- Confirmation pour paiement partiel -->
+                    {% if show_partial_confirmation %}
+                    <div class="alert alert-danger mt-3" style="border: 2px solid #dc3545;">
+                        <h6 style="color: #dc3545; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ CONFIRMATION REQUISE - PAIEMENT PARTIEL</h6>
+                        <p class="mb-3" style="color: #721c24; font-weight: bold; font-size: 1.05em;">
+                            Le montant saisi (<span style="color: #dc3545;">{{ montant_saisi|floatformat:0 }} GNF</span>) est inférieur au montant standard
+                            pour {{ type_description }} (<span style="color: #dc3545;">{{ montant_attendu|floatformat:0 }} GNF</span>).
+                        </p>
+                        <div class="form-check p-3" style="background-color: #f8d7da; border-radius: 5px; border: 1px solid #dc3545;">
+                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_partiel" id="confirmationPartiel" value="1" required>
+                            <label class="form-check-label" for="confirmationPartiel" style="color: #721c24; font-weight: bold;">
+                                <i class="fas fa-check-square me-2"></i>Je confirme qu'il s'agit d'un paiement partiel et je souhaite procéder à l'enregistrement.
+                            </label>
+                        </div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-outline-danger me-2" onclick="showConfirmationDialog()">
+                                <i class="fas fa-exclamation-circle me-1"></i>Confirmer le paiement partiel
+                            </button>
+                            <small class="text-muted">ou cochez la case ci-dessus et soumettez le formulaire</small>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Confirmation pour paiement partiel vers tranche suivante -->
+                    {% if show_partial_next_confirmation %}
+                    <div class="alert alert-warning mt-3" style="border: 2px solid #f39c12;">
+                        <h6 style="color: #f39c12; font-weight: bold;"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ MONTANT SUPÉRIEUR À LA TRANCHE</h6>
+                        <div class="mb-3">
+                            <p style="color: #856404; font-weight: bold; font-size: 1.05em; margin-bottom: 10px;">
+                                {% if tranche_source == 'T2' %}
+                                    Le montant saisi dépasse ce qui est dû pour la 2ème tranche.
+                                {% else %}
+                                    Le montant saisi dépasse ce qui est dû pour la 1ère tranche.
+                                {% endif %}
+                            </p>
+                            <div class="row text-center mb-3">
+                                <div class="col-md-4">
+                                    <div class="bg-light p-2 rounded border">
+                                        {% if tranche_source == 'T2' %}
+                                            <small class="text-muted">Montant T2 max</small><br>
+                                            <strong class="text-primary">{{ montant_t2_max|floatformat:0|default:0 }} GNF</strong>
+                                        {% else %}
+                                            <small class="text-muted">Montant T1 max</small><br>
+                                            <strong class="text-primary">{{ montant_t1_max|floatformat:0|default:0 }} GNF</strong>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="bg-light p-2 rounded border">
+                                        <small class="text-muted">Excédent</small><br>
+                                        <strong class="text-warning">{{ excedent|floatformat:0|default:0 }} GNF</strong>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="bg-light p-2 rounded border">
+                                        <small class="text-muted">Répartition suggérée</small><br>
+                                        {% if tranche_source == 'T2' and t3_remaining > 0 %}
+                                            <strong class="text-success">T2 + Acompte T3</strong>
+                                        {% elif t2_remaining > 0 %}
+                                            <strong class="text-success">T1 + Acompte T2</strong>
+                                        {% elif t3_remaining > 0 %}
+                                            <strong class="text-success">T1 + Acompte T3</strong>
+                                        {% else %}
+                                            <strong class="text-muted">Aucune tranche disponible</strong>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {% if t2_remaining > 0 or t3_remaining > 0 %}
+                            <div class="bg-info bg-opacity-10 p-3 rounded border border-info">
+                                <h6 class="text-info mb-2"><i class="fas fa-lightbulb me-2"></i>Proposition intelligente :</h6>
+                                {% if tranche_source == 'T2' %}
+                                <p class="mb-2">
+                                    <strong>{{ montant_t2_max|floatformat:0|default:0 }} GNF</strong> seront alloués à la <strong>2ème tranche</strong>
+                                </p>
+                                <p class="mb-0">
+                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 3ème tranche</strong>
+                                    <small class="text-muted">(reste T3 : {{ t3_remaining|floatformat:0|default:0 }} GNF)</small>
+                                </p>
+                                {% else %}
+                                <p class="mb-2">
+                                    <strong>{{ montant_t1_max|floatformat:0|default:0 }} GNF</strong> seront alloués à la <strong>1ère tranche</strong>
+                                </p>
+                                {% if t2_remaining > 0 %}
+                                <p class="mb-0">
+                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 2ème tranche</strong>
+                                    <small class="text-muted">(reste T2 : {{ t2_remaining|floatformat:0|default:0 }} GNF)</small>
+                                </p>
+                                {% elif t3_remaining > 0 %}
+                                <p class="mb-0">
+                                    <strong>{{ excedent|floatformat:0|default:0 }} GNF</strong> seront utilisés comme <strong>acompte sur la 3ème tranche</strong>
+                                    <small class="text-muted">(reste T3 : {{ t3_remaining|floatformat:0|default:0 }} GNF)</small>
+                                </p>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                            {% endif %}
                         </div>
 
                         <div class="form-check p-3" style="background-color: #fff3cd; border-radius: 5px; border: 1px solid #f39c12;">
-                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_superieur" id="confirmationSuperieur" value="1" required>
-                            <label class="form-check-label" for="confirmationSuperieur" style="color: #856404; font-weight: bold;">
-                                <i class="fas fa-check-square me-2"></i>Je confirme cette répartition et souhaite enregistrer le paiement.
+                            <input class="form-check-input" type="checkbox" name="confirmation_paiement_partiel_suivant" id="confirmationPartielSuivant" value="1" required>
+                            <label class="form-check-label" for="confirmationPartielSuivant" style="color: #856404; font-weight: bold;">
+                                <i class="fas fa-check-square me-2"></i>Je confirme vouloir utiliser l'excédent comme acompte sur la tranche suivante
                             </label>
                         </div>
 
                         <div class="mt-3 d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn btn-outline-warning" onclick="document.getElementById('confirmationSuperieur').checked = true;">
+                            <button type="button" class="btn btn-outline-warning" onclick="document.getElementById('confirmationPartielSuivant').checked = true;">
                                 <i class="fas fa-check me-1"></i>Confirmer la répartition
                             </button>
                             <button type="button" class="btn btn-outline-secondary" onclick="history.back();">
@@ -482,10 +567,10 @@
                         </div>
                     </div>
                     {% endif %}
-                    
+
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <a href="{% if eleve %}{% url 'paiements:echeancier_eleve' eleve.id %}{% else %}{% url 'paiements:tableau_bord' %}{% endif %}" 
+                            <a href="{% if eleve %}{% url 'paiements:echeancier_eleve' eleve.id %}{% else %}{% url 'paiements:tableau_bord' %}{% endif %}"
                                class="btn btn-secondary">
                                 <i class="fas fa-arrow-left me-2"></i>Annuler
                             </a>
@@ -499,7 +584,7 @@
                 </div>
             </form>
         </div>
-        
+
         <!-- Aide contextuelle -->
         <div class="col-lg-4">
             <div class="card">
@@ -511,14 +596,14 @@
                 <div class="card-body">
                     <h6>Types de paiements</h6>
                     <ul class="small">
-                        <li><strong>Frais d'inscription :</strong> Paiement initial (30 000 GNF)</li>
+                        <li><strong>Inscription / Réinscription :</strong> Le tarif adapté à l'élève est appliqué</li>
                         <li><strong>Tranche 1, 2, 3 :</strong> Paiements échelonnés</li>
                         <li><strong>Frais divers :</strong> Autres frais scolaires</li>
-                        <li><strong>Inscription + 1ère tranche :</strong> Paiement combiné</li>
-                        <li><strong>Inscription + 1ère + 2ème tranche :</strong> Paiement combiné</li>
-                        <li><strong>Inscription + Annuel :</strong> Paiement complet</li>
+                        <li><strong>Admission + 1ère tranche :</strong> Paiement combiné</li>
+                        <li><strong>Admission + 1ère + 2ème tranche :</strong> Paiement combiné</li>
+                        <li><strong>Admission + Annuel :</strong> Paiement complet</li>
                     </ul>
-                    
+
                     <h6 class="mt-3">Modes de paiement</h6>
                     <ul class="small">
                         <li><strong>Espèces :</strong> Paiement en liquide</li>
@@ -526,7 +611,7 @@
                         <li><strong>Chèque :</strong> Paiement par chèque bancaire</li>
                         <li><strong>Virement :</strong> Virement bancaire</li>
                     </ul>
-                    
+
                     <div class="alert alert-warning mt-3">
                         <small>
                             <i class="fas fa-exclamation-triangle me-1"></i>
@@ -535,7 +620,7 @@
                     </div>
                 </div>
             </div>
-            
+
             {% if eleve %}
             <!-- Échéancier de l'élève -->
             <div class="card mt-3">
@@ -553,26 +638,26 @@
                             <strong>Déjà payé :</strong> {{ eleve.echeancier.total_paye|floatformat:0|intcomma }} GNF
                         </p>
                         <p class="small mb-0">
-                            <strong>Reste à payer :</strong> 
+                            <strong>Reste à payer :</strong>
                             <span class="text-danger">{{ eleve.echeancier.solde_restant|floatformat:0|intcomma }} GNF</span>
                         </p>
-                        
+
                         <div class="progress mt-2">
-                            <div class="progress-bar" role="progressbar" 
+                            <div class="progress-bar" role="progressbar"
                                  style="width: {{ eleve.echeancier.pourcentage_paye }}%"
-                                 aria-valuenow="{{ eleve.echeancier.pourcentage_paye }}" 
+                                 aria-valuenow="{{ eleve.echeancier.pourcentage_paye }}"
                                  aria-valuemin="0" aria-valuemax="100">
                                 {{ eleve.echeancier.pourcentage_paye|floatformat:1 }}%
                             </div>
                         </div>
-                        
-                        <a href="{% url 'paiements:echeancier_eleve' eleve.id %}" 
+
+                        <a href="{% url 'paiements:echeancier_eleve' eleve.id %}"
                            class="btn btn-sm btn-outline-info mt-2">
                             <i class="fas fa-eye me-1"></i>Voir détails
                         </a>
                     {% else %}
                         <p class="text-muted small">Aucun échéancier défini</p>
-                        <a href="{% url 'paiements:creer_echeancier' eleve.id %}" 
+                        <a href="{% url 'paiements:creer_echeancier' eleve.id %}"
                            class="btn btn-sm btn-outline-primary">
                             <i class="fas fa-plus me-1"></i>Créer échéancier
                         </a>
@@ -611,14 +696,14 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('=== DOM CONTENT LOADED ===');
     let montantInput = document.getElementById('id_montant');
     console.log('montantInput found:', !!montantInput, montantInput);
-    
+
     const montantDisplay = document.getElementById('montantDisplay');
     const stickyMontant = document.getElementById('stickyMontant');
     console.log('montantDisplay found:', !!montantDisplay);
     // Initialiser l'affichage du montant au chargement
     if (montantDisplay) {
         try {
-            const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+            const initVal = lireMontant();
             const init = (isNaN(initVal) ? 0 : initVal).toLocaleString('fr-FR') + ' GNF';
             montantDisplay.textContent = init;
             if (stickyMontant) stickyMontant.textContent = init;
@@ -635,6 +720,47 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function fmtGNF(v) {
         try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; }
+    }
+
+    // Solde encaissable sur l'année, renvoyé par la suggestion serveur.
+    let soldeAnnuel = null;
+
+    // Le champ montant accepte « 175 000 GNF » : le serveur nettoie la saisie,
+    // l'affichage doit lire exactement la même valeur que lui.
+    function lireMontant() {
+        if (!montantInput) return 0;
+        const brut = String(montantInput.value || '')
+            .replace(/[\s   ]/g, '')
+            .replace(/gnf|fg/gi, '')
+            .replace(',', '.');
+        const groupes = brut.split('.');
+        let nettoye = brut;
+        if (groupes.length > 1 && groupes.every(g => /^\d*$/.test(g))) {
+            const reste = groupes.slice(1);
+            if (reste.every(g => g.length === 3)) {
+                nettoye = groupes.join('');
+            } else if (reste.length === 1 && /^0+$/.test(reste[0])) {
+                nettoye = groupes[0];
+            }
+        }
+        const valeur = parseFloat(nettoye);
+        return isFinite(valeur) ? valeur : 0;
+    }
+
+    // Prévenir dès la saisie : au-delà du solde, la validation refusera.
+    function verifierMontantSaisi() {
+        const zone = document.getElementById('montantAvertissement');
+        const texte = document.getElementById('montantAvertissementTexte');
+        if (!zone || !texte) return;
+        const saisi = lireMontant();
+        if (soldeAnnuel !== null && soldeAnnuel >= 0 && saisi > soldeAnnuel) {
+            texte.textContent =
+                "Ce montant dépasse le solde restant de l'année (" + fmtGNF(soldeAnnuel)
+                + "). La validation du paiement sera refusée au-delà de ce plafond.";
+            zone.style.display = '';
+        } else {
+            zone.style.display = 'none';
+        }
     }
 
     function roundNearest1000(v) {
@@ -659,21 +785,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Optionnel: point d'accroche pour afficher un hint 1%
     function updateOnePercentHint() { /* no-op if UI not present */ }
-    
+
     // Mettre à jour l'affichage du montant lors de la saisie
     if (montantInput) {
         montantInput.addEventListener('input', function(){
             try {
-                const v = parseFloat(montantInput.value || 0) || 0;
-                const txt = v.toLocaleString('fr-FR') + ' GNF';
+                const txt = lireMontant().toLocaleString('fr-FR') + ' GNF';
                 if (montantDisplay) montantDisplay.textContent = txt;
                 if (stickyMontant) stickyMontant.textContent = txt;
+                verifierMontantSaisi();
             } catch(_) {}
         });
         montantInput.addEventListener('change', function(){});
     }
     // Remise désactivée: aucun écouteur ni calcul de remise
-    
+
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
     let typeSelect = document.getElementById('id_type_paiement');
@@ -687,13 +813,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const dd = String(today.getDate()).padStart(2, '0');
         dateInput.value = yyyy + '-' + mm + '-' + dd; // format YYYY-MM-DD requis
     }
-    
+
     // Données d'échéancier côté serveur si un élève est déjà sélectionné
     let serverEcheancier = null;
     {% if eleve %}
         try {
             {% if eleve.echeancier %}
             serverEcheancier = {
+                nature_frais: '{{ eleve.echeancier.nature_frais|escapejs }}',
+                frais_admission_label: '{{ eleve.echeancier.libelle_frais_admission|escapejs }}',
                 inscription_du: {{ eleve.echeancier.frais_inscription_du|default:0|stringformat:"d" }},
                 inscription_paye: {{ eleve.echeancier.frais_inscription_paye|default:0|stringformat:"d" }},
                 tranche_1_du: {{ eleve.echeancier.tranche_1_due|default:0|stringformat:"d" }},
@@ -732,14 +860,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (src && src.echeancier) {
                 const e = src.echeancier;
                 return {
+                    nature_frais: e.nature_frais || 'INSCRIPTION',
+                    frais_admission_label: e.frais_admission_label || "Frais d'inscription",
                     inscription_du: e.inscription_du || 0,
                     inscription_paye: e.inscription_paye || 0,
                     tranche_1_du: e.tranche_1_du || 0,
-                    tranche_1_payee: e.tranche_1_payee || 0,
+                    tranche_1_payee: e.tranche_1_payee || e.tranche_1_paye || 0,
                     tranche_2_du: e.tranche_2_du || 0,
-                    tranche_2_payee: e.tranche_2_payee || 0,
+                    tranche_2_payee: e.tranche_2_payee || e.tranche_2_paye || 0,
                     tranche_3_du: e.tranche_3_du || 0,
-                    tranche_3_payee: e.tranche_3_payee || 0,
+                    tranche_3_payee: e.tranche_3_payee || e.tranche_3_paye || 0,
                     total_du: e.total_du || 0,
                     total_paye: e.total_paye || 0,
                     reste: Math.max(0, (e.total_du||0)-(e.total_paye||0))
@@ -770,7 +900,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             {% endif %}
             if (!matricule) return false;
-            
+
             console.log('Fetching echeancier via AJAX for matricule:', matricule);
             const url = new URL(ajaxEleveInfoUrl, window.location.origin);
             url.searchParams.set('matricule', matricule);
@@ -791,112 +921,277 @@ document.addEventListener('DOMContentLoaded', function() {
         return false;
     }
 
-    async function updateMontantSuggestion() {
-        if (!typeSelect || !montantInput) return;
+    // Lecture d'un libellé de type de paiement, calquée sur payment_type_plan()
+    // de paiements/allocation.py. Le serveur fait foi ; ce miroir ne sert que
+    // lorsque son appel échoue, et doit donc donner exactement le même plan.
+    function analyserTypePaiement(libelle) {
+        const TRANCHE = '(?:tranches?|trimestres?|versements?|echeances?)';
+        const SEPARATEURS = /[+,;\/&]|\bet\b|\bplus\b/;
+        const EXCLUSION = /\b(?:sans|hors|sauf|exceptees|exceptee|exceptes|excepte|hormis)\b/;
 
-        // L'échéancier local ne sert plus qu'à afficher la scolarité annuelle;
-        // son absence n'empêche plus de calculer le montant.
+        let texte = String(libelle || '');
+        [[/\bpremiere\b|\bpremier\b|\b1ere\b|\b1er\b|\b1re\b|\b1e\b/g, '1'],
+         [/\bdeuxieme\b|\bseconde\b|\bsecond\b|\b2eme\b|\b2e\b|\b2nd\b/g, '2'],
+         [/\btroisieme\b|\b3eme\b|\b3e\b/g, '3']].forEach(function(regle) {
+            texte = texte.replace(regle[0], regle[1]);
+        });
+        // « tranche deux », « deux tranches » : nombres écrits en lettres.
+        [['un', '1'], ['une', '1'], ['deux', '2'], ['trois', '3']].forEach(function(paire) {
+            texte = texte.replace(new RegExp('\\b(' + TRANCHE + ')\\s+' + paire[0] + '\\b', 'g'), '$1 ' + paire[1]);
+            texte = texte.replace(new RegExp('\\b' + paire[0] + '\\s+(' + TRANCHE + ')\\b', 'g'), paire[1] + ' $1');
+        });
+        // Plages : « tranches 1 à 3 », « T1-T3 ».
+        texte = texte.replace(/\b(?:t\s*)?([123])\s*(?:-|a|au|jusqu\s*'?\s*au?)\s*(?:t\s*)?([123])\b/g,
+            function(tout, debut, fin) {
+                if (Number(debut) >= Number(fin)) return tout;
+                const sortie = [];
+                for (let n = Number(debut); n <= Number(fin); n++) sortie.push('t' + n);
+                return sortie.join(' ');
+            });
+
+        const mentionneTranche = new RegExp('\\b' + TRANCHE + '\\b').test(texte);
+        function lirePostes(fragment) {
+            const tranches = new Set();
+            (fragment.match(/\bt\s*[123]\b/g) || []).forEach(function(m) {
+                tranches.add(Number(m.replace(/[^123]/g, '')));
+            });
+            fragment.split(SEPARATEURS).forEach(function(segment) {
+                segment = (segment || '').trim();
+                if (!segment) return;
+                if (new RegExp('\\b' + TRANCHE + '\\b').test(segment)) {
+                    (segment.match(/\b[123]\b/g) || []).forEach(function(n) { tranches.add(Number(n)); });
+                } else if (mentionneTranche && /^[123]$/.test(segment)) {
+                    // « Tranches 1, 2 et 3 » : le mot n'est écrit qu'une fois.
+                    tranches.add(Number(segment));
+                }
+            });
+            return {
+                tranches: tranches,
+                admission: /\b(?:re)?inscriptions?\b|\badmissions?\b/.test(fragment)
+            };
+        }
+
+        const demandes = [], retraits = [];
+        texte.split(SEPARATEURS).forEach(function(segment) {
+            segment = segment || '';
+            const coupure = segment.search(EXCLUSION);
+            if (coupure < 0) { demandes.push(segment); retraits.push(''); return; }
+            const mot = (segment.match(EXCLUSION) || [''])[0];
+            demandes.push(segment.slice(0, coupure));
+            retraits.push(segment.slice(coupure + mot.length));
+        });
+        const texteDemande = demandes.join(' , ');
+        const retires = lirePostes(retraits.join(' , '));
+        const postes = lirePostes(texteDemande);
+
+        const tranches = postes.tranches;
+        let admission = postes.admission;
+        const kind = /reinscription/.test(texteDemande) ? 'reinscription'
+                   : (/inscription/.test(texteDemande) ? 'inscription' : null);
+        const estSolde = /\bsolde\b|\bsolder\b|\breliquat\b|\bcomplement\b|\breste\s*a\s*payer\b|\btotalite\b|\bintegralite\b|\bintegral(?:e|ement)?\b|\bpaiement\s+total\b|\btout\s+le\s+reste\b/.test(texteDemande);
+        // « Solde tranche 2 » vise cette seule tranche : un poste nommé prime
+        // sur l'élargissement au reste de l'année.
+        const couvreTout = estSolde && !(tranches.size || admission);
+        if (texteDemande.includes('annuel') || couvreTout
+            || (texteDemande.includes('scolarite') && tranches.size === 0)) {
+            [1, 2, 3].forEach(function(n) { tranches.add(n); });
+        }
+        if (couvreTout) admission = true;
+        retires.tranches.forEach(function(n) { tranches.delete(n); });
+
+        return {
+            kind: kind,
+            admission: (admission || kind !== null) && !retires.admission,
+            tranches: Array.from(tranches).sort(function(a, b) { return a - b; }),
+            couvreTout: couvreTout
+        };
+    }
+
+    function updateMontantSuggestion() {
+        console.log('updateMontantSuggestion called');
+        if (!typeSelect || !montantInput) {
+            console.log('Missing elements - typeSelect:', !!typeSelect, 'montantInput:', !!montantInput);
+            return;
+        }
+
+        const ech = getEcheancier();
+        if (!ech) {
+            console.log('No echeancier available');
+            return;
+        }
+
+        console.log('Echeancier data:', ech);
+        // Afficher la scolarité annuelle (hors inscription)
         try {
             const elTxt = document.getElementById('scolariteAnnuelleTxt');
             const tuition = getTuitionBase();
             if (elTxt && tuition) elTxt.textContent = fmtGNF(roundNearest1000(tuition.due));
         } catch(_) {}
 
+        // Restes par poste
+        const remIns = Math.max(0, (ech.inscription_du||0) - (ech.inscription_paye||0));
+        const rem1 = Math.max(0, (ech.tranche_1_du||0) - (ech.tranche_1_payee||0));
+        const rem2 = Math.max(0, (ech.tranche_2_du||0) - (ech.tranche_2_payee||0));
+        const rem3 = Math.max(0, (ech.tranche_3_du||0) - (ech.tranche_3_payee||0));
+        const reste = Math.max(0, (ech.total_du||0)-(ech.total_paye||0));
+
+        console.log('Remaining amounts - Ins:', remIns, 'T1:', rem1, 'T2:', rem2, 'T3:', rem3, 'Total:', reste);
+        // Rafraîchir l'aperçu après MAJ des données
         updateOnePercentHint();
         if (typeof updateFinalAmount === 'function') updateFinalAmount();
 
-        // Le montant exact vient du serveur, via la fonction qui valide aussi
-        // l'enregistrement. Rejouer ces règles ici ferait proposer des montants
-        // ensuite refusés à la soumission — c'était le cas pour « T1 + T2 »,
-        // dont seule T1 était proposée.
-        const eleveEl = document.getElementById('id_eleve');
-        const eleveId = eleveEl && eleveEl.value ? eleveEl.value : null;
-        const typeId = typeSelect.value;
-        if (!eleveId || !typeId) {
+        // Normaliser le libellé du type
+        let selectedText = '';
+        if (typeSelect.selectedIndex >= 0 && typeSelect.options[typeSelect.selectedIndex]) {
+            selectedText = typeSelect.options[typeSelect.selectedIndex].text.toLowerCase();
+            selectedText = selectedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            selectedText = selectedText.replace(/\s+/g, ' ').trim();
+        }
+
+        console.log('Selected type text:', selectedText);
+
+        // Le calcul est additif, comme côté serveur : chaque poste nommé dans
+        // le libellé ajoute son reste. La cascade de « sinon » précédente se
+        // trompait dès que le type combinait trois postes (« Inscription +
+        // Tranche 1 + Tranche 3 » ne facturait pas la 3ème tranche).
+        const plan = analyserTypePaiement(selectedText);
+        const sbFiLabel = document.getElementById('sbFiLabel');
+        if (sbFiLabel) {
+            sbFiLabel.textContent = (plan.kind === 'reinscription' ? 'Réinscription' : 'Inscription') + ' restante:';
+        }
+
+        console.log('Plan local:', plan);
+
+        if (!plan.admission && !plan.tranches.length) {
+            // Cantine, transport, uniforme… : aucun poste de l'échéancier.
+            // Proposer le solde annuel serait un montant inventé.
             if (badge) badge.style.display = 'none';
             return;
         }
 
-        let data = null;
-        try {
-            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
-            const resp = await fetch(ajaxMontantSuggereUrl, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-CSRFToken': csrfInput ? csrfInput.value : '',
-                },
-                body: new URLSearchParams({eleve_id: eleveId, type_id: typeId}).toString(),
-            });
-            data = await resp.json();
-        } catch (e) {
-            console.warn('ajax_montant_suggere failed', e);
-            return;
-        }
-        if (!data || !data.ok) return;
+        const restesParTranche = { 1: rem1, 2: rem2, 3: rem3 };
+        var amount = (plan.admission ? remIns : 0)
+            + plan.tranches.reduce((total, n) => total + (restesParTranche[n] || 0), 0);
 
-        const suggested = Math.floor(Number(data.suggested || 0));
-        const bd = data.breakdown || {};
+        console.log('Calculated amount:', amount, '(solde annuel:', reste, ')');
 
-        // Restes par poste, tels que le serveur les voit
-        const fmtGnf = (v) => Number(v || 0).toLocaleString('fr-FR') + ' GNF';
-        const panneau = document.getElementById('suggestionBreakdown');
-        const sbFi = document.getElementById('sbFi');
-        const sbT1 = document.getElementById('sbT1');
-        const sbT2 = document.getElementById('sbT2');
-        const sbT3 = document.getElementById('sbT3');
-        if (sbFi) sbFi.textContent = fmtGnf(bd.fi_restant);
-        if (sbT1) sbT1.textContent = fmtGnf(bd.t1_restant);
-        if (sbT2) sbT2.textContent = fmtGnf(bd.t2_restant);
-        if (sbT3) sbT3.textContent = fmtGnf(bd.t3_restant);
-        if (panneau) panneau.style.display = '';
-
-        // Détail poste par poste de ce que ce type réclame
-        const blocCompo = document.getElementById('sbCompositionBloc');
-        const compo = document.getElementById('sbComposition');
-        const postes = Array.isArray(bd.postes) ? bd.postes : [];
-        if (compo && blocCompo) {
-            if (postes.length) {
-                compo.textContent = postes
-                    .map(p => p.label + ' : ' + Number(p.montant).toLocaleString('fr-FR') + ' GNF')
-                    .join('  +  ');
-                blocCompo.style.display = '';
-            } else {
-                blocCompo.style.display = 'none';
-            }
-        }
-        const desc = document.getElementById('sbDesc');
-        if (desc) {
-            desc.textContent = postes.length
-                ? "Montant exact restant pour les postes couverts par ce type."
-                : "Ce type ne cible aucun poste précis : saisissez le montant.";
-        }
-
+        // Toujours renseigner le champ
+        var suggested = Math.floor(amount);
         if (suggested > 0) {
+            // Ne pas forcer 0 dans le champ, seulement une suggestion positive
             montantInput.value = suggested;
+            // Mettre à jour le badge
             if (badge && badgeValue) {
                 badgeValue.textContent = Number(suggested).toLocaleString('fr-FR');
                 badge.style.display = 'inline-flex';
             }
         } else {
-            // Rien à payer sur ces postes: ne pas écraser une saisie en cours
-            if (badge) badge.style.display = 'none';
+            // Pas de suggestion positive: ne rien écraser et masquer le badge
+            if (badge) {
+                badge.style.display = 'none';
+            }
         }
-        montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+         montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+        console.log('Montant field updated to:', montantInput.value);
+    }
+
+    // La suggestion serveur projette le bon tarif inscription/réinscription
+    // sans modifier l'échéancier avant l'enregistrement du formulaire.
+    async function updateServerSuggestion() {
+        try {
+            const csrfInput = document.querySelector('#paiementForm input[name="csrfmiddlewaretoken"]');
+            const eleveHidden = document.getElementById('id_eleve');
+            const typeSelectEl = document.getElementById('id_type_paiement');
+            const eleveId = eleveHidden && eleveHidden.value ? eleveHidden.value : null;
+            const typeId = typeSelectEl && typeSelectEl.value ? typeSelectEl.value : null;
+            if (!eleveId || !typeId) return false;
+
+            const resp = await fetch('{% url "paiements:ajax_montant_suggere" %}', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfInput ? csrfInput.value : ''
+                },
+                body: new URLSearchParams({ eleve_id: eleveId, type_id: typeId }).toString()
+            });
+            const data = await resp.json();
+            if (!data || !data.ok) return false;
+
+            const suggested = Number(data.suggested || 0);
+            soldeAnnuel = Number(data.solde_total || 0);
+            if (suggested > 0) {
+                montantInput.value = suggested;
+                montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+                if (badge && badgeValue) {
+                    badgeValue.textContent = suggested.toLocaleString('fr-FR');
+                    badge.style.display = 'inline-flex';
+                }
+            }
+
+            const bd = data.breakdown || {};
+            const sb = document.getElementById('suggestionBreakdown');
+            const fmt = (v) => Number(v || 0).toLocaleString('fr-FR') + ' GNF';
+            if (sb) {
+                const sbFi = document.getElementById('sbFi');
+                const sbFiLabel = document.getElementById('sbFiLabel');
+                const sbT1 = document.getElementById('sbT1');
+                const sbT2 = document.getElementById('sbT2');
+                const sbT3 = document.getElementById('sbT3');
+                const sbDesc = document.getElementById('sbDesc');
+                if (sbFi) sbFi.textContent = fmt(bd.fi_restant);
+                if (sbFiLabel) sbFiLabel.textContent = (bd.frais_admission_label || 'Inscription') + ' restante:';
+                if (sbT1) sbT1.textContent = fmt(bd.t1_restant);
+                if (sbT2) sbT2.textContent = fmt(bd.t2_restant);
+                if (sbT3) sbT3.textContent = fmt(bd.t3_restant);
+                if (sbDesc) sbDesc.textContent = bd.description || '';
+
+                // Détail du calcul : « Réinscription 20 000 + Tranche 1 300 000 = 320 000 GNF »
+                const sbCalcul = document.getElementById('sbCalcul');
+                const sbCalculTexte = document.getElementById('sbCalculTexte');
+                const lignes = Array.isArray(bd.lignes) ? bd.lignes : [];
+                if (sbCalcul && sbCalculTexte) {
+                    if (lignes.length) {
+                        const detail = lignes
+                            .map(l => l.libelle + ' ' + Number(l.reste || 0).toLocaleString('fr-FR'))
+                            .join(' + ');
+                        sbCalculTexte.textContent =
+                            detail + ' = ' + suggested.toLocaleString('fr-FR') + ' GNF';
+                        sbCalcul.style.display = '';
+                    } else {
+                        sbCalcul.style.display = 'none';
+                    }
+                }
+                sb.style.display = '';
+            }
+            verifierMontantSaisi();
+            return true;
+        } catch (e) {
+            console.warn('Suggestion serveur indisponible, conservation du calcul local.', e);
+            return false;
+        }
+    }
+
+    // Le serveur fait foi : il connaît le tarif d'admission projeté, les
+    // remises validées et la lecture exacte du libellé du type. Le calcul
+    // local ne sert plus que de secours si l'appel n'aboutit pas.
+    async function suggererMontant() {
+        const okServeur = await updateServerSuggestion();
+        if (!okServeur) {
+            updateMontantSuggestion();
+        }
     }
 
     // Écouteurs d'événements
     if (typeSelect) {
-        typeSelect.addEventListener('change', updateMontantSuggestion);
-        // Déclencher aussi sur focus pour s'assurer que ça marche
-        typeSelect.addEventListener('focus', updateMontantSuggestion);
+        typeSelect.addEventListener('change', suggererMontant);
     }
 
     // Bouton pour remplir le montant suggéré à la demande
     const btnFillSuggested = document.getElementById('btnFillSuggested');
     if (btnFillSuggested) {
-        btnFillSuggested.addEventListener('click', updateMontantSuggestion);
+        btnFillSuggested.addEventListener('click', suggererMontant);
     }
 
     // Auto-sélection d'un type par défaut si aucun n'est choisi
@@ -937,19 +1232,23 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(autoSelectDefaultType, 0);
     {% endif %}
 
-    // Déclenchement immédiat et répété pour s'assurer que ça marche
+    // Déclenchement immédiat : la suggestion serveur suffit dans le cas normal.
+    // L'échéancier AJAX et le calcul local ne servent que si elle n'aboutit pas.
     async function tryUpdateMontant() {
-        // L'échéancier local n'est plus requis pour le montant — le serveur le
-        // calcule — mais on le charge quand même pour les affichages annexes.
+        if (await updateServerSuggestion()) return;
+
         if (!getEcheancier()) {
-            await ensureEcheancierLoaded();
+            const loaded = await ensureEcheancierLoaded();
+            if (!loaded) return;
         }
-        await updateMontantSuggestion();
+
+        if (await updateServerSuggestion()) return;
+        updateMontantSuggestion();
     }
-    
+
     // Déclencher immédiatement
     tryUpdateMontant();
-    
+
     // Déclencher aussi après un délai
     setTimeout(() => tryUpdateMontant(), 100);
 
@@ -959,7 +1258,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateFinalAmount() {
-        const v = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const v = lireMontant();
         const remiseEl = document.getElementById('id_remise_pourcentage');
         const pct = parseFloat(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
         const remise = Math.max(0, Math.min(100, pct));
@@ -988,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Formatage du montant en temps réel et maj badge (toujours visible)
     montantInput.addEventListener('input', function() {
-        const value = parseFloat(this.value);
+        const value = lireMontant();
         const v = isNaN(value) ? 0 : Math.max(0, value);
         try {
             montantDisplay.textContent = v.toLocaleString('fr-FR') + ' GNF';
@@ -1008,6 +1307,7 @@ document.addEventListener('DOMContentLoaded', function() {
             catch(_) { stickyMontant.textContent = String(v) + ' GNF'; }
         }
         updateFinalAmount();
+        verifierMontantSaisi();
     })
 
     // Mise à jour quand la remise change
@@ -1021,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateFinalAmount();
     // Init sticky avec les valeurs actuelles
     (function initSticky() {
-        const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const initVal = lireMontant();
         const stickyMontant = document.getElementById('stickyMontant');
         const stickyFinal = document.getElementById('stickyFinal');
         if (stickyMontant) {
@@ -1035,13 +1335,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     })();
-    
+
     // Validation du formulaire
     form.addEventListener('submit', function(e) {
         // Récupérer de manière robuste le champ élève (input hidden ou select visible)
         const eleveSelect = document.querySelector('[name="eleve"]');
         const eleveError = document.getElementById('eleveError');
-        
+
         // Vérifier qu'un élève est sélectionné (soit via AJAX, soit via sélection manuelle)
         if (!eleveSelect.value) {
             // Si aucun élève n'est sélectionné, essayer de valider la sélection manuelle
@@ -1084,14 +1384,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
-        
+
         // Réactiver le bouton après 5 secondes en cas de problème
         setTimeout(function() {
             submitBtn.disabled = false;
             submitBtn.innerHTML = '<i class="fas fa-save me-2"></i>{{ action }} le paiement';
         }, 5000);
     });
-    
+
     // Fonctionnalité de recherche par matricule
     {% if not eleve %}
     const matriculeInput = document.getElementById('matriculeInput');
@@ -1101,10 +1401,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const eleveSelectInit = document.getElementById('{{ form.eleve.id_for_label }}');
     const eleveInputInit = document.getElementById('eleveInput');
     const changerEleveBtn = document.getElementById('changerEleveBtn');
-    
+
     // Variables pour stocker les données de l'élève
     let currentEleveData = null;
-    
+
     // Fonction pour formater les montants
     function formatMontant(montant) {
         let v = Number(montant);
@@ -1116,16 +1416,16 @@ document.addEventListener('DOMContentLoaded', function() {
             return String(v) + ' GNF';
         }
     }
-    
+
     // Fonction pour afficher les informations de l'élève
     function afficherEleveInfo(data) {
         currentEleveData = data;
-        
+
         // Remplir les informations de base
         document.getElementById('eleveNomPrenom').innerHTML = `<strong>${data.eleve.prenom} ${data.eleve.nom}</strong>`;
         document.getElementById('eleveMatricule').innerHTML = `<small class="text-muted">Matricule : ${data.eleve.matricule}</small>`;
         document.getElementById('eleveClasse').innerHTML = `<small class="text-muted">Classe : ${data.eleve.classe} - ${data.eleve.ecole}</small>`;
-        
+
         // Gérer la photo
         const photoContainer = document.getElementById('elevePhotoContainer');
         if (data.eleve.photo_url) {
@@ -1135,7 +1435,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <i class="fas fa-user text-white fa-2x"></i>
             </div>`;
         }
-        
+
         // Afficher l'échéancier si disponible
         if (data.has_echeancier) {
             document.getElementById('totalDu').textContent = formatMontant(data.echeancier.total_du);
@@ -1145,17 +1445,17 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             document.getElementById('echeancierResume').style.display = 'none';
         }
-        
+
         // Mettre à jour le select caché
         eleveSelectInit.value = data.eleve.id;
-        
+
         // Afficher la section
         eleveInfoSection.style.display = 'block';
-        
+
         // Masquer les champs de recherche
         matriculeInput.parentElement.parentElement.style.display = 'none';
         eleveInputInit.parentElement.style.display = 'none';
-        
+
         // Effacer les erreurs
         matriculeError.style.display = 'none';
         const eleveErrorElement = document.getElementById('eleveError');
@@ -1165,9 +1465,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Mettre à jour la suggestion de montant en fonction du type choisi
-        updateMontantSuggestion();
+        suggererMontant();
     }
-    
+
     // Fonction pour réinitialiser la sélection
     function reinitialiserSelection() {
         currentEleveData = null;
@@ -1179,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', function() {
         eleveInputInit.value = '';
         matriculeError.style.display = 'none';
     }
-    
+
     // Recherche par matricule
     function rechercherParMatricule() {
         const matricule = matriculeInput.value.trim();
@@ -1188,12 +1488,12 @@ document.addEventListener('DOMContentLoaded', function() {
             matriculeError.style.display = 'block';
             return;
         }
-        
+
         // Désactiver le bouton pendant la recherche
         rechercherBtn.disabled = true;
         rechercherBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recherche...';
         matriculeError.style.display = 'none';
-        
+
         // Appel AJAX
         fetch(`{% url 'paiements:ajax_eleve_info' %}?matricule=${encodeURIComponent(matricule)}`)
             .then(response => response.json())
@@ -1215,10 +1515,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 rechercherBtn.innerHTML = '<i class="fas fa-search"></i> Rechercher';
             });
     }
-    
+
     // Event listeners
     rechercherBtn.addEventListener('click', rechercherParMatricule);
-    
+
     // Recherche en appuyant sur Entrée
     matriculeInput.addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
@@ -1226,10 +1526,10 @@ document.addEventListener('DOMContentLoaded', function() {
             rechercherParMatricule();
         }
     });
-    
+
     // Bouton changer élève
     changerEleveBtn.addEventListener('click', reinitialiserSelection);
-    
+
     // Auto-complétion pour la sélection manuelle d'élève
     if (eleveInputInit && eleveSelectInit) {
         eleveInputInit.addEventListener('change', function() {
@@ -1238,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (match) {
                 const eleveId = match.getAttribute('data-id');
                 eleveSelectInit.value = eleveId;
-                
+
                 // Simuler les données pour affichage (extraction depuis l'option)
                 const optionText = match.value;
                 const parts = optionText.match(/^(.+) \((.+)\) - (.+) \/ (.+)$/);
@@ -1259,30 +1559,31 @@ document.addEventListener('DOMContentLoaded', function() {
                     };
                     afficherEleveInfo(fakeData);
                 }
-                
+
                 const err = document.getElementById('eleveError');
                 if (err) err.style.display = 'none';
             }
         });
     }
     {% endif %}
-    
+
     // Calcul du montant final après remise (aperçu)
     function updateFinalAmount() {
         try {
-            const montant = Number((montantInput && montantInput.value) ? montantInput.value : 0) || 0;
+            const montant = lireMontant();
             const remiseEl = document.getElementById('id_remise_pourcentage');
             const pct = Number(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
             const tuition = getTuitionBase();
             let base_remise = tuition ? tuition.rest : montant;
             if (base_remise < 0) base_remise = 0;
             const remise_montant = Math.max(0, (base_remise * pct) / 100.0);
-            const final_montant = Math.max(0, montant - remise_montant);
-            const final_disp = roundNearest1000(final_montant);
+            // Le montant encaissé n'est pas forcément un multiple de 1 000
+            // (1 130 500 GNF) : l'aperçu affiche la valeur exacte.
+            const final_disp = Math.max(0, montant - remise_montant);
             const info = document.getElementById('remiseInfo');
             if (info) {
                 info.style.display = 'inline';
-                info.textContent = 'Base remise: ' + fmtGNF(roundNearest1000(base_remise)) + ' • Remise: ' + fmtGNF(roundNearest1000(remise_montant));
+                info.textContent = 'Base remise: ' + fmtGNF(base_remise) + ' • Remise: ' + fmtGNF(remise_montant);
             }
             const finalDisplay = document.getElementById('finalAmountDisplay');
             if (finalDisplay) finalDisplay.textContent = fmtGNF(final_disp);
@@ -1300,19 +1601,19 @@ function showConfirmationDialog() {
     const montantSaisi = '{{ montant_saisi|default:"0" }}';
     const montantAttendu = '{{ montant_attendu|default:"0" }}';
     const typeDescription = '{{ type_description|default:"" }}';
-    
+
     const message = `⚠️ CONFIRMATION DE PAIEMENT PARTIEL\n\n` +
                    `Montant saisi: ${parseInt(montantSaisi).toLocaleString()} GNF\n` +
                    `Montant standard pour ${typeDescription}: ${parseInt(montantAttendu).toLocaleString()} GNF\n\n` +
                    `Voulez-vous vraiment enregistrer ce paiement partiel ?\n\n` +
                    `⚠️ Cette action est irréversible une fois validée.`;
-    
+
     if (confirm(message)) {
         // Cocher automatiquement la case de confirmation
         const checkbox = document.getElementById('confirmationPartiel');
         if (checkbox) {
             checkbox.checked = true;
-            
+
             // Soumettre automatiquement le formulaire
             const form = document.getElementById('paiementForm');
             if (form) {
@@ -1322,7 +1623,7 @@ function showConfirmationDialog() {
                     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement du paiement partiel...';
                     submitBtn.disabled = true;
                 }
-                
+
                 // Soumettre le formulaire
                 form.submit();
             }
@@ -1339,12 +1640,12 @@ document.addEventListener('DOMContentLoaded', function() {
         message.style.fontWeight = 'bold';
         message.style.fontSize = '1.1em';
     });
-    
+
     // Ajouter une animation pour attirer l'attention sur la section de confirmation
     const confirmationSection = document.querySelector('.alert-danger[style*="border: 2px solid #dc3545"]');
     if (confirmationSection) {
         confirmationSection.style.animation = 'pulse 2s infinite';
-        
+
         // Ajouter le CSS pour l'animation pulse
         const style = document.createElement('style');
         style.textContent = `

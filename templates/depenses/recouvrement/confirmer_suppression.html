@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Supprimer — {{ cfg.titre }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Supprimer — {{ cfg.titre }}</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Attention !</strong> Cette action est irréversible.
+                    </div>
+                    <dl class="row">
+                        <dt class="col-sm-3">Date :</dt>
+                        <dd class="col-sm-9">{{ instance.date|date:"d/m/Y" }}</dd>
+                        <dt class="col-sm-3">{{ cfg.champ_principal_label }} :</dt>
+                        <dd class="col-sm-9">
+                            {% if cle == 'versement' %}{{ instance.lieu_versement }}{% else %}{{ instance.designation }}{% endif %}
+                        </dd>
+                        <dt class="col-sm-3">Montant :</dt>
+                        <dd class="col-sm-9"><strong>{{ instance.montant|intcomma }} GNF</strong></dd>
+                    </dl>
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'depenses:liste_module_simple' cle %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Annuler
+                            </a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash"></i> Confirmer la suppression
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

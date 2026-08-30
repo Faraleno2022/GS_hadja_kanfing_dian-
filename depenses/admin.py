@@ -3,11 +3,15 @@ from .models import (
     CategorieDepense, Fournisseur, Depense, PieceJustificative,
     BudgetAnnuel, HistoriqueDepense
 )
-from .models_logistique import BienEtablissement, ContributionRamePapier
-from .models_fournitures import FournitureScolaire, VenteFourniture
+from .models_logistique import (
+    BienEtablissement, ContributionPapierRame
+)
 from .models_bibliotheque import (
     CategorieLivre, Livre, Emprunt, Reservation,
     HistoriqueLivre, ParametreBibliotheque
+)
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
 )
 
 
@@ -34,53 +38,56 @@ class DepenseAdmin(admin.ModelAdmin):
     date_hierarchy = 'date_facture'
 
 
+# ===== RECOUVREMENT (nouveaux modules) =====
+@admin.register(DepenseCuisine)
+class DepenseCuisineAdmin(admin.ModelAdmin):
+    list_display = ['designation', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['designation', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(DepenseDocument)
+class DepenseDocumentAdmin(admin.ModelAdmin):
+    list_display = ['designation', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['designation', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(Versement)
+class VersementAdmin(admin.ModelAdmin):
+    list_display = ['lieu_versement', 'montant', 'date', 'cree_par']
+    list_filter = ['date']
+    search_fields = ['lieu_versement', 'observation']
+    date_hierarchy = 'date'
+
+
+@admin.register(AbonnementInformatique)
+class AbonnementInformatiqueAdmin(admin.ModelAdmin):
+    list_display = ['eleve', 'montant', 'date_debut', 'date_fin', 'statut']
+    list_filter = ['statut']
+    search_fields = ['eleve__nom', 'eleve__prenom', 'eleve__matricule']
+    date_hierarchy = 'date_fin'
+
+
 # ===== LOGISTIQUE =====
 @admin.register(BienEtablissement)
 class BienEtablissementAdmin(admin.ModelAdmin):
     list_display = [
-        'code_bien', 'nom', 'ecole', 'type_bien', 'quantite_achetee',
-        'quantite_utilisee', 'quantite_endommagee', 'quantite_disponible',
-        'prix_achat_unitaire', 'etat',
+        'code_bien', 'nom', 'type_bien', 'quantite_achetee',
+        'quantite_utilisee', 'quantite_gatee', 'quantite_disponible', 'etat',
     ]
-    list_filter = ['ecole', 'type_bien', 'etat', 'actif']
-    search_fields = ['code_bien', 'nom', 'marque', 'localisation']
-    readonly_fields = ['valeur_achat']
+    list_filter = ['type_bien', 'etat', 'actif']
+    search_fields = ['code_bien', 'nom', 'localisation']
 
 
-@admin.register(ContributionRamePapier)
-class ContributionRamePapierAdmin(admin.ModelAdmin):
-    list_display = [
-        'date_contribution', 'eleve', 'ecole', 'annee_scolaire',
-        'mode_contribution', 'nombre_paquets', 'montant_paye',
-    ]
-    list_filter = ['ecole', 'annee_scolaire', 'mode_contribution', 'date_contribution']
+@admin.register(ContributionPapierRame)
+class ContributionPapierRameAdmin(admin.ModelAdmin):
+    list_display = ['eleve', 'type_contribution', 'nombre_paquets', 'montant_paye', 'date_contribution']
+    list_filter = ['type_contribution', 'date_contribution']
     search_fields = ['eleve__matricule', 'eleve__nom', 'eleve__prenom']
     date_hierarchy = 'date_contribution'
-
-
-# ===== FOURNITURES SCOLAIRES =====
-@admin.register(FournitureScolaire)
-class FournitureScolaireAdmin(admin.ModelAdmin):
-    list_display = [
-        'reference', 'nom', 'ecole', 'categorie', 'quantite_stock',
-        'quantite_vendue', 'quantite_restante', 'prix_achat_unitaire',
-        'prix_vente_unitaire', 'actif',
-    ]
-    list_filter = ['ecole', 'categorie', 'unite', 'actif']
-    search_fields = ['reference', 'nom', 'description']
-    readonly_fields = ['quantite_vendue', 'quantite_restante', 'chiffre_affaires', 'solde']
-
-
-@admin.register(VenteFourniture)
-class VenteFournitureAdmin(admin.ModelAdmin):
-    list_display = [
-        'numero_vente', 'date_vente', 'produit', 'ecole', 'quantite',
-        'prix_vente_unitaire', 'montant_total', 'client',
-    ]
-    list_filter = ['ecole', 'date_vente', 'produit__categorie']
-    search_fields = ['numero_vente', 'produit__nom', 'produit__reference', 'client']
-    date_hierarchy = 'date_vente'
-    readonly_fields = ['numero_vente', 'montant_total', 'marge']
 
 
 # ===== BIBLIOTHÈQUE =====
@@ -126,43 +133,3 @@ class ParametreBibliothequeAdmin(admin.ModelAdmin):
     
     def has_delete_permission(self, request, obj=None):
         return False
-
-
-# ── Modules de recouvrement ────────────────────────────────────────────────
-
-from .models_recouvrement import (
-    AbonnementInformatique, DepenseCuisine, DepenseDocument, Versement,
-)
-
-
-@admin.register(DepenseCuisine)
-class DepenseCuisineAdmin(admin.ModelAdmin):
-    list_display = ['date', 'designation', 'montant', 'ecole', 'cree_par']
-    list_filter = ['ecole', 'date']
-    search_fields = ['designation', 'observation']
-    date_hierarchy = 'date'
-
-
-@admin.register(DepenseDocument)
-class DepenseDocumentAdmin(admin.ModelAdmin):
-    list_display = ['date', 'designation', 'montant', 'ecole', 'cree_par']
-    list_filter = ['ecole', 'date']
-    search_fields = ['designation', 'observation']
-    date_hierarchy = 'date'
-
-
-@admin.register(Versement)
-class VersementAdmin(admin.ModelAdmin):
-    list_display = ['date', 'lieu_versement', 'montant', 'ecole', 'cree_par']
-    list_filter = ['ecole', 'date']
-    search_fields = ['lieu_versement', 'observation']
-    date_hierarchy = 'date'
-
-
-@admin.register(AbonnementInformatique)
-class AbonnementInformatiqueAdmin(admin.ModelAdmin):
-    list_display = ['eleve', 'montant', 'date_debut', 'date_fin', 'statut', 'jours_restants']
-    list_filter = ['statut', 'date_fin']
-    search_fields = ['eleve__matricule', 'eleve__nom', 'eleve__prenom']
-    date_hierarchy = 'date_fin'
-    readonly_fields = ['jours_restants']

@@ -2,7 +2,9 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+from eleves.models import Ecole
 from .models import Profil
+from .services import garantir_compte_principal_ecole
 
 
 @receiver(post_save, sender=User)
@@ -24,4 +26,17 @@ def create_or_update_user_profil(sender, instance: User, created: bool, **kwargs
             profil.save(update_fields=['role'])
     except Exception:
         # Ne jamais bloquer l'enregistrement d'un utilisateur si problème de profil
+        pass
+
+
+@receiver(post_save, sender=Ecole)
+def garantir_principal_ecole_validee(sender, instance: Ecole, **kwargs):
+    """Active les nouvelles fonctions quelle que soit la méthode de validation."""
+    if instance.etat != 'VALIDE':
+        return
+    try:
+        garantir_compte_principal_ecole(instance)
+    except Exception:
+        # La validation de l'école ne doit jamais être annulée par une anomalie
+        # d'un ancien profil ; la migration de réparation pourra la reprendre.
         pass

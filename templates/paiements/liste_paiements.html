@@ -14,17 +14,18 @@
         <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Nouveau Paiement
         </a>
+        {% if user_permissions.can_delete_payments %}
+        <a href="{% url 'administration:corbeille_elements' %}?type=Paiement" class="btn btn-outline-danger">
+            <i class="fas fa-trash-restore me-1"></i>Corbeille des paiements
+        </a>
+        {% endif %}
         <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
             <i class="fas fa-filter me-1"></i>Filtres
         </button>
-        {% if peut_consulter_rapports %}
-        <a href="{% url 'paiements:rapport_comptable' %}"
-           class="btn btn-outline-primary"
-           target="_blank"
-           rel="noopener"
-           title="Afficher le rapport comptable complet avec le détail des paiements">
-            <i class="fas fa-eye me-1"></i>Voir le rapport comptable détaillé
-        </a>
+        {% if can_view_reports %}
+        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
+            <i class="fas fa-book-open me-1"></i>Rapport comptable
+        </button>
         {% endif %}
         <div class="btn-group">
             <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -52,7 +53,6 @@
                         <i class="fas fa-file-excel me-2"></i>Excel (récap par classe)
                     </a>
                 </li>
-                <li><a class="dropdown-item" href="?export=pdf"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
                     <a class="dropdown-item" href="#" onclick="exportTranchesParClassePdf(); return false;">
@@ -61,14 +61,19 @@
                 </li>
                 <li>
                     <a class="dropdown-item" href="#" onclick="exportTranchesParClasseExcel(); return false;">
-                        <i class="fas fa-file-excel me-2"></i>Tranches par classe (Excel)
+                        <i class="fas fa-file-excel text-success me-2"></i>Tranches par classe (Excel)
                     </a>
                 </li>
-                {% if peut_consulter_rapports %}
                 <li><hr class="dropdown-divider"></li>
+                {% if can_view_reports %}
+                <li>
+                    <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportModesEncaissementModal">
+                        <i class="fas fa-cash-register me-2"></i>Montants par mode d'encaissement…
+                    </a>
+                </li>
                 <li>
                     <a class="dropdown-item fw-bold" href="#" data-bs-toggle="modal" data-bs-target="#rapportComptableModal">
-                        <i class="fas fa-book me-2"></i>Rapport comptable professionnel…
+                        <i class="fas fa-book me-2"></i>Rapport comptable complet…
                     </a>
                 </li>
                 <li>
@@ -80,19 +85,71 @@
             </ul>
         </div>
 
-        {% if peut_consulter_rapports %}
+        {% if can_view_reports %}
+        <!-- Modal Encaissements par mode -->
+        <div class="modal fade" id="rapportModesEncaissementModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-cash-register me-2"></i>Montants par mode d'encaissement
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            Export des paiements validés par mode : montant total,
+                            part du total, montant moyen, références à contrôler et
+                            journal détaillé.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Classe (vide = tout l'établissement)</label>
+                            <select id="rmClasse" class="form-select">
+                                <option value="">— Tout l'établissement —</option>
+                                {% for classe in classes_rapport %}
+                                <option value="{{ classe.id }}">{{ classe.nom }} ({{ classe.annee_scolaire }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Du (optionnel)</label>
+                                <input type="date" id="rmDu" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Au (optionnel)</label>
+                                <input type="date" id="rmAu" class="form-control">
+                            </div>
+                        </div>
+                        <input type="hidden" id="rmAnnee" value="{{ annee_active }}">
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary me-auto" onclick="ouvrirTableauModesEncaissement()">
+                            <i class="fas fa-table me-1"></i>Afficher les soldes et élèves
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="ouvrirRapportModesEncaissement('pdf')">
+                            <i class="fas fa-file-pdf me-1"></i>PDF
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="ouvrirRapportModesEncaissement('excel')">
+                            <i class="fas fa-file-excel me-1"></i>Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Modal Rapport comptable complet -->
         <div class="modal fade" id="rapportComptableModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title"><i class="fas fa-book me-2"></i>Rapport comptable professionnel</h5>
+                        <h5 class="modal-title"><i class="fas fa-book me-2"></i>Rapport comptable complet</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
                     </div>
                     <div class="modal-body">
                         <p class="text-muted small mb-3">
-                            Encaissements par statut, mode, type et classe, remises accordées
-                            et journal détaillé des reçus pour le rapprochement de caisse.
+                            Synthèse des encaissements, statuts, modes, types, classes,
+                            remises et journal détaillé pour le rapprochement comptable.
                         </p>
                         <div class="mb-3">
                             <label class="form-label">Classe (vide = tout l'établissement)</label>
@@ -116,8 +173,8 @@
                         <input type="hidden" id="rcAnnee" value="{{ annee_active }}">
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-primary" onclick="ouvrirRapportComptable('web')">
-                            <i class="fas fa-eye me-1"></i>Voir à l'écran
+                        <button type="button" class="btn btn-primary me-auto" onclick="ouvrirApercuRapportComptable()">
+                            <i class="fas fa-eye me-1"></i>Afficher l'aperçu complet
                         </button>
                         <button type="button" class="btn btn-danger" onclick="ouvrirRapportComptable('pdf')">
                             <i class="fas fa-file-pdf me-1"></i>PDF
@@ -142,8 +199,8 @@
                     </div>
                     <div class="modal-body">
                         <p class="text-muted small mb-3">
-                            Portefeuille des créances, ventilation par poste, taux de recouvrement,
-                            balance âgée, dossiers prioritaires et suivi des relances.
+                            Portefeuille des créances, taux de recouvrement, balance âgée,
+                            échéances à venir, dossiers prioritaires et suivi des relances.
                         </p>
                         <div class="mb-3">
                             <label class="form-label">Classe (vide = tout l'établissement)</label>
@@ -165,7 +222,7 @@
                             </div>
                         </div>
                         <div class="form-text">
-                            La date « au » sert aussi de date d'arrêt pour le calcul des retards.
+                            La date « au » sert aussi de date d'arrêt pour calculer les retards.
                         </div>
                         <input type="hidden" id="rrAnnee" value="{{ annee_active }}">
                     </div>
@@ -193,7 +250,7 @@
             <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
                 <i class="fas fa-bell me-1"></i>Relances
             </a>
-            {% if peut_consulter_rapports %}
+            {% if can_view_reports %}
             <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-outline-success">
                 <i class="fas fa-percent me-1"></i>Rapport des remises
             </a>
@@ -368,19 +425,6 @@
 
 {% block content %}
 
-    {% if paiements_hors_annee %}
-    <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
-        <i class="fas fa-triangle-exclamation mt-1"></i>
-        <div>
-            <strong>{{ paiements_hors_annee }} paiement(s) masqué(s).</strong>
-            La liste affiche l'année {{ annee_affichee }} ; ces encaissements
-            sont enregistrés sur une autre année scolaire et n'apparaissent
-            donc pas ci-dessous. Vérifiez la classe de l'élève, ou ouvrez le
-            paiement et corrigez sa date pour le rattacher à la bonne année.
-        </div>
-    </div>
-    {% endif %}
-
     <!-- Recherche (une seule zone multi-critères) -->
     <div class="search-card">
         <form method="get" class="row g-3 align-items-end" id="filtresForm">
@@ -542,27 +586,31 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Ouvre l'export PDF "Tranches par classe" en conservant les filtres de l'URL
-function exportTranchesParClassePdf() {
-    exportTranchesParClasse('{% url "paiements:export_tranches_par_classe_pdf" %}');
-}
-
-function exportTranchesParClasseExcel() {
-    exportTranchesParClasse('{% url "paiements:export_tranches_par_classe_excel" %}');
-}
-
-function exportTranchesParClasse(base) {
+// Ouvre l'export "Tranches par classe" (PDF ou Excel) en conservant les filtres
+// actifs, qu'ils viennent de l'URL ou du formulaire de filtres.
+function _urlTranchesParClasse(base) {
     const u = new URL(window.location.href);
+    const form = document.getElementById('filtresForm');
+    const champ = (nom) => {
+        const el = form ? form.querySelector('[name="' + nom + '"]') : null;
+        return (el && el.value ? el.value : '').trim();
+    };
     const out = new URL(base, window.location.origin);
-    const annee = u.searchParams.get('annee_scolaire');
-    const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id'); // compat
-    const ecole = u.searchParams.get('ecole');
+    const annee = u.searchParams.get('annee_scolaire') || u.searchParams.get('annee') || champ('annee');
+    const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id') || champ('classe_id');
+    const ecole = u.searchParams.get('ecole') || champ('ecole');
 
     if (annee) out.searchParams.set('annee_scolaire', annee);
     if (classe) out.searchParams.set('classe', classe);
     if (ecole) out.searchParams.set('ecole', ecole);
 
-    window.open(out.toString(), '_blank');
+    return out.toString();
+}
+function exportTranchesParClassePdf() {
+    window.open(_urlTranchesParClasse('{% url "paiements:export_tranches_par_classe_pdf" %}'), '_blank');
+}
+function exportTranchesParClasseExcel() {
+    window.open(_urlTranchesParClasse('{% url "paiements:export_tranches_par_classe_excel" %}'), '_blank');
 }
 
 // Export des résultats filtrés (reprend tous les filtres actifs du formulaire)
@@ -585,26 +633,57 @@ function exportFiltresPdf() {
     window.open(_urlExportFiltres('{% url "paiements:export_paiements_filtres_pdf" %}'), '_blank');
 }
 
-// Rapport comptable complet (paiements + retards + relances + rapprochement par mode)
-function ouvrirRapportComptable(format) {
-    const base = format === 'web'
-        ? '{% url "paiements:rapport_comptable" %}'
-        : (format === 'pdf'
-            ? '{% url "paiements:export_comptabilite_pdf" %}'
-            : '{% url "paiements:export_comptabilite_excel" %}');
+// Tableau et rapports des montants par mode d'encaissement
+function _urlModesEncaissement(base) {
+    const out = new URL(base, window.location.origin);
+    const classe = document.getElementById('rmClasse').value;
+    const du = document.getElementById('rmDu').value;
+    const au = document.getElementById('rmAu').value;
+    const annee = document.getElementById('rmAnnee').value;
+    if (classe) out.searchParams.set('classe_id', classe);
+    if (!classe && annee) out.searchParams.set('annee_scolaire', annee);
+    if (du) out.searchParams.set('du', du);
+    if (au) out.searchParams.set('au', au);
+    return out.toString();
+}
+
+function ouvrirTableauModesEncaissement() {
+    window.location.href = _urlModesEncaissement('{% url "paiements:modes_encaissement_tableau" %}');
+}
+
+function ouvrirRapportModesEncaissement(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_modes_encaissement_pdf" %}'
+        : '{% url "paiements:export_modes_encaissement_excel" %}';
+    window.open(_urlModesEncaissement(base), '_blank');
+}
+
+// Rapport comptable professionnel
+function _urlRapportComptable(base) {
     const out = new URL(base, window.location.origin);
     const classe = document.getElementById('rcClasse').value;
     const du = document.getElementById('rcDu').value;
     const au = document.getElementById('rcAu').value;
     const annee = document.getElementById('rcAnnee').value;
-    if (classe) out.searchParams.set(format === 'web' ? 'classe' : 'classe_id', classe);
-    if (!classe && annee && format !== 'web') out.searchParams.set('annee_scolaire', annee);
-    if (du) out.searchParams.set(format === 'web' ? 'date_debut' : 'du', du);
-    if (au) out.searchParams.set(format === 'web' ? 'date_fin' : 'au', au);
-    window.open(out.toString(), '_blank');
+    if (classe) out.searchParams.set('classe_id', classe);
+    if (!classe && annee) out.searchParams.set('annee_scolaire', annee);
+    if (du) out.searchParams.set('du', du);
+    if (au) out.searchParams.set('au', au);
+    return out.toString();
 }
 
-// Rapport professionnel regroupant tous les modules du recouvrement
+function ouvrirApercuRapportComptable() {
+    window.location.href = _urlRapportComptable('{% url "paiements:rapport_comptabilite" %}');
+}
+
+function ouvrirRapportComptable(format) {
+    const base = format === 'pdf'
+        ? '{% url "paiements:export_comptabilite_pdf" %}'
+        : '{% url "paiements:export_comptabilite_excel" %}';
+    window.open(_urlRapportComptable(base), '_blank');
+}
+
+// Rapport professionnel regroupant les modules du recouvrement
 function ouvrirRapportRecouvrement(format) {
     const base = format === 'pdf'
         ? '{% url "paiements:export_recouvrement_pdf" %}'

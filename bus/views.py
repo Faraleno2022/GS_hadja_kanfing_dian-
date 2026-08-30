@@ -2,31 +2,50 @@
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.cache import cache_page
-from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse
 from django.http import JsonResponse
 from django.db.models import Q, Sum, Count
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
+from datetime import timedelta
 import io
 import csv
 
 from eleves.models import Eleve
-from .models import AbonnementBus
-from .forms import AbonnementBusForm
-from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school
-from utilisateurs.permissions import can_delete_subscriptions
+from .models import AbonnementBus, GrilleTarifaireBus
+from .forms import AbonnementBusForm, GrilleTarifaireBusForm
+from utilisateurs.utils import user_is_superadmin, user_school, filter_by_user_school
+from utilisateurs.permissions import can_delete_subscriptions, permission_required
 from ecole_moderne.security_decorators import require_school_object
 from ecole_moderne.pdf_utils import draw_logo_watermark
 from paiements.twilio_utils import send_message_async
 
 
+def _ecole_utilisateur(user):
+    return None if user_is_superadmin(user) else user_school(user)
+
+
+def _date_fin_grille(grille, date_paiement):
+    echeances = [
+        date_value for date_value in (
+            grille.date_echeance_tranche_1,
+            grille.date_echeance_tranche_2,
+            grille.date_echeance_tranche_3,
+        ) if date_value
+    ]
+    date_fin = max(echeances) if echeances else date_paiement + timedelta(days=365)
+    return max(date_fin, date_paiement)
+
+
 @login_required
 def tableau_bord(request):
-    qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    qs = AbonnementBus.objects.select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'grille', 'mode_paiement'
+    )
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
@@ -53,7 +72,9 @@ def tableau_bord(request):
 
 @login_required
 def liste_abonnements(request):
-    qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    qs = AbonnementBus.objects.select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'grille', 'mode_paiement'
+    )
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
@@ -158,22 +179,158 @@ def liste_abonnements(request):
 
 
 @login_required
+@permission_required(
+    'peut_gerer_grilles_tarifaires',
+    "Vous n'êtes pas autorisé à gérer les grilles tarifaires.",
+)
+def grilles_bus(request):
+    grilles = GrilleTarifaireBus.objects.select_related('ecole', 'cree_par')
+    if not user_is_superadmin(request.user):
+        grilles = filter_by_user_school(grilles, request.user, 'ecole')
+    return render(request, 'bus/grilles/liste.html', {
+        'titre_page': 'Grilles tarifaires du bus',
+        'grilles': grilles,
+    })
+
+
+@login_required
+@permission_required(
+    'peut_gerer_grilles_tarifaires',
+    "Vous n'êtes pas autorisé à gérer les grilles tarifaires.",
+)
+def grille_bus_form(request, grille_id=None):
+    ecole = _ecole_utilisateur(request.user)
+    if not user_is_superadmin(request.user) and ecole is None:
+        raise PermissionDenied("Aucune école n'est associée à votre compte.")
+
+    grille = None
+    if grille_id is not None:
+        queryset = GrilleTarifaireBus.objects.select_related('ecole')
+        if ecole:
+            queryset = queryset.filter(ecole=ecole)
+        grille = get_object_or_404(queryset, pk=grille_id)
+
+    form_kwargs = {
+        'instance': grille,
+        'ecole': ecole,
+        'allow_school_choice': user_is_superadmin(request.user),
+    }
+    if request.method == 'POST':
+        form = GrilleTarifaireBusForm(request.POST, **form_kwargs)
+        if form.is_valid():
+            nouvelle_grille = form.save(commit=False)
+            if not nouvelle_grille.cree_par_id:
+                nouvelle_grille.cree_par = request.user
+            nouvelle_grille.save()
+            messages.success(request, "La grille tarifaire du bus a été enregistrée.")
+            return redirect('administration:grilles_bus')
+    else:
+        form = GrilleTarifaireBusForm(**form_kwargs)
+
+    return render(request, 'bus/grilles/form.html', {
+        'titre_page': 'Modifier la grille bus' if grille else 'Nouvelle grille bus',
+        'form': form,
+        'grille': grille,
+    })
+
+
+@login_required
+@permission_required(
+    'peut_gerer_grilles_tarifaires',
+    "Vous n'êtes pas autorisé à gérer les grilles tarifaires.",
+)
+@require_POST
+def basculer_grille_bus(request, grille_id):
+    grilles = GrilleTarifaireBus.objects.all()
+    if not user_is_superadmin(request.user):
+        grilles = filter_by_user_school(grilles, request.user, 'ecole')
+    grille = get_object_or_404(grilles, pk=grille_id)
+    grille.actif = not grille.actif
+    grille.save(update_fields=['actif', 'updated_at'])
+    etat = "activée" if grille.actif else "désactivée"
+    messages.success(request, f"La grille {grille.zone} a été {etat}.")
+    return redirect('administration:grilles_bus')
+
+
+@login_required
+def tarif_bus_json(request):
+    try:
+        eleve_id = int(request.GET.get('eleve_id', ''))
+        grille_id = int(request.GET.get('grille_id', ''))
+    except (TypeError, ValueError):
+        return JsonResponse({'success': False, 'message': 'Paramètres invalides.'}, status=400)
+
+    periodicite = request.GET.get('periodicite', '')
+    if periodicite not in {'T1', 'T2', 'T3'}:
+        return JsonResponse({'success': False, 'message': 'Tranche invalide.'}, status=400)
+
+    eleves = Eleve.objects.select_related('classe', 'classe__ecole')
+    grilles = GrilleTarifaireBus.objects.all()
+    if not user_is_superadmin(request.user):
+        eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
+        grilles = filter_by_user_school(grilles, request.user, 'ecole')
+
+    eleve = get_object_or_404(eleves, pk=eleve_id)
+    grille = get_object_or_404(grilles, pk=grille_id)
+    if getattr(eleve.classe, 'ecole_id', None) != grille.ecole_id:
+        return JsonResponse({'success': False, 'message': "La grille ne correspond pas à l'école de l'élève."}, status=400)
+
+    versements = AbonnementBus.objects.filter(
+        eleve=eleve,
+        grille=grille,
+        periodicite=periodicite,
+    )
+    modifier_id = request.GET.get('exclure')
+    if modifier_id and modifier_id.isdigit():
+        versements = versements.exclude(pk=int(modifier_id))
+    du = grille.montant_pour(periodicite)
+    paye = versements.aggregate(total=Sum('montant'))['total'] or 0
+    reste = max(du - paye, 0)
+    echeance = grille.echeance_pour(periodicite)
+    return JsonResponse({
+        'success': True,
+        'du': int(du),
+        'paye': int(paye),
+        'reste': int(reste),
+        'echeance': echeance.isoformat() if echeance else '',
+        'zone': grille.zone,
+        'annee_scolaire': grille.annee_scolaire,
+    })
+
+
+@login_required
 def abonnement_create(request):
+    ecole = _ecole_utilisateur(request.user)
+    if not user_is_superadmin(request.user) and ecole is None:
+        raise PermissionDenied("Aucune école n'est associée à votre compte.")
+
     initial = {}
     eleve_id = request.GET.get('eleve')
     if eleve_id:
         try:
-            initial['eleve'] = Eleve.objects.get(id=int(eleve_id))
+            eleves = Eleve.objects.all()
+            if ecole:
+                eleves = eleves.filter(classe__ecole=ecole)
+            initial['eleve'] = eleves.get(id=int(eleve_id))
         except Exception:
             pass
     if request.method == 'POST':
-        form = AbonnementBusForm(request.POST)
+        form = AbonnementBusForm(request.POST, ecole=ecole)
         if form.is_valid():
-            abo = form.save()
-            messages.success(request, "Abonnement bus créé avec succès.")
+            abo = form.save(commit=False)
+            abo.cree_par = request.user
+            abo.statut = AbonnementBus.Statut.ACTIF
+            abo.zone = abo.grille.zone
+            abo.annee_scolaire = abo.grille.annee_scolaire
+            abo.date_expiration = _date_fin_grille(abo.grille, abo.date_debut)
+            abo.save()
+            messages.success(
+                request,
+                f"Paiement bus enregistré. Reçu {abo.numero_recu}.",
+            )
             return redirect('bus:liste')
     else:
-        form = AbonnementBusForm(initial=initial)
+        form = AbonnementBusForm(initial=initial, ecole=ecole)
 
     # Sécurité : filtrer les élèves par école de l'utilisateur
     if not user_is_superadmin(request.user):
@@ -183,21 +340,31 @@ def abonnement_create(request):
             'classe__ecole'
         )
 
-    return render(request, 'bus/form.html', {'form': form, 'titre_page': 'Nouvel abonnement Bus'})
+    return render(request, 'bus/form.html', {
+        'form': form,
+        'titre_page': 'Nouveau paiement Bus',
+        'aucune_grille': not form.fields['grille'].queryset.exists(),
+    })
 
 
 @login_required
 @require_school_object(model=AbonnementBus, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
 def abonnement_edit(request, abo_id):
     abo = get_object_or_404(AbonnementBus, id=abo_id)
+    ecole = _ecole_utilisateur(request.user)
     if request.method == 'POST':
-        form = AbonnementBusForm(request.POST, instance=abo)
+        form = AbonnementBusForm(request.POST, instance=abo, ecole=ecole)
         if form.is_valid():
-            form.save()
+            abo = form.save(commit=False)
+            if abo.grille_id:
+                abo.zone = abo.grille.zone
+                abo.annee_scolaire = abo.grille.annee_scolaire
+                abo.date_expiration = _date_fin_grille(abo.grille, abo.date_debut)
+            abo.save()
             messages.success(request, "Abonnement mis à jour.")
             return redirect('bus:liste')
     else:
-        form = AbonnementBusForm(instance=abo)
+        form = AbonnementBusForm(instance=abo, ecole=ecole)
 
     # Sécurité : filtrer les élèves par école de l'utilisateur
     if not user_is_superadmin(request.user):
@@ -207,7 +374,11 @@ def abonnement_edit(request, abo_id):
             'classe__ecole'
         )
 
-    return render(request, 'bus/form.html', {'form': form, 'titre_page': 'Modifier abonnement Bus'})
+    return render(request, 'bus/form.html', {
+        'form': form,
+        'titre_page': 'Modifier le paiement Bus',
+        'aucune_grille': not form.fields['grille'].queryset.exists(),
+    })
 
 
 @login_required
@@ -285,12 +456,15 @@ def export_relances_excel(request):
 
 
 @login_required
-@vary_on_cookie
-@cache_page(60 * 10)
 @require_school_object(model=AbonnementBus, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
 def generer_recu_abonnement_pdf(request, abo_id):
     """Génère un reçu simple pour un abonnement bus"""
-    abo = get_object_or_404(AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'), id=abo_id)
+    abo = get_object_or_404(
+        AbonnementBus.objects.select_related(
+            'eleve', 'eleve__classe', 'eleve__classe__ecole', 'grille', 'mode_paiement'
+        ),
+        id=abo_id,
+    )
     try:
         import io
         from reportlab.pdfgen import canvas
@@ -410,21 +584,87 @@ def generer_recu_abonnement_pdf(request, abo_id):
         c.setFont('Helvetica', 12); c.drawString(200, y, str(val)); y -= 20
 
     el = abo.eleve
+    line('Numéro de reçu', abo.numero_recu or f"BUS-{abo.id}")
     line('Élève', f"{el.prenom} {el.nom} ({el.matricule})")
     line('Classe', getattr(el.classe, 'nom', ''))
     line('École', getattr(getattr(el.classe, 'ecole', None), 'nom', ''))
-    line('Périodicité', abo.get_periodicite_display())
+    line('Type / tranche', abo.get_periodicite_display())
     line('Montant', f"{int(abo.montant):,}".replace(',', ' ') + ' GNF')
-    line('Début', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
-    line('Expiration', abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else '')
+    line('Date de paiement', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
+    line('Mode de paiement', getattr(abo.mode_paiement, 'nom', '') or 'Non renseigné')
+    if abo.grille_id:
+        line('Grille appliquée', f"{abo.grille.zone} - {abo.grille.annee_scolaire}")
+    else:
+        line('Expiration', abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else '')
     
     # Calcul et affichage de la durée en jours
     if abo.date_debut and abo.date_expiration:
         duree_jours = (abo.date_expiration - abo.date_debut).days
         line('Durée', f"{duree_jours} jours")
     line('Zone', abo.zone)
-    line("Point d'arrêt", abo.point_arret)
-    line('Contact parent', abo.contact_parent)
+    if abo.point_arret:
+        line("Point d'arrêt", abo.point_arret)
+    if abo.contact_parent:
+        line('Contact parent', abo.contact_parent)
+
+    if abo.grille_id:
+        y -= 10
+        c.setFont('Helvetica-Bold', 11)
+        c.drawString(40, y, "GRILLE DE L'ANNÉE ET SITUATION DES TRANCHES")
+        y -= 22
+
+        headers = [('TRANCHE', 40), ('ÉCHÉANCE', 150), ('DÛ', 260), ('PAYÉ', 365), ('RESTE', 465)]
+        c.setFillColor(colors.HexColor('#1f4e78'))
+        c.rect(38, y - 5, 520, 22, fill=1, stroke=0)
+        c.setFillColor(colors.white)
+        c.setFont('Helvetica-Bold', 8)
+        for label, x_value in headers:
+            c.drawString(x_value, y + 2, label)
+        y -= 23
+
+        total_du = 0
+        total_paye = 0
+        tranche_defs = [
+            ('T1', 'Tranche 1', abo.grille.tranche_1, abo.grille.date_echeance_tranche_1),
+            ('T2', 'Tranche 2', abo.grille.tranche_2, abo.grille.date_echeance_tranche_2),
+            ('T3', 'Tranche 3', abo.grille.tranche_3, abo.grille.date_echeance_tranche_3),
+        ]
+        for code, label, montant_du, echeance in tranche_defs:
+            montant_paye = (
+                AbonnementBus.objects.filter(
+                    eleve=abo.eleve,
+                    grille=abo.grille,
+                    periodicite=code,
+                ).aggregate(total=Sum('montant'))['total'] or 0
+            )
+            reste = max(montant_du - montant_paye, 0)
+            total_du += montant_du
+            total_paye += montant_paye
+            if code == abo.periodicite:
+                c.setFillColor(colors.HexColor('#e8f4fd'))
+                c.rect(38, y - 5, 520, 20, fill=1, stroke=0)
+            c.setFillColor(colors.black)
+            c.setFont('Helvetica-Bold' if code == abo.periodicite else 'Helvetica', 8)
+            c.drawString(40, y, label + (' (ce reçu)' if code == abo.periodicite else ''))
+            c.drawString(150, y, echeance.strftime('%d/%m/%Y') if echeance else '—')
+            c.drawRightString(340, y, f"{int(montant_du):,}".replace(',', ' '))
+            c.setFillColor(colors.HexColor('#198754'))
+            c.drawRightString(445, y, f"{int(montant_paye):,}".replace(',', ' '))
+            c.setFillColor(colors.HexColor('#dc3545') if reste else colors.HexColor('#198754'))
+            c.drawRightString(555, y, 'Soldée' if not reste else f"{int(reste):,}".replace(',', ' '))
+            y -= 20
+
+        total_reste = max(total_du - total_paye, 0)
+        c.setFillColor(colors.HexColor('#f1f3f5'))
+        c.rect(38, y - 5, 520, 21, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.setFont('Helvetica-Bold', 8)
+        c.drawString(40, y, 'TOTAL ANNÉE')
+        c.drawRightString(340, y, f"{int(total_du):,}".replace(',', ' '))
+        c.setFillColor(colors.HexColor('#198754'))
+        c.drawRightString(445, y, f"{int(total_paye):,}".replace(',', ' '))
+        c.setFillColor(colors.HexColor('#dc3545') if total_reste else colors.HexColor('#198754'))
+        c.drawRightString(555, y, f"{int(total_reste):,}".replace(',', ' '))
 
     c.showPage(); c.save(); pdf = buffer.getvalue(); buffer.close()
     resp = HttpResponse(content_type='application/pdf')

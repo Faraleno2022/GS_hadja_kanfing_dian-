@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item">Administration</li>
+<li class="breadcrumb-item"><a href="{% url 'administration:grilles_bus' %}">Grilles tarifaires</a></li>
+<li class="breadcrumb-item active">{{ titre_page }}</li>
+{% endblock %}
+
+{% block page_actions %}
+<a class="btn btn-outline-secondary" href="{% url 'administration:grilles_bus' %}"><i class="fas fa-arrow-left me-1"></i>Retour</a>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-xl-9">
+        <form method="post" class="card shadow-sm border-0">
+            {% csrf_token %}
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-1"><i class="fas fa-bus text-primary me-2"></i>{{ titre_page }}</h5>
+                <p class="text-muted mb-0">Définissez les montants que le formulaire de paiement récupérera pour chaque tranche.</p>
+            </div>
+            <div class="card-body p-4">
+                {{ form.non_field_errors }}
+                {% if user.is_superuser %}
+                <div class="mb-3">
+                    <label class="form-label" for="{{ form.ecole.id_for_label }}">École</label>
+                    {{ form.ecole }}
+                    {% for error in form.ecole.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {% else %}
+                {{ form.ecole }}
+                {% endif %}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label" for="{{ form.zone.id_for_label }}">Zone / circuit</label>
+                        {{ form.zone }}
+                        <div class="form-text">Exemple : Ratoma, Sonfonia ou Circuit A.</div>
+                        {% for error in form.zone.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label" for="{{ form.annee_scolaire.id_for_label }}">Année scolaire</label>
+                        {{ form.annee_scolaire }}
+                        {% for error in form.annee_scolaire.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-1">
+                    {% for numero in "123" %}
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 h-100 bg-light">
+                            <h6 class="text-primary">Tranche {{ numero }}</h6>
+                            {% if numero == "1" %}
+                                <label class="form-label" for="{{ form.tranche_1.id_for_label }}">Montant (GNF)</label>{{ form.tranche_1 }}
+                                {% for error in form.tranche_1.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                <label class="form-label mt-3" for="{{ form.date_echeance_tranche_1.id_for_label }}">Échéance</label>{{ form.date_echeance_tranche_1 }}
+                            {% elif numero == "2" %}
+                                <label class="form-label" for="{{ form.tranche_2.id_for_label }}">Montant (GNF)</label>{{ form.tranche_2 }}
+                                {% for error in form.tranche_2.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                <label class="form-label mt-3" for="{{ form.date_echeance_tranche_2.id_for_label }}">Échéance</label>{{ form.date_echeance_tranche_2 }}
+                            {% else %}
+                                <label class="form-label" for="{{ form.tranche_3.id_for_label }}">Montant (GNF)</label>{{ form.tranche_3 }}
+                                {% for error in form.tranche_3.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                <label class="form-label mt-3" for="{{ form.date_echeance_tranche_3.id_for_label }}">Échéance</label>{{ form.date_echeance_tranche_3 }}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="form-check mt-4">
+                    {{ form.actif }}
+                    <label class="form-check-label" for="{{ form.actif.id_for_label }}">Grille active et disponible lors des paiements</label>
+                </div>
+            </div>
+            <div class="card-footer bg-white d-flex justify-content-between py-3">
+                <a class="btn btn-secondary" href="{% url 'administration:grilles_bus' %}">Annuler</a>
+                <button class="btn btn-primary" type="submit"><i class="fas fa-save me-1"></i>Enregistrer la grille</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

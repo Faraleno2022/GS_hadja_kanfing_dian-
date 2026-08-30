@@ -130,15 +130,20 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="echeancierpaiement",
-            name="nature_frais",
-            field=models.CharField(
-                choices=[("INSCRIPTION", "Inscription"), ("REINSCRIPTION", "Réinscription")],
-                default="INSCRIPTION",
-                max_length=20,
-                verbose_name="Nature des frais d'admission",
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddField(
+                    model_name="echeancierpaiement",
+                    name="nature_frais",
+                    field=models.CharField(
+                        choices=[("INSCRIPTION", "Inscription"), ("REINSCRIPTION", "Réinscription")],
+                        default="INSCRIPTION",
+                        max_length=20,
+                        verbose_name="Nature des frais d'admission",
+                    ),
+                ),
+            ],
         ),
         migrations.RunPython(backfill_nature_frais, migrations.RunPython.noop),
     ]

@@ -22,13 +22,13 @@
   <div class="alert alert-info d-flex align-items-start" role="alert">
     <div class="me-2"><i class="fas fa-info-circle"></i></div>
     <div>
-      Configurez les classes et les échéances (grilles tarifaires) de votre école, puis cliquez sur « Soumettre pour validation ».
-      Après validation par un administrateur, l'école sera activée.
+      Gérez les classes et les échéances (grilles tarifaires) de votre école.
+      {% if can_submit_validation %}Une fois le brouillon terminé, soumettez-le pour validation.{% endif %}
     </div>
   </div>
   {% else %}
   <div class="alert alert-secondary" role="alert">
-    Cette école n'est pas modifiable (validation en cours ou finalisée). Vous pouvez consulter la configuration ci-dessous.
+    Vous pouvez consulter la configuration, mais votre compte ne possède pas de droit de modification.
   </div>
   {% endif %}
 
@@ -40,7 +40,7 @@
           <h5 class="mb-0"><i class="fas fa-layer-group me-2"></i>Classes</h5>
         </div>
         <div class="card-body">
-          {% if can_edit %}
+          {% if can_manage_classes %}
           <form method="post" class="mb-3">
             {% csrf_token %}
             <input type="hidden" name="action" value="add_classe">
@@ -135,6 +135,7 @@
                   <th>Niveau</th>
                   <th>Année</th>
                   <th>Capacité</th>
+                  {% if can_manage_classes %}<th>Action</th>{% endif %}
                 </tr>
               </thead>
               <tbody>
@@ -144,9 +145,10 @@
                   <td>{{ c.get_niveau_display }}</td>
                   <td>{{ c.annee_scolaire }}</td>
                   <td>{{ c.capacite_max }}</td>
+                  {% if can_manage_classes %}<td><a class="btn btn-sm btn-outline-primary" href="{% url 'eleves:modifier_classe_configuration' c.id %}"><i class="fas fa-edit"></i></a></td>{% endif %}
                 </tr>
                 {% empty %}
-                <tr><td colspan="4" class="text-muted">Aucune classe encore définie.</td></tr>
+                <tr><td colspan="5" class="text-muted">Aucune classe encore définie.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -162,7 +164,7 @@
           <h5 class="mb-0"><i class="fas fa-coins me-2"></i>Grilles tarifaires (Échéances)</h5>
         </div>
         <div class="card-body">
-          {% if can_edit %}
+          {% if can_manage_grilles %}
           <form method="post" class="mb-3">
             {% csrf_token %}
             <input type="hidden" name="action" value="add_grille">
@@ -251,6 +253,7 @@
                   <th>Éch. T1</th>
                   <th>Éch. T2</th>
                   <th>Éch. T3</th>
+                  {% if can_manage_grilles %}<th>Action</th>{% endif %}
                 </tr>
               </thead>
               <tbody>
@@ -264,14 +267,11 @@
                   <td>{{ g.tranche_3|floatformat:0 }}</td>
                   <td>
                     {% if g.date_echeance_inscription_defaut or g.date_echeance_tranche_1_defaut or g.date_echeance_tranche_2_defaut or g.date_echeance_tranche_3_defaut %}
-                      {% with c=0 %}{% endwith %}
-                      {% with has_all=g.date_echeance_inscription_defaut and g.date_echeance_tranche_1_defaut and g.date_echeance_tranche_2_defaut and g.date_echeance_tranche_3_defaut %}
-                        {% if has_all %}
-                          <span class="badge bg-success" title="Toutes les dates par défaut sont définies">Défini</span>
-                        {% else %}
-                          <span class="badge bg-warning text-dark" title="Certaines dates par défaut sont définies">Partiel</span>
-                        {% endif %}
-                      {% endwith %}
+                      {% if g.date_echeance_inscription_defaut and g.date_echeance_tranche_1_defaut and g.date_echeance_tranche_2_defaut and g.date_echeance_tranche_3_defaut %}
+                        <span class="badge bg-success" title="Toutes les dates par défaut sont définies">Défini</span>
+                      {% else %}
+                        <span class="badge bg-warning text-dark" title="Certaines dates par défaut sont définies">Partiel</span>
+                      {% endif %}
                     {% else %}
                       <span class="badge bg-secondary" title="Aucune date par défaut: fallback 15/01, 15/03, 15/05">Fallback</span>
                     {% endif %}
@@ -288,9 +288,11 @@
                   <td>
                     {% if g.date_echeance_tranche_3_defaut %}{{ g.date_echeance_tranche_3_defaut|date:"d/m/Y" }}{% else %}—{% endif %}
                   </td>
+                  {% if can_manage_grilles %}<td><a class="btn btn-sm btn-outline-primary" href="{% url 'eleves:modifier_grille_tarifaire' g.id %}"><i class="fas fa-edit"></i></a></td>{% endif %}
                 </tr>
+                {% if can_manage_grilles %}
                 <tr>
-                  <td colspan="11">
+                  <td colspan="12">
                     <div class="d-flex flex-wrap gap-2">
                       <!-- Dupliquer vers une autre année -->
                       <form method="post" class="d-flex align-items-end gap-2">
@@ -320,8 +322,9 @@
                     </div>
                   </td>
                 </tr>
+                {% endif %}
                 {% empty %}
-                <tr><td colspan="11" class="text-muted">Aucune grille encore définie.</td></tr>
+                <tr><td colspan="12" class="text-muted">Aucune grille encore définie.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -333,7 +336,7 @@
 
   <div class="d-flex justify-content-between mt-4">
     <a class="btn btn-outline-secondary" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Accueil</a>
-    {% if can_edit and ecole.etat == 'BROUILLON' %}
+    {% if can_submit_validation and ecole.etat == 'BROUILLON' %}
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="submit_validation">

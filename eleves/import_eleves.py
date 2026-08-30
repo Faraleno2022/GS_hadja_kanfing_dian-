@@ -41,6 +41,30 @@ COLONNES_TRANSFERT = [
     *COLONNES_TEMPLATE,
 ]
 
+ALIAS_COLONNES_LOCALISATION = {
+    'école': 'École',
+    'ecole': 'École',
+    'etablissement': 'École',
+    'établissement': 'École',
+    'classe': 'Classe',
+    'année scolaire': 'Année scolaire',
+    'annee scolaire': 'Année scolaire',
+    'annee_scolaire': 'Année scolaire',
+    'année': 'Année scolaire',
+    'annee': 'Année scolaire',
+}
+
+
+def normaliser_colonnes_localisation(df):
+    """Renomme les variantes des colonnes École / Classe / Année scolaire."""
+    renommage = {}
+    for colonne in df.columns:
+        cle = str(colonne).strip().lower()
+        cible = ALIAS_COLONNES_LOCALISATION.get(cle)
+        if cible and cible not in df.columns:
+            renommage[colonne] = cible
+    return df.rename(columns=renommage) if renommage else df
+
 
 def normaliser_nom_classe(valeur):
     """Cle de rapprochement d'un nom de classe entre deux postes."""
@@ -86,23 +110,23 @@ def generer_matricule(classe, numero_ordre, annee_scolaire=None, matricules_exis
     Génère un matricule unique pour un élève - VERSION OPTIMISÉE
     Format: [CODE_CLASSE][ANNEE][NUMERO]
     Exemple: 6A-2024-001
-    
+
     Args:
         matricules_existants: Set des matricules déjà utilisés (pour éviter requêtes SQL)
     """
     if not annee_scolaire:
         annee_scolaire = datetime.now().year
-    
+
     # Extraire l'année du format "2024-2025"
     if isinstance(annee_scolaire, str) and '-' in annee_scolaire:
         annee_scolaire = annee_scolaire.split('-')[0]
-    
+
     # Obtenir le code de la classe ou utiliser le nom simplifié
     code_classe = getattr(classe, 'code_matricule', None) or classe.nom.replace(' ', '').upper()[:3]
-    
+
     # Format du matricule
     matricule = f"{code_classe}-{annee_scolaire}-{numero_ordre:03d}"
-    
+
     # ⚡ OPTIMISATION: Vérifier l'unicité en mémoire (pas de requête SQL)
     if matricules_existants is None:
         # Fallback si pas de set fourni (pas optimal)
@@ -116,7 +140,7 @@ def generer_matricule(classe, numero_ordre, annee_scolaire=None, matricules_exis
             matricule = f"{code_classe}-{annee_scolaire}-{numero_ordre:03d}"
         # Ajouter au set pour éviter réutilisation
         matricules_existants.add(cle_matricule(matricule))
-    
+
     return matricule
 
 
@@ -149,7 +173,7 @@ def generer_template_eleves(classe_id=None):
     try:
         # Créer un DataFrame avec des exemples
         data = {col: [] for col in COLONNES_TEMPLATE}
-        
+
         # Ajouter quelques lignes d'exemple
         data['Matricule'] = ['', '', '']  # Laisser vide pour génération auto
         data['Prénom'] = ['Mamadou', 'Fatoumata', 'Ibrahim']
@@ -165,11 +189,11 @@ def generer_template_eleves(classe_id=None):
         data['Prénom de la Mère'] = ['Aissatou', 'Mariama', 'Binta']
         data['Téléphone Secondaire'] = ['', '', '']
         data['Email'] = ['', '', '']
-        
+
         df = pd.DataFrame(data)
-        
+
         return df
-    
+
     except Exception as e:
         raise ImportElevesError(f"Erreur lors de la génération du template: {e}")
 
@@ -178,55 +202,55 @@ class ImportElevesValidator:
     """
     Validateur pour l'importation d'élèves
     """
-    
+
     def __init__(self, df, classe_id):
         self.df = df
         self.classe_id = classe_id
         self.erreurs = []
         self.avertissements = []
-        
+
     def valider(self):
         """
         Valide le fichier importé
         """
         # Vérifier les colonnes requises (seuls Prénom, Nom et Sexe sont obligatoires)
         colonnes_requises = ['Prénom', 'Nom', 'Sexe']
-        
+
         colonnes_manquantes = []
         for col in colonnes_requises:
             if col not in self.df.columns:
                 colonnes_manquantes.append(col)
-        
+
         if colonnes_manquantes:
             raise ImportElevesError(
                 f"Colonnes manquantes: {', '.join(colonnes_manquantes)}"
             )
-        
+
         # Valider chaque ligne
         for index, row in self.df.iterrows():
             self._valider_ligne(index + 2, row)  # +2 car Excel commence à 1 + en-tête
-        
+
         return len(self.erreurs) == 0
-    
+
     def _valider_ligne(self, ligne_num, row):
         """
         Valide une ligne du fichier
         """
         # Vérifier les champs obligatoires (seuls Prénom, Nom et Sexe sont obligatoires)
         champs_obligatoires = ['Prénom', 'Nom', 'Sexe']
-        
+
         for champ in champs_obligatoires:
             if pd.isna(row.get(champ)) or str(row.get(champ)).strip() == '':
                 self.erreurs.append(
                     f"Ligne {ligne_num}: Le champ '{champ}' est obligatoire"
                 )
-        
+
         # Valider le sexe
         if row.get('Sexe') and str(row['Sexe']).upper() not in ['M', 'F']:
             self.erreurs.append(
                 f"Ligne {ligne_num}: Le sexe doit être 'M' ou 'F' (trouvé: {row['Sexe']})"
             )
-        
+
         # Valider la date de naissance (optionnel - valider uniquement si présent)
         date_val = row.get('Date de Naissance')
         if date_val and not pd.isna(date_val) and str(date_val).strip() != '':
@@ -241,7 +265,7 @@ class ImportElevesValidator:
                         continue
                 else:
                     raise ValueError("Format de date invalide")
-                    
+
                 # Vérifier que la date est raisonnable
                 age = (datetime.now() - date_naissance).days // 365
                 if age < 3 or age > 25:
@@ -252,7 +276,7 @@ class ImportElevesValidator:
                 self.erreurs.append(
                     f"Ligne {ligne_num}: Date de naissance invalide (format attendu: JJ/MM/AAAA)"
                 )
-        
+
         # Valider le téléphone (optionnel - valider uniquement si présent)
         tel_val = row.get('Téléphone Principal')
         if tel_val is not None and not pd.isna(tel_val) and str(tel_val).strip() != '':
@@ -261,12 +285,12 @@ class ImportElevesValidator:
                 self.erreurs.append(
                     f"Ligne {ligne_num}: Téléphone invalide (doit contenir au moins 8 chiffres)"
                 )
-        
+
         # Vérifier les doublons potentiels
         if row.get('Prénom') and row.get('Nom'):
             prenom = str(row['Prénom']).strip()
             nom = str(row['Nom']).strip()
-            
+
             # Vérifier dans la base de données
             if Eleve.objects.filter(
                 prenom__iexact=prenom,
@@ -282,7 +306,7 @@ class ImportElevesProcessor:
     """
     Processeur pour importer les élèves
     """
-    
+
     def __init__(self, df, classe_id, user=None, generer_matricules=True):
         self.df = df
         self.classe_id = classe_id
@@ -452,7 +476,7 @@ class ImportElevesProcessor:
                 except Exception as e:
                     self.stats['erreurs'] += 1
                     print(f"Erreur ligne {index + 2}: {e}")
-            
+
             # ⚡ BULK CREATE responsables d'abord
             if responsables_a_creer:
                 Responsable.objects.bulk_create(
@@ -490,12 +514,12 @@ class ImportElevesProcessor:
             if eleves_a_creer:
                 Eleve.objects.bulk_create(eleves_a_creer, batch_size=500)
                 self.stats['crees'] += len(eleves_a_creer)
-            
+
             # ⚡ BULK UPDATE élèves
             if eleves_a_modifier:
                 Eleve.objects.bulk_update(
                     eleves_a_modifier,
-                    ['prenom', 'nom', 'sexe', 'date_naissance', 'lieu_naissance', 
+                    ['prenom', 'nom', 'sexe', 'date_naissance', 'lieu_naissance',
                      'responsable_principal', 'responsable_secondaire', 'statut'],
                     batch_size=500
                 )
@@ -514,7 +538,7 @@ class ImportElevesProcessor:
                 f"ligne {ligne_num} : {matricule}"
                 + (f" ({identite})" if identite else "")
             )
-    
+
     def _preparer_eleve(self, row, classe, numero_ordre, matricules_existants, responsables_dict, eleves_existants):
         """
         Prépare un élève pour bulk creation/update - VERSION OPTIMISÉE
@@ -606,13 +630,13 @@ class ImportElevesProcessor:
                 nouveaux_resp.append(nouveau_resp)
             if nouveau_resp2:
                 nouveaux_resp.append(nouveau_resp2)
-            
+
             return {
-                'type': 'creer', 
+                'type': 'creer',
                 'eleve': eleve,
                 'responsables': nouveaux_resp if nouveaux_resp else None
             }
-    
+
     @staticmethod
     def _lier_responsables(eleve, cle_resp, responsable, cle_resp2, responsable_secondaire):
         """Relie les responsables. Ceux pas encore enregistres sont relies par cle,
@@ -684,7 +708,7 @@ class ImportElevesProcessor:
         responsables_dict[cle] = nouveau_resp
 
         return (cle, None, nouveau_resp)
-    
+
     def _formater_date(self, date_str):
         """
         Formate une date depuis différents formats possibles

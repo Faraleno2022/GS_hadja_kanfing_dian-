@@ -55,7 +55,7 @@
     </div>
 </div>
 
-<!-- Dû scolarité après remises + Frais d'inscription (filtre libre appliqué) -->
+<!-- Dû scolarité après remises + frais d'admission ventilés (filtre libre appliqué) -->
 <div class="stats-row">
     <div class="row">
         <div class="col-md-3">
@@ -70,15 +70,15 @@
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-secondary">{{ totaux_du.frais_inscription_total|default:0|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Frais d'inscription (échéancier)</div>
-                <small class="text-muted">Nouveaux élèves uniquement (hors réinscriptions)</small>
+                <div class="stat-label">Frais d'inscription</div>
+                <small class="text-muted">Calculés depuis les échéanciers filtrés</small>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-primary">{{ totaux_du.frais_reinscription_total|default:0|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Réinscription (échéancier)</div>
-                <small class="text-muted">Élèves qui reviennent uniquement</small>
+                <div class="stat-label">Frais de réinscription</div>
+                <small class="text-muted">Ventilation distincte des inscriptions</small>
                 {% if totaux_du.frais_reinscription_pct is not None %}
                     <div><small class="text-muted">{{ totaux_du.frais_reinscription_pct|floatformat:2 }} % des frais d'admission</small></div>
                 {% endif %}
@@ -197,9 +197,13 @@
                         </td>
                         <td>
                             <div class="d-flex align-items-center">
-                                <a href="{% url 'paiements:detail_paiement' paiement.id %}" 
+                                <a href="{% url 'paiements:detail_paiement' paiement.id %}"
                                    class="btn btn-outline-primary btn-action" title="Voir détails">
                                     <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{% url 'paiements:modifier_paiement' paiement.id %}"
+                                   class="btn btn-outline-secondary btn-action" title="Modifier le paiement">
+                                    <i class="fas fa-pen"></i>
                                 </a>
                                 <a href="{% url 'paiements:liste_relances' %}?eleve_id={{ paiement.eleve.id }}"
                                    class="btn btn-outline-warning btn-action" title="Alertes / Relances">
@@ -236,6 +240,14 @@
                                                 <i class="fas fa-bell me-2"></i>Alertes / Relances
                                             </a>
                                         </li>
+                                        {% if user_permissions.can_delete_payments %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <a class="dropdown-item text-danger" href="{% url 'paiements:supprimer_paiement' paiement.id %}">
+                                                <i class="fas fa-trash me-2"></i>Mettre à la corbeille
+                                            </a>
+                                        </li>
+                                        {% endif %}
                                         {% if paiement.statut == 'EN_ATTENTE' %}
                                         <li><hr class="dropdown-divider"></li>
                                         <li>

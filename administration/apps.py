@@ -8,3 +8,4 @@ class AdministrationConfig(AppConfig):
     
     def ready(self):
         import administration.signals
+        import administration.audit_signals  # corbeille mémoire des modifications

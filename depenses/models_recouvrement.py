@@ -1,181 +1,154 @@
-"""Modules de recouvrement: cuisine, documents, versements et informatique.
-
-Ces quatre modules partagent la même logique de saisie rapide: la date est
-posée automatiquement le jour de l'enregistrement, l'utilisateur ne renseigne
-que le libellé, le montant et une observation facultative.
+"""Modèles des nouveaux modules du menu Recouvrement (ex-Dépenses) :
+Cuisine, Document, Versement et Informatique (abonnements élèves).
 """
-
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
+from eleves.models import Eleve
 from synchronisation.mixins import SyncTrackedModel
 
 
-class LigneRecouvrement(SyncTrackedModel):
-    """Socle commun aux écritures simples (cuisine, documents, versements)."""
+class DepenseCuisine(SyncTrackedModel):
+    """Dépense de la cuisine (achats, matériel, denrées, etc.)."""
 
-    ecole = models.ForeignKey(
-        'eleves.Ecole',
-        on_delete=models.PROTECT,
-        related_name='%(class)ss',
-        verbose_name='Établissement',
-    )
-    date = models.DateField(
-        default=timezone.localdate,
-        db_index=True,
-        verbose_name='Date',
-        help_text="Renseignée automatiquement à l'enregistrement.",
-    )
+    date = models.DateField(default=timezone.localdate, verbose_name="Date")
+    designation = models.CharField(max_length=200, verbose_name="Désignation")
     montant = models.DecimalField(
-        max_digits=12, decimal_places=0,
-        default=Decimal('0'),
-        verbose_name='Montant (GNF)',
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Montant (GNF)"
     )
-    observation = models.TextField(blank=True, verbose_name='Observation')
+    observation = models.TextField(blank=True, verbose_name="Observation")
+
     cree_par = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='+', verbose_name='Enregistré par',
+        related_name='depenses_cuisine_creees'
     )
     date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
-        abstract = True
-        ordering = ['-date', '-id']
-
-    @property
-    def libelle(self):
-        """Libellé affiché dans les listes et les exports."""
-        return getattr(self, self.CHAMP_LIBELLE, '')
-
-
-class DepenseCuisine(LigneRecouvrement):
-    """Dépense engagée pour la cuisine de l'établissement."""
-
-    CHAMP_LIBELLE = 'designation'
-
-    designation = models.CharField(max_length=200, verbose_name='Désignation')
-
-    class Meta(LigneRecouvrement.Meta):
-        abstract = False
-        verbose_name = 'Dépense de cuisine'
-        verbose_name_plural = 'Dépenses de cuisine'
+        verbose_name = "Dépense cuisine"
+        verbose_name_plural = "Dépenses cuisine"
+        ordering = ['-date', '-date_creation']
 
     def __str__(self):
-        return f"{self.date:%d/%m/%Y} - {self.designation} - {int(self.montant):,} GNF".replace(',', ' ')
+        return f"{self.designation} - {self.montant:,.0f} GNF"
 
 
-class DepenseDocument(LigneRecouvrement):
-    """Dépense liée aux documents (impressions, actes, fournitures administratives)."""
+class DepenseDocument(SyncTrackedModel):
+    """Dépense liée aux documents administratifs (impression, reliure, etc.)."""
 
-    CHAMP_LIBELLE = 'designation'
+    date = models.DateField(default=timezone.localdate, verbose_name="Date")
+    designation = models.CharField(max_length=200, verbose_name="Désignation")
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Montant (GNF)"
+    )
+    observation = models.TextField(blank=True, verbose_name="Observation")
 
-    designation = models.CharField(max_length=200, verbose_name='Désignation')
+    cree_par = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='depenses_document_creees'
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
 
-    class Meta(LigneRecouvrement.Meta):
-        abstract = False
-        verbose_name = 'Dépense de document'
-        verbose_name_plural = 'Dépenses de documents'
-
-    def __str__(self):
-        return f"{self.date:%d/%m/%Y} - {self.designation} - {int(self.montant):,} GNF".replace(',', ' ')
-
-
-class Versement(LigneRecouvrement):
-    """Versement effectué par l'établissement (banque, direction, autre caisse)."""
-
-    CHAMP_LIBELLE = 'lieu_versement'
-
-    lieu_versement = models.CharField(max_length=200, verbose_name='Lieu de versement')
-
-    class Meta(LigneRecouvrement.Meta):
-        abstract = False
-        verbose_name = 'Versement'
-        verbose_name_plural = 'Versements'
+    class Meta:
+        verbose_name = "Dépense document"
+        verbose_name_plural = "Dépenses document"
+        ordering = ['-date', '-date_creation']
 
     def __str__(self):
-        return f"{self.date:%d/%m/%Y} - {self.lieu_versement} - {int(self.montant):,} GNF".replace(',', ' ')
+        return f"{self.designation} - {self.montant:,.0f} GNF"
+
+
+class Versement(SyncTrackedModel):
+    """Versement effectué par l'établissement (banque, trésor, etc.)."""
+
+    date = models.DateField(default=timezone.localdate, verbose_name="Date")
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=0, default=Decimal('0'),
+        verbose_name="Montant (GNF)"
+    )
+    lieu_versement = models.CharField(max_length=200, verbose_name="Lieu de versement")
+    observation = models.TextField(blank=True, verbose_name="Observation")
+
+    cree_par = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='versements_crees'
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Versement"
+        verbose_name_plural = "Versements"
+        ordering = ['-date', '-date_creation']
+
+    def __str__(self):
+        return f"{self.lieu_versement} - {self.montant:,.0f} GNF"
 
 
 class AbonnementInformatique(SyncTrackedModel):
-    """Abonnement d'un élève à la salle informatique."""
+    """Abonnement informatique par élève (accès salle info, logiciels, etc.)."""
 
-    STATUT_CHOICES = [
-        ('ACTIF', 'Actif'),
-        ('SUSPENDU', 'Suspendu'),
-        ('RESILIE', 'Résilié'),
-    ]
+    class Statut(models.TextChoices):
+        ACTIF = 'ACTIF', 'Actif'
+        EXPIRE = 'EXPIRE', 'Expiré'
+        SUSPENDU = 'SUSPENDU', 'Suspendu'
 
-    eleve = models.ForeignKey(
-        'eleves.Eleve',
-        on_delete=models.CASCADE,
-        related_name='abonnements_informatique',
-        verbose_name='Élève',
-    )
-    date = models.DateField(
-        default=timezone.localdate,
-        db_index=True,
-        verbose_name="Date d'enregistrement",
-        help_text="Renseignée automatiquement à l'enregistrement.",
-    )
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='abonnements_informatique')
     montant = models.DecimalField(
-        max_digits=12, decimal_places=0,
-        default=Decimal('0'),
-        verbose_name="Montant de l'abonnement (GNF)",
+        max_digits=10, decimal_places=0, default=Decimal('0'),
+        verbose_name="Montant d'abonnement (GNF)"
     )
-    date_debut = models.DateField(default=timezone.localdate, verbose_name='Début')
-    date_fin = models.DateField(db_index=True, verbose_name='Fin')
-    alerte_avant_jours = models.PositiveIntegerField(
-        default=7,
-        verbose_name='Alerte avant (jours)',
-        help_text="Nombre de jours avant la fin à partir duquel l'abonnement est signalé.",
-    )
-    statut = models.CharField(
-        max_length=10, choices=STATUT_CHOICES, default='ACTIF',
-        db_index=True, verbose_name='Statut',
-    )
-    observation = models.TextField(blank=True, verbose_name='Observation')
+    date_debut = models.DateField(default=timezone.localdate, verbose_name="Date de début")
+    date_fin = models.DateField(db_index=True, verbose_name="Date de fin")
+    statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.ACTIF, db_index=True)
+
+    alerte_avant_jours = models.PositiveIntegerField(default=7, verbose_name="Alerte avant (jours)")
+    observation = models.TextField(blank=True, verbose_name="Observation")
+
     cree_par = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='+', verbose_name='Enregistré par',
+        related_name='abonnements_informatique_crees'
     )
-    date_creation = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = 'Abonnement informatique'
-        verbose_name_plural = 'Abonnements informatiques'
-        ordering = ['-date_fin', 'eleve__nom']
+        verbose_name = "Abonnement informatique"
+        verbose_name_plural = "Abonnements informatique"
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['eleve', 'statut']),
+            models.Index(fields=['eleve', 'date_fin']),
+            models.Index(fields=['statut', 'date_fin']),
+        ]
 
     def __str__(self):
-        return f"{self.eleve} - jusqu'au {self.date_fin:%d/%m/%Y}"
+        return f"Informatique: {self.eleve} ({self.date_debut} → {self.date_fin})"
 
     @property
-    def jours_restants(self):
-        """Jours avant la fin (négatif si la période est dépassée)."""
-        return (self.date_fin - timezone.localdate()).days
-
-    @property
-    def est_expire(self):
-        return self.statut == 'ACTIF' and self.date_fin < timezone.localdate()
-
-    @property
-    def est_proche_expiration(self):
-        """Abonnement encore valide mais dans la fenêtre d'alerte."""
-        if self.statut != 'ACTIF' or self.est_expire:
+    def est_proche_expiration(self) -> bool:
+        if not self.date_fin:
             return False
-        return self.jours_restants <= self.alerte_avant_jours
+        today = timezone.localdate()
+        delta = (self.date_fin - today).days
+        return 0 <= delta <= (self.alerte_avant_jours or 7)
 
     @property
-    def statut_effectif(self):
-        """Statut réel: un abonnement actif dont la date est passée est expiré."""
-        if self.statut != 'ACTIF':
-            return self.statut
-        return 'EXPIRE' if self.est_expire else 'ACTIF'
+    def est_expire(self) -> bool:
+        if not self.date_fin:
+            return False
+        return timezone.localdate() > self.date_fin
 
     @property
-    def libelle_statut(self):
-        if self.statut_effectif == 'EXPIRE':
-            return 'Expiré'
-        return self.get_statut_display()
+    def jours_restants(self) -> int:
+        if not self.date_fin:
+            return 0
+        delta = (self.date_fin - timezone.localdate()).days
+        return max(0, delta)

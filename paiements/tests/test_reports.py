@@ -2,16 +2,14 @@ from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.contrib.auth import get_user_model
 
-from paiements.tests.support import TEST_MIDDLEWARE
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class PaiementsReportsTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass1234")
-        # force_login : django-axes exige un objet request dans authenticate(),
-        # que le client de test ne fournit pas via login().
         self.client.force_login(self.user)
 
     def test_export_periode_excel_ok(self):

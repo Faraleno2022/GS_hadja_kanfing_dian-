@@ -7,9 +7,10 @@ from .models import (
 )
 from .models_logistique import (
     CategorieArticle, Article, BienEtablissement, MouvementStock,
-    Inventaire, LigneInventaire, ContributionRamePapier
+    Inventaire, LigneInventaire, ContributionPapierRame
 )
-from .models_bibliotheque import Livre, Emprunt, Reservation
+from .models_bibliotheque import Livre, Emprunt, Reservation, ParametreBibliotheque
+from eleves.models import Eleve
 
 class DepenseForm(forms.ModelForm):
     """Formulaire simplifié pour les dépenses"""
@@ -342,6 +343,93 @@ class RechercheDepenseForm(forms.Form):
         return cleaned_data
 
 
+# ===== FORMULAIRES RECOUVREMENT (nouveaux modules) =====
+
+from .models_recouvrement import (
+    DepenseCuisine, DepenseDocument, Versement, AbonnementInformatique
+)
+
+
+class DepenseCuisineForm(forms.ModelForm):
+    class Meta:
+        model = DepenseCuisine
+        fields = ['date', 'designation', 'montant', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class DepenseDocumentForm(forms.ModelForm):
+    class Meta:
+        model = DepenseDocument
+        fields = ['date', 'designation', 'montant', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class VersementForm(forms.ModelForm):
+    class Meta:
+        model = Versement
+        fields = ['date', 'montant', 'lieu_versement', 'observation']
+        widgets = {
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
+            'lieu_versement': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Lieu de versement (banque, trésor...)'}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
+        }
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à 0.")
+        return montant
+
+
+class AbonnementInformatiqueForm(forms.ModelForm):
+    class Meta:
+        model = AbonnementInformatique
+        fields = [
+            'eleve', 'montant', 'date_debut', 'date_fin',
+            'statut', 'alerte_avant_jours', 'observation'
+        ]
+        widgets = {
+            'eleve': forms.Select(attrs={'class': 'form-control'}),
+            'montant': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': "Montant d'abonnement en GNF"}),
+            'date_debut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'statut': forms.Select(attrs={'class': 'form-control'}),
+            'alerte_avant_jours': forms.NumberInput(attrs={'class': 'form-control', 'value': 7}),
+            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        date_debut = cleaned_data.get('date_debut')
+        date_fin = cleaned_data.get('date_fin')
+        if date_debut and date_fin and date_fin < date_debut:
+            raise ValidationError("La date de fin ne peut pas être antérieure à la date de début.")
+        return cleaned_data
+
+
 # ===== FORMULAIRES LOGISTIQUE =====
 
 class CategorieArticleForm(forms.ModelForm):
@@ -371,12 +459,20 @@ class CategorieArticleForm(forms.ModelForm):
 
 
 class ArticleForm(forms.ModelForm):
+    stock_initial = forms.IntegerField(
+        required=False,
+        min_value=0,
+        initial=0,
+        label="Quantité initiale en stock",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+    )
+
     class Meta:
         model = Article
         fields = [
             'code_article', 'nom', 'categorie', 'description', 'marque', 'reference',
             'unite_mesure', 'stock_minimum', 'stock_maximum', 'prix_unitaire',
-            'etat', 'emplacement', 'photo'
+            'prix_vente_unitaire', 'stock_initial', 'etat', 'emplacement', 'photo'
         ]
         widgets = {
             'code_article': forms.TextInput(attrs={'class': 'form-control'}),
@@ -388,19 +484,25 @@ class ArticleForm(forms.ModelForm):
             'unite_mesure': forms.Select(attrs={'class': 'form-control'}),
             'stock_minimum': forms.NumberInput(attrs={'class': 'form-control'}),
             'stock_maximum': forms.NumberInput(attrs={'class': 'form-control'}),
-            'prix_unitaire': forms.NumberInput(attrs={'class': 'form-control'}),
+            'prix_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+            'prix_vente_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
             'etat': forms.Select(attrs={'class': 'form-control'}),
             'emplacement': forms.TextInput(attrs={'class': 'form-control'}),
             'photo': forms.FileInput(attrs={'class': 'form-control'}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         # Le code est généré automatiquement si laissé vide
         self.fields['code_article'].required = False
         self.fields['code_article'].widget.attrs['placeholder'] = 'Laissez vide pour génération automatique'
-        # Limiter aux catégories actives
-        self.fields['categorie'].queryset = CategorieArticle.objects.filter(actif=True)
+        # Ce module est réservé aux fournitures scolaires.
+        self.fields['categorie'].queryset = CategorieArticle.objects.filter(
+            actif=True,
+            type_categorie='FOURNITURE',
+        )
+        if self.instance.pk:
+            self.fields.pop('stock_initial', None)
 
     def clean_code_article(self):
         code = self.cleaned_data.get('code_article')
@@ -413,40 +515,37 @@ class ArticleForm(forms.ModelForm):
                 raise ValidationError("Ce code article existe déjà.")
         return code
 
+    def clean(self):
+        cleaned_data = super().clean()
+        prix_achat = cleaned_data.get('prix_unitaire') or Decimal('0')
+        prix_vente = cleaned_data.get('prix_vente_unitaire') or Decimal('0')
+        if prix_achat < 0:
+            self.add_error('prix_unitaire', "Le prix d'achat ne peut pas être négatif.")
+        if prix_vente <= 0:
+            self.add_error('prix_vente_unitaire', "Indiquez un prix de vente supérieur à zéro.")
+        return cleaned_data
+
 
 class BienEtablissementForm(forms.ModelForm):
     class Meta:
         model = BienEtablissement
         fields = [
-            'code_bien', 'nom', 'type_bien', 'marque',
-            'quantite_achetee', 'prix_achat_unitaire',
-            'quantite_utilisee', 'quantite_endommagee',
-            'date_acquisition', 'localisation', 'etat', 'photo', 'observations',
+            'code_bien', 'nom', 'type_bien', 'localisation', 'unite_mesure',
+            'quantite_achetee', 'quantite_utilisee', 'quantite_gatee',
+            'prix_achat_unitaire', 'etat', 'date_acquisition', 'photo', 'observations'
         ]
         widgets = {
-            'code_bien': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Laisser vide pour génération automatique',
-            }),
-            'nom': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Ex. Tables, marqueurs, chaises',
-            }),
-            'type_bien': forms.Select(attrs={'class': 'form-select'}),
-            'marque': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Marque ou fabricant (facultatif)',
-            }),
+            'code_bien': forms.TextInput(attrs={'class': 'form-control'}),
+            'nom': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex. Tables, marqueurs, chaises...'}),
+            'type_bien': forms.Select(attrs={'class': 'form-control'}),
+            'localisation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex. Salle 3, magasin, direction'}),
+            'unite_mesure': forms.Select(attrs={'class': 'form-control'}),
             'quantite_achetee': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'prix_achat_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
             'quantite_utilisee': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'quantite_endommagee': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'quantite_gatee': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
+            'prix_achat_unitaire': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+            'etat': forms.Select(attrs={'class': 'form-control'}),
             'date_acquisition': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'localisation': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Ex. Magasin, bureau, classe CM1',
-            }),
-            'etat': forms.Select(attrs={'class': 'form-select'}),
             'photo': forms.FileInput(attrs={'class': 'form-control'}),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
@@ -454,63 +553,70 @@ class BienEtablissementForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['code_bien'].required = False
-        self.fields['marque'].required = False
-        self.fields['localisation'].required = False
-        self.fields['date_acquisition'].required = False
+        self.fields['code_bien'].widget.attrs['placeholder'] = 'Généré automatiquement si vide'
 
-    def clean_code_bien(self):
-        code = (self.cleaned_data.get('code_bien') or '').strip().upper()
-        if code:
-            qs = BienEtablissement.objects.filter(code_bien=code)
-            if self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise ValidationError("Ce code de bien existe déjà.")
-        return code
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        # Conserver le champ historique pour les anciennes éditions et exports.
+        instance.valeur_acquisition = instance.valeur_totale_achat
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
-class ContributionRamePapierForm(forms.ModelForm):
+class ElevePapierChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, eleve):
+        return f"{eleve.matricule} — {eleve.nom_complet} — {eleve.classe.nom}"
+
+
+class ContributionPapierRameForm(forms.ModelForm):
+    eleve = ElevePapierChoiceField(
+        queryset=Eleve.objects.none(),
+        empty_label="Sélectionner un élève",
+        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_eleve'}),
+    )
+
     class Meta:
-        model = ContributionRamePapier
+        model = ContributionPapierRame
         fields = [
-            'eleve', 'mode_contribution', 'nombre_paquets',
-            'montant_paye', 'date_contribution', 'observations',
+            'eleve', 'type_contribution', 'nombre_paquets', 'montant_paye',
+            'date_contribution', 'observations'
         ]
         widgets = {
-            'eleve': forms.Select(attrs={'class': 'form-select', 'id': 'id_eleve'}),
-            'mode_contribution': forms.Select(attrs={'class': 'form-select', 'id': 'id_mode_contribution'}),
-            'nombre_paquets': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
-            'montant_paye': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+            'type_contribution': forms.Select(attrs={'class': 'form-select', 'id': 'id_type_contribution'}),
+            'nombre_paquets': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'id': 'id_nombre_paquets'}),
+            'montant_paye': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1, 'id': 'id_montant_paye'}),
             'date_contribution': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Information facultative'}),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, annee_scolaire=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from eleves.models import Eleve
-        from utilisateurs.utils import filter_by_user_school
-
-        eleves = Eleve.objects.select_related('classe', 'classe__ecole').filter(
-            statut='ACTIF'
-        )
-        if user is not None:
-            eleves = filter_by_user_school(eleves, user, 'classe__ecole')
-        else:
+        eleves = Eleve.objects.filter(statut='ACTIF').select_related('classe', 'classe__ecole')
+        if user is None:
             eleves = eleves.none()
-        self.fields['eleve'].queryset = eleves.order_by(
-            'classe__nom', 'nom', 'prenom'
-        )
-        self.fields['eleve'].label_from_instance = lambda eleve: (
-            f"{eleve.matricule} — {eleve.nom_complet} ({eleve.classe.nom})"
-        )
-        self.fields['nombre_paquets'].required = False
-        self.fields['montant_paye'].required = False
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            eleves = filter_by_user_school(eleves, user, 'classe__ecole')
+        if annee_scolaire:
+            eleves = eleves.filter(classe__annee_scolaire=annee_scolaire)
+        self.fields['eleve'].queryset = eleves.order_by('nom', 'prenom', 'matricule')
 
-    def clean_nombre_paquets(self):
-        return self.cleaned_data.get('nombre_paquets') or 0
-
-    def clean_montant_paye(self):
-        return self.cleaned_data.get('montant_paye') or Decimal('0')
+    def clean(self):
+        cleaned_data = super().clean()
+        mode = cleaned_data.get('type_contribution')
+        paquets = cleaned_data.get('nombre_paquets') or 0
+        montant = cleaned_data.get('montant_paye') or Decimal('0')
+        if mode == 'PAPIER':
+            cleaned_data['montant_paye'] = Decimal('0')
+            if paquets < 1:
+                self.add_error('nombre_paquets', "Indiquez au moins un paquet de papier RAM.")
+        elif mode == 'ARGENT':
+            cleaned_data['nombre_paquets'] = 0
+            if montant <= 0:
+                self.add_error('montant_paye', "Indiquez le montant payé par l'élève.")
+        return cleaned_data
 
 
 class MouvementStockForm(forms.ModelForm):
@@ -532,6 +638,112 @@ class MouvementStockForm(forms.ModelForm):
             'document_reference': forms.TextInput(attrs={'class': 'form-control'}),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        articles = Article.objects.filter(
+            actif=True,
+            categorie__type_categorie='FOURNITURE',
+        ).select_related('categorie')
+        if user is None:
+            articles = articles.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            articles = filter_by_user_school(articles, user, 'cree_par__profil__ecole')
+        self.fields['article'].queryset = articles.order_by('nom')
+        self.fields['quantite'].widget.attrs.update({'min': 1})
+        self.fields['prix_unitaire'].widget.attrs.update({'min': 0, 'step': 1})
+
+    def clean(self):
+        cleaned_data = super().clean()
+        article = cleaned_data.get('article')
+        type_mouvement = cleaned_data.get('type_mouvement')
+        motif = cleaned_data.get('motif')
+        quantite = cleaned_data.get('quantite') or 0
+
+        if quantite <= 0:
+            self.add_error('quantite', "La quantité doit être supérieure à zéro.")
+        if article and type_mouvement == 'SORTIE' and quantite > article.stock_actuel:
+            self.add_error(
+                'quantite',
+                f"Stock insuffisant : {article.stock_actuel} unité(s) disponible(s).",
+            )
+        if motif == 'VENTE' and type_mouvement != 'SORTIE':
+            self.add_error('type_mouvement', "Une vente doit être enregistrée comme une sortie.")
+        return cleaned_data
+
+
+class VenteFournitureForm(forms.Form):
+    article = forms.ModelChoiceField(
+        queryset=Article.objects.none(),
+        label="Produit",
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+    quantite = forms.IntegerField(
+        min_value=1,
+        label="Quantité vendue",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+    )
+    prix_vente_unitaire = forms.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        required=False,
+        label="Prix de vente unitaire (GNF)",
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': 1}),
+    )
+    acheteur = forms.CharField(
+        max_length=200,
+        required=False,
+        label="Acheteur / destinataire",
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+    )
+    document_reference = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Référence du reçu",
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+    )
+    observations = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+    )
+
+    def __init__(self, *args, user=None, article_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        articles = Article.objects.filter(
+            actif=True,
+            categorie__type_categorie='FOURNITURE',
+        ).select_related('categorie')
+        if user is None:
+            articles = articles.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            articles = filter_by_user_school(articles, user, 'cree_par__profil__ecole')
+        self.fields['article'].queryset = articles.order_by('nom')
+
+        if article_id:
+            article = articles.filter(pk=article_id).first()
+            if article:
+                self.fields['article'].initial = article
+                self.fields['prix_vente_unitaire'].initial = article.prix_vente_unitaire
+
+    def clean(self):
+        cleaned_data = super().clean()
+        article = cleaned_data.get('article')
+        quantite = cleaned_data.get('quantite') or 0
+        prix_vente = cleaned_data.get('prix_vente_unitaire')
+
+        if article and quantite > article.stock_actuel:
+            self.add_error(
+                'quantite',
+                f"Stock insuffisant : {article.stock_actuel} unité(s) disponible(s).",
+            )
+        if article and not prix_vente:
+            prix_vente = article.prix_vente_unitaire
+            cleaned_data['prix_vente_unitaire'] = prix_vente
+        if not prix_vente or prix_vente <= 0:
+            self.add_error('prix_vente_unitaire', "Indiquez un prix de vente supérieur à zéro.")
+        return cleaned_data
 
 
 class InventaireForm(forms.ModelForm):
@@ -606,7 +818,48 @@ class ReservationForm(forms.ModelForm):
         model = Reservation
         fields = ['livre', 'eleve', 'observations']
         widgets = {
-            'livre': forms.Select(attrs={'class': 'form-control'}),
-            'eleve': forms.Select(attrs={'class': 'form-control'}),
+            'livre': forms.Select(attrs={'class': 'form-select'}),
+            'eleve': forms.Select(attrs={'class': 'form-select'}),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        livres = Livre.objects.filter(actif=True).exclude(
+            statut__in=['PERDU', 'EN_REPARATION', 'RETIRE'],
+        ).select_related('categorie')
+        eleves = Eleve.objects.filter(statut='ACTIF').select_related('classe', 'classe__ecole')
+        if user is None:
+            livres = livres.none()
+            eleves = eleves.none()
+        else:
+            from utilisateurs.utils import filter_by_user_school
+            livres = filter_by_user_school(livres, user, 'cree_par__profil__ecole')
+            eleves = filter_by_user_school(eleves, user, 'classe__ecole')
+        self.fields['livre'].queryset = livres.order_by('titre')
+        self.fields['eleve'].queryset = eleves.order_by('nom', 'prenom', 'matricule')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        livre = cleaned_data.get('livre')
+        eleve = cleaned_data.get('eleve')
+        if not livre or not eleve:
+            return cleaned_data
+
+        reservations_actives = Reservation.objects.filter(
+            eleve=eleve,
+            statut__in=['EN_ATTENTE', 'DISPONIBLE'],
+        )
+        if self.instance.pk:
+            reservations_actives = reservations_actives.exclude(pk=self.instance.pk)
+        if reservations_actives.filter(livre=livre).exists():
+            self.add_error('livre', "Cet élève a déjà une réservation active pour ce livre.")
+
+        parametres = ParametreBibliotheque.objects.first()
+        limite = parametres.nombre_reservations_max if parametres else 2
+        if reservations_actives.count() >= limite:
+            self.add_error(
+                'eleve',
+                f"Cet élève a atteint la limite de {limite} réservation(s) active(s).",
+            )
+        return cleaned_data

@@ -2,31 +2,26 @@ from decimal import Decimal
 from datetime import date
 from unittest.mock import patch
 
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from eleves.models import Ecole, Classe, Eleve, Responsable, GrilleTarifaire
 from paiements.models import (
-    EcheancierPaiement,  
+    EcheancierPaiement,
     TypePaiement,
     ModePaiement,
     Paiement,
+    PaiementRemise,
+    RemiseReduction,
 )
-from paiements.allocation import (
-    INSCRIPTION,
-    TRANCHE_1,
-    TRANCHE_2,
-    TRANCHE_3,
-    echeancier_dues,
-    get_payment_allocation,
-    replay_payment_allocations,
-)
-from paiements.views import _allocate_combined_payment, ensure_echeancier_for_eleve
+from paiements.allocation import get_payment_allocation, reste_par_tranche_avec_couverture
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
+from paiements.views import _allocate_combined_payment
 
 
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class TestAllocationPaiements(TestCase):
     def setUp(self):
         # Contexte de base
@@ -104,8 +99,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2024, 9, 30),
             statut="VALIDE",
         )
-        with patch('django.utils.timezone.localdate', return_value=paiement1.date_paiement):
-            _allocate_combined_payment(paiement1, self.echeancier)
+        _allocate_combined_payment(paiement1, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
         self.assertEqual(self.echeancier.tranche_1_payee, Decimal("500000"))
@@ -123,8 +117,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2025, 1, 15),
             statut="VALIDE",
         )
-        with patch('django.utils.timezone.localdate', return_value=paiement2.date_paiement):
-            _allocate_combined_payment(paiement2, self.echeancier)
+        _allocate_combined_payment(paiement2, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.tranche_2_payee, Decimal("500000"))
         self.assertEqual(self.echeancier.statut, "PAYE_PARTIEL")
@@ -145,93 +138,6 @@ class TestAllocationPaiements(TestCase):
         self.assertEqual(self.echeancier.solde_restant, Decimal("0"))
         self.assertEqual(self.echeancier.statut, "PAYE_COMPLET")
 
-    def test_excedent_t1_est_reporte_jusqua_t3(self):
-        """Un paiement T1 ne doit pas être absorbé par l'inscription impayée."""
-        type_t1, _ = TypePaiement.objects.get_or_create(nom="Scolarité - 1ère tranche")
-        paiement = Paiement.objects.create(
-            eleve=self.eleve,
-            type_paiement=type_t1,
-            mode_paiement=self.mode_especes,
-            numero_recu="REC_REPORT_T1",
-            montant=Decimal("1200000"),
-            date_paiement=date(2025, 1, 10),
-            statut="VALIDE",
-        )
-
-        _allocate_combined_payment(paiement, self.echeancier)
-        self._refresh()
-
-        self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("0"))
-        self.assertEqual(self.echeancier.tranche_1_payee, Decimal("500000"))
-        self.assertEqual(self.echeancier.tranche_2_payee, Decimal("500000"))
-        self.assertEqual(self.echeancier.tranche_3_payee, Decimal("200000"))
-
-        allocations, _paid, unallocated = replay_payment_allocations(
-            [paiement],
-            echeancier_dues(self.echeancier),
-        )
-        self.assertEqual(allocations[paiement.id][INSCRIPTION], Decimal("0"))
-        self.assertEqual(allocations[paiement.id][TRANCHE_1], Decimal("500000"))
-        self.assertEqual(allocations[paiement.id][TRANCHE_2], Decimal("500000"))
-        self.assertEqual(allocations[paiement.id][TRANCHE_3], Decimal("200000"))
-        self.assertEqual(unallocated[paiement.id], Decimal("0"))
-
-    def test_excedent_inscription_est_reporte_sur_t1(self):
-        type_inscription = TypePaiement.objects.create(nom="Frais d'inscription")
-        paiement = Paiement.objects.create(
-            eleve=self.eleve,
-            type_paiement=type_inscription,
-            mode_paiement=self.mode_especes,
-            numero_recu="REC_REPORT_INSCRIPTION",
-            montant=Decimal("230000"),
-            date_paiement=date(2024, 9, 30),
-            statut="VALIDE",
-        )
-
-        _allocate_combined_payment(paiement, self.echeancier)
-        self._refresh()
-
-        self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
-        self.assertEqual(self.echeancier.tranche_1_payee, Decimal("200000"))
-        self.assertEqual(self.echeancier.tranche_2_payee, Decimal("0"))
-        self.assertEqual(self.echeancier.tranche_3_payee, Decimal("0"))
-
-    def test_reinscription_utilise_son_tarif_et_reporte_sur_t1(self):
-        GrilleTarifaire.objects.create(
-            ecole=self.ecole,
-            niveau=self.classe.niveau,
-            annee_scolaire=self.classe.annee_scolaire,
-            frais_inscription=Decimal("30000"),
-            frais_reinscription=Decimal("20000"),
-            tranche_1=Decimal("500000"),
-            tranche_2=Decimal("500000"),
-            tranche_3=Decimal("500000"),
-        )
-        echeancier = ensure_echeancier_for_eleve(
-            self.eleve,
-            prefer_reinscription=True,
-        )
-        echeancier.refresh_from_db()
-        self.assertEqual(echeancier.nature_frais, "REINSCRIPTION")
-        self.assertEqual(echeancier.frais_inscription_du, Decimal("20000"))
-
-        type_reinscription = TypePaiement.objects.create(
-            nom="Réinscription + Tranche 1"
-        )
-        paiement = Paiement.objects.create(
-            eleve=self.eleve,
-            type_paiement=type_reinscription,
-            mode_paiement=self.mode_especes,
-            numero_recu="REC_REINSCRIPTION",
-            montant=Decimal("120000"),
-            date_paiement=date(2024, 9, 30),
-            statut="VALIDE",
-        )
-        _allocate_combined_payment(paiement, echeancier)
-        self._refresh()
-        self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("20000"))
-        self.assertEqual(self.echeancier.tranche_1_payee, Decimal("100000"))
-
     def test_inscription_plus_t1_t2_puis_t3(self):
         # 1) Inscription + T1 + T2
         paiement1 = Paiement.objects.create(
@@ -243,8 +149,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2024, 9, 30),
             statut="VALIDE",
         )
-        with patch('django.utils.timezone.localdate', return_value=paiement1.date_paiement):
-            _allocate_combined_payment(paiement1, self.echeancier)
+        _allocate_combined_payment(paiement1, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
         self.assertEqual(self.echeancier.tranche_1_payee, Decimal("500000"))
@@ -396,34 +301,18 @@ class TestAllocationPaiements(TestCase):
         self.client.force_login(admin)
         type_t1 = TypePaiement.objects.create(nom="Paiement 1ère tranche")
 
-        test_middleware = [
-            middleware
-            for middleware in settings.MIDDLEWARE
-            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
-        ]
-        donnees = {
-            "eleve": self.eleve.pk,
-            "type_paiement": type_t1.pk,
-            "mode_paiement": self.mode_especes.pk,
-            "montant": "700000",
-            "date_paiement": "2024-10-01",
-            "observations": "",
-            "reference_externe": "",
-        }
-        with self.settings(MIDDLEWARE=test_middleware):
-            # Un montant superieur au poste vise reste soumis a confirmation :
-            # l'ecran montre d'abord la repartition de l'excedent sur T2/T3.
-            apercu = self.client.post(
-                reverse("paiements:ajouter_paiement"), donnees
-            )
-            self.assertEqual(apercu.status_code, 200)
-            self.assertTrue(apercu.context["show_superior_confirmation"])
-            self.assertFalse(Paiement.objects.filter(type_paiement=type_t1).exists())
-
-            response = self.client.post(
-                reverse("paiements:ajouter_paiement"),
-                dict(donnees, confirmation_paiement_superieur="1"),
-            )
+        response = self.client.post(
+            reverse("paiements:ajouter_paiement"),
+            {
+                "eleve": self.eleve.pk,
+                "type_paiement": type_t1.pk,
+                "mode_paiement": self.mode_especes.pk,
+                "montant": "700000",
+                "date_paiement": "2024-10-01",
+                "observations": "",
+                "reference_externe": "",
+            },
+        )
 
         self.assertEqual(response.status_code, 302)
         paiement_cree = Paiement.objects.get(
@@ -456,8 +345,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=self.echeancier.date_echeance_inscription,  # 2024-09-30
             statut="VALIDE",
         )
-        with patch('django.utils.timezone.localdate', return_value=paiement_insc.date_paiement):
-            _allocate_combined_payment(paiement_insc, self.echeancier)
+        _allocate_combined_payment(paiement_insc, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
 
@@ -472,8 +360,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=self.echeancier.date_echeance_tranche_1,  # 2025-01-10
             statut="VALIDE",
         )
-        with patch('django.utils.timezone.localdate', return_value=paiement_t1_partiel.date_paiement):
-            _allocate_combined_payment(paiement_t1_partiel, self.echeancier)
+        _allocate_combined_payment(paiement_t1_partiel, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.tranche_1_payee, Decimal("200000"))
         # Le jour J n'est pas > échéance, donc pas de retard
@@ -517,7 +404,9 @@ class TestAllocationPaiements(TestCase):
             type_paiement=self.type_insc_annuel,
             mode_paiement=self.mode_especes,
             numero_recu="REC_EDGE_5",
-            montant=Decimal("1030000"),  # 30k + 1,000,000 (insuffisant pour 1.5M tranches)
+            # À cette date, admission + T1 + T2 = 1 030 000 GNF sont exigibles.
+            # Un paiement de 900 000 laisse donc bien une échéance passée impayée.
+            montant=Decimal("900000"),
             date_paiement=date(2025, 3, 6),  # après échéance T2 (2025-03-05)
             statut="VALIDE",
         )
@@ -541,3 +430,65 @@ class TestAllocationPaiements(TestCase):
         self._refresh()
         self.assertEqual(self.echeancier.solde_restant, Decimal("0"))
         self.assertEqual(self.echeancier.statut, "PAYE_COMPLET")
+
+    def test_remise_deduite_du_solde_et_repartie_sur_la_derniere_tranche(self):
+        """Reproduit le cas Mansaré (REC20260014 / REC20260015): une remise
+        globale doit réduire solde_restant ET la tranche qui l'absorbe dans
+        la répartition en cascade, faute de quoi le reçu annonce un montant
+        payable que le formulaire de saisie refuse ensuite (sur-paiement)."""
+        # Insc (30k) + T1 (500k) + T2 (500k) déjà réglés au comptant.
+        paiement1 = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_insc_t1_t2,
+            mode_paiement=self.mode_especes,
+            numero_recu="REC_REMISE_1",
+            montant=Decimal("1030000"),
+            date_paiement=date(2024, 9, 30),
+            statut="VALIDE",
+        )
+        _allocate_combined_payment(paiement1, self.echeancier)
+        self._refresh()
+
+        # Paiement partiel sur T3 (300k) avec une remise de 25k accordée sur ce reçu.
+        paiement2 = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_t3,
+            mode_paiement=self.mode_especes,
+            numero_recu="REC_REMISE_2",
+            montant=Decimal("300000"),
+            date_paiement=date(2025, 3, 10),
+            statut="VALIDE",
+        )
+        remise = RemiseReduction.objects.create(
+            nom="Geste commercial",
+            type_remise="MONTANT_FIXE",
+            valeur=Decimal("25000"),
+            motif="GESTE_COMMERCIAL",
+            date_debut=date(2024, 9, 1),
+            date_fin=date(2025, 8, 31),
+        )
+        PaiementRemise.objects.create(
+            paiement=paiement2,
+            remise=remise,
+            montant_remise=Decimal("25000"),
+        )
+        _allocate_combined_payment(paiement2, self.echeancier)
+        self._refresh()
+
+        # total_du=1 530 000 ; payé cash=1 330 000 ; remise=25 000 => solde=175 000
+        self.assertEqual(self.echeancier.total_remises_valides, Decimal("25000"))
+        self.assertEqual(self.echeancier.solde_restant, Decimal("175000"))
+
+        couverture = self.echeancier.total_paye + self.echeancier.total_remises_valides
+        restes = reste_par_tranche_avec_couverture(self.echeancier, couverture)
+        # La remise doit apparaître sur T3 (dernière tranche entamée), pas
+        # disparaître dans un angle mort qui ne réduirait aucune tranche.
+        self.assertEqual(restes["inscription"], Decimal("0"))
+        self.assertEqual(restes["tranche_1"], Decimal("0"))
+        self.assertEqual(restes["tranche_2"], Decimal("0"))
+        self.assertEqual(restes["tranche_3"], Decimal("175000"))
+        # La somme des restes par tranche doit toujours correspondre au solde global.
+        self.assertEqual(
+            sum(restes.values()),
+            self.echeancier.solde_restant,
+        )

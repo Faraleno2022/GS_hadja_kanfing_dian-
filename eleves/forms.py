@@ -6,7 +6,7 @@ from datetime import date
 
 class ResponsableForm(forms.ModelForm):
     """Formulaire pour créer/modifier un responsable"""
-    
+
     def __init__(self, *args, **kwargs):
         # Permettre le passage de l'utilisateur courant pour filtrage par école
         # Compatibilité: accepter 'user' ou 'utilisateur'
@@ -30,7 +30,7 @@ class ResponsableForm(forms.ModelForm):
         except Exception:
             # Ne pas bloquer le rendu du formulaire en cas d'anomalie
             pass
-    
+
     class Meta:
         model = Responsable
         fields = ['prenom', 'nom', 'relation', 'telephone', 'email', 'adresse', 'profession']
@@ -75,22 +75,22 @@ class ResponsableForm(forms.ModelForm):
         """Convertir le nom en majuscules"""
         nom = self.cleaned_data.get('nom', '')
         return nom.upper() if nom else ''
-    
+
     def clean_prenom(self):
         """Convertir le prénom en majuscules"""
         prenom = self.cleaned_data.get('prenom', '')
         return prenom.upper() if prenom else ''
-    
+
     def clean_adresse(self):
         """Convertir l'adresse en majuscules"""
         adresse = self.cleaned_data.get('adresse', '')
         return adresse.upper() if adresse else ''
-    
+
     def clean_profession(self):
         """Convertir la profession en majuscules"""
         profession = self.cleaned_data.get('profession', '')
         return profession.upper() if profession else ''
-    
+
     def clean_telephone(self):
         """Accepte une saisie locale (8-9 chiffres) et normalise en +224XXXXXXXXX.
         Si l'utilisateur fournit déjà un numéro avec indicatif, on l'accepte et on le
@@ -114,32 +114,32 @@ class ResponsableForm(forms.ModelForm):
 
 class EleveForm(forms.ModelForm):
     """Formulaire pour créer/modifier un élève"""
-    
+
     # Champ pour saisie manuelle du matricule
     saisie_manuelle_matricule = forms.BooleanField(
         required=False,
         label="Saisir manuellement le matricule",
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input', 'id': 'saisie-manuelle-matricule'})
     )
-    
+
     # Champs pour les responsables
     responsable_principal_nouveau = forms.BooleanField(
         required=False,
         label="Créer un nouveau responsable principal",
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
-    
+
     responsable_secondaire_nouveau = forms.BooleanField(
         required=False,
         label="Créer un nouveau responsable secondaire",
         widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
     )
-    
+
     class Meta:
         model = Eleve
         fields = [
-            'matricule', 'prenom', 'nom', 'sexe', 'date_naissance', 
-            'lieu_naissance', 'photo', 'classe', 'date_inscription', 
+            'matricule', 'prenom', 'nom', 'sexe', 'date_naissance',
+            'lieu_naissance', 'photo', 'classe', 'date_inscription',
             'statut', 'responsable_principal', 'responsable_secondaire'
         ]
         widgets = {
@@ -194,13 +194,13 @@ class EleveForm(forms.ModelForm):
                 'class': 'form-select'
             }),
         }
-    
+
     def __init__(self, *args, **kwargs):
         # Permettre le passage de l'utilisateur courant pour filtrage par école
         # Compatibilité: accepter 'user' ou 'utilisateur'
         self._current_user = kwargs.pop('user', None) or kwargs.pop('utilisateur', None)
         super().__init__(*args, **kwargs)
-        
+
         # Définir la date d'inscription par défaut à aujourd'hui (optionnel)
         if not self.instance.pk:
             # En création: proposer aujourd'hui par défaut mais ne pas rendre obligatoire
@@ -212,7 +212,7 @@ class EleveForm(forms.ModelForm):
             # Forcer la valeur initiale à celle de l'instance pour éviter les faux changements
             if self.instance.date_inscription:
                 self.fields['date_inscription'].initial = self.instance.date_inscription
-        
+
         # Rendre les champs facultatifs sauf: sexe, prenom, nom, classe
         # Ces 4 champs restent obligatoires
         champs_obligatoires = ['sexe', 'prenom', 'nom', 'classe']
@@ -220,7 +220,7 @@ class EleveForm(forms.ModelForm):
         for field_name in champs_facultatifs:
             if field_name in self.fields:
                 self.fields[field_name].required = False
-        
+
         # Filtrer les classes aux écoles validées par défaut
         try:
             self.fields['classe'].queryset = Classe.objects.filter(ecole__etat='VALIDE').order_by('ecole__nom', 'niveau', 'nom')
@@ -247,7 +247,7 @@ class EleveForm(forms.ModelForm):
         # La validation sera gérée dans la vue
         self.fields['responsable_principal'].required = False
         self.fields['responsable_secondaire'].required = False
-        
+
         # Ordonner et filtrer les responsables par école pour les non-admins
         try:
             if self._current_user and not user_is_admin(self._current_user):
@@ -256,7 +256,7 @@ class EleveForm(forms.ModelForm):
                     from django.db.models import Q
                     # Utiliser Q objects au lieu de union() pour permettre order_by()
                     qs_filtre = Responsable.objects.filter(
-                        Q(eleves_principal__classe__ecole=ecole) | 
+                        Q(eleves_principal__classe__ecole=ecole) |
                         Q(eleves_secondaire__classe__ecole=ecole)
                     ).distinct().order_by('nom', 'prenom')
                     self.fields['responsable_principal'].queryset = qs_filtre
@@ -274,12 +274,12 @@ class EleveForm(forms.ModelForm):
             self.fields['responsable_principal'].queryset = Responsable.objects.all().order_by('nom', 'prenom')
             self.fields['responsable_secondaire'].queryset = Responsable.objects.all().order_by('nom', 'prenom')
         self.fields['responsable_secondaire'].required = False
-    
+
     def clean_nom(self):
         """Convertir le nom en majuscules"""
         nom = self.cleaned_data.get('nom', '')
         return nom.upper() if nom else ''
-    
+
     def clean_prenom(self):
         """Convertir le prénom en majuscules"""
         prenom = self.cleaned_data.get('prenom', '')
@@ -294,7 +294,7 @@ class EleveForm(forms.ModelForm):
         """Valider le matricule saisi manuellement"""
         matricule = self.cleaned_data.get('matricule', '')
         saisie_manuelle = self.data.get('saisie_manuelle_matricule')
-        
+
         if saisie_manuelle and matricule:
             # Vérifier que le matricule n'existe pas déjà (sauf pour l'instance actuelle en modification)
             qs = Eleve.objects.filter(matricule=matricule)
@@ -309,10 +309,10 @@ class EleveForm(forms.ModelForm):
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise forms.ValidationError("Ce matricule existe déjà.")
-        
+
         # Autoriser vide: le modèle le générera au save()
         return matricule or ''
-    
+
     def clean_date_naissance(self):
         date_naissance = self.cleaned_data.get('date_naissance')
         if date_naissance:
@@ -382,7 +382,7 @@ class RechercheEleveForm(forms.Form):
 
 class ClasseForm(forms.ModelForm):
     """Formulaire pour créer/modifier une classe"""
-    
+
     class Meta:
         model = Classe
         fields = ['ecole', 'nom', 'niveau', 'annee_scolaire', 'capacite_max']
@@ -408,7 +408,7 @@ class ClasseForm(forms.ModelForm):
                 'max': '50'
             }),
         }
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Limiter aux écoles validées uniquement
@@ -423,12 +423,12 @@ class ClasseForm(forms.ModelForm):
                 self.fields['annee_scolaire'].initial = f"{current_year}-{current_year + 1}"
             else:
                 self.fields['annee_scolaire'].initial = f"{current_year - 1}-{current_year}"
-    
+
     def clean_nom(self):
         """Convertir le nom de la classe en majuscules"""
         nom = self.cleaned_data.get('nom', '')
         return nom.upper() if nom else ''
-    
+
     def clean_annee_scolaire(self):
         annee_scolaire = self.cleaned_data.get('annee_scolaire')
         if annee_scolaire:
@@ -436,12 +436,12 @@ class ClasseForm(forms.ModelForm):
             import re
             if not re.match(r'^\d{4}-\d{4}$', annee_scolaire):
                 raise forms.ValidationError("Format attendu: YYYY-YYYY (ex: 2024-2025)")
-            
+
             # Vérifier que la deuxième année suit la première
             annees = annee_scolaire.split('-')
             if int(annees[1]) != int(annees[0]) + 1:
                 raise forms.ValidationError("La deuxième année doit suivre la première (ex: 2024-2025)")
-        
+
         return annee_scolaire
 
 
@@ -468,32 +468,32 @@ class EcoleForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Rendre l'email optionnel côté formulaire (le modèle l'autorise déjà)
         self.fields['email'].required = False
-    
+
     def clean_nom(self):
         """Convertir le nom de l'école en majuscules"""
         nom = self.cleaned_data.get('nom', '')
         return nom.upper() if nom else ''
-    
+
     def clean_adresse(self):
         """Convertir l'adresse en majuscules"""
         adresse = self.cleaned_data.get('adresse', '')
         return adresse.upper() if adresse else ''
-    
+
     def clean_directeur(self):
         """Convertir le nom du directeur en majuscules"""
         directeur = self.cleaned_data.get('directeur', '')
         return directeur.upper() if directeur else ''
-    
+
     def clean_ire(self):
         """Convertir l'IRE en majuscules"""
         ire = self.cleaned_data.get('ire', '')
         return ire.upper() if ire else ''
-    
+
     def clean_dpe(self):
         """Convertir le DPE en majuscules"""
         dpe = self.cleaned_data.get('dpe', '')
         return dpe.upper() if dpe else ''
-    
+
     def clean_desee(self):
         """Convertir le DESEE en majuscules"""
         desee = self.cleaned_data.get('desee', '')

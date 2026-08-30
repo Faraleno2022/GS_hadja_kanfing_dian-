@@ -1,3 +1,4 @@
+import gzip
 import json
 import secrets
 from uuid import UUID
@@ -5,6 +6,7 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils.dateparse import parse_datetime
@@ -19,11 +21,20 @@ from .engine import apply_sync_change, snapshot_changes_for_ecole
 from .models import SyncChange, SyncDevice
 
 
+PULL_PAGE_SIZE = 500
+
+
 def _json_body(request):
-    if not request.body:
+    body = request.body
+    if not body:
         return {}
+    if request.META.get('HTTP_CONTENT_ENCODING', '').lower() == 'gzip':
+        try:
+            body = gzip.decompress(body)
+        except OSError:
+            return None
     try:
-        return json.loads(request.body.decode('utf-8'))
+        return json.loads(body.decode('utf-8'))
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
 
@@ -173,53 +184,65 @@ def push(request):
     rejected = []
     valid_operations = {choice[0] for choice in SyncChange.OPERATION_CHOICES}
 
-    for index, change in enumerate(changes):
-        if not isinstance(change, dict):
-            rejected.append({'index': index, 'error': 'Changement invalide.'})
-            continue
-
-        operation = (change.get('operation') or '').upper()
-        model_label = (change.get('model') or change.get('model_label') or '').strip()
-        payload = change.get('payload') or {}
-        raw_uuid = change.get('object_uuid')
-
-        if operation not in valid_operations:
-            rejected.append({'index': index, 'error': 'Operation invalide.'})
-            continue
-        if not model_label:
-            rejected.append({'index': index, 'error': 'Modele manquant.'})
-            continue
-        if not isinstance(payload, dict):
-            rejected.append({'index': index, 'error': 'Payload invalide.'})
-            continue
-
-        object_uuid = None
-        if raw_uuid:
-            try:
-                object_uuid = UUID(str(raw_uuid))
-            except ValueError:
-                rejected.append({'index': index, 'error': 'UUID objet invalide.'})
+    # Un seul commit pour tout le lot (au lieu d'un commit par changement) :
+    # nettement plus rapide sur de gros lots. Chaque changement reste isole
+    # dans son propre savepoint pour qu'un echec individuel n'annule pas le lot.
+    with transaction.atomic():
+        for index, change in enumerate(changes):
+            if not isinstance(change, dict):
+                rejected.append({'index': index, 'error': 'Changement invalide.'})
                 continue
 
-        if object_uuid and 'sync_uuid' not in payload:
-            payload = {**payload, 'sync_uuid': str(object_uuid)}
+            operation = (change.get('operation') or '').upper()
+            model_label = (change.get('model') or change.get('model_label') or '').strip()
+            payload = change.get('payload') or {}
+            raw_uuid = change.get('object_uuid')
 
-        sync_change = SyncChange.objects.create(
-            ecole=device.ecole,
-            device=device,
-            model_label=model_label[:120],
-            object_uuid=object_uuid,
-            operation=operation,
-            payload=payload,
-        )
-        try:
-            apply_sync_change(sync_change)
-            accepted.append({'index': index, 'change_id': sync_change.id})
-        except Exception as exc:
-            sync_change.statut = SyncChange.STATUT_FAILED
-            sync_change.erreur = str(exc)
-            sync_change.save(update_fields=['statut', 'erreur'])
-            rejected.append({'index': index, 'change_id': sync_change.id, 'error': str(exc)})
+            if operation not in valid_operations:
+                rejected.append({'index': index, 'error': 'Operation invalide.'})
+                continue
+            if not model_label:
+                rejected.append({'index': index, 'error': 'Modele manquant.'})
+                continue
+            if not isinstance(payload, dict):
+                rejected.append({'index': index, 'error': 'Payload invalide.'})
+                continue
+
+            object_uuid = None
+            if raw_uuid:
+                try:
+                    object_uuid = UUID(str(raw_uuid))
+                except ValueError:
+                    rejected.append({'index': index, 'error': 'UUID objet invalide.'})
+                    continue
+
+            if object_uuid and 'sync_uuid' not in payload:
+                payload = {**payload, 'sync_uuid': str(object_uuid)}
+
+            try:
+                with transaction.atomic():
+                    sync_change = SyncChange.objects.create(
+                        ecole=device.ecole,
+                        device=device,
+                        model_label=model_label[:120],
+                        object_uuid=object_uuid,
+                        operation=operation,
+                        payload=payload,
+                    )
+                    apply_sync_change(sync_change)
+                accepted.append({'index': index, 'change_id': sync_change.id})
+            except Exception as exc:
+                sync_change = SyncChange.objects.create(
+                    ecole=device.ecole,
+                    device=device,
+                    model_label=model_label[:120],
+                    object_uuid=object_uuid,
+                    operation=operation,
+                    payload=payload,
+                    statut=SyncChange.STATUT_FAILED,
+                    erreur=str(exc),
+                )
+                rejected.append({'index': index, 'change_id': sync_change.id, 'error': str(exc)})
 
     return JsonResponse({
         'ok': True,
@@ -263,7 +286,12 @@ def pull(request):
             'server_time': timezone.now().isoformat(),
         })
 
-    changes = SyncChange.objects.filter(ecole=device.ecole, statut=SyncChange.STATUT_APPLIED).exclude(device=device)
+    changes = (
+        SyncChange.objects
+        .filter(ecole=device.ecole, statut=SyncChange.STATUT_APPLIED)
+        .exclude(device=device)
+        .select_related('device')
+    )
     if since_id:
         try:
             changes = changes.filter(id__gt=int(since_id))
@@ -277,7 +305,7 @@ def pull(request):
             parsed_since = timezone.make_aware(parsed_since, timezone.get_current_timezone())
         changes = changes.filter(date_creation__gt=parsed_since)
 
-    changes = changes.order_by('id')[:200]
+    changes = changes.order_by('id')[:PULL_PAGE_SIZE]
     serialized_changes = [
         {
             'id': change.id,

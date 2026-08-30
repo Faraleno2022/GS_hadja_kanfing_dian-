@@ -187,6 +187,13 @@ class LicenceMiddleware:
                 content_type='text/html; charset=utf-8'
             )
 
+        # Le service web en production ne doit jamais dependre de la licence
+        # locale de l'application de bureau. On conserve le controle
+        # d'integrite ci-dessus, mais on desactive l'essai, ses avertissements
+        # et son blocage HTTP 403 lorsque Django fonctionne hors mode DEBUG.
+        if not getattr(_settings, 'DEBUG', False):
+            return self.get_response(request)
+
         # Vérification licence (avec cache 5 min)
         status = _check_license_cached()
 

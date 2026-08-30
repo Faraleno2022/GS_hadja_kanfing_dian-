@@ -76,10 +76,9 @@ class PaiementPartielTest(TestCase):
 
         self.assertEqual(reponse.status_code, 200)
         # Pas de re-affichage du formulaire avec demande de confirmation :
-        # une redirection a bien eu lieu apres enregistrement.
-        self.assertTrue(reponse.redirect_chain, "Le formulaire a ete re-affiche au lieu d'enregistrer.")
+        # la redirection vers le detail du paiement a bien eu lieu.
         self.assertEqual(reponse.redirect_chain[-1][1], 302)
-        self.assertNotIn('ajouter', reponse.redirect_chain[-1][0])
+        self.assertIn('/paiements/detail/', reponse.redirect_chain[-1][0])
 
         paiement = Paiement.objects.get(eleve=self.eleve, montant=150000)
         self.assertIsNotNone(paiement.pk)

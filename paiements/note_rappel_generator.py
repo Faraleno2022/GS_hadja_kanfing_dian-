@@ -21,12 +21,12 @@ from PIL import Image as PILImage
 
 def generer_note_rappel_eleve(eleve, response=None):
     """Génère une note de rappel pour un élève spécifique"""
-    
+
     if response is None:
         buffer = BytesIO()
     else:
         buffer = response
-    
+
     # Configuration du document
     doc = SimpleDocTemplate(
         buffer,
@@ -36,10 +36,10 @@ def generer_note_rappel_eleve(eleve, response=None):
         topMargin=20*mm,
         bottomMargin=20*mm,
     )
-    
+
     # Styles
     styles = getSampleStyleSheet()
-    
+
     # Style pour le titre
     title_style = ParagraphStyle(
         'CustomTitle',
@@ -50,7 +50,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
     )
-    
+
     # Style pour le contenu
     content_style = ParagraphStyle(
         'Content',
@@ -60,7 +60,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         alignment=TA_JUSTIFY,
         fontName='Helvetica'
     )
-    
+
     # Style pour les infos
     info_style = ParagraphStyle(
         'Info',
@@ -70,9 +70,9 @@ def generer_note_rappel_eleve(eleve, response=None):
         alignment=TA_LEFT,
         fontName='Helvetica'
     )
-    
+
     elements = []
-    
+
     # Date et lieu (format français, sans balises visibles)
     mois_fr = {
         'January': 'janvier', 'February': 'février', 'March': 'mars', 'April': 'avril',
@@ -86,11 +86,11 @@ def generer_note_rappel_eleve(eleve, response=None):
     date_para = Paragraph(date_text, info_style)
     elements.append(date_para)
     elements.append(Spacer(1, 12))
-    
+
     # Titre (sans balises HTML)
     elements.append(Paragraph("NOTE DE RAPPEL", title_style))
     elements.append(Spacer(1, 12))
-    
+
     # Logo de l'école (si disponible)
     ecole = eleve.classe.ecole
     logo_path = None
@@ -108,7 +108,7 @@ def generer_note_rappel_eleve(eleve, response=None):
             elements.append(Spacer(1, 10))
         except:
             logo_path = None
-    
+
     # Calcul des paiements et soldes — utilise l'échéancier réel (source de vérité)
     from paiements.models import Paiement, ConfigurationPaiement, EcheancierPaiement
     from decimal import Decimal
@@ -177,7 +177,7 @@ def generer_note_rappel_eleve(eleve, response=None):
             montant_total = Decimal('0')
             reste_a_payer = Decimal('0')
             tranches_restantes = ["Configuration de paiement non définie"]
-    
+
     # Texte principal (sans balises, sur une seule note compacte)
     texte_principal = (
         f"La Direction du {ecole.nom} vous prie de bien vouloir passer à l'école "
@@ -185,7 +185,7 @@ def generer_note_rappel_eleve(eleve, response=None):
     )
     elements.append(Paragraph(texte_principal, content_style))
     elements.append(Spacer(1, 16))
-    
+
     # Informations de l'élève (sans balises HTML)
     # Calcul du montant déjà payé (séparé pour plus de clarté)
     montant_deja_paye = montant_total - reste_a_payer if montant_total else 0
@@ -201,13 +201,13 @@ def generer_note_rappel_eleve(eleve, response=None):
         ['Reste à payer :', f"{reste_a_payer:,.0f} GNF" if montant_total else 'Non défini'],
         ['', ''],
     ]
-    
+
     # Ajouter les tranches restantes
     if tranches_restantes:
         info_data.append(['Tranches restantes :', ''])
         for tranche in tranches_restantes:
             info_data.append(['', f"• {tranche}"])
-    
+
     # Délai de paiement (prochain vendredi, affiché en français)
     jours_fr = {
         0: 'Lundi', 1: 'Mardi', 2: 'Mercredi', 3: 'Jeudi',
@@ -225,10 +225,10 @@ def generer_note_rappel_eleve(eleve, response=None):
     nom_mois_en = delai.strftime('%B')
     nom_mois_fr = mois_fr.get(nom_mois_en, nom_mois_en)
     delai_text = f"{nom_jour} {delai.strftime('%d')} {nom_mois_fr} {delai.strftime('%Y')}"
-    
+
     info_data.append(['', ''])
     info_data.append(['Délai de paiement :', delai_text])
-    
+
     # Créer le tableau des informations (un peu plus compact)
     info_table = Table(info_data, colWidths=[65*mm, 85*mm])
     info_table.setStyle(TableStyle([
@@ -239,11 +239,11 @@ def generer_note_rappel_eleve(eleve, response=None):
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
     ]))
-    
+
     elements.append(info_table)
     # Espace réduit pour remonter la signature
     elements.append(Spacer(1, 12))
-    
+
     # Signature
     signature_data = [
         ['', 'La Direction'],
@@ -251,16 +251,16 @@ def generer_note_rappel_eleve(eleve, response=None):
         ['', ''],
         ['', '________________'],
     ]
-    
+
     signature_table = Table(signature_data, colWidths=[100*mm, 60*mm])
     signature_table.setStyle(TableStyle([
         ('ALIGN', (1, 0), (1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 11),
     ]))
-    
+
     elements.append(signature_table)
-    
+
     # Note de bas de page (sans balises HTML complexes)
     note_text = "NB : Veuillez vous munir de cette note lors du paiement."
     note_style = ParagraphStyle(
@@ -273,7 +273,7 @@ def generer_note_rappel_eleve(eleve, response=None):
     # Espace réduit pour remonter le NB
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(note_text, note_style))
-    
+
     # Fonction de filigrane avec le logo de l'école
     def _watermark(canvas, doc):
         canvas.saveState()
@@ -288,14 +288,14 @@ def generer_note_rappel_eleve(eleve, response=None):
             except Exception:
                 pass
         canvas.restoreState()
-    
+
     # Construire le PDF avec filigrane
     doc.build(elements, onFirstPage=_watermark, onLaterPages=_watermark)
-    
+
     if response is None:
         buffer.seek(0)
         return buffer
-    
+
     return response
 
 
@@ -303,34 +303,34 @@ def generer_notes_rappel_classe(classe):
     """Génère les notes de rappel pour tous les élèves d'une classe"""
     from eleves.models import Eleve
     from paiements.models import Paiement, ConfigurationPaiement
-    
+
     # Récupérer tous les élèves actifs de la classe
     eleves = Eleve.objects.filter(
         classe=classe,
         statut='ACTIF'
     ).order_by('nom', 'prenom')
-    
+
     # Filtrer les élèves qui ont un solde impayé
     eleves_avec_impayes = []
-    
+
     try:
         config = ConfigurationPaiement.objects.get(classe=classe)
         montant_total = config.montant_inscription + config.montant_scolarite
-        
+
         for eleve in eleves:
             paiements_effectues = Paiement.objects.filter(
                 eleve=eleve,
                 statut='VALIDE'
             ).aggregate(total=Sum('montant'))['total'] or 0
-            
+
             reste_a_payer = montant_total - paiements_effectues
-            
+
             if reste_a_payer > 0:
                 eleves_avec_impayes.append(eleve)
     except ConfigurationPaiement.DoesNotExist:
         # Si pas de configuration, inclure tous les élèves
         eleves_avec_impayes = list(eleves)
-    
+
     # Créer un PDF avec toutes les notes
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -341,23 +341,23 @@ def generer_notes_rappel_classe(classe):
         topMargin=20*mm,
         bottomMargin=20*mm,
     )
-    
+
     all_elements = []
-    
+
     for i, eleve in enumerate(eleves_avec_impayes):
         # Générer la note pour cet élève
         eleve_buffer = BytesIO()
         generer_note_rappel_eleve(eleve, eleve_buffer)
-        
+
         # Ajouter un saut de page entre les notes (sauf pour la dernière)
         if i < len(eleves_avec_impayes) - 1:
             from reportlab.platypus import PageBreak
             all_elements.append(PageBreak())
-    
+
     # Si on a des éléments, construire le document
     if all_elements:
         doc.build(all_elements)
         buffer.seek(0)
         return buffer, len(eleves_avec_impayes)
-    
+
     return None, 0

@@ -104,3 +104,17 @@ backups/journal_sauvegarde.json
 .secret_key
 tmp/
 tmp_dbg_test.py
+
+# Configuration de synchronisation propre à chaque poste (contient un token)
+sync_config.json
+
+# Logs de compilation locaux (build_exe.py / ISCC)
+build_log*.txt
+iscc_log*.txt
+
+# Scratch / exports temporaires non liés à l'application
+/qa_render/
+/qa_render_v*/
+/livrables/
+/logistique-site/
+build_cahier_charges.py

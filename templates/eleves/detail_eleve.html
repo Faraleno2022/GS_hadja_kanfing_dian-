@@ -405,13 +405,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     <small>Matricule : {{ eleve.matricule }}</small>
                 </div>
                 <p class="text-muted">
-                    <i class="fas fa-info-circle"></i> 
-                    Cette action changera le statut de l'élève vers "Exclu". L'élève ne sera pas définitivement supprimé de la base de données.
+                    <i class="fas fa-trash-restore"></i>
+                    L'élève et ses données associées seront conservés dans la corbeille et pourront être restaurés.
                 </p>
                 {% if eleve.paiements.exists %}
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle"></i> 
-                    <strong>Attention :</strong> Cet élève a des paiements associés. La suppression pourrait être bloquée.
+                    <strong>Information :</strong> Les paiements associés seront archivés avec l'élève et restaurés avec lui.
                 </div>
                 {% endif %}
             </div>
@@ -421,8 +421,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
                 <form method="post" action="{% url 'eleves:supprimer_eleve' eleve.pk %}" style="display: inline;">
                     {% csrf_token %}
+                    <input type="hidden" name="type_suppression" value="corbeille">
+                    <input type="hidden" name="mise_en_corbeille" value="on">
                     <button type="submit" class="btn btn-danger">
-                        <i class="fas fa-trash"></i> Confirmer la suppression
+                        <i class="fas fa-trash"></i> Déplacer vers la corbeille
                     </button>
                 </form>
             </div>

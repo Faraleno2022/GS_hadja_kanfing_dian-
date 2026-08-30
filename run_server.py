@@ -3,7 +3,7 @@
 MySchoolGN - Lanceur autonome offline
 =======================================
 Auteur  : GS Hadja Kanfing Dian
-Version : 1.0.0
+Version : voir app_version.py
 
 Ce script lance le serveur Django en mode autonome (offline).
 Conçu pour être compilé en .exe avec PyInstaller.
@@ -20,6 +20,8 @@ import json as _json_mod
 import secrets
 import traceback
 import datetime
+
+from app_version import APP_VERSION
 
 # ─── Clé de garde anti-modification (obfusquée) ──────────────────────────────
 def _gk_guard():
@@ -706,14 +708,23 @@ def _ensure_default_admin():
     from django.db import transaction
 
     User = get_user_model()
-    if User.objects.filter(is_superuser=True).exists():
-        return False
 
     with transaction.atomic():
-        if User.objects.select_for_update().filter(is_superuser=True).exists():
+        user = User.objects.select_for_update().filter(username='admin').first()
+        superuser_exists = User.objects.select_for_update().filter(
+            is_superuser=True
+        ).exists()
+        # Préserver tout mot de passe administrateur utilisable. En revanche,
+        # une installation interrompue peut laisser le compte ``admin`` avec
+        # un mot de passe inutilisable : dans ce cas précis, rétablir les
+        # identifiants annoncés par l'installateur.
+        if superuser_exists and not (
+            user
+            and user.is_superuser
+            and not user.has_usable_password()
+        ):
             return False
 
-        user = User.objects.select_for_update().filter(username='admin').first()
         created = user is None
         if created:
             user = User(username='admin', email='admin@myschool.local')
@@ -922,7 +933,7 @@ def show_banner(port, license_status=None):
 
     print("")
     print("=" * 60)
-    print("   MySchoolGN - Système de Gestion Scolaire")
+    print(f"   MySchoolGN {APP_VERSION} - Système de Gestion Scolaire")
     print(f"   {mode_label}")
     if school:
         print(f"   {school}")
@@ -969,6 +980,19 @@ def main():
 
     # Vérification d'intégrité (anti-modification)
     check_integrity()
+
+    # Vérifier les Releases avant d'ouvrir la licence et la base : une mise à
+    # jour peut ainsi remplacer proprement l'exécutable courant.
+    manual_update_check = '--check-updates' in sys.argv
+    if '--no-update' not in sys.argv and getattr(sys, 'frozen', False):
+        try:
+            from desktop_updater import check_and_offer_update
+            if check_and_offer_update(force=manual_update_check):
+                return
+        except Exception as update_error:
+            print(f"[Mise à jour] Vérification ignorée : {update_error}")
+    if manual_update_check:
+        return
 
     # Vérification de la licence
     license_status = None
@@ -1021,20 +1045,6 @@ def main():
     # Afficher la bannière
     show_banner(port, license_status)
 
-    # Démarrer la synchronisation automatique en arrière-plan (si configurée).
-    # Le worker tente push+pull périodiquement ; hors-ligne il réessaie et se
-    # synchronise automatiquement dès que la connexion revient.
-    try:
-        from synchronisation import auto_sync
-        try:
-            _sync_interval = int(os.environ.get('MYSCHOOL_SYNC_INTERVAL', '60'))
-        except (TypeError, ValueError):
-            _sync_interval = 60
-        if auto_sync.start(interval=_sync_interval, boot_delay=25):
-            print(f"[Sync] Synchronisation automatique active (intervalle {_sync_interval}s).")
-    except Exception as _sync_err:
-        print(f"[Sync] Synchronisation automatique non démarrée : {_sync_err}")
-
     # Sauvegarde automatique (règle 3-2-1) : dossier cloud synchronisé + clé USB
     # ou disque externe. Un support absent est simplement réessayé plus tard.
     try:
@@ -1052,6 +1062,25 @@ def main():
                       "ouvrez « Sauvegarde des données » dans l'application.")
     except Exception as _sauvegarde_err:
         print(f"[Sauvegarde] Sauvegarde automatique non démarrée : {_sauvegarde_err}")
+
+    # Synchronisation offline <-> serveur : envoi immédiat des changements
+    # locaux et réception périodique de ceux des autres postes.
+    try:
+        from synchronisation import autosync as _sync_auto
+        _config_sync = _sync_auto.charger_config(BASE_DIR)
+        if _sync_auto.demarrer_worker(BASE_DIR, delai_demarrage=15):
+            if _sync_auto._pret(_config_sync):
+                print(
+                    f"[Sync] Active — serveur {_config_sync['server_url']}, "
+                    f"vérification toutes les {_config_sync['interval']}s."
+                )
+            else:
+                print(
+                    "[Sync] Non configurée : copiez sync_config.example.json "
+                    "en sync_config.json à côté de MySchoolGN.exe."
+                )
+    except Exception as _sync_err:
+        print(f"[Sync] Synchronisation automatique non démarrée : {_sync_err}")
 
     # Ouvrir le navigateur en arrière-plan
     browser_thread = threading.Thread(

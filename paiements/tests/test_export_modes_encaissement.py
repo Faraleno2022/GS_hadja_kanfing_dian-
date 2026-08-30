@@ -1,271 +1,295 @@
-"""Tests des exports PDF/Excel regroupes par mode d'encaissement."""
-
-import io
-import importlib.util
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
-from django.utils import timezone
 from openpyxl import load_workbook
 
 from eleves.models import Classe, Ecole, Eleve, Responsable
-from paiements.export_modes_encaissement import collect_modes_encaissement_data
-from paiements.models import EcheancierPaiement, ModePaiement, Paiement, TypePaiement
-from paiements.tests.support import TEST_MIDDLEWARE
-from paiements.views_modes_encaissement import collect_modes_students_data
+from paiements.models import (
+    EcheancierPaiement,
+    ModePaiement,
+    Paiement,
+    TypePaiement,
+)
+from paiements.rapports_professionnels import collect_payment_modes_data
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
+from utilisateurs.models import Profil
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
 class ExportModesEncaissementTests(TestCase):
     def setUp(self):
-        User = get_user_model()
-        self.user = User.objects.create_user(
-            username='direction', password='pass1234',
-            first_name='Aminata', last_name='Diallo',
+        self.ecole = Ecole.objects.create(
+            nom='École Encaissements',
+            adresse='Conakry',
+            telephone='+224620000001',
+            directeur='Direction',
         )
-        self.ecole = self._ecole('École Principale', '+224600000001')
-        self.autre_ecole = self._ecole('École Hors Périmètre', '+224600000002')
-        self.user.profil.role = 'ADMIN'
-        self.user.profil.telephone = '+224600000003'
-        self.user.profil.ecole = self.ecole
-        self.user.profil.save()
-        self.client.force_login(self.user)
-        self.today = timezone.localdate()
-        self.month_start = self.today.replace(day=1)
-
-        self.classe = self._classe(self.ecole, '7ème A')
-        self.autre_classe = self._classe(self.autre_ecole, '8ème B')
-        self.responsable = Responsable.objects.create(
-            prenom='Mamadou', nom='Sow', relation='PERE',
-            telephone='+224600000004', adresse='Conakry',
+        self.autre_ecole = Ecole.objects.create(
+            nom='Autre École',
+            adresse='Conakry',
+            telephone='+224620000002',
+            directeur='Autre direction',
         )
-        self.eleve = self._eleve('MDE-001', 'Fatou', self.classe)
-        self.autre_eleve = self._eleve('MDE-002', 'Binta', self.autre_classe)
-        self.type_paiement = TypePaiement.objects.create(nom='Scolarité export modes')
+        self.classe = Classe.objects.create(
+            nom='8e A',
+            ecole=self.ecole,
+            niveau='COLLEGE_8',
+            annee_scolaire='2024-2025',
+        )
+        autre_classe = Classe.objects.create(
+            nom='8e B',
+            ecole=self.autre_ecole,
+            niveau='COLLEGE_8',
+            annee_scolaire='2024-2025',
+        )
+        responsable = Responsable.objects.create(
+            prenom='Parent',
+            nom='Test',
+            relation='PERE',
+            telephone='+224620000010',
+            adresse='Conakry',
+        )
+        autre_responsable = Responsable.objects.create(
+            prenom='Autre',
+            nom='Parent',
+            relation='MERE',
+            telephone='+224620000011',
+            adresse='Conakry',
+        )
+        self.eleve = Eleve.objects.create(
+            nom='Camara',
+            prenom='Aminata',
+            matricule='ENC-001',
+            classe=self.classe,
+            sexe='F',
+            date_naissance=date(2012, 1, 1),
+            lieu_naissance='Conakry',
+            date_inscription=date(2024, 9, 1),
+            responsable_principal=responsable,
+        )
+        autre_eleve = Eleve.objects.create(
+            nom='Diallo',
+            prenom='Mamadou',
+            matricule='ENC-002',
+            classe=autre_classe,
+            sexe='M',
+            date_naissance=date(2012, 2, 1),
+            lieu_naissance='Conakry',
+            date_inscription=date(2024, 9, 1),
+            responsable_principal=autre_responsable,
+        )
+        self.type_paiement = TypePaiement.objects.create(nom='Scolarité')
         self.especes = ModePaiement.objects.create(nom='Espèces')
         self.orange = ModePaiement.objects.create(nom='Orange Money')
-
-    @staticmethod
-    def _ecole(nom, telephone):
-        return Ecole.objects.create(
-            nom=nom, adresse='Conakry', telephone=telephone,
-            directeur='Direction', email=f"{telephone[-3:]}@example.com",
-        )
-
-    @staticmethod
-    def _classe(ecole, nom):
-        return Classe.objects.create(
-            ecole=ecole, nom=nom, niveau='COLLEGE_7',
-            annee_scolaire='2026-2027', capacite_max=40,
-        )
-
-    def _eleve(self, matricule, prenom, classe):
-        return Eleve.objects.create(
-            matricule=matricule, prenom=prenom, nom='Camara', sexe='F',
-            date_naissance=date(2012, 5, 4), lieu_naissance='Conakry',
-            classe=classe, date_inscription=self.today,
-            responsable_principal=self.responsable,
-        )
-
-    def _paiement(self, eleve, mode, montant, jour=None, statut='VALIDE'):
-        return Paiement.objects.create(
-            eleve=eleve,
+        self.paiement_especes = Paiement.objects.create(
+            eleve=self.eleve,
             type_paiement=self.type_paiement,
-            mode_paiement=mode,
-            numero_recu=f"MDE-{Paiement.objects.count() + 1:04d}",
-            montant=Decimal(str(montant)),
-            date_paiement=jour or self.today,
-            annee_scolaire='2026-2027',
-            statut=statut,
-            cree_par=self.user,
-            valide_par=self.user if statut == 'VALIDE' else None,
+            mode_paiement=self.especes,
+            montant=Decimal('30000'),
+            annee_scolaire='2024-2025',
+            date_paiement=date(2025, 1, 10),
+            statut='VALIDE',
+        )
+        self.paiement_orange = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_paiement,
+            mode_paiement=self.orange,
+            montant=Decimal('70000'),
+            annee_scolaire='2024-2025',
+            date_paiement=date(2025, 1, 11),
+            statut='VALIDE',
+            reference_externe='OM-12345',
+        )
+        self.paiement_en_attente = Paiement.objects.create(
+            eleve=self.eleve,
+            type_paiement=self.type_paiement,
+            mode_paiement=self.especes,
+            montant=Decimal('500000'),
+            annee_scolaire='2024-2025',
+            date_paiement=date(2025, 1, 12),
+            statut='EN_ATTENTE',
+        )
+        self.paiement_autre_ecole = Paiement.objects.create(
+            eleve=autre_eleve,
+            type_paiement=self.type_paiement,
+            mode_paiement=self.especes,
+            montant=Decimal('900000'),
+            annee_scolaire='2024-2025',
+            date_paiement=date(2025, 1, 10),
+            statut='VALIDE',
+        )
+        self.echeancier = EcheancierPaiement.objects.create(
+            eleve=self.eleve,
+            annee_scolaire='2024-2025',
+            frais_inscription_du=Decimal('50000'),
+            tranche_1_due=Decimal('50000'),
+            tranche_2_due=Decimal('50000'),
+            tranche_3_due=Decimal('50000'),
+            date_echeance_inscription=date(2024, 9, 30),
+            date_echeance_tranche_1=date(2024, 11, 30),
+            date_echeance_tranche_2=date(2025, 2, 28),
+            date_echeance_tranche_3=date(2025, 5, 31),
         )
 
-    def _echeancier(self, eleve, total=300000):
-        return EcheancierPaiement.objects.create(
-            eleve=eleve,
-            annee_scolaire='2026-2027',
-            frais_inscription_du=Decimal('0'),
-            tranche_1_due=Decimal(str(total)),
-            tranche_2_due=Decimal('0'),
-            tranche_3_due=Decimal('0'),
-            date_echeance_inscription=self.today - timedelta(days=30),
-            date_echeance_tranche_1=self.today - timedelta(days=10),
-            date_echeance_tranche_2=self.today + timedelta(days=30),
-            date_echeance_tranche_3=self.today + timedelta(days=60),
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username='comptable-modes', password='mot-de-passe'
         )
+        Profil.objects.update_or_create(
+            user=self.user,
+            defaults={
+                'role': 'COMPTABLE',
+                'ecole': self.ecole,
+                'telephone': '+224620000020',
+                'peut_consulter_rapports': True,
+            },
+        )
+        self.user.refresh_from_db()
+        self.client.force_login(self.user)
+        self.params = {
+            'du': '2025-01-01',
+            'au': '2025-01-31',
+            'annee_scolaire': '2024-2025',
+        }
 
-    def _request(self, **params):
-        request = RequestFactory().get('/', params)
+    def test_collecte_uniquement_les_encaissements_valides_de_lecole(self):
+        request = RequestFactory().get('/', self.params)
         request.user = self.user
-        return request
 
-    def _creer_encaissements(self):
-        self._paiement(self.eleve, self.especes, 100000)
-        self._paiement(self.eleve, self.especes, 50000)
-        self._paiement(self.eleve, self.orange, 75000)
-        # Ces trois lignes ne doivent jamais entrer dans le rapport.
-        self._paiement(self.eleve, self.orange, 20000, statut='EN_ATTENTE')
-        self._paiement(
-            self.eleve, self.especes, 60000,
-            jour=self.month_start - timedelta(days=1),
-        )
-        self._paiement(self.autre_eleve, self.orange, 999000)
+        data = collect_payment_modes_data(request)
 
-    def test_collecte_regroupe_uniquement_les_valides_du_mois_et_de_l_ecole(self):
-        self._creer_encaissements()
-
-        data = collect_modes_encaissement_data(self._request())
-
-        self.assertEqual(data['school'].pk, self.ecole.pk)
-        self.assertNotIn('HORS PÉRIMÈTRE', data['scope_label'])
-        self.assertEqual(data['payment_count'], 3)
-        self.assertEqual(data['total_amount'], Decimal('225000'))
+        self.assertEqual(data['validated_count'], 2)
+        self.assertEqual(data['total_validated'], Decimal('100000'))
+        self.assertEqual(data['by_mode']['Espèces']['amount'], Decimal('30000'))
         self.assertEqual(
-            [(row['mode'], row['count'], row['amount']) for row in data['rows']],
-            [
-                ('Espèces', 2, Decimal('150000')),
-                ('Orange Money', 1, Decimal('75000')),
-            ],
+            data['by_mode']['Orange Money']['amount'], Decimal('70000')
         )
-        self.assertAlmostEqual(float(data['rows'][0]['share']), 66.666, places=2)
+        self.assertEqual(len(data['daily_modes']), 2)
+        self.assertEqual(data['student_count'], 1)
+        self.assertEqual(data['student_total_due'], Decimal('200000'))
+        self.assertEqual(data['student_total_paid'], Decimal('100000'))
+        self.assertEqual(data['student_total_balance'], Decimal('100000'))
+        self.assertEqual(len(data['student_mode_rows']), 2)
 
-    def test_export_excel_contient_montants_parts_et_total(self):
-        self._creer_encaissements()
-
-        response = self.client.get(reverse('paiements:export_modes_encaissement_excel'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('spreadsheetml', response['Content-Type'])
-        self.assertTrue(response.content.startswith(b'PK'))
-        workbook = load_workbook(io.BytesIO(response.content), data_only=False)
-        sheet = workbook["Modes d'encaissement"]
+    def test_tableau_affiche_les_eleves_et_soldes_avec_filtres(self):
         self.assertEqual(
-            [sheet.cell(6, column).value for column in range(1, 5)],
-            ['Espèces', 2, 150000, 2 / 3],
+            reverse('paiements:modes_encaissement_tableau'),
+            '/paiements/rapport/modes-encaissement/',
         )
-        self.assertEqual(
-            [sheet.cell(7, column).value for column in range(1, 4)],
-            ['Orange Money', 1, 75000],
-        )
-        self.assertAlmostEqual(sheet.cell(7, 4).value, 1 / 3, places=6)
-        self.assertEqual(
-            [sheet.cell(8, column).value for column in range(1, 5)],
-            ['TOTAL', 3, 225000, 1],
-        )
-        self.assertEqual(sheet.cell(6, 4).number_format, '0.0%')
-
-    def test_export_pdf_contient_les_deux_modes_et_le_total(self):
-        self._creer_encaissements()
-
-        response = self.client.get(reverse('paiements:export_modes_encaissement_pdf'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'application/pdf')
-        self.assertTrue(response.content.startswith(b'%PDF'))
-        # La lecture textuelle renforce le contrôle lorsque pypdf est présent,
-        # sans en faire une dépendance de production de l'application.
-        if importlib.util.find_spec('pypdf'):
-            from pypdf import PdfReader
-
-            reader = PdfReader(io.BytesIO(response.content))
-            text = '\n'.join(page.extract_text() or '' for page in reader.pages)
-            self.assertIn("MONTANTS PAR MODE D'ENCAISSEMENT", text)
-            self.assertIn('Espèces', text)
-            self.assertIn('Orange Money', text)
-            self.assertIn('225 000', text)
-            self.assertIn('66.7 %', text)
-
-    def test_periode_personnalisee_est_respectee(self):
-        previous_day = self.month_start - timedelta(days=1)
-        self._paiement(self.eleve, self.especes, 60000, jour=previous_day)
-        self._paiement(self.eleve, self.orange, 75000)
-
-        data = collect_modes_encaissement_data(self._request(
-            du=previous_day.isoformat(), au=previous_day.isoformat(),
-        ))
-
-        self.assertEqual(data['payment_count'], 1)
-        self.assertEqual(data['total_amount'], Decimal('60000'))
-
-    def test_dates_invalides_retournent_400(self):
         response = self.client.get(
-            reverse('paiements:export_modes_encaissement_pdf'),
-            {'du': '16-08-2026'},
+            reverse('paiements:modes_encaissement_tableau'), self.params
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('AAAA-MM-JJ', response.content.decode('utf-8'))
 
-    def test_tableau_de_bord_propose_les_deux_exports(self):
-        response = self.client.get(reverse('paiements:tableau_bord'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response, reverse('paiements:export_modes_encaissement_pdf')
+        self.assertTemplateUsed(response, 'paiements/modes_encaissement.html')
+        self.assertContains(response, 'AMINATA CAMARA')
+        self.assertEqual(response.context['filtered_student_count'], 1)
+        self.assertEqual(
+            response.context['filtered_total_balance'], Decimal('100000')
         )
-        self.assertContains(
-            response, reverse('paiements:export_modes_encaissement_excel')
+        self.assertEqual(response.context['page_obj'].paginator.count, 2)
+
+        filtered = self.client.get(
+            reverse('paiements:modes_encaissement_tableau'),
+            {**self.params, 'mode_id': str(self.orange.pk)},
         )
-        self.assertContains(
-            response, reverse('paiements:modes_encaissement_soldes')
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(filtered.context['page_obj'].paginator.count, 1)
+        row = filtered.context['page_obj'].object_list[0]
+        self.assertEqual(row['mode'], 'Orange Money')
+        self.assertEqual(row['collected'], Decimal('70000'))
+        self.assertEqual(row['balance'], Decimal('100000'))
+
+        settled = self.client.get(
+            reverse('paiements:modes_encaissement_tableau'),
+            {**self.params, 'situation': 'solde'},
         )
+        self.assertEqual(settled.status_code, 200)
+        self.assertEqual(settled.context['page_obj'].paginator.count, 0)
+        self.assertEqual(settled.context['filtered_total_collected'], Decimal('0'))
 
-    def test_tableau_detaille_affiche_montant_par_mode_et_solde_global_unique(self):
-        self._echeancier(self.eleve)
-        self._paiement(self.eleve, self.especes, 100000)
-        self._paiement(self.eleve, self.orange, 50000)
+        legacy = self.client.get(
+            reverse('paiements:modes_encaissement_tableau_legacy'), self.params
+        )
+        self.assertEqual(legacy.status_code, 200)
+        self.assertTemplateUsed(legacy, 'paiements/modes_encaissement.html')
 
-        data = collect_modes_students_data(self._request())
-
-        self.assertEqual(len(data['rows']), 2)
-        self.assertEqual(data['summary']['student_count'], 1)
-        self.assertEqual(data['summary']['payment_count'], 2)
-        self.assertEqual(data['summary']['period_amount'], Decimal('150000'))
-        # Le même élève apparaît sous deux modes, mais son solde ne doit être
-        # compté qu'une seule fois dans la synthèse.
-        self.assertEqual(data['summary']['balance'], Decimal('150000'))
-        self.assertEqual(data['summary']['remaining_count'], 1)
-        self.assertTrue(all(row['situation']['balance'] == Decimal('150000') for row in data['rows']))
-
-    def test_filtres_dynamiques_mode_et_situation_limitent_les_lignes(self):
-        self._echeancier(self.eleve)
-        self._paiement(self.eleve, self.especes, 100000)
-        self._paiement(self.eleve, self.orange, 50000)
-
-        data = collect_modes_students_data(self._request(
-            mode_id=self.orange.pk, situation='reste',
-        ))
-        self.assertEqual(len(data['rows']), 1)
-        self.assertEqual(data['rows'][0]['mode'], 'Orange Money')
-        self.assertEqual(data['rows'][0]['period_amount'], Decimal('50000'))
-
-        soldes = collect_modes_students_data(self._request(situation='solde'))
-        self.assertEqual(len(soldes['rows']), 0)
-
-    def test_reponse_ajax_ne_retourne_que_le_tableau_filtre(self):
-        self._echeancier(self.eleve)
-        self._paiement(self.eleve, self.especes, 100000)
-        self._paiement(self.eleve, self.orange, 50000)
-
+    def test_tableau_ajax_retourne_uniquement_les_resultats(self):
         response = self.client.get(
-            reverse('paiements:modes_encaissement_soldes'),
-            {'mode_id': self.orange.pk},
+            reverse('paiements:modes_encaissement_tableau'),
+            {**self.params, 'q': 'ENC-001'},
             HTTP_X_REQUESTED_WITH='XMLHttpRequest',
         )
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(
-            response, 'paiements/_modes_encaissement_soldes_resultats.html'
+            response, 'paiements/_modes_encaissement_resultats.html'
         )
-        self.assertContains(response, 'Orange Money')
-        self.assertNotContains(response, '<form', html=False)
+        self.assertContains(response, 'AMINATA CAMARA')
+        self.assertNotContains(response, 'id="modesFilters"')
 
-    def test_classe_hors_ecole_est_refusee_sur_le_tableau_detaille(self):
+    def test_export_excel_contient_synthese_formules_et_detail(self):
         response = self.client.get(
-            reverse('paiements:modes_encaissement_soldes'),
-            {'classe_id': self.autre_classe.pk},
+            reverse('paiements:export_modes_encaissement_excel'), self.params
         )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            response['Content-Type'],
+        )
+        workbook = load_workbook(BytesIO(response.content), data_only=False)
+        self.assertEqual(
+            workbook.sheetnames,
+            [
+                'Synthèse par mode',
+                'Rapprochement journalier',
+                'Détail encaissements',
+            ],
+        )
+        summary = workbook['Synthèse par mode']
+        amounts = {
+            summary.cell(row, 1).value: summary.cell(row, 3).value
+            for row in range(6, summary.max_row)
+        }
+        self.assertEqual(amounts['Espèces'], 30000)
+        self.assertEqual(amounts['Orange Money'], 70000)
+        self.assertTrue(str(summary.cell(6, 4).value).startswith('=IFERROR'))
+        self.assertTrue(str(summary.cell(summary.max_row, 3).value).startswith('=SUM'))
+        self.assertEqual(len(summary._charts), 1)
+
+        detail = workbook['Détail encaissements']
+        receipts = {
+            detail.cell(row, 3).value for row in range(6, detail.max_row + 1)
+        }
+        self.assertEqual(
+            receipts,
+            {self.paiement_especes.numero_recu, self.paiement_orange.numero_recu},
+        )
+        self.assertNotIn(self.paiement_en_attente.numero_recu, receipts)
+        self.assertNotIn(self.paiement_autre_ecole.numero_recu, receipts)
+
+    def test_export_pdf_est_genere_avec_le_bon_nom(self):
+        response = self.client.get(
+            reverse('paiements:export_modes_encaissement_pdf'), self.params
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF'))
+        self.assertIn(
+            'encaissements_par_mode_',
+            response['Content-Disposition'],
+        )
+
+    def test_dates_invalides_sont_refusees(self):
+        response = self.client.get(
+            reverse('paiements:export_modes_encaissement_pdf'),
+            {'du': '2025-02-01', 'au': '2025-01-01'},
+        )
+
         self.assertEqual(response.status_code, 400)
-        self.assertIn('non autorisée', response.content.decode('utf-8'))

@@ -78,7 +78,7 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     path('activer/', activer_licence, name='activer_licence'),
     path('desktop/arreter/', arreter_application, name='arreter_application'),
-    # Sauvegarde des donnees (regle 3-2-1) — application desktop
+    # Sauvegarde des données (règle 3-2-1) — application desktop
     path('sauvegarde/', sauvegarde_views.tableau_sauvegarde, name='sauvegarde_tableau'),
     path('sauvegarde/reglages/', sauvegarde_views.enregistrer_reglages, name='sauvegarde_reglages'),
     path('sauvegarde/destination/ajouter/', sauvegarde_views.ajouter_destination, name='sauvegarde_destination_ajouter'),

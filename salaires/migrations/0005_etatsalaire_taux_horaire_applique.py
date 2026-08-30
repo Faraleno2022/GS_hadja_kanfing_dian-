@@ -15,18 +15,22 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='etatsalaire',
-            name='taux_horaire_applique',
-            field=models.DecimalField(
-                blank=True,
-                decimal_places=2,
-                help_text="Taux figé au moment du calcul pour conserver l'historique de paie",
-                max_digits=10,
-                null=True,
-                verbose_name='Taux horaire appliqué',
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddField(
+                    model_name='etatsalaire',
+                    name='taux_horaire_applique',
+                    field=models.DecimalField(
+                        blank=True,
+                        decimal_places=2,
+                        help_text="Taux figé au moment du calcul pour conserver l'historique de paie",
+                        max_digits=10,
+                        null=True,
+                        verbose_name='Taux horaire appliqué',
+                    ),
+                ),
+            ],
         ),
         migrations.RunPython(renseigner_taux_historiques, migrations.RunPython.noop),
     ]
-

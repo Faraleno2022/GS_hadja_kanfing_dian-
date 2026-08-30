@@ -17,6 +17,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
         migrations.CreateModel(
             name='AbonnementInformatique',
             fields=[
@@ -118,5 +121,7 @@ class Migration(migrations.Migration):
                 'ordering': ['-date', '-id'],
                 'abstract': False,
             },
+        ),
+            ],
         ),
     ]

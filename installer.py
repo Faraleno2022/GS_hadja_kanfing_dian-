@@ -4,7 +4,7 @@
 MySchoolGN - Installateur Automatique
 =======================================
 Auteur  : GS Hadja Kanfing Dian
-Version : 1.2.0
+Version : voir app_version.py
 
 Cet installateur copie MySchoolGN vers C:/MySchoolGN/
 et cree un raccourci sur le Bureau.
@@ -21,6 +21,8 @@ import winreg
 import ctypes
 from pathlib import Path
 
+from app_version import APP_VERSION
+
 # ─── Répertoire source (là où se trouve cet installateur) ─────────────────────
 if getattr(sys, 'frozen', False):
     SRC_DIR = Path(sys.executable).parent
@@ -29,7 +31,6 @@ else:
 
 INSTALL_DIR  = Path("C:/MySchoolGN")
 APP_NAME     = "MySchoolGN"
-APP_VERSION  = "1.2.0"
 PUBLISHER    = "GS Hadja Kanfing Dian"
 EXE_NAME     = "MySchoolGN.exe"
 ICON_NAME    = "myschool.ico"
@@ -43,8 +44,8 @@ IS_UPDATE = any((INSTALL_DIR / name).exists() for name in (
 # Fichiers/dossiers à NE PAS écraser lors d'une mise à jour (données utilisateur)
 UPDATE_PRESERVE_FILES = {
     'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
-    'license.dat', '.trial_start', '.secret_key', '.env',
-    'sync_config.json',
+    'license.dat', 'licence.json', '.trial_start', '.secret_key', '.env',
+    'sync_config.json', 'backup_config.json', '.restauration_en_attente.json',
 }
 UPDATE_PRESERVE_DIRS  = {'media', 'backups', 'logs'}
 
@@ -244,9 +245,10 @@ def do_install(log_func, progress_func, done_func, license_source=None):
             # Exclure les fichiers d'essai/licence/données dev pour que le client parte de zéro
             skip = {
                 "Installer_MySchoolGN.exe", "installer.py", ".trial_start",
-                "license.dat", ".secret_key", "db.sqlite3", "db.sqlite3-wal",
-                "db.sqlite3-shm", "db.sqlite3-journal", ".env",
-                "sync_config.json",
+                "license.dat", "licence.json", ".secret_key", "db.sqlite3",
+                "db.sqlite3-wal", "db.sqlite3-shm", "db.sqlite3-journal",
+                ".env", "sync_config.json", "backup_config.json",
+                ".restauration_en_attente.json",
             }
             total = len(items)
 

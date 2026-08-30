@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'paiements:detail_paiement' paiement.id %}">{{ paiement.numero_recu }}</a></li>
+    <li class="breadcrumb-item active">Mise à la corbeille</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-xl-8 col-lg-10">
+        <div class="card border-danger shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-trash-restore me-2"></i>Mettre le paiement dans la corbeille
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-circle-info me-2"></i>
+                    Cette suppression est réversible. Le paiement disparaîtra des listes actives,
+                    mais ses informations resteront disponibles dans la corbeille.
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <div class="border rounded p-3 h-100">
+                            <h6 class="text-muted">Paiement</h6>
+                            <p class="mb-1"><strong>Reçu :</strong> {{ paiement.numero_recu }}</p>
+                            <p class="mb-1"><strong>Élève :</strong> {{ paiement.eleve.nom_complet }}</p>
+                            <p class="mb-1"><strong>Classe :</strong> {{ paiement.eleve.classe }}</p>
+                            <p class="mb-1"><strong>Date :</strong> {{ paiement.date_paiement|date:"d/m/Y" }}</p>
+                            <p class="mb-0"><strong>Montant :</strong> {{ paiement.montant|floatformat:0|intcomma }} GNF</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border rounded p-3 h-100">
+                            <h6 class="text-muted">Données archivées avec le paiement</h6>
+                            <ul class="mb-0">
+                                <li>Numéro et informations du reçu PDF</li>
+                                <li>{{ remises_count }} remise{{ remises_count|pluralize }} appliquée{{ remises_count|pluralize }}</li>
+                                {% if echeancier %}
+                                    <li>État de l'échéancier {{ echeancier.annee_scolaire }}</li>
+                                {% else %}
+                                    <li>Aucun échéancier associé</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning">
+                    <strong>Après la suppression :</strong> l'échéancier sera recalculé avec les autres
+                    paiements validés de l'élève. En cas de restauration, le reçu et les remises seront
+                    recréés et l'échéancier sera de nouveau recalculé.
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="motif" class="form-label fw-semibold">Motif (facultatif)</label>
+                        <input type="text" class="form-control" id="motif" name="motif"
+                               maxlength="200" placeholder="Ex. : paiement saisi en double, erreur de caisse...">
+                    </div>
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="checkbox" id="confirmation" required>
+                        <label class="form-check-label" for="confirmation">
+                            Je confirme la mise à la corbeille du paiement {{ paiement.numero_recu }}.
+                        </label>
+                    </div>
+                    <div class="d-flex justify-content-between gap-2">
+                        <a href="{% url 'paiements:detail_paiement' paiement.id %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-1"></i>Annuler
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash me-1"></i>Déplacer vers la corbeille
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

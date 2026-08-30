@@ -17,6 +17,11 @@
         <a href="{% url 'eleves:statistiques_eleves' %}" class="btn btn-outline-info">
             <i class="fas fa-chart-pie me-1"></i>Statistiques
         </a>
+        {% if user.is_superuser or is_admin or is_account_principal %}
+        <a href="{% url 'administration:corbeille_eleves' %}" class="btn btn-outline-danger">
+            <i class="fas fa-trash-restore me-1"></i>Corbeille
+        </a>
+        {% endif %}
     </div>
 {% endblock %}
 
@@ -208,21 +213,6 @@
                     setTimeout(() => showMessage('PDF généré avec succès !'), 1000);
                 });
             }
-
-            // Export Excel au modèle du template d'importation (transfert vers un autre poste)
-            const btnModeleImport = zone.querySelector('#btn-export-modele-import');
-            if (btnModeleImport) {
-                const newBtn = btnModeleImport.cloneNode(true);
-                btnModeleImport.parentNode.replaceChild(newBtn, btnModeleImport);
-
-                newBtn.addEventListener('click', () => {
-                    const classeId = select.value;
-                    const url = new URL('{% url "eleves:exporter_tous_eleves_import" %}', window.location.origin);
-                    if (classeId) url.searchParams.set('classe_id', classeId);
-                    showMessage('Génération du fichier Excel en cours...', 'info');
-                    window.location.href = url.toString();
-                });
-            }
         }
 
         const debounce = (fn, delay = 300) => {
@@ -412,4 +402,3 @@
     });
     </script>
 {% endblock %}
-

@@ -16,11 +16,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
 from .models import Rapport, TypeRapport, ExportProgramme
-from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark
+from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark, remises_par_categorie
 from eleves.models import Eleve, Ecole
-from eleves.utils_annee import get_debut_periode_reporting
+from eleves.utils_annee import get_annee_active
 from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypePaiement
-from paiements.allocation import is_reinscription_payment
+from paiements.allocation import registration_kind_for_type
 from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
@@ -36,11 +36,11 @@ def can_access_rapports(user):
     """Vérifie si l'utilisateur peut accéder aux rapports"""
     if not user.is_authenticated:
         return False
-    
+
     # Super admin et staff ont accès
     if user.is_superuser or user.is_staff:
         return True
-    
+
     # Vérifier le rôle via le profil
     try:
         profil = user.profil
@@ -72,13 +72,13 @@ def generer_rapport_journalier(request):
     date_rapport = date.today()
     if request.GET.get('date'):
         date_rapport = datetime.strptime(request.GET.get('date'), '%Y-%m-%d').date()
-    
+
     # Collecte des données journalières
     donnees = collecter_donnees_journalieres(date_rapport, user=request.user)
-    
+
     # Génération du PDF
     pdf_buffer = generer_pdf_journalier(donnees, date_rapport)
-    
+
     # Sauvegarde du rapport
     rapport = Rapport.objects.create(
         type_rapport=get_or_create_type_rapport('JOURNALIER'),
@@ -90,13 +90,13 @@ def generer_rapport_journalier(request):
         genere_par=request.user,
         parametres=json.dumps(donnees, default=str)
     )
-    
+
     # Sauvegarde du fichier PDF
     rapport.fichier.save(
         f'rapport_journalier_{date_rapport.strftime("%Y%m%d")}.pdf',
         pdf_buffer
     )
-    
+
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
@@ -186,21 +186,21 @@ def generer_rapport_hebdomadaire(request):
     aujourd_hui = date.today()
     debut_semaine = aujourd_hui - timedelta(days=aujourd_hui.weekday())
     fin_semaine = debut_semaine + timedelta(days=6)
-    
+
     if request.GET.get('debut'):
         debut_semaine = datetime.strptime(request.GET.get('debut'), '%Y-%m-%d').date()
         fin_semaine = debut_semaine + timedelta(days=6)
-    
+
     # Convertir les dates en datetime timezone-aware pour éviter les warnings
     debut_dt = django_timezone.make_aware(datetime.combine(debut_semaine, datetime.min.time()))
     fin_dt = django_timezone.make_aware(datetime.combine(fin_semaine, datetime.max.time()))
-    
+
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'HEBDOMADAIRE', user=request.user)
     # Branding: si utilisateur restreint à une école, utiliser son logo/nom
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_semaine, fin_semaine, 'HEBDOMADAIRE', ecole=ecole_ctx)
-    
+
     # Sauvegarde
     rapport = Rapport.objects.create(
         type_rapport=get_or_create_type_rapport('HEBDOMADAIRE'),
@@ -212,12 +212,12 @@ def generer_rapport_hebdomadaire(request):
         genere_par=request.user,
         parametres=json.dumps(donnees, default=str)
     )
-    
+
     rapport.fichier.save(
         f'rapport_hebdomadaire_{debut_semaine.strftime("%Y%m%d")}.pdf',
         pdf_buffer
     )
-    
+
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
@@ -227,22 +227,22 @@ def generer_rapport_mensuel(request):
     aujourd_hui = date.today()
     debut_mois = aujourd_hui.replace(day=1)
     fin_mois = (debut_mois + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    
+
     if request.GET.get('mois') and request.GET.get('annee'):
         mois = int(request.GET.get('mois'))
         annee = int(request.GET.get('annee'))
         debut_mois = date(annee, mois, 1)
         fin_mois = (debut_mois + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    
+
     # Convertir les dates en datetime timezone-aware pour éviter les warnings
     debut_dt = django_timezone.make_aware(datetime.combine(debut_mois, datetime.min.time()))
     fin_dt = django_timezone.make_aware(datetime.combine(fin_mois, datetime.max.time()))
-    
+
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'MENSUEL', user=request.user)
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_mois, fin_mois, 'MENSUEL', ecole=ecole_ctx)
-    
+
     # Sauvegarde
     rapport = Rapport.objects.create(
         type_rapport=get_or_create_type_rapport('MENSUEL'),
@@ -254,12 +254,12 @@ def generer_rapport_mensuel(request):
         genere_par=request.user,
         parametres=json.dumps(donnees, default=str)
     )
-    
+
     rapport.fichier.save(
         f'rapport_mensuel_{debut_mois.strftime("%Y%m")}.pdf',
         pdf_buffer
     )
-    
+
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
@@ -269,21 +269,21 @@ def generer_rapport_annuel(request):
     aujourd_hui = date.today()
     debut_annee = date(aujourd_hui.year, 1, 1)
     fin_annee = date(aujourd_hui.year, 12, 31)
-    
+
     if request.GET.get('annee'):
         annee = int(request.GET.get('annee'))
         debut_annee = date(annee, 1, 1)
         fin_annee = date(annee, 12, 31)
-    
+
     # Convertir les dates en datetime timezone-aware pour éviter les warnings
     debut_dt = django_timezone.make_aware(datetime.combine(debut_annee, datetime.min.time()))
     fin_dt = django_timezone.make_aware(datetime.combine(fin_annee, datetime.max.time()))
-    
+
     donnees = collecter_donnees_periode(debut_dt, fin_dt, 'ANNUEL', user=request.user)
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
     ecole_ctx = user_school(request.user) if not user_is_superadmin(request.user) else None
     pdf_buffer = generer_pdf_periode(donnees, debut_annee, fin_annee, 'ANNUEL', ecole=ecole_ctx)
-    
+
     # Sauvegarde
     rapport = Rapport.objects.create(
         type_rapport=get_or_create_type_rapport('ANNUEL'),
@@ -295,12 +295,12 @@ def generer_rapport_annuel(request):
         genere_par=request.user,
         parametres=json.dumps(donnees, default=str)
     )
-    
+
     rapport.fichier.save(
         f'rapport_annuel_{debut_annee.year}.pdf',
         pdf_buffer
     )
-    
+
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
 
 @login_required
@@ -310,7 +310,7 @@ def liste_rapports(request):
     rapports = Rapport.objects.filter(
         genere_par=request.user
     ).order_by('-date_generation')
-    
+
     context = {
         'rapports': rapports
     }
@@ -446,7 +446,7 @@ def _build_excel_from_donnees(donnees, titre):
 
     headers1 = [
         'École', 'Nouveaux élèves', 'Nb paiements', 'Scolarité normale', "Scolarité payée",
-        "Frais d'inscription", 'Réinscription', 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
+        "Frais d'inscription", "Frais de réinscription", 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
         'Nb dépenses', 'Total dépenses', 'États salaires', 'Total salaires'
     ]
     ws1.append(headers1)
@@ -485,7 +485,7 @@ def _build_excel_from_donnees(donnees, titre):
         row += 1
 
     # Largeurs
-    widths = [26, 16, 14, 18, 18, 18, 16, 16, 18, 16, 16, 14, 16, 14, 16]
+    widths = [26, 16, 14, 18, 18, 18, 18, 16, 18, 16, 16, 14, 16, 14, 16]
     for i, w in enumerate(widths, start=1):
         ws1.column_dimensions[get_column_letter(i)].width = w
 
@@ -523,9 +523,9 @@ def _build_excel_from_donnees(donnees, titre):
     for i, w in enumerate([22, 18, 12, 16, 16, 16, 16], start=1):
         ws2.column_dimensions[get_column_letter(i)].width = w
 
-    # Feuille 3: remises par catégorie (toutes écoles cumulées)
+    # Feuille 3: remises par catégorie (motif), toutes écoles
     ws3 = wb.create_sheet('Remises par catégorie')
-    headers3 = ['Catégorie', 'Total remises']
+    headers3 = ['École', 'Catégorie (motif)', 'Montant (GNF)']
     ws3.append(headers3)
     for col in range(1, len(headers3) + 1):
         c = ws3.cell(row=1, column=col)
@@ -534,21 +534,19 @@ def _build_excel_from_donnees(donnees, titre):
         c.alignment = Alignment(horizontal='center')
         c.border = border_all
 
-    totaux_categorie = {}
+    r = 2
     for _, e in donnees.get('ecoles', {}).items():
-        for label, total in (e['paiements'].get('remises_par_categorie') or {}).items():
-            totaux_categorie[label] = totaux_categorie.get(label, 0) + float(total or 0)
+        ecole_nom = e.get('nom', '')
+        for categorie, montant in (e['paiements'].get('remises_par_categorie') or {}).items():
+            ws3.append([ecole_nom, categorie, float(montant or 0)])
+            for col in range(1, len(headers3) + 1):
+                cell = ws3.cell(row=r, column=col)
+                cell.border = border_all
+                if col == 3:
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+            r += 1
 
-    r3 = 2
-    for label, total in sorted(totaux_categorie.items(), key=lambda item: -item[1]):
-        ws3.append([label, total])
-        ws3.cell(row=r3, column=1).border = border_all
-        cell_total = ws3.cell(row=r3, column=2)
-        cell_total.border = border_all
-        cell_total.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
-        r3 += 1
-
-    for i, w in enumerate([26, 18], start=1):
+    for i, w in enumerate([26, 26, 18], start=1):
         ws3.column_dimensions[get_column_letter(i)].width = w
 
     return wb
@@ -602,9 +600,9 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 'frais_inscription': Decimal('0'),
                 'reinscription': Decimal('0'),
                 'scolarite': Decimal('0'),
-                # Total dû (GNF) pour les élèves concernés ce jour (paiement/inscription)
-                'total_du_concernes': Decimal('0'),
                 'remises_par_categorie': {},
+                # Total dû (GNF) pour les élèves concernés ce jour (paiement/inscription)
+                'total_du_concernes': Decimal('0')
             },
             # Répartition par classe (remplie plus bas)
             'classes': [],
@@ -619,13 +617,13 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 'montant_total': Decimal('0')
             }
         }
-        
+
         # Paiements du jour - utiliser une approche plus flexible
         paiements_jour = Paiement.objects.filter(
             eleve__classe__ecole=ecole,
             date_paiement=date_rapport
         ).exclude(statut='ANNULE')  # Exclure seulement les annulés
-        
+
         # Si pas de paiements ce jour, essayer avec les paiements récents (30 derniers jours)
         if not paiements_jour.exists():
             date_limite = date_rapport - timedelta(days=30)
@@ -634,49 +632,44 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 date_paiement__gte=date_limite,
                 statut='VALIDE'
             )
-        
+
         donnees_ecole['paiements']['nombre'] = paiements_jour.count()
         donnees_ecole['paiements']['montant_total'] = paiements_jour.aggregate(
             total=Sum('montant')
         )['total'] or Decimal('0')
-        
+
         # Calculer les remises appliquées
         remises_appliquees = PaiementRemise.objects.filter(
             paiement__in=paiements_jour
         ).aggregate(
             total_remises=Sum('montant_remise')
         )['total_remises'] or Decimal('0')
-        
+
         # Calculer le montant original (avant remises)
         montant_original = donnees_ecole['paiements']['montant_total'] + remises_appliquees
-        
+
         # Ajouter les données des remises
         donnees_ecole['paiements']['montant_original'] = montant_original
         donnees_ecole['paiements']['total_remises'] = remises_appliquees
         donnees_ecole['paiements']['montant_net'] = donnees_ecole['paiements']['montant_total']
-        
+        donnees_ecole['paiements']['remises_par_categorie'] = remises_par_categorie(paiements_jour)
+
         # Séparation frais d'inscription et scolarité (alignée avec rapports/utils.collecter_donnees_periode)
         frais_inscription = Decimal('0')
-        reinscription = Decimal('0')
+        frais_reinscription = Decimal('0')
         scolarite = Decimal('0')
         non_categorises = Decimal('0')
 
         for p in paiements_jour.select_related('type_paiement'):
             montant = p.montant or Decimal('0')
             nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
+            kind = registration_kind_for_type(p.type_paiement)
 
-            is_reinsc = is_reinscription_payment(nom)
-            has_inscription = 'inscription' in nom
+            has_inscription = kind == 'inscription'
+            has_reinscription = kind == 'reinscription'
             has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
 
-            if is_reinsc and has_scolarite:
-                part_ins = min(Decimal('30000'), montant)
-                part_sco = montant - part_ins
-                reinscription += part_ins
-                scolarite += part_sco
-            elif is_reinsc:
-                reinscription += montant
-            elif has_inscription and has_scolarite:
+            if has_inscription and has_scolarite:
                 # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
                 part_ins = min(Decimal('30000'), montant)
                 part_sco = montant - part_ins
@@ -684,6 +677,10 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 scolarite += part_sco
             elif has_inscription:
                 frais_inscription += montant
+            elif has_reinscription:
+                # Cf. rapports/utils.collecter_donnees_periode: pas de forfait
+                # réinscription connu ici, montant compté intégralement.
+                frais_reinscription += montant
             elif has_scolarite:
                 scolarite += montant
             else:
@@ -713,26 +710,11 @@ def collecter_donnees_journalieres(date_rapport, user=None):
 
         # Assigner les valeurs finales
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
-        donnees_ecole['paiements']['reinscription'] = reinscription
+        donnees_ecole['paiements']['reinscription'] = frais_reinscription
         donnees_ecole['paiements']['scolarite'] = scolarite
 
-        # Totaux des remises par catégorie (motif de la remise appliquée)
-        try:
-            motif_labels = dict(PaiementRemise.MOTIF_CHOICES)
-            remises_categorie_map = {}
-            for row in (
-                PaiementRemise.objects.filter(paiement__in=paiements_jour)
-                .values('motif')
-                .annotate(total=Sum('montant_remise'))
-            ):
-                label = motif_labels.get(row.get('motif') or '', 'Non précisé')
-                remises_categorie_map[label] = remises_categorie_map.get(label, Decimal('0')) + (row.get('total') or Decimal('0'))
-            donnees_ecole['paiements']['remises_par_categorie'] = remises_categorie_map
-        except Exception:
-            donnees_ecole['paiements']['remises_par_categorie'] = {}
-
         # (Supprimé) Frais de scolarité annuel ne figure pas dans le rapport journalier
-        
+
         # Calcul: Reste à payer (élèves concernés par la journée)
         # Inclut: élèves ayant payé ce jour + nouveaux inscrits ce jour
         eleves_concernes_ids = set(
@@ -821,7 +803,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
             donnees_ecole['classes'] = sorted(par_classe.values(), key=lambda x: x['classe'])
         donnees_ecole['paiements']['reste_a_payer'] = reste_a_payer
         donnees_ecole['paiements']['total_du_concernes'] = total_du_concernes
-        
+
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
 
@@ -829,29 +811,29 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         # Convertir la date en timezone aware pour éviter les warnings
         debut_jour = django_timezone.make_aware(datetime.combine(date_rapport, datetime.min.time()))
         fin_jour = django_timezone.make_aware(datetime.combine(date_rapport, datetime.max.time()))
-        
+
         etats_jour = EtatSalaire.objects.filter(
             enseignant__ecole=ecole,
             date_validation__range=[debut_jour, fin_jour],
             valide=True
         )
-        
+
         donnees_ecole['salaires']['etats_valides'] = etats_jour.count()
         donnees_ecole['salaires']['montant_total'] = etats_jour.aggregate(
             total=Sum('salaire_net')
         )['total'] or Decimal('0')
-        
+
         donnees['ecoles'][ecole.id] = donnees_ecole
-    
+
     return donnees
 
 def generer_pdf_journalier(donnees, date_rapport):
     """Génère le PDF du rapport journalier"""
     buffer = BytesIO()
-    
+
     # Créer le canvas pour ajouter le filigrane
     from reportlab.pdfgen import canvas as pdf_canvas
-    
+
     # Déterminer l'école de l'utilisateur (branding dynamique si restreint)
     from utilisateurs.utils import user_school
     ecole_user = None
@@ -867,7 +849,7 @@ def generer_pdf_journalier(donnees, date_rapport):
     class WatermarkDocTemplate(SimpleDocTemplate):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-        
+
         def afterPage(self):
             c = self.canv
             try:
@@ -876,11 +858,11 @@ def generer_pdf_journalier(donnees, date_rapport):
                 draw_logo_watermark(c, self.pagesize[0], self.pagesize[1], ecole=ecole_user)
             except Exception:
                 pass
-    
+
     doc = WatermarkDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     story = []
-    
+
     # Ajouter le logo en en-tête (dynamique par école si possible)
     try:
         from django.contrib.staticfiles import finders
@@ -893,7 +875,7 @@ def generer_pdf_journalier(donnees, date_rapport):
         except Exception:
             logo_path = None
         if not logo_path:
-            logo_path = finders.find('logos/logo.jpeg')
+            logo_path = finders.find('logos/logo.png')
         if logo_path:
             from reportlab.platypus import Image
             logo = Image(logo_path, width=60, height=60)
@@ -901,7 +883,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             story.append(Spacer(1, 10))
     except Exception:
         pass
-    
+
     # Titre
     titre_style = ParagraphStyle(
         'TitreRapport',
@@ -910,16 +892,16 @@ def generer_pdf_journalier(donnees, date_rapport):
         textColor=colors.darkblue,
         alignment=1  # Centré
     )
-    
+
     story.append(Paragraph(f"RAPPORT JOURNALIER - {date_rapport.strftime('%d/%m/%Y')}", titre_style))
     story.append(Spacer(1, 20))
-    
+
     # Pour chaque école
     for ecole_id, donnees_ecole in donnees['ecoles'].items():
         # Titre de l'école
         story.append(Paragraph(f"École: {donnees_ecole['nom']}", styles['Heading2']))
         story.append(Spacer(1, 10))
-        
+
         # Tableau des données
         data = [
             ['Indicateur', 'Valeur'],
@@ -928,7 +910,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ["Scolarité normale", f"{donnees_ecole['paiements'].get('total_du_concernes', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ["Frais d'inscription", f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
-            ['Réinscription', f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
+            ["Frais de réinscription", f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
             ["Reste à payer", f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
@@ -938,7 +920,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ['États de salaire validés', str(donnees_ecole['salaires']['etats_valides'])],
             ['Montant total des salaires', f"{donnees_ecole['salaires']['montant_total']:,} GNF".replace(',', ' ')],
         ]
-        
+
         table = Table(data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -950,7 +932,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
-        
+
         story.append(table)
         story.append(Spacer(1, 16))
 
@@ -984,15 +966,16 @@ def generer_pdf_journalier(donnees, date_rapport):
             story.append(class_table)
             story.append(Spacer(1, 16))
 
-        # Totaux des remises par catégorie
-        remises_cat = donnees_ecole['paiements'].get('remises_par_categorie') or {}
-        if remises_cat:
+        # Remises par catégorie (motif)
+        remises_categorie = donnees_ecole['paiements'].get('remises_par_categorie') or {}
+        if remises_categorie:
             story.append(Paragraph("Remises par catégorie", styles['Heading3']))
             story.append(Spacer(1, 6))
-            remises_data = [['Catégorie', 'Total remises']]
-            for label, total in sorted(remises_cat.items(), key=lambda item: -item[1]):
-                remises_data.append([label, f"{total:,} GNF".replace(',', ' ')])
-            remises_table = Table(remises_data, colWidths=[200, 120])
+            remises_data = [['Catégorie (motif)', 'Montant']]
+            for categorie, montant in remises_categorie.items():
+                remises_data.append([categorie, f"{montant:,} GNF".replace(',', ' ')])
+
+            remises_table = Table(remises_data, colWidths=[220, 120])
             remises_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
@@ -1029,7 +1012,7 @@ def generer_pdf_journalier(donnees, date_rapport):
     total_paiements_original = sum(d['paiements']['montant_original'] for d in donnees['ecoles'].values())
     total_remises = sum(d['paiements']['total_remises'] for d in donnees['ecoles'].values())
     total_salaires = sum(d['salaires']['montant_total'] for d in donnees['ecoles'].values())
-    
+
     # Résumé global
     resume_data = [
         ['Indicateur', 'Montant'],
@@ -1040,7 +1023,7 @@ def generer_pdf_journalier(donnees, date_rapport):
         ['Total des salaires', f"{total_salaires:,} GNF".replace(',', ' ')],
         ['Solde net', f"{total_paiements - total_depenses - total_salaires:,} GNF".replace(',', ' ')],
     ]
-    
+
     resume_table = Table(resume_data, colWidths=[3*inch, 2*inch])
     resume_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
@@ -1048,9 +1031,9 @@ def generer_pdf_journalier(donnees, date_rapport):
         ('FONTSIZE', (0, 0), (-1, -1), 12),
         ('GRID', (0, 0), (-1, -1), 1, colors.black)
     ]))
-    
+
     story.append(resume_table)
-    
+
     # Ajout entête + filigrane sur toutes les pages
     doc.build(story, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
     buffer.seek(0)
@@ -1061,26 +1044,30 @@ def generer_pdf_journalier(donnees, date_rapport):
 @user_passes_test(can_access_rapports)
 def rapport_remises_detaille(request):
     """Rapport détaillé des remises appliquées"""
-    aujourd_hui = django_timezone.localdate()
-    debut_defaut = get_debut_periode_reporting(
-        request, user_school(request.user), today=aujourd_hui
-    )
+    date_debut = request.GET.get('date_debut')
+    date_fin = request.GET.get('date_fin')
+
+    # Par défaut, couvrir l'année scolaire active. Une fenêtre limitée au mois
+    # courant rendait le rapport vide les premiers jours d'un nouveau mois.
+    ecole_user = user_school(request.user)
+    annee_active = get_annee_active(request, ecole_user) if ecole_user else None
     try:
-        date_debut = datetime.strptime(
-            request.GET.get('date_debut'), '%Y-%m-%d'
-        ).date() if request.GET.get('date_debut') else debut_defaut
-    except (TypeError, ValueError):
-        date_debut = debut_defaut
-    try:
-        date_fin = datetime.strptime(
-            request.GET.get('date_fin'), '%Y-%m-%d'
-        ).date() if request.GET.get('date_fin') else aujourd_hui
-    except (TypeError, ValueError):
-        date_fin = aujourd_hui
-    if date_debut > date_fin:
-        date_debut, date_fin = date_fin, date_debut
-    
-    # Récupérer les remises de toute la période de reporting sélectionnée.
+        annee_debut = int(str(annee_active).split('-')[0])
+    except (ValueError, TypeError, IndexError):
+        aujourd_hui = date.today()
+        annee_debut = aujourd_hui.year if aujourd_hui.month >= 9 else aujourd_hui.year - 1
+
+    if not date_debut:
+        date_debut = date(annee_debut, 9, 1)
+    else:
+        date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
+
+    if not date_fin:
+        date_fin = date.today()
+    else:
+        date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
+
+    # Récupérer toutes les remises appliquées dans la période
     remises_appliquees = PaiementRemise.objects.filter(
         paiement__date_paiement__range=[date_debut, date_fin],
         paiement__statut='VALIDE'
@@ -1098,23 +1085,18 @@ def rapport_remises_detaille(request):
             )
         else:
             remises_appliquees = remises_appliquees.none()
-    
+
     # Calcul des totaux
     total_remises = remises_appliquees.aggregate(
         total=Sum('montant_remise')
     )['total'] or Decimal('0')
-    
-    paiement_ids = remises_appliquees.values_list(
-        'paiement_id', flat=True
-    ).distinct()
-    total_montants_finals = Paiement.objects.filter(
-        id__in=paiement_ids
-    ).aggregate(
-        total=Sum('montant')
+
+    total_montants_finals = remises_appliquees.aggregate(
+        total=Sum('paiement__montant')
     )['total'] or Decimal('0')
-    
+
     difference_totale = total_montants_finals - total_remises
-    
+
     # Statistiques des remises
     stats_remises = {
         'total_remises': total_remises,
@@ -1123,7 +1105,7 @@ def rapport_remises_detaille(request):
         'nombre_paiements_avec_remise': remises_appliquees.values('paiement').distinct().count(),
         'nombre_eleves_beneficiaires': remises_appliquees.values('paiement__eleve').distinct().count(),
     }
-    
+
     # Répartition par type de remise
     repartition_types = remises_appliquees.values(
         'remise__nom', 'remise__motif'
@@ -1131,7 +1113,7 @@ def rapport_remises_detaille(request):
         total_montant=Sum('montant_remise'),
         nombre_applications=Count('id')
     ).order_by('-total_montant')
-    
+
     # Répartition par école
     repartition_ecoles = remises_appliquees.values(
         'paiement__eleve__classe__ecole__nom'
@@ -1139,7 +1121,7 @@ def rapport_remises_detaille(request):
         total_montant=Sum('montant_remise'),
         nombre_applications=Count('id')
     ).order_by('-total_montant')
-    
+
     context = {
         'remises_appliquees': remises_appliquees,
         'stats_remises': stats_remises,
@@ -1149,5 +1131,5 @@ def rapport_remises_detaille(request):
         'date_fin': date_fin,
         'periode_str': f"du {date_debut.strftime('%d/%m/%Y')} au {date_fin.strftime('%d/%m/%Y')}"
     }
-    
+
     return render(request, 'rapports/rapport_remises.html', context)

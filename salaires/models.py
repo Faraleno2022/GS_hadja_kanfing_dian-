@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from eleves.models import Classe, Ecole
@@ -13,7 +14,7 @@ class TypeEnseignant(models.TextChoices):
     MATERNELLE = 'MATERNELLE', 'Maternelle'
     PRIMAIRE = 'PRIMAIRE', 'Primaire'
     SECONDAIRE = 'SECONDAIRE', 'Secondaire (taux horaire)'
-    ADMINISTRATEUR = 'ADMINISTRATEUR', 'Cadre / Administrateur'
+    ADMINISTRATEUR = 'ADMINISTRATEUR', 'Administrateur'
 
 
 class StatutEnseignant(models.TextChoices):
@@ -24,20 +25,27 @@ class StatutEnseignant(models.TextChoices):
     DEMISSIONNAIRE = 'DEMISSIONNAIRE', 'Démissionnaire'
 
 
+class ModeCalculHoraire(models.TextChoices):
+    """Source des heures utilisées pour payer un enseignant du secondaire."""
+
+    POINTAGE = 'POINTAGE', 'Pointage arrivée / départ'
+    MENSUEL = 'MENSUEL', 'Total mensuel global'
+
+
 class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
-    
+
     # Informations personnelles
     nom = models.CharField(max_length=100, verbose_name="Nom")
     prenoms = models.CharField(max_length=150, verbose_name="Prénoms")
     telephone = models.CharField(max_length=20, blank=True, verbose_name="Téléphone")
     email = models.EmailField(blank=True, verbose_name="Email")
     adresse = models.TextField(blank=True, verbose_name="Adresse")
-    
+
     # Informations professionnelles
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, verbose_name="École")
     type_enseignant = models.CharField(
-        max_length=20, 
+        max_length=20,
         choices=TypeEnseignant.choices,
         verbose_name="Type d'enseignant"
     )
@@ -47,63 +55,79 @@ class Enseignant(SyncTrackedModel):
         default=StatutEnseignant.ACTIF,
         verbose_name="Statut"
     )
-    
+
     # Rémunération
     taux_horaire = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        null=True, 
+        max_digits=10,
+        decimal_places=2,
+        null=True,
         blank=True,
         verbose_name="Taux horaire (GNF)",
-        help_text="Pour les enseignants du secondaire uniquement"
+        help_text="Pour les enseignants du secondaire uniquement",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    mode_calcul_horaire = models.CharField(
+        max_length=10,
+        choices=ModeCalculHoraire.choices,
+        default=ModeCalculHoraire.POINTAGE,
+        verbose_name="Mode de calcul des heures",
+        help_text=(
+            "Pour le secondaire : utiliser les pointages quotidiens ou un total "
+            "mensuel saisi globalement."
+        ),
     )
     salaire_fixe = models.DecimalField(
-        max_digits=12, 
-        decimal_places=2, 
-        null=True, 
+        max_digits=12,
+        decimal_places=2,
+        null=True,
         blank=True,
         verbose_name="Salaire fixe (GNF)",
-        help_text="Pour garderie, maternelle, primaire et administrateurs"
+        help_text="Pour garderie, maternelle, primaire et administrateurs",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     heures_mensuelles = models.DecimalField(
-        max_digits=6, 
-        decimal_places=2, 
-        null=True, 
+        max_digits=6,
+        decimal_places=2,
+        null=True,
         blank=True,
         verbose_name="Heures mensuelles",
-        help_text="Nombre d'heures de travail prévues par mois (pour calcul précis du salaire)"
+        help_text="Total mensuel global utilisé pour calculer le salaire horaire",
+        validators=[
+            MinValueValidator(Decimal('0')),
+            MaxValueValidator(Decimal('200')),
+        ],
     )
-    
+
     # Dates
     date_embauche = models.DateField(verbose_name="Date d'embauche")
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
-    
+
     # Relations
     cree_par = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
         related_name='enseignants_crees'
     )
-    
+
     class Meta:
         verbose_name = "Enseignant"
         verbose_name_plural = "Enseignants"
         ordering = ['nom', 'prenoms']
-    
+
     def __str__(self):
         return f"{self.nom} {self.prenoms}"
-    
+
     @property
     def nom_complet(self):
         return f"{self.nom} {self.prenoms}"
-    
+
     @property
     def est_taux_horaire(self):
         """Vérifie si l'enseignant est payé au taux horaire"""
         return self.type_enseignant == TypeEnseignant.SECONDAIRE
-    
+
     @property
     def est_salaire_fixe(self):
         """Vérifie si l'enseignant a un salaire fixe"""
@@ -113,69 +137,80 @@ class Enseignant(SyncTrackedModel):
             TypeEnseignant.PRIMAIRE,
             TypeEnseignant.ADMINISTRATEUR
         ]
-    
+
     def clean(self):
-        erreurs = {}
+        super().clean()
 
-        if self.est_taux_horaire and (self.taux_horaire is None or self.taux_horaire <= 0):
-            erreurs['taux_horaire'] = (
-                'Le taux horaire doit être strictement positif pour les enseignants du secondaire.'
-            )
+        if self.est_taux_horaire and not self.taux_horaire:
+            raise ValidationError({
+                'taux_horaire': 'Le taux horaire est obligatoire pour les enseignants du secondaire.'
+            })
 
-        if self.est_salaire_fixe and (self.salaire_fixe is None or self.salaire_fixe <= 0):
-            erreurs['salaire_fixe'] = (
-                f'Le salaire fixe doit être strictement positif pour les '
-                f'{self.get_type_enseignant_display().lower()}.'
-            )
+        if (
+            self.est_taux_horaire
+            and self.mode_calcul_horaire == ModeCalculHoraire.MENSUEL
+            and not self.heures_mensuelles
+        ):
+            raise ValidationError({
+                'heures_mensuelles': (
+                    "Le total d'heures mensuelles est obligatoire pour le mode mensuel global."
+                )
+            })
 
-        if self.heures_mensuelles is not None and self.heures_mensuelles < 0:
-            erreurs['heures_mensuelles'] = 'Les heures mensuelles ne peuvent pas être négatives.'
-
-        if erreurs:
-            raise ValidationError(erreurs)
+        if self.est_salaire_fixe and not self.salaire_fixe:
+            raise ValidationError({
+                'salaire_fixe': f'Le salaire fixe est obligatoire pour les {self.get_type_enseignant_display().lower()}.'
+            })
 
     def save(self, *args, **kwargs):
-        exclusions = ['cree_par'] if self.cree_par_id is None else None
-        self.full_clean(exclude=exclusions)
-        return super().save(*args, **kwargs)
-    
+        # Les validateurs doivent aussi protéger les imports, scripts et API,
+        # pas uniquement les ModelForm de l'interface.
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def calculer_salaire_mensuel(self, heures_realisees=None):
         """
         Calcule le salaire mensuel de l'enseignant
-        
+
         Args:
             heures_realisees: Nombre d'heures réellement travaillées (optionnel)
-        
+
         Returns:
             Decimal: Salaire mensuel calculé
         """
         from decimal import Decimal
-        
+
         if self.est_taux_horaire:
             # Pour les enseignants du secondaire (taux horaire)
             if not self.taux_horaire:
                 return Decimal('0')
-            
-            # Un salaire horaire repose uniquement sur le pointage réel. Sans
-            # heures réalisées, aucun montant n'est dû.
-            heures = heures_realisees if heures_realisees is not None else Decimal('0')
+
+            # Un pointage absent ne doit jamais être remplacé silencieusement
+            # par un forfait. Le total mensuel n'est utilisé que si ce mode a
+            # été explicitement sélectionné sur le dossier de l'enseignant.
+            if heures_realisees is not None:
+                heures = heures_realisees
+            elif self.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
+                heures = self.heures_mensuelles or Decimal('0')
+            else:
+                heures = Decimal('0')
             return self.taux_horaire * heures
-        
+
         elif self.est_salaire_fixe:
             # Pour les autres types (salaire fixe)
             return self.salaire_fixe or Decimal('0')
-        
+
         return Decimal('0')
-    
+
     def get_heures_mensuelles_defaut(self):
         """Retourne le nombre d'heures mensuelles par défaut selon le type d'enseignant"""
         from decimal import Decimal
-        
+
         if self.type_enseignant == TypeEnseignant.SECONDAIRE:
             return Decimal('120')  # 120 heures par mois pour le secondaire
         else:
             return Decimal('160')  # 160 heures par mois pour les autres types
-    
+
     @property
     def heures_mensuelles_effectives(self):
         """Retourne les heures mensuelles effectives (définies ou par défaut)"""
@@ -184,141 +219,151 @@ class Enseignant(SyncTrackedModel):
 
 class AffectationClasse(SyncTrackedModel):
     """Affectation d'un enseignant à une classe"""
-    
+
     enseignant = models.ForeignKey(
-        Enseignant, 
-        on_delete=models.CASCADE, 
+        Enseignant,
+        on_delete=models.CASCADE,
         related_name='affectations',
         verbose_name="Enseignant"
     )
     classe = models.ForeignKey(
-        Classe, 
+        Classe,
         on_delete=models.CASCADE,
         verbose_name="Classe"
     )
-    
+
     # Pour les enseignants du secondaire (taux horaire)
     heures_par_semaine = models.DecimalField(
-        max_digits=5, 
-        decimal_places=2, 
-        null=True, 
+        max_digits=5,
+        decimal_places=2,
+        null=True,
         blank=True,
         verbose_name="Heures par semaine",
-        help_text="Nombre d'heures d'enseignement par semaine dans cette classe"
+        help_text="Nombre d'heures d'enseignement par semaine dans cette classe",
+        validators=[
+            MinValueValidator(Decimal('0')),
+            MaxValueValidator(Decimal('168')),
+        ],
     )
-    
+
     # Matière enseignée (optionnel)
     matiere = models.CharField(
-        max_length=100, 
+        max_length=100,
         blank=True,
         verbose_name="Matière",
         help_text="Matière enseignée dans cette classe"
     )
-    
+
     # Dates
     date_debut = models.DateField(verbose_name="Date de début")
     date_fin = models.DateField(null=True, blank=True, verbose_name="Date de fin")
-    
+
     # Statut
     actif = models.BooleanField(default=True, verbose_name="Actif")
-    
+
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         verbose_name = "Affectation de classe"
         verbose_name_plural = "Affectations de classes"
         unique_together = ['enseignant', 'classe', 'date_debut']
         ordering = ['-date_debut']
-    
+
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.classe.nom}"
-    
+
     def clean(self):
-        erreurs = {}
+        super().clean()
 
-        if self.enseignant_id and self.enseignant.est_taux_horaire and (
-            self.heures_par_semaine is None or self.heures_par_semaine <= 0
-        ):
-            erreurs['heures_par_semaine'] = (
-                'Le nombre d\'heures par semaine doit être strictement positif '
-                'pour les enseignants du secondaire.'
-            )
-
-        if self.heures_par_semaine is not None and self.heures_par_semaine < 0:
-            erreurs['heures_par_semaine'] = 'Les heures par semaine ne peuvent pas être négatives.'
+        if self.enseignant.est_taux_horaire and not self.heures_par_semaine:
+            raise ValidationError({
+                'heures_par_semaine': 'Le nombre d\'heures par semaine est obligatoire pour les enseignants du secondaire.'
+            })
 
         if self.date_fin and self.date_fin < self.date_debut:
-            erreurs['date_fin'] = 'La date de fin ne peut pas être antérieure à la date de début.'
-
-        if self.classe_id and self.enseignant_id and self.classe.ecole_id != self.enseignant.ecole_id:
-            erreurs['classe'] = 'La classe doit appartenir à la même école que l\'enseignant.'
-
-        if erreurs:
-            raise ValidationError(erreurs)
+            raise ValidationError({
+                'date_fin': 'La date de fin ne peut pas être antérieure à la date de début.'
+            })
+        if (
+            self.enseignant_id
+            and self.classe_id
+            and self.enseignant.ecole_id != self.classe.ecole_id
+        ):
+            raise ValidationError({
+                'classe': "La classe et l'enseignant doivent appartenir à la même école."
+            })
 
     def save(self, *args, **kwargs):
         self.full_clean()
-        return super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
 
 
 class PeriodeSalaire(SyncTrackedModel):
     """Période de calcul des salaires (mois)"""
-    
+
     mois = models.IntegerField(
         choices=[(i, f"{i:02d}") for i in range(1, 13)],
         verbose_name="Mois"
     )
     annee = models.IntegerField(verbose_name="Année")
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, verbose_name="École")
-    
+
     # Paramètres de la période
     nombre_semaines = models.DecimalField(
-        max_digits=4, 
-        decimal_places=2, 
+        max_digits=4,
+        decimal_places=2,
         default=Decimal('4.33'),
         verbose_name="Nombre de semaines",
-        help_text="Nombre moyen de semaines dans le mois (défaut: 4.33)"
+        help_text="Nombre moyen de semaines dans le mois (défaut: 4.33)",
+        validators=[
+            MinValueValidator(Decimal('0.01')),
+            MaxValueValidator(Decimal('6')),
+        ],
     )
-    
+
     # Statut
     cloturee = models.BooleanField(
-        default=False, 
+        default=False,
         verbose_name="Clôturée",
         help_text="Une fois clôturée, la période ne peut plus être modifiée"
     )
-    
+
     # Dates
     date_creation = models.DateTimeField(auto_now_add=True)
     date_cloture = models.DateTimeField(null=True, blank=True)
-    
+
     cree_par = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
+        User,
+        on_delete=models.SET_NULL,
         null=True,
         related_name='periodes_salaire_creees'
     )
     cloturee_par = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='periodes_salaire_cloturees'
     )
-    
+
     class Meta:
         verbose_name = "Période de salaire"
         verbose_name_plural = "Périodes de salaire"
         unique_together = ['mois', 'annee', 'ecole']
         ordering = ['-annee', '-mois']
-    
+
     def __str__(self):
         mois_noms = [
             '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
             'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
         ]
         return f"{mois_noms[self.mois]} {self.annee} - {self.ecole.nom}"
-    
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     @property
     def nom_periode(self):
         mois_noms = [
@@ -327,53 +372,39 @@ class PeriodeSalaire(SyncTrackedModel):
         ]
         return f"{mois_noms[self.mois]} {self.annee}"
 
-    def clean(self):
-        if self.nombre_semaines is None or self.nombre_semaines <= 0:
-            raise ValidationError({
-                'nombre_semaines': 'Le nombre de semaines doit être strictement positif.'
-            })
-
-    def save(self, *args, **kwargs):
-        exclusions = ['cree_par'] if self.cree_par_id is None else None
-        self.full_clean(exclude=exclusions)
-        return super().save(*args, **kwargs)
-
 
 class EtatSalaire(SyncTrackedModel):
     """État de salaire d'un enseignant pour une période donnée"""
-    
+
     enseignant = models.ForeignKey(
-        Enseignant, 
-        on_delete=models.CASCADE, 
+        Enseignant,
+        on_delete=models.CASCADE,
         related_name='etats_salaire',
         verbose_name="Enseignant"
     )
     periode = models.ForeignKey(
-        PeriodeSalaire, 
-        on_delete=models.CASCADE, 
+        PeriodeSalaire,
+        on_delete=models.CASCADE,
         related_name='etats_salaire',
         verbose_name="Période"
     )
-    
+
     # Calculs pour enseignants au taux horaire
     total_heures = models.DecimalField(
-        max_digits=8, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        verbose_name="Total heures",
-        help_text="Total des heures enseignées dans le mois"
-    )
-    heures_mensuelles_saisies = models.DecimalField(
         max_digits=8,
         decimal_places=2,
         null=True,
         blank=True,
-        verbose_name="Heures mensuelles saisies",
-        help_text=(
-            "Total réel saisi globalement pour ce mois. Laisser vide pour "
-            "utiliser les pointages d'arrivée et de départ."
-        ),
+        verbose_name="Total heures",
+        help_text="Total des heures enseignées dans le mois"
+    )
+    mode_calcul_heures = models.CharField(
+        max_length=10,
+        choices=ModeCalculHoraire.choices,
+        blank=True,
+        default='',
+        verbose_name="Source des heures",
+        help_text="Mode conservé au moment du calcul pour l'historique",
     )
     taux_horaire_applique = models.DecimalField(
         max_digits=10,
@@ -381,147 +412,148 @@ class EtatSalaire(SyncTrackedModel):
         null=True,
         blank=True,
         verbose_name="Taux horaire appliqué",
-        help_text="Taux figé au moment du calcul pour conserver l'historique de paie",
+        help_text="Taux conservé au moment du calcul pour l'historique",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     # Montants
     salaire_base = models.DecimalField(
-        max_digits=12, 
+        max_digits=12,
         decimal_places=2,
-        verbose_name="Salaire de base"
+        verbose_name="Salaire de base",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     primes = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
+        max_digits=10,
+        decimal_places=2,
         default=Decimal('0'),
-        verbose_name="Primes"
+        verbose_name="Primes",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     deductions = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
+        max_digits=10,
+        decimal_places=2,
         default=Decimal('0'),
-        verbose_name="Déductions"
+        verbose_name="Déductions",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     salaire_net = models.DecimalField(
-        max_digits=12, 
+        max_digits=12,
         decimal_places=2,
-        verbose_name="Salaire net"
+        verbose_name="Salaire net",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     # Statut
     valide = models.BooleanField(
-        default=False, 
+        default=False,
         verbose_name="Validé",
         help_text="État de salaire validé et prêt pour paiement"
     )
     paye = models.BooleanField(
-        default=False, 
+        default=False,
         verbose_name="Payé"
     )
-    
+
     # Dates
     date_calcul = models.DateTimeField(auto_now_add=True)
     date_validation = models.DateTimeField(null=True, blank=True)
     date_paiement = models.DateTimeField(null=True, blank=True)
-    
+
     # Utilisateurs
     calcule_par = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
+        User,
+        on_delete=models.SET_NULL,
         null=True,
         related_name='etats_salaire_calcules'
     )
     valide_par = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
         related_name='etats_salaire_valides'
     )
-    
+
     # Observations
     observations = models.TextField(
         blank=True,
         verbose_name="Observations"
     )
-    
+
     class Meta:
         verbose_name = "État de salaire"
         verbose_name_plural = "États de salaire"
         unique_together = ['enseignant', 'periode']
         ordering = ['-periode__annee', '-periode__mois', 'enseignant__nom']
-    
+
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.periode.nom_periode}"
 
     def clean(self):
-        erreurs = {}
-        champs_positifs = {
-            'salaire_base': self.salaire_base,
-            'primes': self.primes,
-            'deductions': self.deductions,
-            'total_heures': self.total_heures,
-            'heures_mensuelles_saisies': self.heures_mensuelles_saisies,
-            'taux_horaire_applique': self.taux_horaire_applique,
-        }
-        for champ, valeur in champs_positifs.items():
-            if valeur is not None and valeur < 0:
-                erreurs[champ] = 'Cette valeur ne peut pas être négative.'
-        if (
-            self.heures_mensuelles_saisies is not None
-            and self.heures_mensuelles_saisies > 744
-        ):
-            erreurs['heures_mensuelles_saisies'] = (
-                'Le total mensuel ne peut pas dépasser 744 heures.'
-            )
-
+        super().clean()
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
+        errors = {}
+
         if deductions > salaire_base + primes:
-            erreurs['deductions'] = 'Les retenues ne peuvent pas dépasser le salaire brut.'
+            errors['deductions'] = (
+                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.'
+            )
 
-        if self.enseignant_id and self.periode_id:
-            if self.enseignant.ecole_id != self.periode.ecole_id:
-                erreurs['enseignant'] = 'L\'enseignant et la période doivent appartenir à la même école.'
+        if (
+            self.enseignant_id
+            and self.periode_id
+            and self.enseignant.ecole_id != self.periode.ecole_id
+        ):
+            errors['enseignant'] = (
+                "L'enseignant et la période doivent appartenir à la même école."
+            )
 
-        if erreurs:
-            raise ValidationError(erreurs)
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         # Calcul automatique du salaire net
-        self.salaire_net = (
-            (self.salaire_base or Decimal('0'))
-            + (self.primes or Decimal('0'))
-            - (self.deductions or Decimal('0'))
+        salaire_base = self.salaire_base or Decimal('0')
+        primes = self.primes or Decimal('0')
+        deductions = self.deductions or Decimal('0')
+        self.salaire_net = (salaire_base + primes - deductions).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
         )
-        exclusions = ['calcule_par'] if self.calcule_par_id is None else None
-        self.full_clean(exclude=exclusions)
-        return super().save(*args, **kwargs)
-    
+        self.full_clean()
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'salaire_net'}
+        super().save(*args, **kwargs)
+
     @property
     def peut_etre_valide(self):
         """Vérifie si l'état de salaire peut être validé"""
-        return not self.valide and not self.periode.cloturee
-    
+        from calendar import monthrange
+        from datetime import date
+
+        dernier_jour = date(
+            self.periode.annee,
+            self.periode.mois,
+            monthrange(self.periode.annee, self.periode.mois)[1],
+        )
+        return (
+            not self.valide
+            and not self.periode.cloturee
+            and self.enseignant.statut == 'ACTIF'
+            and self.enseignant.date_embauche <= dernier_jour
+        )
+
     @property
     def peut_etre_paye(self):
         """Vérifie si l'état de salaire peut être marqué comme payé"""
         return self.valide and not self.paye
 
-    @property
-    def libelle_source_heures(self):
-        """Indique clairement la donnée qui a servi au calcul de la paie."""
-        if self.enseignant.est_salaire_fixe:
-            return "Salaire fixe"
-        if self.heures_mensuelles_saisies is not None:
-            return "Saisie mensuelle globale"
-        return "Pointages arrivée / départ"
-
 
 class PresenceEnseignant(SyncTrackedModel):
     """Pointage de présence quotidienne des enseignants"""
-    
+
     STATUT_CHOICES = [
         ('PRESENT', 'Présent'),
         ('ABSENT', 'Absent'),
@@ -530,7 +562,7 @@ class PresenceEnseignant(SyncTrackedModel):
         ('MALADIE', 'Maladie'),
         ('PERMISSION', 'Permission'),
     ]
-    
+
     enseignant = models.ForeignKey(
         Enseignant,
         on_delete=models.CASCADE,
@@ -544,7 +576,7 @@ class PresenceEnseignant(SyncTrackedModel):
         default='PRESENT',
         verbose_name="Statut"
     )
-    
+
     # Heures de pointage
     heure_arrivee = models.TimeField(
         null=True,
@@ -556,7 +588,7 @@ class PresenceEnseignant(SyncTrackedModel):
         blank=True,
         verbose_name="Heure de départ"
     )
-    
+
     # Heures travaillées
     heures_travaillees = models.DecimalField(
         max_digits=4,
@@ -564,23 +596,27 @@ class PresenceEnseignant(SyncTrackedModel):
         null=True,
         blank=True,
         verbose_name="Heures travaillées",
-        help_text="Calculé automatiquement ou saisi manuellement"
+        help_text="Calculé automatiquement ou saisi manuellement",
+        validators=[
+            MinValueValidator(Decimal('0')),
+            MaxValueValidator(Decimal('24')),
+        ],
     )
-    
+
     # Observations
     observations = models.TextField(
         blank=True,
         verbose_name="Observations",
         help_text="Motif d'absence, retard, etc."
     )
-    
+
     # Justificatif
     justifie = models.BooleanField(
         default=False,
         verbose_name="Justifié",
         help_text="Absence ou retard justifié"
     )
-    
+
     # Métadonnées
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
@@ -591,7 +627,7 @@ class PresenceEnseignant(SyncTrackedModel):
         related_name='pointages_effectues',
         verbose_name="Pointé par"
     )
-    
+
     class Meta:
         verbose_name = "Présence enseignant"
         verbose_name_plural = "Présences enseignants"
@@ -601,58 +637,69 @@ class PresenceEnseignant(SyncTrackedModel):
             models.Index(fields=['enseignant', 'date']),
             models.Index(fields=['date', 'statut']),
         ]
-    
+
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.date} - {self.get_statut_display()}"
-    
-    def _calculer_heures_depuis_pointage(self):
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        heures = self.heures_travaillees
+
+        if bool(self.heure_arrivee) != bool(self.heure_depart):
+            errors['heure_depart'] = (
+                "L'heure d'arrivée et l'heure de départ doivent être renseignées ensemble."
+            )
+
+        if self.statut in {'ABSENT', 'CONGE', 'MALADIE'}:
+            if self.heure_arrivee or self.heure_depart or (heures is not None and heures > 0):
+                errors['heures_travaillees'] = (
+                    'Aucune heure travaillée ne peut être enregistrée pour ce statut.'
+                )
+        elif self.statut in {'PRESENT', 'RETARD'}:
+            if not (self.heure_arrivee and self.heure_depart) and not (
+                heures is not None and heures > 0
+            ):
+                errors['heures_travaillees'] = (
+                    "Renseignez les heures d'arrivée et de départ, ou le total travaillé."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
         # Calcul automatique des heures travaillées si arrivée et départ fournis
         if self.heure_arrivee and self.heure_depart:
             from datetime import datetime, timedelta
             arrivee = datetime.combine(self.date, self.heure_arrivee)
             depart = datetime.combine(self.date, self.heure_depart)
-            
+
             # Si départ avant arrivée, c'est le lendemain
             if depart < arrivee:
                 depart += timedelta(days=1)
-            
+
             delta = depart - arrivee
             # Toujours recalculer les heures travaillées
-            self.heures_travaillees = Decimal(str(round(delta.total_seconds() / 3600, 2)))
+            self.heures_travaillees = (
+                Decimal(str(delta.total_seconds())) / Decimal('3600')
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         elif not self.heure_arrivee or not self.heure_depart:
             # Si pas d'heures d'arrivée/départ, mettre à 0 si non défini
             if self.heures_travaillees is None:
                 self.heures_travaillees = Decimal('0')
 
-    def clean(self):
-        erreurs = {}
-        if bool(self.heure_arrivee) != bool(self.heure_depart):
-            erreurs['heure_depart'] = (
-                "L'heure d'arrivée et l'heure de départ doivent être renseignées ensemble."
-            )
-        if self.heures_travaillees is not None:
-            if self.heures_travaillees < 0:
-                erreurs['heures_travaillees'] = 'Les heures travaillées ne peuvent pas être négatives.'
-            elif self.heures_travaillees > 24:
-                erreurs['heures_travaillees'] = 'Un pointage journalier ne peut pas dépasser 24 heures.'
-            elif self.statut not in ('PRESENT', 'RETARD') and self.heures_travaillees > 0:
-                erreurs['heures_travaillees'] = (
-                    'Un statut non travaillé ne peut pas contenir des heures réalisées.'
-                )
-        if erreurs:
-            raise ValidationError(erreurs)
+        self.full_clean()
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {
+                'heures_travaillees'
+            }
+        super().save(*args, **kwargs)
 
-    def save(self, *args, **kwargs):
-        self._calculer_heures_depuis_pointage()
-        exclusions = ['pointe_par'] if self.pointe_par_id is None else None
-        self.full_clean(exclude=exclusions)
-        return super().save(*args, **kwargs)
-    
     @property
     def est_present(self):
         """Vérifie si l'enseignant était présent"""
         return self.statut == 'PRESENT'
-    
+
     @property
     def est_absent_injustifie(self):
         """Vérifie si c'est une absence injustifiée"""
@@ -661,65 +708,62 @@ class PresenceEnseignant(SyncTrackedModel):
 
 class DetailHeuresClasse(SyncTrackedModel):
     """Détail des heures par classe pour un état de salaire"""
-    
+
     etat_salaire = models.ForeignKey(
-        EtatSalaire, 
-        on_delete=models.CASCADE, 
+        EtatSalaire,
+        on_delete=models.CASCADE,
         related_name='details_heures',
         verbose_name="État de salaire"
     )
     affectation_classe = models.ForeignKey(
-        AffectationClasse, 
+        AffectationClasse,
         on_delete=models.CASCADE,
         verbose_name="Affectation classe"
     )
-    
+
     heures_prevues = models.DecimalField(
-        max_digits=6, 
+        max_digits=6,
         decimal_places=2,
         verbose_name="Heures prévues",
-        help_text="Heures prévues selon l'affectation"
+        help_text="Heures prévues selon l'affectation",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     heures_realisees = models.DecimalField(
-        max_digits=6, 
+        max_digits=6,
         decimal_places=2,
         verbose_name="Heures réalisées",
-        help_text="Heures effectivement enseignées"
+        help_text="Heures effectivement enseignées",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     taux_horaire_applique = models.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
-        verbose_name="Taux horaire appliqué"
+        verbose_name="Taux horaire appliqué",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     montant = models.DecimalField(
-        max_digits=10, 
+        max_digits=10,
         decimal_places=2,
-        verbose_name="Montant"
+        verbose_name="Montant",
+        validators=[MinValueValidator(Decimal('0'))],
     )
-    
+
     class Meta:
         verbose_name = "Détail heures par classe"
         verbose_name_plural = "Détails heures par classe"
         unique_together = ['etat_salaire', 'affectation_classe']
-    
+
     def __str__(self):
         return f"{self.etat_salaire.enseignant.nom_complet} - {self.affectation_classe.classe.nom}"
 
-    def clean(self):
-        erreurs = {}
-        for champ in ('heures_prevues', 'heures_realisees', 'taux_horaire_applique'):
-            valeur = getattr(self, champ)
-            if valeur is not None and valeur < 0:
-                erreurs[champ] = 'Cette valeur ne peut pas être négative.'
-        if erreurs:
-            raise ValidationError(erreurs)
-
     def save(self, *args, **kwargs):
         # Calcul automatique du montant
-        self.montant = (
-            self.heures_realisees * self.taux_horaire_applique
-        ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        self.montant = (self.heures_realisees * self.taux_horaire_applique).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
         self.full_clean()
-        return super().save(*args, **kwargs)
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'montant'}
+        super().save(*args, **kwargs)

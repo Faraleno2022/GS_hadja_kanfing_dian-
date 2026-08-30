@@ -175,6 +175,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'utilisateurs.middleware.MenuPermissionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Vérification licence : bloque l'accès web si essai/licence expiré
@@ -183,6 +184,8 @@ MIDDLEWARE = [
     'axes.middleware.AxesMiddleware',
     # Mode lecture seule : bloque toute action pour les comptes en consultation
     'utilisateurs.middleware.LectureSeuleMiddleware',
+    # Rend la requête courante accessible aux signaux de la corbeille mémoire
+    'administration.middleware.audit.AuditContextMiddleware',
 ]
 
 # Ajouter middlewares d'optimisation images
@@ -257,8 +260,22 @@ if DEBUG or not os.environ.get('DJANGO_DB_NAME'):
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": DATA_DIR / "db.sqlite3",
+            "OPTIONS": {"timeout": 20},
         }
     }
+
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    from django.db.backends.signals import connection_created
+
+    def _activer_wal_sqlite(sender, connection, **kwargs):
+        """Autorise les lectures pendant les écritures concurrentes."""
+        if connection.vendor != "sqlite":
+            return
+        with connection.cursor() as curseur:
+            curseur.execute("PRAGMA journal_mode=WAL;")
+            curseur.execute("PRAGMA synchronous=NORMAL;")
+
+    connection_created.connect(_activer_wal_sqlite)
 else:
     # Utiliser MySQL sur PythonAnywhere en production
     DATABASES = {
@@ -331,10 +348,22 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = DATA_DIR / 'media'
 
-if DEBUG:
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
-else:
-    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': (
+            'django.contrib.staticfiles.storage.StaticFilesStorage'
+            if DEBUG else
+            'whitenoise.storage.CompressedStaticFilesStorage'
+        ),
+    },
+}
+
+# Sur Render, laisser WhiteNoise retrouver les ressources versionnées si le
+# dossier collectstatic est momentanément incomplet pendant un déploiement.
+WHITENOISE_USE_FINDERS = bool(RENDER_EXTERNAL_HOSTNAME)
 
 # =================== Logging ===================
 LOGS_DIR = DATA_DIR / 'logs'

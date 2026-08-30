@@ -1,0 +1,175 @@
+{% load humanize %}
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Encaissé sur la sélection</div>
+                <div class="fs-4 fw-bold text-success">{{ filtered_total_collected|floatformat:0|intcomma }} GNF</div>
+                <small class="text-muted">{{ page_obj.paginator.count|intcomma }} ligne{{ page_obj.paginator.count|pluralize }} élève/mode</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Élèves concernés</div>
+                <div class="fs-4 fw-bold text-primary">{{ filtered_student_count|intcomma }}</div>
+                <small class="text-muted">Sans doublon entre les modes</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Total payé à la date</div>
+                <div class="fs-4 fw-bold text-info">{{ filtered_total_paid|floatformat:0|intcomma }} GNF</div>
+                <small class="text-muted">Tous modes validés + {{ filtered_total_discount|floatformat:0|intcomma }} GNF de remises</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small text-uppercase">Solde restant</div>
+                <div class="fs-4 fw-bold {% if filtered_total_balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ filtered_total_balance|floatformat:0|intcomma }} GNF
+                </div>
+                <small class="text-muted">Sur {{ filtered_total_due|floatformat:0|intcomma }} GNF dus</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if mode_rows %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <h5 class="mb-0"><i class="fas fa-wallet text-primary me-2"></i>Synthèse par mode</h5>
+        <small class="text-muted">Les montants concernent uniquement les paiements validés.</small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mode d'encaissement</th>
+                    <th class="text-end">Élèves</th>
+                    <th class="text-end">Opérations</th>
+                    <th class="text-end">Montant encaissé</th>
+                    <th class="text-end">Part</th>
+                    <th class="text-end">Soldes associés</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in mode_rows %}
+                <tr>
+                    <td class="fw-semibold">{{ row.mode }}</td>
+                    <td class="text-end">{{ row.student_count|intcomma }}</td>
+                    <td class="text-end">{{ row.operations|intcomma }}</td>
+                    <td class="text-end fw-bold text-success">{{ row.collected|floatformat:0|intcomma }} GNF</td>
+                    <td class="text-end">{{ row.share|floatformat:1 }} %</td>
+                    <td class="text-end {% if row.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ row.balance|floatformat:0|intcomma }} GNF
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if mode_rows|length > 1 %}
+    <div class="card-footer bg-white small text-muted">
+        Un élève ayant utilisé plusieurs modes apparaît dans chacun de ces modes ; le solde global ci-dessus ne le compte qu'une fois.
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <h5 class="mb-1"><i class="fas fa-user-graduate text-primary me-2"></i>Élèves et soldes par mode</h5>
+            <small class="text-muted">Solde calculé avec tous les paiements validés et remises jusqu'au {{ data.cutoff|date:'d/m/Y' }}.</small>
+        </div>
+        <span class="badge bg-primary rounded-pill">{{ page_obj.paginator.count|intcomma }} résultat{{ page_obj.paginator.count|pluralize }}</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Mode</th>
+                    <th>Élève</th>
+                    <th>Classe</th>
+                    <th class="text-end">Encaissé par ce mode</th>
+                    <th class="text-end">Total dû</th>
+                    <th class="text-end">Total payé</th>
+                    <th class="text-end">Remises</th>
+                    <th class="text-end">Solde</th>
+                    <th>Situation</th>
+                    <th>Dernière opération</th>
+                    <th class="text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in page_obj %}
+                <tr>
+                    <td><span class="badge bg-light text-dark border">{{ row.mode }}</span></td>
+                    <td>
+                        <div class="fw-semibold">{{ row.student }}</div>
+                        <small class="text-muted">{{ row.matricule }} · {{ row.school_year }}</small>
+                    </td>
+                    <td>{{ row.class }}</td>
+                    <td class="text-end">
+                        <div class="fw-bold text-success">{{ row.collected|floatformat:0|intcomma }} GNF</div>
+                        <small class="text-muted">{{ row.operation_count }} opération{{ row.operation_count|pluralize }}</small>
+                    </td>
+                    <td class="text-end">{{ row.amount_due|floatformat:0|intcomma }} GNF</td>
+                    <td class="text-end text-info">{{ row.amount_paid|floatformat:0|intcomma }} GNF</td>
+                    <td class="text-end">{{ row.discount|floatformat:0|intcomma }} GNF</td>
+                    <td class="text-end fw-bold {% if row.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                        {{ row.balance|floatformat:0|intcomma }} GNF
+                    </td>
+                    <td>
+                        {% if row.status == 'Soldé' %}
+                        <span class="badge bg-success">Soldé</span>
+                        {% elif row.status == 'Reste à payer' %}
+                        <span class="badge bg-warning text-dark">Reste à payer</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Échéancier absent</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div>{{ row.last_date|date:'d/m/Y' }}</div>
+                        <small class="text-muted">{{ row.last_receipt }}</small>
+                    </td>
+                    <td class="text-center">
+                        <a href="{% url 'eleves:detail_eleve' row.student_id %}" class="btn btn-sm btn-outline-primary" title="Voir la fiche de l'élève">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="11" class="text-center text-muted py-5">
+                        <i class="fas fa-search fa-2x mb-3 d-block"></i>
+                        Aucun encaissement validé ne correspond aux filtres sélectionnés.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="card-footer bg-white">
+        <nav aria-label="Pagination des élèves par mode">
+            <ul class="pagination pagination-sm justify-content-center mb-0">
+                <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                    <a class="page-link" href="?page={% if page_obj.has_previous %}{{ page_obj.previous_page_number }}{% else %}1{% endif %}">Précédent</a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}</span></li>
+                <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="?page={% if page_obj.has_next %}{{ page_obj.next_page_number }}{% else %}{{ page_obj.paginator.num_pages }}{% endif %}">Suivant</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>

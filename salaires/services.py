@@ -1,4 +1,12 @@
-import calendar
+"""Règles de calcul du moteur de paie.
+
+Les enseignants au forfait sont payés au prorata de leur date d'embauche.
+Les enseignants du secondaire sont payés soit sur les heures réellement
+pointées, soit sur un total mensuel explicitement saisi. Les affectations
+servent à ventiler ces heures par classe.
+"""
+
+from calendar import monthrange
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -6,212 +14,212 @@ from django.db import transaction
 from django.db.models import Q, Sum
 
 from .models import (
-    AffectationClasse,
     DetailHeuresClasse,
     Enseignant,
     EtatSalaire,
-    PresenceEnseignant,
+    ModeCalculHoraire,
+    PeriodeSalaire,
 )
 
 
-CENTIME = Decimal('0.01')
+HEURE = Decimal('0.01')
+MONTANT = Decimal('0.01')
+STATUTS_HEURES_PAYEES = ('PRESENT', 'RETARD', 'PERMISSION')
+
+
+def arrondir_heures(valeur):
+    return Decimal(valeur or 0).quantize(HEURE, rounding=ROUND_HALF_UP)
 
 
 def arrondir_montant(valeur):
-    return Decimal(valeur or 0).quantize(CENTIME, rounding=ROUND_HALF_UP)
+    return Decimal(valeur or 0).quantize(MONTANT, rounding=ROUND_HALF_UP)
 
 
 def bornes_periode(periode):
-    """Retourne le premier et le dernier jour du mois de paie."""
-    dernier_jour = calendar.monthrange(periode.annee, periode.mois)[1]
-    return date(periode.annee, periode.mois, 1), date(
-        periode.annee, periode.mois, dernier_jour
+    premier_jour = date(periode.annee, periode.mois, 1)
+    dernier_jour = date(
+        periode.annee,
+        periode.mois,
+        monthrange(periode.annee, periode.mois)[1],
     )
+    return premier_jour, dernier_jour
 
 
-def _heures_reelles(enseignant, debut, fin):
-    total = PresenceEnseignant.objects.filter(
-        enseignant=enseignant,
-        date__range=(debut, fin),
-        statut__in=('PRESENT', 'RETARD'),
+def enseignants_eligibles(periode):
+    """Enseignants actifs déjà embauchés à la fin de la période."""
+    _, dernier_jour = bornes_periode(periode)
+    return Enseignant.objects.filter(
+        ecole=periode.ecole,
+        statut='ACTIF',
+        date_embauche__lte=dernier_jour,
+    ).order_by('nom', 'prenoms')
+
+
+def heures_reellement_travaillees(enseignant, periode):
+    premier_jour, dernier_jour = bornes_periode(periode)
+    total = enseignant.presences.filter(
+        date__range=(premier_jour, dernier_jour),
+        statut__in=STATUTS_HEURES_PAYEES,
     ).aggregate(total=Sum('heures_travaillees'))['total']
-    return arrondir_montant(total or Decimal('0'))
+    return arrondir_heures(total)
 
 
-def _heures_a_remunerer(etat, enseignant, debut, fin):
-    """Utilise la saisie mensuelle lorsqu'elle existe, sinon les pointages."""
-    if etat.heures_mensuelles_saisies is not None:
-        return arrondir_montant(etat.heures_mensuelles_saisies)
-    return _heures_reelles(enseignant, debut, fin)
+def heures_pour_calcul(enseignant, periode):
+    """Retourne les heures selon le mode explicitement choisi."""
+    if enseignant.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
+        return arrondir_heures(enseignant.heures_mensuelles)
+    return heures_reellement_travaillees(enseignant, periode)
 
 
-def _affectations_de_la_periode(enseignant, debut, fin):
-    """Inclut les affectations historiques qui chevauchent le mois de paie."""
-    return list(
-        AffectationClasse.objects.filter(
-            enseignant=enseignant,
-            date_debut__lte=fin,
-        )
-        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=debut))
+def affectations_de_la_periode(enseignant, periode):
+    """Affectations dont les dates chevauchent la période de paie.
+
+    Une affectation clôturée reste utilisable pour un calcul historique.
+    Une affectation désactivée sans date de fin est ignorée.
+    """
+    premier_jour, dernier_jour = bornes_periode(periode)
+    return (
+        enseignant.affectations
+        .filter(date_debut__lte=dernier_jour)
+        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=premier_jour))
         .filter(Q(actif=True) | Q(date_fin__isnull=False))
         .select_related('classe')
-        .order_by('date_debut', 'id')
+        .order_by('classe__nom', 'id')
     )
 
 
-def _repartir_heures(total_heures, affectations):
-    """Répartit un total selon le poids des heures hebdomadaires, sans perte d'arrondi."""
-    affectations_ponderees = [
-        affectation
-        for affectation in affectations
-        if (affectation.heures_par_semaine or Decimal('0')) > 0
-    ]
-    poids_total = sum(
-        (affectation.heures_par_semaine for affectation in affectations_ponderees),
-        Decimal('0'),
-    )
-    if not affectations_ponderees or poids_total <= 0:
+def heures_prevues_par_affectation(enseignant, periode):
+    premier_jour, dernier_jour = bornes_periode(periode)
+    jours_periode = Decimal((dernier_jour - premier_jour).days + 1)
+    lignes = []
+
+    for affectation in affectations_de_la_periode(enseignant, periode):
+        debut = max(premier_jour, affectation.date_debut)
+        fin = min(dernier_jour, affectation.date_fin or dernier_jour)
+        jours_couverts = Decimal((fin - debut).days + 1)
+        prorata = jours_couverts / jours_periode
+        heures_prevues = (
+            (affectation.heures_par_semaine or Decimal('0'))
+            * periode.nombre_semaines
+            * prorata
+        )
+        lignes.append((affectation, heures_prevues))
+
+    return lignes
+
+
+def repartir_heures(total_heures, lignes_prevues):
+    """Ventile le total réel proportionnellement aux heures prévues.
+
+    Le reliquat d'arrondi est placé sur la dernière affectation afin que la
+    somme des détails reste exactement égale au total de l'état de salaire.
+    """
+    total_heures = arrondir_heures(total_heures)
+    total_prevu = sum((heures for _, heures in lignes_prevues), Decimal('0'))
+    if not lignes_prevues or total_prevu <= 0:
         return []
 
+    reste = total_heures
     repartition = []
-    deja_reparti = Decimal('0')
-    for index, affectation in enumerate(affectations_ponderees):
-        if index == len(affectations_ponderees) - 1:
-            heures = total_heures - deja_reparti
+    for index, (affectation, heures_prevues) in enumerate(lignes_prevues):
+        if index == len(lignes_prevues) - 1:
+            heures_realisees = reste
         else:
-            heures = arrondir_montant(
-                total_heures * affectation.heures_par_semaine / poids_total
+            heures_realisees = arrondir_heures(
+                total_heures * heures_prevues / total_prevu
             )
-            deja_reparti += heures
-        repartition.append((affectation, heures))
+            reste -= heures_realisees
+        repartition.append(
+            (affectation, arrondir_heures(heures_prevues), heures_realisees)
+        )
+
     return repartition
 
 
-def _salaire_fixe_proratise(enseignant, debut, fin):
-    salaire = enseignant.salaire_fixe or Decimal('0')
-    if enseignant.date_embauche <= debut:
-        return arrondir_montant(salaire)
-    if enseignant.date_embauche > fin:
-        return Decimal('0')
+def salaire_fixe_proratise(enseignant, periode):
+    premier_jour, dernier_jour = bornes_periode(periode)
+    if enseignant.date_embauche > dernier_jour:
+        return Decimal('0.00')
 
-    jours_du_mois = Decimal((fin - debut).days + 1)
-    jours_remuneres = Decimal((fin - enseignant.date_embauche).days + 1)
-    return arrondir_montant(salaire * jours_remuneres / jours_du_mois)
+    premier_jour_paye = max(premier_jour, enseignant.date_embauche)
+    jours_payes = Decimal((dernier_jour - premier_jour_paye).days + 1)
+    jours_periode = Decimal((dernier_jour - premier_jour).days + 1)
+    return arrondir_montant(
+        (enseignant.salaire_fixe or Decimal('0')) * jours_payes / jours_periode
+    )
 
 
-def _calculer_etat_enseignant(etat, enseignant, periode, debut, fin, utilisateur):
+@transaction.atomic
+def calculer_etat_salaire(enseignant, periode, utilisateur):
+    """Crée ou recalcule un état non validé et retourne ``(etat, modifie)``."""
+    etat, _ = EtatSalaire.objects.select_for_update().get_or_create(
+        enseignant=enseignant,
+        periode=periode,
+        defaults={
+            'calcule_par': utilisateur,
+            'salaire_base': Decimal('0'),
+            'salaire_net': Decimal('0'),
+        },
+    )
+
+    if etat.valide:
+        return etat, False
+
     etat.details_heures.all().delete()
 
-    if enseignant.est_salaire_fixe:
-        etat.total_heures = None
-        etat.taux_horaire_applique = None
-        etat.salaire_base = _salaire_fixe_proratise(enseignant, debut, fin)
-    else:
-        debut_effectif = max(debut, enseignant.date_embauche)
-        total_heures = _heures_a_remunerer(
-            etat, enseignant, debut_effectif, fin
-        )
+    if enseignant.est_taux_horaire:
+        total_heures = heures_pour_calcul(enseignant, periode)
         taux_horaire = enseignant.taux_horaire or Decimal('0')
-        affectations = _affectations_de_la_periode(enseignant, debut_effectif, fin)
-
         etat.total_heures = total_heures
+        etat.mode_calcul_heures = enseignant.mode_calcul_horaire
         etat.taux_horaire_applique = taux_horaire
         etat.salaire_base = arrondir_montant(total_heures * taux_horaire)
-
-        # L'état doit exister avant les détails. Le taux est figé ici afin
-        # qu'une modification future de l'enseignant ne change pas l'historique.
         etat.calcule_par = utilisateur
         etat.save()
 
-        for affectation, heures_realisees in _repartir_heures(total_heures, affectations):
-            heures_prevues = arrondir_montant(
-                affectation.heures_par_semaine * periode.nombre_semaines
-            )
+        lignes_prevues = heures_prevues_par_affectation(enseignant, periode)
+        for affectation, heures_prevues, heures_realisees in repartir_heures(
+            total_heures, lignes_prevues
+        ):
             DetailHeuresClasse.objects.create(
                 etat_salaire=etat,
                 affectation_classe=affectation,
                 heures_prevues=heures_prevues,
                 heures_realisees=heures_realisees,
                 taux_horaire_applique=taux_horaire,
-                montant=Decimal('0'),
             )
+    else:
+        etat.total_heures = None
+        etat.mode_calcul_heures = ''
+        etat.taux_horaire_applique = None
+        etat.salaire_base = salaire_fixe_proratise(enseignant, periode)
+        etat.calcule_par = utilisateur
+        etat.save()
 
-    etat.calcule_par = utilisateur
-    etat.save()
-    return etat
+    return etat, True
 
 
-@transaction.atomic
-def recalculer_salaire_enseignant(
-    enseignant, periode, utilisateur, etat=None
+def recalculer_salaire_ouvert_pour_date(
+    enseignant, date_reference, utilisateur
 ):
-    """Actualise un seul salaire ouvert après un pointage ou une saisie mensuelle."""
-    debut, fin = bornes_periode(periode)
-    if (
-        periode.cloturee
-        or enseignant.ecole_id != periode.ecole_id
-        or enseignant.date_embauche > fin
-    ):
-        return None
+    """Recalcule immédiatement le brouillon du mois s'il existe.
 
-    if etat is None:
-        etat, _ = EtatSalaire.objects.get_or_create(
-            enseignant=enseignant,
-            periode=periode,
-            defaults={
-                'calcule_par': utilisateur,
-                'salaire_base': Decimal('0'),
-                'salaire_net': Decimal('0'),
-            },
-        )
-    elif etat.enseignant_id != enseignant.id or etat.periode_id != periode.id:
-        raise ValueError("L'état de salaire ne correspond pas à l'enseignant et à la période.")
+    Les périodes clôturées et les états validés restent intacts. La fonction
+    retourne ``(etat, modifie)`` ou ``(None, False)`` lorsqu'aucune période
+    ouverte et éligible ne correspond.
+    """
+    if enseignant.statut != 'ACTIF':
+        return None, False
 
-    # Les montants validés ou déjà payés constituent un historique immuable.
-    if etat.valide or etat.paye:
-        return None
+    periode = PeriodeSalaire.objects.filter(
+        ecole=enseignant.ecole,
+        mois=date_reference.month,
+        annee=date_reference.year,
+        cloturee=False,
+    ).first()
+    if periode is None or not enseignants_eligibles(periode).filter(
+        pk=enseignant.pk
+    ).exists():
+        return None, False
 
-    return _calculer_etat_enseignant(
-        etat, enseignant, periode, debut, fin, utilisateur
-    )
-
-
-@transaction.atomic
-def calculer_salaires_periode(periode, utilisateur):
-    """Calcule tous les salaires d'une période dans une transaction unique."""
-    debut, fin = bornes_periode(periode)
-    # Nettoyer les états non validés créés par l'ancien moteur pour des
-    # enseignants qui n'étaient pas encore embauchés durant cette période.
-    EtatSalaire.objects.filter(
-        periode=periode,
-        enseignant__date_embauche__gt=fin,
-        valide=False,
-        paye=False,
-    ).delete()
-
-    enseignants = Enseignant.objects.filter(
-        ecole=periode.ecole,
-        statut='ACTIF',
-        date_embauche__lte=fin,
-    ).order_by('id')
-
-    calculs_effectues = 0
-    for enseignant in enseignants:
-        etat, cree = EtatSalaire.objects.get_or_create(
-            enseignant=enseignant,
-            periode=periode,
-            defaults={
-                'calcule_par': utilisateur,
-                'salaire_base': Decimal('0'),
-                'salaire_net': Decimal('0'),
-            },
-        )
-        if not cree and (etat.valide or etat.paye):
-            continue
-
-        _calculer_etat_enseignant(
-            etat, enseignant, periode, debut, fin, utilisateur
-        )
-        calculs_effectues += 1
-
-    return calculs_effectues
+    return calculer_etat_salaire(enseignant, periode, utilisateur)

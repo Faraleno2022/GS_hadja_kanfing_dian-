@@ -68,7 +68,7 @@
                                             <i class="fas fa-phone me-1"></i>
                                             <span class="tel-text">{{ eleve.responsable_principal.telephone }}</span>
                                             <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-primary btn-edit-tel"
-                                                    data-eleve-id="{{ eleve.id }}" 
+                                                    data-eleve-id="{{ eleve.id }}"
                                                     data-tel-actuel="{{ eleve.responsable_principal.telephone }}"
                                                     title="Modifier le téléphone">
                                                 <i class="fas fa-pen" style="font-size: 0.7em;"></i>
@@ -76,8 +76,8 @@
                                         </small>
                                         <div id="tel-edit-{{ eleve.id }}" style="display: none;">
                                             <div class="input-group input-group-sm mt-1">
-                                                <input type="text" class="form-control form-control-sm input-tel-edit" 
-                                                       value="{{ eleve.responsable_principal.telephone }}" 
+                                                <input type="text" class="form-control form-control-sm input-tel-edit"
+                                                       value="{{ eleve.responsable_principal.telephone }}"
                                                        placeholder="+224XXXXXXXXX"
                                                        data-eleve-id="{{ eleve.id }}"
                                                        maxlength="14">
@@ -108,7 +108,7 @@
                                         <a href="{% url 'eleves:modifier_eleve' eleve.id %}" class="btn btn-outline-warning" title="Modifier">
                                             <i class="fas fa-edit"></i>
                                         </a>
-                                        {% if eleve.statut != 'EXCLU' and user_permissions.can_delete_students %}
+                                        {% if eleve.statut != 'EXCLU' %}
                                         <button type="button" class="btn btn-outline-danger" title="Supprimer"
                                                 data-bs-toggle="modal" data-bs-target="#confirmDeleteModal{{ eleve.id }}">
                                             <i class="fas fa-trash"></i>
@@ -119,8 +119,11 @@
                                         <a href="{% url 'eleves:ticket_retrait_pdf' eleve.id %}" class="btn btn-outline-info btn-sm" title="Ticket de retrait" target="_blank">
                                             <i class="fas fa-ticket-alt"></i> Retrait
                                         </a>
-                                        <a href="{% url 'eleves:ticket_bus_pdf' eleve.id %}" class="btn btn-outline-warning btn-sm" title="Ticket bus" target="_blank">
+                                        <a href="{% url 'eleves:ticket_bus_pdf' eleve.id %}" class="btn btn-outline-warning btn-sm" title="Carte d'abonnement bus" target="_blank">
                                             <i class="fas fa-bus"></i> Bus
+                                        </a>
+                                        <a href="{% url 'eleves:carte_cantine_pdf' eleve.id %}" class="btn btn-outline-danger btn-sm" title="Carte d'abonnement cantine" target="_blank">
+                                            <i class="fas fa-utensils"></i> Cantine
                                         </a>
                                         <a href="{% url 'eleves:carte_scolaire_preview' eleve.id %}" class="btn btn-outline-primary btn-sm" title="Carte scolaire">
                                             <i class="fas fa-id-card"></i> Carte
@@ -132,7 +135,7 @@
                     </tbody>
                 </table>
             </div>
-            
+
             {# Pagination #}
             {% if page_obj.has_other_pages %}
                 <div class="card-footer">
@@ -150,13 +153,13 @@
                                     </a>
                                 </li>
                             {% endif %}
-                            
+
                             <li class="page-item active">
                                 <span class="page-link">
                                     Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
                                 </span>
                             </li>
-                            
+
                             {% if page_obj.has_next %}
                                 <li class="page-item">
                                     <a class="page-link" href="?partial=1&page={{ page_obj.next_page_number }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
@@ -215,43 +218,74 @@
                                 <i class="fas fa-cog me-1"></i>Type de suppression
                             </label>
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="action"
-                                       id="actionCorbeille{{ eleve.id }}" value="CORBEILLE" checked>
-                                <label class="form-check-label" for="actionCorbeille{{ eleve.id }}">
-                                    <strong>Mettre à la corbeille</strong>
+                                <input class="form-check-input" type="radio" name="type_suppression"
+                                       id="corbeilleDelete{{ eleve.id }}" value="corbeille" checked
+                                       onchange="toggleCodeInput{{ eleve.id }}()">
+                                <label class="form-check-label" for="corbeilleDelete{{ eleve.id }}">
+                                    <strong>Supprimer (mise à la corbeille) — Recommandé</strong>
                                     <br>
                                     <small class="text-muted">
-                                        <i class="fas fa-trash-can-arrow-up"></i>
-                                        L'élève et ses données (paiements, abonnements, notes) sont archivés
-                                        puis retirés des listes. <strong>Restaurable depuis la corbeille.</strong>
+                                        <i class="fas fa-trash-restore"></i>
+                                        L'élève est retiré des listes mais conservé dans la corbeille : restauration possible à tout moment.
                                     </small>
                                 </label>
                             </div>
                             <div class="form-check mt-2">
-                                <input class="form-check-input" type="radio" name="action"
-                                       id="actionExclure{{ eleve.id }}" value="EXCLURE">
-                                <label class="form-check-label" for="actionExclure{{ eleve.id }}">
-                                    <strong>Exclure seulement</strong>
+                                <input class="form-check-input" type="radio" name="type_suppression"
+                                       id="softDelete{{ eleve.id }}" value="soft"
+                                       onchange="toggleCodeInput{{ eleve.id }}()">
+                                <label class="form-check-label" for="softDelete{{ eleve.id }}">
+                                    <strong>Désactivation</strong>
                                     <br>
                                     <small class="text-muted">
                                         <i class="fas fa-info-circle"></i>
-                                        Change le statut vers « Exclu ». Rien n'est retiré de la base.
+                                        Change le statut vers "Exclu". L'élève reste visible dans les listes.
                                     </small>
                                 </label>
                             </div>
+                            {% if user.is_superuser or user.profil.peut_supprimer_eleves_definitivement %}
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="radio" name="type_suppression"
+                                       id="hardDelete{{ eleve.id }}" value="hard"
+                                       onchange="toggleCodeInput{{ eleve.id }}()">
+                                <label class="form-check-label" for="hardDelete{{ eleve.id }}">
+                                    <strong class="text-danger">Suppression Définitive</strong>
+                                    <br>
+                                    <small class="text-danger">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        Supprime définitivement l'élève et toutes ses données (paiements, notes, etc.).
+                                        <strong>Action irréversible !</strong>
+                                    </small>
+                                </label>
+                            </div>
+                            {% endif %}
                         </div>
 
-                        <!-- Confirmation par saisie -->
-                        <div class="mb-3">
-                            <label for="confirmationInput{{ eleve.id }}" class="form-label fw-bold">
-                                <i class="fas fa-keyboard me-1"></i>Saisissez <code>SUPPRIMER</code> pour confirmer
-                            </label>
-                            <input type="text" class="form-control text-center"
-                                   id="confirmationInput{{ eleve.id }}"
-                                   name="confirmation"
-                                   placeholder="SUPPRIMER"
-                                   autocomplete="off" required>
+                        <!-- Code de vérification (pour suppression définitive) -->
+                        <div id="codeVerificationDiv{{ eleve.id }}" style="display: none;">
+                            <div class="alert alert-danger">
+                                <i class="fas fa-shield-alt me-2"></i>
+                                <strong>Code de sécurité requis</strong>
+                            </div>
+                            <div class="mb-3">
+                                <label for="codeVerification{{ eleve.id }}" class="form-label fw-bold">
+                                    <i class="fas fa-key me-1"></i>Entrez le code de vérification
+                                </label>
+                                <input type="text" class="form-control form-control-lg text-center"
+                                       id="codeVerification{{ eleve.id }}"
+                                       name="code_verification"
+                                       placeholder="Code à 9 chiffres"
+                                       maxlength="9"
+                                       pattern="[0-9]{9}"
+                                       autocomplete="off">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    Contactez l'administrateur FARA LENO AU +224622613559 pour obtenir le code
+                                </small>
+                            </div>
                         </div>
+                        <input type="hidden" name="suppression_definitive" id="suppressionDefinitive{{ eleve.id }}" value="">
+                        <input type="hidden" name="mise_en_corbeille" id="miseEnCorbeille{{ eleve.id }}" value="on">
 
                         <p class="text-muted small mb-0">
                             <i class="fas fa-clock me-1"></i>
@@ -262,7 +296,7 @@
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                             <i class="fas fa-times me-2"></i>Annuler
                         </button>
-                        <button type="submit" class="btn btn-danger" id="confirmBtn{{ eleve.id }}" disabled>
+                        <button type="submit" class="btn btn-danger" id="confirmBtn{{ eleve.id }}">
                             <i class="fas fa-trash me-2"></i>Confirmer la suppression
                         </button>
                     </div>
@@ -272,17 +306,67 @@
     </div>
 
     <script>
-    (function() {
-        const saisie = document.getElementById('confirmationInput{{ eleve.id }}');
-        const bouton = document.getElementById('confirmBtn{{ eleve.id }}');
-        if (!saisie || !bouton) { return; }
+    function toggleCodeInput{{ eleve.id }}() {
+        const hardDelete = document.getElementById('hardDelete{{ eleve.id }}');
+        const corbeille = document.getElementById('corbeilleDelete{{ eleve.id }}');
+        const codeDiv = document.getElementById('codeVerificationDiv{{ eleve.id }}');
+        const suppressionDef = document.getElementById('suppressionDefinitive{{ eleve.id }}');
+        const miseCorbeille = document.getElementById('miseEnCorbeille{{ eleve.id }}');
+        const confirmBtn = document.getElementById('confirmBtn{{ eleve.id }}');
 
-        function verifier() {
-            bouton.disabled = saisie.value.trim().toUpperCase() !== 'SUPPRIMER';
+        const estDefinitive = hardDelete && hardDelete.checked;
+        const estCorbeille = corbeille && corbeille.checked;
+
+        codeDiv.style.display = estDefinitive ? 'block' : 'none';
+        suppressionDef.value = estDefinitive ? 'on' : '';
+        miseCorbeille.value = estCorbeille ? 'on' : '';
+
+        confirmBtn.classList.remove('btn-danger', 'btn-dark');
+        if (estDefinitive) {
+            confirmBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Supprimer Définitivement';
+            confirmBtn.classList.add('btn-dark');
+        } else if (estCorbeille) {
+            confirmBtn.innerHTML = '<i class="fas fa-trash me-2"></i>Supprimer (corbeille)';
+            confirmBtn.classList.add('btn-danger');
+        } else {
+            confirmBtn.innerHTML = '<i class="fas fa-user-slash me-2"></i>Désactiver l\'élève';
+            confirmBtn.classList.add('btn-danger');
         }
-        saisie.addEventListener('input', verifier);
-        verifier();
-    })();
+    }
+
+    // Validation du formulaire
+    document.getElementById('deleteForm{{ eleve.id }}').addEventListener('submit', function(e) {
+        const hardDelete = document.getElementById('hardDelete{{ eleve.id }}');
+        const corbeille = document.getElementById('corbeilleDelete{{ eleve.id }}');
+        const codeInput = document.getElementById('codeVerification{{ eleve.id }}');
+
+        if (hardDelete && hardDelete.checked) {
+            if (!codeInput.value || codeInput.value.length !== 9) {
+                e.preventDefault();
+                alert('⚠️ Veuillez entrer un code de vérification valide (9 chiffres)');
+                codeInput.focus();
+                return false;
+            }
+        }
+
+        // Confirmation finale
+        let message;
+        if (hardDelete && hardDelete.checked) {
+            message = '⚠️ ATTENTION ! Cette action est IRRÉVERSIBLE. Toutes les données seront perdues.\n\nÊtes-vous absolument sûr de vouloir continuer ?';
+        } else if (corbeille && corbeille.checked) {
+            message = 'Confirmer la suppression de cet élève ?\n\nIl sera placé dans la corbeille et pourra être restauré.';
+        } else {
+            message = 'Confirmer la désactivation de cet élève ?';
+        }
+
+        if (!confirm(message)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    // Aligner les champs cachés sur le choix par défaut à l'ouverture
+    toggleCodeInput{{ eleve.id }}();
     </script>
     {% endif %}
 {% endfor %}
@@ -292,18 +376,17 @@
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
-                    <i class="fas fa-exclamation-triangle me-2"></i>Suppression définitive en masse
+                    <i class="fas fa-trash-restore me-2"></i>Mise à la corbeille groupée
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form method="post" action="{% url 'eleves:supprimer_eleves_masse' %}" id="deleteFormMasse">
                 {% csrf_token %}
                 <div class="modal-body">
-                    <div class="alert alert-danger">
-                        <i class="fas fa-skull-crossbones me-2"></i>
-                        <strong>ATTENTION !</strong> Vous êtes sur le point de supprimer <strong>définitivement</strong> les élèves sélectionnés.
-                        <br>Toutes leurs données (paiements, notes, abonnements, etc.) seront perdues.
-                        <br><strong>Cette action est IRRÉVERSIBLE !</strong>
+                    <div class="alert alert-info">
+                        <i class="fas fa-circle-info me-2"></i>
+                        Les élèves sélectionnés et leurs données associées seront retirés des listes actives,
+                        conservés dans la corbeille et pourront être restaurés.
                     </div>
 
                     <div class="mb-3">
@@ -317,24 +400,12 @@
                     <input type="hidden" name="eleve_ids" id="eleve-ids-input" value="">
 
                     <div class="mb-3">
-                        <div class="alert alert-warning">
-                            <i class="fas fa-shield-alt me-2"></i>
-                            <strong>Code de sécurité requis</strong>
-                        </div>
-                        <label for="codeVerificationMasse" class="form-label fw-bold">
-                            <i class="fas fa-key me-1"></i>Entrez le code de vérification
+                        <label for="motifSuppressionMasse" class="form-label fw-bold">
+                            Motif (facultatif)
                         </label>
-                        <input type="text" class="form-control form-control-lg text-center"
-                               id="codeVerificationMasse"
-                               name="code_verification"
-                               placeholder="Code à 9 chiffres"
-                               maxlength="9"
-                               pattern="[0-9]{9}"
-                               autocomplete="off">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle"></i>
-                            Contactez l'administrateur FARA LENO AU +224622613559 pour obtenir le code
-                        </small>
+                        <input type="text" class="form-control" id="motifSuppressionMasse"
+                               name="motif" maxlength="200"
+                               placeholder="Ex. : départ de l'établissement, doublons...">
                     </div>
 
                     <p class="text-muted small mb-0">
@@ -346,8 +417,8 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times me-2"></i>Annuler
                     </button>
-                    <button type="submit" class="btn btn-dark" id="confirmBtnMasse">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Supprimer Définitivement
+                    <button type="submit" class="btn btn-danger" id="confirmBtnMasse">
+                        <i class="fas fa-trash me-2"></i>Déplacer vers la corbeille
                     </button>
                 </div>
             </form>
@@ -359,20 +430,20 @@
 function imprimerCarte(matricule) {
     window.location.href = `/eleves/${matricule}/carte-scolaire-pdf/`;
     return;
-    
+
     // Créer un iframe invisible pour télécharger et imprimer
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     // iframe.src = url;
-    
+
     // Ajouter l'iframe au document
     document.body.appendChild(iframe);
-    
+
     // Supprimer l'iframe après un délai
     setTimeout(() => {
         document.body.removeChild(iframe);
     }, 3000);
-    
+
     // Afficher un message de confirmation si la fonction existe
     if (typeof showMessage === 'function') {
         showMessage('Génération de la carte scolaire en cours...', 'info');
@@ -386,7 +457,7 @@ function imprimerCarte(matricule) {
     const selectAll = document.getElementById('select-all-eleves');
     const btnMasse = document.getElementById('btn-supprimer-masse');
     const countSpan = document.getElementById('count-selection');
-    
+
     if (!selectAll || !btnMasse) return;
 
     function updateSelection() {
@@ -435,13 +506,6 @@ function imprimerCarte(matricule) {
     var formMasse = document.getElementById('deleteFormMasse');
     if (formMasse) {
         formMasse.addEventListener('submit', function(e) {
-            var codeInput = document.getElementById('codeVerificationMasse');
-            if (!codeInput.value || codeInput.value.length !== 9) {
-                e.preventDefault();
-                alert('Veuillez entrer un code de vérification valide (9 chiffres)');
-                codeInput.focus();
-                return false;
-            }
             var ids = document.getElementById('eleve-ids-input').value;
             if (!ids) {
                 e.preventDefault();
@@ -449,7 +513,7 @@ function imprimerCarte(matricule) {
                 return false;
             }
             var count = ids.split(',').length;
-            var message = 'ATTENTION ! Vous allez supprimer DÉFINITIVEMENT ' + count + ' élève(s) et toutes leurs données.\n\nCette action est IRRÉVERSIBLE.\n\nÊtes-vous absolument sûr de vouloir continuer ?';
+            var message = 'Déplacer ' + count + ' élève(s) vers la corbeille ?\n\nIls pourront être restaurés par un administrateur.';
             if (!confirm(message)) {
                 e.preventDefault();
                 return false;

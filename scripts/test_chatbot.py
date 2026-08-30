@@ -8,7 +8,6 @@ import django
 
 # Configuration Django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecole_moderne.settings')
-# Le script vit dans scripts/ : la racine du projet doit etre importable.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 django.setup()
 

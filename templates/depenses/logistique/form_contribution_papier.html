@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width:900px">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div><h2 class="mb-1"><i class="fas fa-file-alt text-success"></i> {{ titre_page }}</h2><p class="text-muted mb-0">Paquets remis ou argent payé à la place{% if annee_active %} — {{ annee_active }}{% endif %}</p></div>
+        <a href="{% url 'depenses:liste_contributions_papier' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left"></i> Retour</a>
+    </div>
+
+    <form method="post" class="card shadow-sm">
+        {% csrf_token %}
+        <div class="card-body p-4">
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+            <div class="mb-3">
+                <label for="recherche-eleve" class="form-label">Rechercher l'élève</label>
+                <input type="search" id="recherche-eleve" class="form-control" placeholder="Tapez le nom, le prénom, le matricule ou la classe">
+                <small class="text-muted">La liste ci-dessous se filtre automatiquement.</small>
+            </div>
+            <div class="mb-4"><label class="form-label">Élève *</label>{{ form.eleve }}<div id="aucun-eleve" class="text-danger small mt-1 d-none">Aucun élève ne correspond à cette recherche.</div>{{ form.eleve.errors }}</div>
+
+            <div class="row g-3">
+                <div class="col-md-6"><label class="form-label">Contribution *</label>{{ form.type_contribution }}{{ form.type_contribution.errors }}</div>
+                <div class="col-md-6"><label class="form-label">Date *</label>{{ form.date_contribution }}{{ form.date_contribution.errors }}</div>
+                <div class="col-md-6" id="bloc-paquets"><label class="form-label">Nombre de paquets / rames *</label>{{ form.nombre_paquets }}{{ form.nombre_paquets.errors }}</div>
+                <div class="col-md-6" id="bloc-montant"><label class="form-label">Montant payé (GNF) *</label>{{ form.montant_paye }}{{ form.montant_paye.errors }}</div>
+                <div class="col-12"><label class="form-label">Observations</label>{{ form.observations }}{{ form.observations.errors }}</div>
+            </div>
+            <div class="alert alert-info mt-4 mb-0"><i class="fas fa-info-circle"></i> Choisissez soit le papier envoyé, soit l'argent payé à la place. Le champ non concerné sera remis à zéro.</div>
+        </div>
+        <div class="card-footer d-flex justify-content-end gap-2 py-3"><a href="{% url 'depenses:liste_contributions_papier' %}" class="btn btn-secondary">Annuler</a><button class="btn btn-success"><i class="fas fa-save"></i> Enregistrer</button></div>
+    </form>
+</div>
+
+<script>
+(function () {
+    const recherche = document.getElementById('recherche-eleve');
+    const select = document.getElementById('id_eleve');
+    const aucun = document.getElementById('aucun-eleve');
+    const options = Array.from(select.options).map(option => ({option, texte: option.text.toLowerCase()}));
+    recherche.addEventListener('input', function () {
+        const terme = this.value.trim().toLowerCase();
+        let visibles = 0;
+        options.forEach(({option, texte}, index) => {
+            const visible = index === 0 || !terme || texte.includes(terme);
+            option.hidden = !visible;
+            if (visible && index > 0) visibles += 1;
+        });
+        aucun.classList.toggle('d-none', visibles > 0 || !terme);
+    });
+
+    const mode = document.getElementById('id_type_contribution');
+    const paquets = document.getElementById('id_nombre_paquets');
+    const montant = document.getElementById('id_montant_paye');
+    const blocPaquets = document.getElementById('bloc-paquets');
+    const blocMontant = document.getElementById('bloc-montant');
+    function actualiserMode() {
+        const papier = mode.value === 'PAPIER';
+        blocPaquets.classList.toggle('opacity-50', !papier);
+        blocMontant.classList.toggle('opacity-50', papier);
+        paquets.readOnly = !papier;
+        montant.readOnly = papier;
+        if (papier) montant.value = 0;
+        else paquets.value = 0;
+    }
+    mode.addEventListener('change', actualiserMode);
+    actualiserMode();
+})();
+</script>
+{% endblock %}

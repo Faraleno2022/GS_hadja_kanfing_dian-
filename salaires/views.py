@@ -3,10 +3,12 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse, Http404
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import csv
 import os
 from django.conf import settings
@@ -28,7 +30,11 @@ from .forms import (
     EtatSalaireAjustementForm,
     PresenceForm,
 )
-from .services import calculer_salaires_periode, recalculer_salaire_enseignant
+from .services import (
+    calculer_etat_salaire,
+    enseignants_eligibles,
+    recalculer_salaire_ouvert_pour_date,
+)
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
@@ -732,8 +738,7 @@ def export_etats_salaire_csv(request):
     writer = csv.writer(response)
     writer.writerow([
         'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Mode de calcul',
-        'Taux horaire', 'Date Calcul'
+        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
     ])
 
     for e in etats:
@@ -747,8 +752,6 @@ def export_etats_salaire_csv(request):
             e.salaire_base,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
-            e.libelle_source_heures,
-            e.taux_horaire_applique if e.taux_horaire_applique is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
 
@@ -804,8 +807,7 @@ def export_etats_salaire_pdf(request):
     # Table
     data = [[
         'École', 'Période', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Mode de calcul',
-        'Taux horaire', 'Date Calcul'
+        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
     ]]
     for e in etats:
         data.append([
@@ -818,8 +820,6 @@ def export_etats_salaire_pdf(request):
             e.salaire_base,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
-            e.libelle_source_heures,
-            e.taux_horaire_applique if e.taux_horaire_applique is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
 
@@ -889,113 +889,155 @@ def export_etats_salaire_pdf(request):
 
 
 @login_required
+@require_POST
 @require_school_object(model=PeriodeSalaire, pk_kwarg='periode_id', field_path='ecole')
 def calculer_salaires(request, periode_id):
-    """Calculer les salaires pour une période"""
-    
-    periode = get_object_or_404(PeriodeSalaire, id=periode_id)
-    
-    if periode.cloturee:
-        messages.error(request, "Impossible de calculer les salaires d'une période clôturée.")
-        return redirect('salaires:etats_salaire')
-    
-    # ── Sécurité: restreindre au POST uniquement (empêche CSRF via GET) ──
-    if request.method != 'POST':
-        messages.error(request, "Le calcul des salaires nécessite une requête POST.")
-        return redirect('salaires:etats_salaire')
-
+    """Calculer tous les salaires d'une période en une transaction atomique."""
     try:
-        calculs_effectues = calculer_salaires_periode(periode, request.user)
+        with transaction.atomic():
+            periode = get_object_or_404(
+                PeriodeSalaire.objects.select_for_update(), id=periode_id
+            )
+            if periode.cloturee:
+                messages.error(
+                    request,
+                    "Impossible de calculer les salaires d'une période clôturée.",
+                )
+                return redirect('salaires:etats_salaire')
+
+            calculs_effectues = 0
+            enseignants = list(
+                enseignants_eligibles(periode).select_for_update()
+            )
+            ids_eligibles = [enseignant.id for enseignant in enseignants]
+            # Retirer les brouillons devenus inéligibles afin qu'un ancien état
+            # ne puisse pas être validé après une démission ou une correction
+            # de date d'embauche. Les états déjà validés/payés restent archivés.
+            periode.etats_salaire.filter(
+                valide=False,
+                paye=False,
+            ).exclude(enseignant_id__in=ids_eligibles).delete()
+
+            for enseignant in enseignants:
+                _, modifie = calculer_etat_salaire(
+                    enseignant, periode, request.user
+                )
+                calculs_effectues += int(modifie)
+
         messages.success(
             request,
-            f"Calcul des salaires terminé. {calculs_effectues} état(s) de salaire calculé(s).",
+            f"Calcul des salaires terminé. {calculs_effectues} état(s) calculé(s).",
         )
-    except Exception as e:
-        messages.error(request, f"Erreur lors du calcul des salaires : {str(e)}")
+    except Exception as exc:
+        messages.error(
+            request,
+            "Aucun salaire n'a été enregistré car le calcul a échoué : "
+            f"{exc}",
+        )
     
     return redirect('salaires:etats_salaire')
 
 
 @login_required
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
-def modifier_etat_salaire(request, etat_id):
-    """Modifier les heures mensuelles et les ajustements avant validation."""
-    etat = get_object_or_404(EtatSalaire, id=etat_id)
-    if request.method != 'POST':
-        messages.error(request, "La modification d'un salaire nécessite une requête POST.")
-        return redirect('salaires:etats_salaire')
+def ajuster_etat_salaire(request, etat_id):
+    """Modifier les primes, retenues et observations avant validation."""
+    etat = get_object_or_404(
+        EtatSalaire.objects.select_related('enseignant', 'periode'), id=etat_id
+    )
 
-    if etat.valide or etat.paye or etat.periode.cloturee:
-        messages.error(request, "Un salaire validé, payé ou clôturé ne peut plus être modifié.")
-        return redirect('salaires:etats_salaire')
-
-    form = EtatSalaireAjustementForm(request.POST, instance=etat)
-    if form.is_valid():
-        etat_modifie = form.save(commit=False)
-        recalculer_salaire_enseignant(
-            etat.enseignant,
-            etat.periode,
-            request.user,
-            etat=etat_modifie,
-        )
-        messages.success(
+    if etat.valide or etat.periode.cloturee:
+        messages.error(
             request,
-            f"Salaire de {etat.enseignant.nom_complet} recalculé et enregistré.",
+            "Un état validé ou appartenant à une période clôturée ne peut plus être ajusté.",
         )
-    else:
-        erreurs = ' '.join(
-            message
-            for messages_champ in form.errors.values()
-            for message in messages_champ
-        )
-        messages.error(request, f"Ajustements refusés : {erreurs}")
-    return redirect('salaires:etats_salaire')
-
-
-@login_required
-@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
-def valider_etat_salaire(request, etat_id):
-    """Valider un état de salaire"""
-    from django.views.decorators.http import require_http_methods
-
-    etat = get_object_or_404(EtatSalaire, id=etat_id)
-
-    if not etat.peut_etre_valide:
-        messages.error(request, "Cet état de salaire ne peut pas être validé.")
         return redirect('salaires:etats_salaire')
 
     if request.method == 'POST':
+        form = EtatSalaireAjustementForm(request.POST, instance=etat)
+        if form.is_valid():
+            with transaction.atomic():
+                etat_verrouille = EtatSalaire.objects.select_for_update().get(pk=etat.pk)
+                if etat_verrouille.valide or etat_verrouille.periode.cloturee:
+                    messages.error(request, "Cet état ne peut plus être ajusté.")
+                    return redirect('salaires:etats_salaire')
+
+                etat_verrouille.primes = form.cleaned_data['primes']
+                etat_verrouille.deductions = form.cleaned_data['deductions']
+                etat_verrouille.observations = form.cleaned_data['observations']
+                etat_verrouille.save()
+
+            messages.success(
+                request,
+                f"Primes et retenues de {etat.enseignant.nom_complet} mises à jour.",
+            )
+            return redirect('salaires:etats_salaire')
+    else:
+        form = EtatSalaireAjustementForm(instance=etat)
+
+    return render(
+        request,
+        'salaires/ajuster_etat_salaire.html',
+        {'form': form, 'etat': etat},
+    )
+
+
+@login_required
+@require_POST
+@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
+def valider_etat_salaire(request, etat_id):
+    """Valider un état de salaire"""
+    with transaction.atomic():
+        etat = get_object_or_404(
+            EtatSalaire.objects.select_for_update().select_related(
+                'enseignant', 'periode'
+            ),
+            id=etat_id,
+        )
+
+        if not etat.peut_etre_valide:
+            messages.error(request, "Cet état de salaire ne peut pas être validé.")
+            return redirect('salaires:etats_salaire')
+
         etat.valide = True
         etat.valide_par = request.user
         etat.date_validation = timezone.now()
         etat.save()
 
-        messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} validé avec succès.")
-    else:
-        messages.error(request, "Méthode non autorisée. Utilisez le formulaire de validation.")
+    messages.success(
+        request,
+        f"État de salaire de {etat.enseignant.nom_complet} validé avec succès.",
+    )
 
     return redirect('salaires:etats_salaire')
 
 
 @login_required
+@require_POST
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def marquer_paye(request, etat_id):
     """Marquer un état de salaire comme payé"""
 
-    etat = get_object_or_404(EtatSalaire, id=etat_id)
+    with transaction.atomic():
+        etat = get_object_or_404(
+            EtatSalaire.objects.select_for_update().select_related(
+                'enseignant', 'periode'
+            ),
+            id=etat_id,
+        )
 
-    if not etat.peut_etre_paye:
-        messages.error(request, "Cet état de salaire ne peut pas être marqué comme payé.")
-        return redirect('salaires:etats_salaire')
+        if not etat.peut_etre_paye:
+            messages.error(request, "Cet état de salaire ne peut pas être marqué comme payé.")
+            return redirect('salaires:etats_salaire')
 
-    if request.method == 'POST':
         etat.paye = True
         etat.date_paiement = timezone.now()
         etat.save()
 
-        messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.")
-    else:
-        messages.error(request, "Méthode non autorisée. Utilisez le formulaire.")
+    messages.success(
+        request,
+        f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.",
+    )
 
     return redirect('salaires:etats_salaire')
 
@@ -1043,7 +1085,7 @@ def fiche_paie_pdf(request, etat_id):
         # Fallback: logo statique
         if not header_logo_path:
             from django.contrib.staticfiles import finders
-            header_logo_path = finders.find('logos/logo.jpeg')
+            header_logo_path = finders.find('logos/logo.png')
         if header_logo_path:
             p.drawImage(header_logo_path, 2*cm, height-4*cm, width=3*cm, height=2*cm, preserveAspectRatio=True, mask='auto')
     except Exception:
@@ -1118,9 +1160,8 @@ def fiche_paie_pdf(request, etat_id):
         ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
     ]
     
-    if etat.total_heures is not None:
+    if etat.total_heures:
         data.append(['Heures travaillées', f"{etat.total_heures}h"])
-        data.append(['Mode de calcul', etat.libelle_source_heures])
         data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
     
     if etat.primes:
@@ -1430,7 +1471,7 @@ def export_rapport_paiements_pdf(request):
     # Ajouter le logo en en-tête
     try:
         from django.contrib.staticfiles import finders
-        logo_path = finders.find('logos/logo.jpeg')
+        logo_path = finders.find('logos/logo.png')
         if logo_path:
             from reportlab.platypus import Image
             logo = Image(logo_path, width=60, height=60)
@@ -1533,6 +1574,15 @@ def creer_periode(request):
             if annee < 2020 or annee > 2030:
                 messages.error(request, "L'année doit être entre 2020 et 2030.")
                 return redirect('salaires:gestion_periodes')
+
+            if not nombre_semaines.is_finite() or not (
+                Decimal('0') < nombre_semaines <= Decimal('6')
+            ):
+                messages.error(
+                    request,
+                    "Le nombre de semaines doit être supérieur à 0 et inférieur ou égal à 6.",
+                )
+                return redirect('salaires:gestion_periodes')
             
             # Récupérer l'école
             from eleves.models import Ecole
@@ -1572,7 +1622,7 @@ def creer_periode(request):
                 f"Période {nouvelle_periode} créée avec succès !"
             )
             
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError, InvalidOperation):
             messages.error(request, "Données invalides. Veuillez vérifier les champs.")
         except Exception as e:
             messages.error(request, f"Erreur lors de la création : {str(e)}")
@@ -1684,13 +1734,22 @@ def ajouter_enseignant(request):
     if request.method == 'POST':
         form = EnseignantForm(request.POST, user=request.user)
         if form.is_valid():
-            enseignant = form.save(commit=False)
-            enseignant.cree_par = request.user
-            enseignant.save()
+            with transaction.atomic():
+                enseignant = form.save(commit=False)
+                enseignant.cree_par = request.user
+                enseignant.save()
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, timezone.localdate(), request.user
+                )
             
             messages.success(
                 request, 
                 f"L'enseignant {enseignant.nom_complet} a été ajouté avec succès !"
+                + (
+                    " Son salaire du mois ouvert a été calculé."
+                    if salaire_recalcule
+                    else ""
+                )
             )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
@@ -1719,10 +1778,19 @@ def modifier_enseignant(request, enseignant_id):
     if request.method == 'POST':
         form = EnseignantForm(request.POST, instance=enseignant, user=request.user)
         if form.is_valid():
-            form.save()
+            with transaction.atomic():
+                enseignant = form.save()
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, timezone.localdate(), request.user
+                )
             messages.success(
                 request, 
                 f"L'enseignant {enseignant.nom_complet} a été modifié avec succès !"
+                + (
+                    " Son salaire du mois ouvert a été recalculé."
+                    if salaire_recalcule
+                    else ""
+                )
             )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:

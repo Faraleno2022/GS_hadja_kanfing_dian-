@@ -1,20 +1,14 @@
-"""Séparation stricte des frais d'inscription et de réinscription.
-
-Un élève ne paie qu'un seul frais d'admission : soit une inscription (nouvel
-élève), soit une réinscription (élève qui revient). Les deux natures partagent
-le même poste dans l'échéancier (``frais_inscription_du``) et se distinguent
-par ``nature_frais``. Les rapports ne doivent donc jamais compter le même
-montant dans les deux colonnes.
-"""
-
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from openpyxl import load_workbook
 
-from eleves.models import Classe, Ecole, Eleve, Responsable
+from eleves.models import Classe, Ecole, Eleve, GrilleTarifaire, Responsable
+from paiements.allocation import payment_type_plan
 from paiements.models import (
     EcheancierPaiement,
     ModePaiement,
@@ -23,439 +17,308 @@ from paiements.models import (
     RemiseReduction,
     TypePaiement,
 )
-from paiements.tests.support import TEST_MIDDLEWARE
-from utilisateurs.models import Profil
+from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
+from paiements.views import _allocate_combined_payment, ensure_echeancier_for_eleve
 
 
-def _texte_cellule(cellule):
-    """Texte d'une cellule de tableau PDF, Paragraph ou chaîne simple."""
-    texte = cellule.getPlainText() if hasattr(cellule, 'getPlainText') else str(cellule)
-    # Les montants sont mis en forme avec une espace insecable pour ne pas etre
-    # coupes en fin de colonne : la ramener a une espace ordinaire.
-    return texte.replace(' ', ' ')
+class PaymentTypePlanTests(SimpleTestCase):
+    def test_variantes_de_libelles_sont_reconnues(self):
+        scenarios = (
+            ("Réinscription + Tranche 1", "reinscription", (1,)),
+            ("REINSCRIPTION + 1ere tranche + 2ème tranche", "reinscription", (1, 2)),
+            ("Frais d'inscription + Annuel", "inscription", (1, 2, 3)),
+            ("Scolarité - T2", None, (2,)),
+            ("Scolarité annuelle", None, (1, 2, 3)),
+            ("Première tranche + troisième tranche", None, (1, 3)),
+            ("Deuxième tranche", None, (2,)),
+        )
+        for label, kind, tranches in scenarios:
+            with self.subTest(label=label):
+                plan = payment_type_plan(label)
+                self.assertEqual(plan["registration_kind"], kind)
+                self.assertEqual(plan["tranches"], tranches)
+
+    def test_libelles_combines_et_plages_sont_additifs(self):
+        """Chaque poste nommé s'ajoute : rien n'est perdu ni inventé."""
+        scenarios = (
+            # (libellé, admission facturée, tranches facturées)
+            ("Inscription + Tranche 1 + Tranche 3", True, (1, 3)),
+            ("Tranches 1 à 3", False, (1, 2, 3)),
+            ("T1-T3", False, (1, 2, 3)),
+            ("Réinscription + tranches 1 et 2", True, (1, 2)),
+            ("Tranche deux", False, (2,)),
+            ("2ème trimestre", False, (2,)),
+            ("Frais d'admission", True, ()),
+            # Un poste nommé prime sur l'élargissement au reste de l'année.
+            ("Solde tranche 2", False, (2,)),
+            # Les retraits explicites enlèvent un poste au lieu d'en ajouter.
+            ("Scolarité sans inscription", False, (1, 2, 3)),
+            ("Annuel sauf tranche 3", False, (1, 2)),
+            # Aucun poste de l'échéancier : la saisie reste manuelle.
+            ("Cantine", False, ()),
+            ("Transport scolaire mensuel", False, ()),
+        )
+        for label, admission, tranches in scenarios:
+            with self.subTest(label=label):
+                plan = payment_type_plan(label)
+                self.assertEqual(plan["include_registration"], admission)
+                self.assertEqual(plan["tranches"], tranches)
+
+    def test_solde_seul_couvre_toute_l_annee(self):
+        plan = payment_type_plan("Solde")
+
+        self.assertTrue(plan["covers_balance"])
+        self.assertTrue(plan["include_registration"])
+        self.assertEqual(plan["tranches"], (1, 2, 3))
 
 
-@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
-class RepartitionInscriptionReinscriptionTests(TestCase):
+@override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
+class InscriptionReinscriptionIntegrationTests(TestCase):
     def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser(
+            username="admin_admission",
+            email="admin-admission@example.com",
+            password=None,
+        )
+        self.client.force_login(self.user)
+
         self.ecole = Ecole.objects.create(
-            nom="École Répartition", adresse="Conakry",
-            telephone="+224620100031", directeur="Direction",
+            nom="École ventilation admission",
+            adresse="Conakry",
+            telephone="+224620000101",
+            directeur="Direction",
         )
         self.classe = Classe.objects.create(
-            nom="6ÈME ANNÉE", ecole=self.ecole, niveau="PRIMAIRE_6",
-            annee_scolaire="2025-2026",
+            ecole=self.ecole,
+            nom="6ème test",
+            niveau="PRIMAIRE_6",
+            annee_scolaire="2024-2025",
+        )
+        self.grille = GrilleTarifaire.objects.create(
+            ecole=self.ecole,
+            niveau=self.classe.niveau,
+            annee_scolaire="2024-2025",
+            frais_inscription=Decimal("30000"),
+            frais_reinscription=Decimal("20000"),
+            tranche_1=Decimal("100000"),
+            tranche_2=0,
+            tranche_3=0,
         )
         self.responsable = Responsable.objects.create(
-            nom="Diallo", prenom="Mariama", telephone="+224620100032",
+            prenom="Parent",
+            nom="Test",
             relation="PERE",
+            telephone="+224620000102",
+            adresse="Conakry",
         )
-
-        # Nouvel élève : frais d'inscription de 30 000.
-        self.nouvel_eleve = self._creer_eleve("MAT-INSC-1", "Camara", "Awa")
-        self._creer_echeancier(self.nouvel_eleve, 30000, 'INSCRIPTION')
-
-        # Élève qui revient : frais de réinscription de 20 000.
-        self.ancien_eleve = self._creer_eleve("MAT-REINSC-1", "Bah", "Ibrahima")
-        self._creer_echeancier(self.ancien_eleve, 20000, 'REINSCRIPTION')
-
-        User = get_user_model()
-        self.comptable = User.objects.create_user(
-            username="comptable_repartition", password="pass12345",
+        self.eleve_inscription = self._create_eleve("ADM-I", "Inscrit")
+        self.eleve_reinscription = self._create_eleve("ADM-R", "Réinscrit")
+        self.echeancier_inscription = self._create_echeancier(
+            self.eleve_inscription,
+            EcheancierPaiement.NATURE_INSCRIPTION,
+            Decimal("30000"),
         )
-        Profil.objects.update_or_create(
-            user=self.comptable,
-            defaults={
-                'role': 'COMPTABLE', 'ecole': self.ecole,
-                'telephone': "+224620100033",
-                'peut_consulter_rapports': True, 'is_validated': True,
-            },
+        self.echeancier_reinscription = self._create_echeancier(
+            self.eleve_reinscription,
+            EcheancierPaiement.NATURE_REINSCRIPTION,
+            Decimal("20000"),
         )
-        self.client.force_login(self.comptable)
+        self.type_reinscription_t1 = TypePaiement.objects.create(
+            nom="Réinscription + Tranche 1"
+        )
+        self.mode = ModePaiement.objects.create(nom="Espèces admission")
 
-    def _creer_eleve(self, matricule, nom, prenom):
+    def _create_eleve(self, matricule, prenom):
         return Eleve.objects.create(
-            nom=nom, prenom=prenom, matricule=matricule, classe=self.classe,
-            sexe='M', date_naissance=date(2015, 1, 1),
-            lieu_naissance="Conakry", date_inscription=date(2025, 9, 1),
+            matricule=matricule,
+            prenom=prenom,
+            nom="Test",
+            sexe="F",
+            date_naissance=date(2015, 1, 1),
+            lieu_naissance="Conakry",
+            classe=self.classe,
+            date_inscription=date(2024, 9, 1),
             responsable_principal=self.responsable,
         )
 
-    def _creer_echeancier(self, eleve, frais_admission, nature):
+    def _create_echeancier(self, eleve, nature, frais):
         return EcheancierPaiement.objects.create(
-            eleve=eleve, annee_scolaire="2025-2026",
-            frais_inscription_du=frais_admission,
+            eleve=eleve,
+            annee_scolaire="2024-2025",
             nature_frais=nature,
-            tranche_1_due=100000, tranche_2_due=0, tranche_3_due=0,
-            frais_inscription_paye=0,
-            tranche_1_payee=0, tranche_2_payee=0, tranche_3_payee=0,
-            date_echeance_inscription=date(2025, 9, 1),
-            date_echeance_tranche_1=date(2025, 10, 1),
-            date_echeance_tranche_2=date(2026, 1, 1),
-            date_echeance_tranche_3=date(2026, 4, 1),
+            frais_inscription_du=frais,
+            tranche_1_due=Decimal("100000"),
+            tranche_2_due=0,
+            tranche_3_due=0,
+            date_echeance_inscription=date(2024, 9, 30),
+            date_echeance_tranche_1=date(2025, 1, 10),
+            date_echeance_tranche_2=date(2025, 3, 5),
+            date_echeance_tranche_3=date(2025, 4, 6),
         )
 
-    def _appliquer_remise_soldante(self, eleve):
-        type_paiement = TypePaiement.objects.create(nom="Inscription + Tranche 1")
-        mode = ModePaiement.objects.create(nom="Espèces test export")
+    def test_nature_reinscription_est_persistee_meme_si_les_tarifs_sont_identiques(self):
+        self.grille.frais_inscription = Decimal("20000")
+        self.grille.save(update_fields=["frais_inscription"])
+
+        echeancier = ensure_echeancier_for_eleve(
+            self.eleve_inscription,
+            registration_kind="reinscription",
+        )
+        echeancier.refresh_from_db()
+
+        self.assertEqual(
+            echeancier.nature_frais,
+            EcheancierPaiement.NATURE_REINSCRIPTION,
+        )
+        self.assertEqual(echeancier.frais_inscription_du, Decimal("20000"))
+        self.assertEqual(echeancier.libelle_frais_admission, "Frais de réinscription")
+
+    def test_reinscription_plus_t1_est_repartie_dans_le_bon_ordre(self):
         paiement = Paiement.objects.create(
-            eleve=eleve, type_paiement=type_paiement, mode_paiement=mode,
-            numero_recu="REMISE-EXPORT-001", montant=Decimal("110000"),
-            date_paiement=date(2026, 8, 15), annee_scolaire="2025-2026",
-            statut="VALIDE", cree_par=self.comptable, valide_par=self.comptable,
-        )
-        remise = RemiseReduction.objects.create(
-            nom="Remise test export", type_remise="MONTANT_FIXE",
-            valeur=Decimal("20000"), motif="SOCIALE",
-            date_debut=date(2025, 9, 1), date_fin=date(2026, 8, 31), actif=True,
-        )
-        PaiementRemise.objects.create(
-            paiement=paiement, remise=remise, montant_remise=Decimal("20000"),
-            applique_tranche_1=True, montant_tranche_1=Decimal("20000"),
-            base_calcul="TRANCHE", montant_base=Decimal("100000"),
-            motif="GESTE_COMMERCIAL",
+            eleve=self.eleve_reinscription,
+            type_paiement=self.type_reinscription_t1,
+            mode_paiement=self.mode,
+            montant=Decimal("120000"),
+            date_paiement=date(2024, 9, 30),
+            statut="VALIDE",
+            numero_recu="REC-ADM-R",
         )
 
-    def test_colonnes_inscription_et_reinscription_ne_se_recouvrent_pas(self):
-        response = self.client.get(reverse('paiements:liste_paiements'))
+        allocation = _allocate_combined_payment(
+            paiement,
+            self.echeancier_reinscription,
+        )
+        self.echeancier_reinscription.refresh_from_db()
+
+        self.assertEqual(allocation["inscription"], Decimal("20000"))
+        self.assertEqual(allocation["tranche_1"], Decimal("100000"))
+        self.assertEqual(allocation["tranche_2"], Decimal("0"))
+        self.assertEqual(
+            self.echeancier_reinscription.nature_frais,
+            EcheancierPaiement.NATURE_REINSCRIPTION,
+        )
+
+    def test_suggestion_reinscription_est_exacte_et_sans_effet_de_bord(self):
+        response = self.client.post(
+            reverse("paiements:ajax_montant_suggere"),
+            {
+                "eleve_id": self.eleve_inscription.pk,
+                "type_id": self.type_reinscription_t1.pk,
+            },
+        )
+
         self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["suggested"], 120000)
+        self.assertEqual(payload["breakdown"]["fi_restant"], 20000)
+        self.assertEqual(
+            payload["breakdown"]["frais_admission_label"],
+            "Réinscription",
+        )
+        self.echeancier_inscription.refresh_from_db()
+        self.assertEqual(
+            self.echeancier_inscription.nature_frais,
+            EcheancierPaiement.NATURE_INSCRIPTION,
+        )
+        self.assertEqual(
+            self.echeancier_inscription.frais_inscription_du,
+            Decimal("30000"),
+        )
 
-        totaux = response.context['totaux_du']
-        # La colonne Inscription ne doit contenir que les vraies inscriptions.
-        self.assertEqual(totaux['frais_inscription_total'], 30000)
-        self.assertEqual(totaux['frais_reinscription_total'], 20000)
-        # Le total dû reste complet : scolarité + les deux natures d'admission.
-        self.assertEqual(totaux['du_global_net'], 200000 + 30000 + 20000)
-        # Part de la réinscription dans l'ensemble des frais d'admission.
-        self.assertAlmostEqual(totaux['frais_reinscription_pct'], 40.0, places=2)
+    def test_suggestion_ne_cree_pas_un_echeancier(self):
+        eleve_sans_echeancier = self._create_eleve("ADM-S", "Sans échéancier")
+        count_before = EcheancierPaiement.objects.count()
 
-    def test_detail_par_classe_ne_double_compte_pas(self):
-        response = self.client.get(reverse('paiements:liste_paiements'))
+        response = self.client.post(
+            reverse("paiements:ajax_montant_suggere"),
+            {
+                "eleve_id": eleve_sans_echeancier.pk,
+                "type_id": self.type_reinscription_t1.pk,
+            },
+        )
+
         self.assertEqual(response.status_code, 200)
-
-        lignes = response.context['totaux_du_detail_classes']
-        self.assertEqual(len(lignes), 1)
-        ligne = lignes[0]
-        self.assertEqual(ligne['frais_inscription_total'], 30000)
-        self.assertEqual(ligne['frais_reinscription_total'], 20000)
-        self.assertEqual(ligne['du_global_net'], 200000 + 30000 + 20000)
-        self.assertAlmostEqual(ligne['frais_reinscription_pct'], 40.0, places=2)
-
-    def test_export_excel_recap_ne_double_compte_pas(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        response = self.client.get(reverse('paiements:export_recap_par_classe_excel'))
-        self.assertEqual(response.status_code, 200)
-
-        workbook = load_workbook(BytesIO(response.content))
-        sheet = workbook.active
-        entetes = [cell.value for cell in sheet[1]]
-        ligne = dict(zip(entetes, [cell.value for cell in sheet[2]]))
-
-        self.assertEqual(ligne['Inscription'], 30000)
-        self.assertEqual(ligne['Réinscription'], 20000)
-        self.assertEqual(ligne['Total dû net'], 200000 + 30000 + 20000)
-        self.assertAlmostEqual(float(ligne['Réinscription %']), 40.0, places=2)
-
-    def test_classe_entierement_en_reinscription_laisse_inscription_a_zero(self):
-        EcheancierPaiement.objects.filter(eleve=self.nouvel_eleve).update(
-            nature_frais='REINSCRIPTION', frais_inscription_du=20000,
+        self.assertEqual(response.json()["suggested"], 120000)
+        self.assertEqual(EcheancierPaiement.objects.count(), count_before)
+        self.assertFalse(
+            EcheancierPaiement.objects.filter(eleve=eleve_sans_echeancier).exists()
         )
 
-        response = self.client.get(reverse('paiements:liste_paiements'))
-        totaux = response.context['totaux_du']
-
-        self.assertEqual(totaux['frais_inscription_total'], 0)
-        self.assertEqual(totaux['frais_reinscription_total'], 40000)
-        self.assertAlmostEqual(totaux['frais_reinscription_pct'], 100.0, places=2)
-        self.assertEqual(totaux['du_global_net'], 200000 + 40000)
-
-    def test_export_tranches_excel_separe_inscription_et_reinscription(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        EcheancierPaiement.objects.filter(eleve=self.nouvel_eleve).update(
-            frais_inscription_paye=30000,
-        )
-        EcheancierPaiement.objects.filter(eleve=self.ancien_eleve).update(
-            frais_inscription_paye=20000,
-        )
-
+    def test_liste_separe_strictement_inscription_et_reinscription(self):
         response = self.client.get(
-            reverse('paiements:export_tranches_par_classe_excel'),
-            {'annee_scolaire': '2025-2026'},
+            reverse("paiements:liste_paiements"),
+            {"annee": "2024-2025"},
         )
-        self.assertEqual(response.status_code, 200)
 
+        self.assertEqual(response.status_code, 200)
+        totals = response.context["totaux_du"]
+        self.assertEqual(totals["du_sco_net"], 200000)
+        self.assertEqual(totals["frais_inscription_total"], 30000)
+        self.assertEqual(totals["frais_reinscription_total"], 20000)
+        self.assertEqual(totals["du_global_net"], 250000)
+        self.assertEqual(totals["frais_reinscription_pct"], 40.0)
+
+        rows = response.context["totaux_du_detail_classes"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["frais_inscription_total"], 30000)
+        self.assertEqual(rows[0]["frais_reinscription_total"], 20000)
+        self.assertEqual(rows[0]["du_global_net"], 250000)
+
+    def test_export_excel_conserve_la_meme_ventilation(self):
+        response = self.client.get(reverse("paiements:export_recap_par_classe_excel"))
+
+        self.assertEqual(response.status_code, 200)
         workbook = load_workbook(BytesIO(response.content), data_only=True)
-        sheet = workbook[self.classe.nom[:25]]
-        headers = [cell.value for cell in sheet[2]]
-        rows = {
-            row[0].value: dict(zip(headers, [cell.value for cell in row]))
-            for row in sheet.iter_rows(min_row=3)
-        }
+        values = list(workbook.active.iter_rows(min_row=2, max_row=2, values_only=True))[0]
+        self.assertEqual(values[4], 30000)
+        self.assertEqual(values[5], 20000)
+        self.assertEqual(values[6], 40.0)
+        self.assertEqual(values[7], 250000)
 
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-        ancien = rows[self.ancien_eleve.nom_complet]
-        self.assertEqual(nouvel['Inscription payée'], 30000)
-        self.assertEqual(nouvel['Réinscription payée'], 0)
-        self.assertEqual(ancien['Inscription payée'], 0)
-        self.assertEqual(ancien['Réinscription payée'], 20000)
-
-    def test_export_tranches_pdf_contient_la_colonne_reinscription(self):
-        from unittest.mock import patch
-
-        from reportlab.platypus import Table
-
-        EcheancierPaiement.objects.filter(eleve=self.ancien_eleve).update(
-            frais_inscription_paye=20000,
-        )
-
-        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
-            response = self.client.get(
-                reverse('paiements:export_tranches_par_classe_pdf'),
-                {'annee_scolaire': '2025-2026'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        elements = build_pdf.call_args.args[0]
-        table = next(element for element in elements if isinstance(element, Table))
-        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
-        self.assertIn('Réinscription payée', headers)
-
-        rows = {
-            row[0].getPlainText(): dict(
-                zip(headers, [_texte_cellule(cellule) for cellule in row])
-            )
-            for row in table._cellvalues[1:]
-        }
-        ancien = rows[self.ancien_eleve.nom_complet]
-        self.assertEqual(ancien['Inscription payée'], '0')
-        self.assertEqual(ancien['Réinscription payée'], '20 000')
-
-    def test_export_tranches_excel_affiche_remise_taux_et_solde(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        self._appliquer_remise_soldante(self.nouvel_eleve)
-        response = self.client.get(
-            reverse('paiements:export_tranches_par_classe_excel'),
-            {'annee_scolaire': '2025-2026'},
-        )
-
-        workbook = load_workbook(BytesIO(response.content), data_only=True)
-        sheet = workbook[self.classe.nom[:25]]
-        headers = [cell.value for cell in sheet[2]]
-        rows = {
-            row[0].value: dict(zip(headers, [cell.value for cell in row]))
-            for row in sheet.iter_rows(min_row=3)
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Encaissé'], 110000)
-        self.assertEqual(nouvel['Remise'], 20000)
-        # Taux calcule sur la base retenue a la saisie (montant_base), et non
-        # sur le total du qui inclut l'inscription, jamais remisee.
-        self.assertEqual(nouvel['Remise (%)'], 20)
-        self.assertEqual(nouvel['Reste'], 0)
-        self.assertIn('Soldé avec remise', nouvel['Situation / précision'])
-        self.assertIn('20 000 GNF', nouvel['Situation / précision'])
-
-    def test_export_tranches_pdf_affiche_remise_taux_et_precision(self):
-        from unittest.mock import patch
-
-        from reportlab.platypus import Table
-
-        self._appliquer_remise_soldante(self.nouvel_eleve)
-        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
-            response = self.client.get(
-                reverse('paiements:export_tranches_par_classe_pdf'),
-                {'annee_scolaire': '2025-2026'},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        elements = build_pdf.call_args.args[0]
-        table = next(element for element in elements if isinstance(element, Table))
-        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
-        rows = {
-            row[0].getPlainText(): dict(
-                zip(headers, [_texte_cellule(cellule) for cellule in row])
-            )
-            for row in table._cellvalues[1:]
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Remise'], '20 000')
-        self.assertEqual(nouvel['Remise (%)'], '20 %')
-        self.assertIn('Soldé avec remise', nouvel['Situation / précision'])
-        self.assertIn('20 000 GNF', nouvel['Situation / précision'])
-
-    def test_logo_ecole_est_present_sur_exports_tranches_et_filigrane(self):
-        from pathlib import Path
-        from unittest.mock import MagicMock, patch
-
-        from django.conf import settings
-        from reportlab.lib.pagesizes import A4, landscape
-
-        logo_path = str(Path(settings.BASE_DIR) / 'static' / 'logos' / 'logo.jpeg')
-        with patch('rapports.utils._get_logo_path', return_value=logo_path):
-            with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
-                response = self.client.get(
-                    reverse('paiements:export_tranches_par_classe_pdf'),
-                    {'annee_scolaire': '2025-2026'},
-                )
-
-            self.assertEqual(response.status_code, 200)
-            canvas = MagicMock()
-            canvas._pagesize = landscape(A4)
-            callback = build_pdf.call_args.kwargs['onFirstPage']
-            callback(canvas, MagicMock(pagesize=landscape(A4)))
-            self.assertGreaterEqual(canvas.drawImage.call_count, 2)
-
-        with patch('paiements.views_tranches._get_logo_path', return_value=logo_path):
-            response = self.client.get(
-                reverse('paiements:export_tranches_par_classe_excel'),
-                {'annee_scolaire': '2025-2026'},
-            )
-        from io import BytesIO
-        from openpyxl import load_workbook
-
-        workbook = load_workbook(BytesIO(response.content))
-        self.assertTrue(all(sheet._images for sheet in workbook.worksheets))
-
-    def _appliquer_remise_sans_report(self):
-        """Cas réel : 550 000 encaissés et 25 000 de remise sur T1."""
-        echeancier = self.nouvel_eleve.echeancier
-        echeancier.frais_inscription_du = Decimal('50000')
-        echeancier.tranche_1_due = Decimal('500000')
-        echeancier.tranche_2_due = Decimal('500000')
-        echeancier.tranche_3_due = Decimal('500000')
-        echeancier.save()
-
+    def test_plusieurs_remises_ne_multiplient_pas_les_montants_dus(self):
         paiement = Paiement.objects.create(
-            eleve=self.nouvel_eleve,
-            type_paiement=TypePaiement.objects.create(
-                nom='Inscription + Tranche 1'
-            ),
-            mode_paiement=ModePaiement.objects.create(nom='Cash'),
-            numero_recu='REC20260001',
-            montant=Decimal('550000'),
-            date_paiement=date(2026, 8, 15),
-            annee_scolaire='2025-2026',
-            statut='VALIDE',
-            cree_par=self.comptable,
-            valide_par=self.comptable,
+            eleve=self.eleve_inscription,
+            type_paiement=self.type_reinscription_t1,
+            mode_paiement=self.mode,
+            montant=Decimal("50000"),
+            date_paiement=date(2024, 10, 1),
+            statut="VALIDE",
+            numero_recu="REC-REMISES",
         )
-        remise = RemiseReduction.objects.create(
-            nom='Remise scolarité 5%',
-            type_remise='POURCENTAGE',
-            valeur=Decimal('5'),
-            motif='SOCIALE',
-            date_debut=date(2025, 9, 1),
-            date_fin=date(2026, 8, 31),
-            actif=True,
-        )
-        PaiementRemise.objects.create(
-            paiement=paiement,
-            remise=remise,
-            montant_remise=Decimal('25000'),
-            applique_tranche_1=True,
-            montant_tranche_1=Decimal('25000'),
-            base_calcul='TRANCHE',
-            montant_base=Decimal('500000'),
-            motif='GESTE_COMMERCIAL',
-            deduite_du_paiement=False,
-        )
-        return paiement
+        for index, montant in enumerate((Decimal("5000"), Decimal("10000")), start=1):
+            remise = RemiseReduction.objects.create(
+                nom=f"Remise {index}",
+                type_remise="MONTANT_FIXE",
+                valeur=montant,
+                motif="AUTRE",
+                date_debut=date(2024, 9, 1),
+                date_fin=date(2025, 8, 31),
+            )
+            PaiementRemise.objects.create(
+                paiement=paiement,
+                remise=remise,
+                montant_remise=montant,
+            )
 
-    def test_export_tranches_excel_ne_reporte_pas_la_remise_sur_t2(self):
-        from io import BytesIO
-
-        from openpyxl import load_workbook
-
-        self._appliquer_remise_sans_report()
         response = self.client.get(
-            reverse('paiements:export_tranches_par_classe_excel'),
-            {'annee_scolaire': '2025-2026'},
+            reverse("paiements:liste_paiements"),
+            {"annee": "2024-2025"},
         )
 
-        workbook = load_workbook(BytesIO(response.content), data_only=True)
-        sheet = workbook[self.classe.nom[:25]]
-        headers = [cell.value for cell in sheet[2]]
-        rows = {
-            row[0].value: dict(zip(headers, [cell.value for cell in row]))
-            for row in sheet.iter_rows(min_row=3)
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
+        totals = response.context["totaux_du"]
+        self.assertEqual(totals["du_sco_net"], 185000)
+        self.assertEqual(totals["frais_inscription_total"], 30000)
+        self.assertEqual(totals["frais_reinscription_total"], 20000)
+        self.assertEqual(totals["du_global_net"], 235000)
 
-        self.assertEqual(nouvel['Inscription payée'], 50000)
-        self.assertEqual(nouvel['Tranche 1 payée'], 500000)
-        self.assertEqual(nouvel['Tranche 2 payée'], 0)
-        self.assertEqual(nouvel['Tranche 3 payée'], 0)
-        self.assertEqual(nouvel['Encaissé'], 550000)
-        self.assertEqual(nouvel['Remise'], 25000)
-        self.assertEqual(nouvel['Remise (%)'], 5)
-        self.assertEqual(nouvel['Reste'], 975000)
-
-    def test_export_tranches_pdf_ne_reporte_pas_la_remise_sur_t2(self):
-        from unittest.mock import patch
-
-        from reportlab.platypus import Table
-
-        self._appliquer_remise_sans_report()
-        with patch('reportlab.platypus.SimpleDocTemplate.build') as build_pdf:
-            response = self.client.get(
-                reverse('paiements:export_tranches_par_classe_pdf'),
-                {'annee_scolaire': '2025-2026'},
+    def test_echeancier_affiche_le_libelle_reinscription(self):
+        response = self.client.get(
+            reverse(
+                "paiements:echeancier_eleve",
+                kwargs={"eleve_id": self.eleve_reinscription.pk},
             )
-
-        self.assertEqual(response.status_code, 200)
-        elements = build_pdf.call_args.args[0]
-        table = next(element for element in elements if isinstance(element, Table))
-        headers = [cell.getPlainText() for cell in table._cellvalues[0]]
-        rows = {
-            row[0].getPlainText(): dict(
-                zip(headers, [_texte_cellule(cellule) for cellule in row])
-            )
-            for row in table._cellvalues[1:]
-        }
-        nouvel = rows[self.nouvel_eleve.nom_complet]
-
-        self.assertEqual(nouvel['Inscription payée'], '50 000')
-        self.assertEqual(nouvel['Tranche 1 payée'], '500 000')
-        self.assertEqual(nouvel['Tranche 2 payée'], '0')
-        self.assertEqual(nouvel['Tranche 3 payée'], '0')
-        self.assertEqual(nouvel['Encaissé'], '550 000')
-        self.assertEqual(nouvel['Remise'], '25 000')
-        self.assertEqual(nouvel['Remise (%)'], '5 %')
-        self.assertEqual(nouvel['Reste'], '975 000')
-
-    def test_recu_pdf_ne_reporte_pas_la_remise_sur_t2_ni_t3(self):
-        from io import BytesIO
-
-        from pypdf import PdfReader
-
-        paiement = self._appliquer_remise_sans_report()
-        response = self.client.get(reverse(
-            'paiements:generer_recu_pdf',
-            kwargs={'paiement_id': paiement.id},
-        ))
-
-        self.assertEqual(response.status_code, 200)
-        texte = '\n'.join(
-            page.extract_text() or ''
-            for page in PdfReader(BytesIO(response.content)).pages
         )
-        self.assertIn('Montant payé : 550 000 GNF', texte)
-        self.assertIn('Total remises : -25 000 GNF', texte)
-        self.assertIn('Montant net payé : 550 000 GNF', texte)
-        self.assertIn('Inscription: 50 000 GNF', texte)
-        self.assertIn('1ère tranche: 500 000 GNF', texte)
-        self.assertIn('2ème tranche: 0 GNF', texte)
-        self.assertIn('3ème tranche: 0 GNF', texte)
-        self.assertIn('Solde global restant : 975 000 GNF', texte)
-        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', texte)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Frais de réinscription")

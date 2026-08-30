@@ -17,7 +17,7 @@ class Ecole(SyncTrackedModel):
     nom = models.CharField(max_length=200, verbose_name="Nom de l'école")
     adresse = models.TextField(verbose_name="Adresse")
     telephone = models.CharField(
-        max_length=20, 
+        max_length=20,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
         verbose_name="Téléphone principal"
     )
@@ -57,11 +57,11 @@ class Ecole(SyncTrackedModel):
     date_creation = models.DateTimeField(auto_now_add=True)
     etat = models.CharField(max_length=20, choices=ETAT_CHOICES, default="BROUILLON", db_index=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='ecoles_creees')
-    
+
     class Meta:
         verbose_name = "École"
         verbose_name_plural = "Écoles"
-    
+
     def save(self, *args, **kwargs):
         # Normaliser le code_prefixe: supprimer doublons ('AL-FUR/AL-FUR/') et assurer un seul '/'
         try:
@@ -70,7 +70,7 @@ class Ecole(SyncTrackedModel):
         except Exception:
             pass
         super().save(*args, **kwargs)
-    
+
     @property
     def tous_telephones(self):
         """Retourne tous les numéros de téléphone séparés par ' / '"""
@@ -80,7 +80,7 @@ class Ecole(SyncTrackedModel):
         if self.telephone3:
             nums.append(self.telephone3)
         return ' / '.join(nums)
-    
+
     def __str__(self):
         return self.nom
 
@@ -88,7 +88,11 @@ class Classe(SyncTrackedModel):
     """Modèle pour représenter une classe"""
     NIVEAUX_CHOICES = [
         ('GARDERIE', 'Garderie'),
-        ('MATERNELLE', 'Maternelle'),
+        ('TOUTE_PETITE_SECTION', 'Toute petite section'),
+        ('PETITE_SECTION', 'Petite section'),
+        ('MOYENNE_SECTION', 'Moyenne section'),
+        ('GRANDE_SECTION', 'Grande section'),
+        ('MATERNELLE', 'Maternelle (ancienne appellation)'),
         ('PRIMAIRE_1', 'Primaire 1ère'),
         ('PRIMAIRE_2', 'Primaire 2ème'),
         ('PRIMAIRE_3', 'Primaire 3ème'),
@@ -103,7 +107,7 @@ class Classe(SyncTrackedModel):
         ('LYCEE_12', 'Lycée 12ème'),
         ('TERMINALE', 'Terminale'),
     ]
-    
+
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='classes')
     nom = models.CharField(max_length=100, verbose_name="Nom de la classe")
     niveau = models.CharField(max_length=20, choices=NIVEAUX_CHOICES, verbose_name="Niveau")
@@ -116,12 +120,11 @@ class Classe(SyncTrackedModel):
     )
     annee_scolaire = models.CharField(
         max_length=9,
-        validators=[valider_annee_scolaire],
         verbose_name="Année scolaire",
         help_text="Format: 2024-2025",
     )
     capacite_max = models.PositiveIntegerField(default=30, verbose_name="Capacité maximale")
-    
+
     class Meta:
         verbose_name = "Classe"
         verbose_name_plural = "Classes"
@@ -131,10 +134,10 @@ class Classe(SyncTrackedModel):
             models.Index(fields=['ecole', 'annee_scolaire']),
             models.Index(fields=['ecole', 'code_matricule']),
         ]
-    
+
     def __str__(self):
         return f"{self.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
-    
+
     @property
     def nombre_eleves(self):
         return self.eleves.count()
@@ -302,23 +305,23 @@ class Responsable(SyncTrackedModel):
         ('TANTE', 'Tante'),
         ('AUTRE', 'Autre'),
     ]
-    
+
     prenom = models.CharField(max_length=100, verbose_name="Prénom")
     nom = models.CharField(max_length=100, verbose_name="Nom")
     relation = models.CharField(max_length=20, choices=RELATION_CHOICES, verbose_name="Relation")
     telephone = models.CharField(
-        max_length=20, 
+        max_length=20,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
         verbose_name="Téléphone"
     )
     email = models.EmailField(blank=True, null=True, verbose_name="Email")
     adresse = models.TextField(verbose_name="Adresse")
     profession = models.CharField(max_length=100, blank=True, null=True, verbose_name="Profession")
-    
+
     class Meta:
         verbose_name = "Responsable"
         verbose_name_plural = "Responsables"
-    
+
     def __str__(self):
         return f"{self.prenom} {self.nom} ({self.get_relation_display()})"
 
@@ -331,12 +334,8 @@ class GrilleTarifaire(SyncTrackedModel):
     """Modèle pour les grilles tarifaires par école et niveau"""
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='grilles_tarifaires')
     niveau = models.CharField(max_length=20, choices=Classe.NIVEAUX_CHOICES, verbose_name="Niveau")
-    annee_scolaire = models.CharField(
-        max_length=9,
-        validators=[valider_annee_scolaire],
-        verbose_name="Année scolaire",
-    )
-    
+    annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire")
+
     # Frais d'inscription
     frais_inscription = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
@@ -347,7 +346,7 @@ class GrilleTarifaire(SyncTrackedModel):
         max_digits=10, decimal_places=0, default=Decimal('0'),
         verbose_name="Frais de réinscription (GNF)"
     )
-    
+
     # Frais de scolarité par tranches
     tranche_1 = models.DecimalField(
         max_digits=10, decimal_places=0, default=Decimal('0'),
@@ -361,7 +360,7 @@ class GrilleTarifaire(SyncTrackedModel):
         max_digits=10, decimal_places=0, default=Decimal('0'),
         verbose_name="3ème tranche (GNF)"
     )
-    
+
     # Périodes de paiement
     periode_1 = models.CharField(max_length=50, default="À l'inscription", verbose_name="Période 1")
     periode_2 = models.CharField(max_length=50, default="Début janvier", verbose_name="Période 2")
@@ -380,21 +379,21 @@ class GrilleTarifaire(SyncTrackedModel):
     date_echeance_tranche_3_defaut = models.DateField(
         null=True, blank=True, verbose_name="Échéance Tranche 3 (défaut)"
     )
-    
+
     date_creation = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         verbose_name = "Grille tarifaire"
         verbose_name_plural = "Grilles tarifaires"
         unique_together = ['ecole', 'niveau', 'annee_scolaire']
-    
+
     def __str__(self):
         return f"{self.ecole.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
-    
+
     @property
     def total_scolarite(self):
         return self.tranche_1 + self.tranche_2 + self.tranche_3
-    
+
     @property
     def total_avec_inscription(self):
         return self.frais_inscription + self.total_scolarite
@@ -405,7 +404,7 @@ class Eleve(SyncTrackedModel):
         ('M', 'Masculin'),
         ('F', 'Féminin'),
     ]
-    
+
     STATUT_CHOICES = [
         ('ACTIF', 'Actif'),
         ('SUSPENDU', 'Suspendu'),
@@ -413,7 +412,7 @@ class Eleve(SyncTrackedModel):
         ('TRANSFERE', 'Transféré'),
         ('DIPLOME', 'Diplômé'),
     ]
-    
+
     # Informations personnelles
     matricule = models.CharField(max_length=20, unique=True, verbose_name="Matricule")
     prenom = models.CharField(max_length=100, verbose_name="Prénom")
@@ -422,29 +421,29 @@ class Eleve(SyncTrackedModel):
     date_naissance = models.DateField(verbose_name="Date de naissance", blank=True, null=True)
     lieu_naissance = models.CharField(max_length=100, verbose_name="Lieu de naissance", blank=True, null=True)
     photo = models.ImageField(upload_to='eleves/photos/', blank=True, null=True, verbose_name="Photo")
-    
+
     # Scolarité
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
     date_inscription = models.DateField(verbose_name="Date d'inscription", blank=True, null=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
-    
+
     # Responsables
     responsable_principal = models.ForeignKey(
-        Responsable, on_delete=models.SET_NULL, 
+        Responsable, on_delete=models.SET_NULL,
         related_name='eleves_principal', verbose_name="Responsable principal",
         blank=True, null=True
     )
     responsable_secondaire = models.ForeignKey(
-        Responsable, on_delete=models.SET_NULL, 
+        Responsable, on_delete=models.SET_NULL,
         related_name='eleves_secondaire', blank=True, null=True,
         verbose_name="Responsable secondaire"
     )
-    
+
     # Métadonnées
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
     cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
     class Meta:
         verbose_name = "Élève"
         verbose_name_plural = "Élèves"
@@ -454,14 +453,14 @@ class Eleve(SyncTrackedModel):
             models.Index(fields=['nom', 'prenom']),
             models.Index(fields=['date_inscription']),
         ]
-    
+
     def __str__(self):
         return f"{self.matricule} - {self.prenom} {self.nom}"
-    
+
     @property
     def nom_complet(self):
         return f"{self.prenom} {self.nom}"
-    
+
     @property
     def age(self):
         from datetime import date
@@ -512,7 +511,7 @@ class Eleve(SyncTrackedModel):
         ancien_matricule = None
         changement_classe_info = None
         reaffecter_ancienne_classe = False
-        
+
         if self.pk:  # Si l'élève existe déjà
             try:
                 old_instance = Eleve.objects.get(pk=self.pk)
@@ -531,7 +530,7 @@ class Eleve(SyncTrackedModel):
                     }
             except Eleve.DoesNotExist:
                 pass
-        
+
         # Ne générer le matricule automatiquement que si :
         # 1. Il n'y a pas de matricule ou on doit le régénérer (changement de classe)
         # 2. ET qu'on n'a pas demandé de skip la génération (saisie manuelle)
@@ -618,9 +617,9 @@ class Eleve(SyncTrackedModel):
             # Attribuer un matricule temporaire unique pour libérer l'ancien
             import uuid
             self.matricule = f"TEMP-{uuid.uuid4().hex[:8]}"
-        
+
         super().save(*args, **kwargs)
-        
+
         # Réaffectation intelligente des matricules de l'ancienne classe
         if reaffecter_ancienne_classe and ancienne_classe:
             #self._reaffecter_matricules_ancienne_classe(ancienne_classe, ancien_matricule)
@@ -638,7 +637,7 @@ class Eleve(SyncTrackedModel):
                 self.classe,
                 cree_par=getattr(self, '_current_user', None),
             )
-        
+
         # Créer l'historique du changement de classe après la sauvegarde
         if changement_classe_info:
             # Transférer les notes vers la nouvelle classe
@@ -660,7 +659,7 @@ class Eleve(SyncTrackedModel):
                 description=description,
                 utilisateur=changement_classe_info['utilisateur']
             )
-    
+
     def _transferer_notes_vers_nouvelle_classe(self, ancienne_classe, nouvelle_classe):
         """
         Transfère TOUTES les notes de l'élève vers la nouvelle classe.
@@ -957,17 +956,17 @@ class HistoriqueEleve(SyncTrackedModel):
         ('DIPLOME', 'Diplômé / Archivé'),
         ('FIN_CYCLE', 'Fin de cycle'),
     ]
-    
+
     eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='historique')
     action = models.CharField(max_length=20, choices=ACTION_CHOICES, verbose_name="Action")
     description = models.TextField(verbose_name="Description")
     date_action = models.DateTimeField(auto_now_add=True, verbose_name="Date de l'action")
     utilisateur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    
+
     class Meta:
         verbose_name = "Historique élève"
         verbose_name_plural = "Historiques élèves"
         ordering = ['-date_action']
-    
+
     def __str__(self):
         return f"{self.eleve.nom_complet} - {self.get_action_display()} ({self.date_action.strftime('%d/%m/%Y')})"

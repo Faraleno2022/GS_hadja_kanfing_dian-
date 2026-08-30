@@ -20,11 +20,16 @@ class Migration(migrations.Migration):
                 to='eleves.eleve',
             ),
         ),
-        migrations.AddConstraint(
-            model_name='echeancierpaiement',
-            constraint=models.UniqueConstraint(
-                fields=('eleve', 'annee_scolaire'),
-                name='echeancier_unique_eleve_annee',
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddConstraint(
+                    model_name='echeancierpaiement',
+                    constraint=models.UniqueConstraint(
+                        fields=('eleve', 'annee_scolaire'),
+                        name='echeancier_unique_eleve_annee',
+                    ),
+                ),
+            ],
         ),
     ]

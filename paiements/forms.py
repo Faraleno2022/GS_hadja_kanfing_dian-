@@ -9,7 +9,7 @@ from eleves.models import Eleve, Ecole
 
 class PaiementForm(forms.ModelForm):
     """Formulaire pour créer/modifier un paiement"""
-    
+
     # Pourcentage de remise saisi par le comptable (optionnel)
     remise_pourcentage = forms.DecimalField(
         required=False,
@@ -28,7 +28,7 @@ class PaiementForm(forms.ModelForm):
     class Meta:
         model = Paiement
         fields = [
-            'eleve', 'type_paiement', 'mode_paiement', 'montant', 
+            'eleve', 'type_paiement', 'mode_paiement', 'montant',
             'date_paiement', 'observations', 'reference_externe'
         ]
         widgets = {
@@ -71,11 +71,11 @@ class PaiementForm(forms.ModelForm):
         self.fields['eleve'].queryset = Eleve.objects.select_related(
             'classe', 'classe__ecole'
         ).filter(statut='ACTIF').order_by('nom', 'prenom')
-        
+
         # Filtrer les types et modes actifs
         self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
         self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True)
-        
+
         # Définir la date du jour par défaut si pas de valeur initiale
         if not self.instance.pk and 'date_paiement' not in self.initial:
             # Utiliser la date locale selon le fuseau horaire Django
@@ -101,13 +101,13 @@ class PaiementForm(forms.ModelForm):
 
 class EcheancierForm(forms.ModelForm):
     """Formulaire pour créer/modifier un échéancier"""
-    
+
     class Meta:
         model = EcheancierPaiement
         fields = [
-            'annee_scolaire', 'frais_inscription_du', 'tranche_1_due', 
+            'annee_scolaire', 'frais_inscription_du', 'tranche_1_due',
             'tranche_2_due', 'tranche_3_due', 'date_echeance_inscription',
-            'date_echeance_tranche_1', 'date_echeance_tranche_2', 
+            'date_echeance_tranche_1', 'date_echeance_tranche_2',
             'date_echeance_tranche_3'
         ]
         widgets = {
@@ -188,23 +188,23 @@ class EcheancierForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        
+
         # Vérifier que les dates d'échéance sont cohérentes
         date_inscription = cleaned_data.get('date_echeance_inscription')
         date_tranche_1 = cleaned_data.get('date_echeance_tranche_1')
         date_tranche_2 = cleaned_data.get('date_echeance_tranche_2')
         date_tranche_3 = cleaned_data.get('date_echeance_tranche_3')
-        
+
         dates = [date_inscription, date_tranche_1, date_tranche_2, date_tranche_3]
         dates_valides = [d for d in dates if d is not None]
-        
+
         if len(dates_valides) > 1:
             dates_triees = sorted(dates_valides)
             if dates_valides != dates_triees:
                 raise forms.ValidationError(
                     "Les dates d'échéance doivent être dans l'ordre chronologique."
                 )
-        
+
         return cleaned_data
 
 class RechercheForm(forms.Form):
@@ -289,17 +289,17 @@ class RechercheForm(forms.Form):
         cleaned_data = super().clean()
         date_debut = cleaned_data.get('date_debut')
         date_fin = cleaned_data.get('date_fin')
-        
+
         if date_debut and date_fin and date_debut > date_fin:
             raise forms.ValidationError(
                 "La date de début doit être antérieure à la date de fin."
             )
-        
+
         return cleaned_data
 
 class RemiseForm(forms.ModelForm):
     """Formulaire pour créer/modifier une remise"""
-    
+
     class Meta:
         model = RemiseReduction
         fields = [
@@ -343,7 +343,7 @@ class RemiseForm(forms.ModelForm):
     def clean_valeur(self):
         valeur = self.cleaned_data.get('valeur')
         type_remise = self.cleaned_data.get('type_remise')
-        
+
         if valeur is not None:
             if type_remise == 'POURCENTAGE' and (valeur < 0 or valeur > 100):
                 raise forms.ValidationError(
@@ -353,19 +353,19 @@ class RemiseForm(forms.ModelForm):
                 raise forms.ValidationError(
                     "Le montant fixe doit être positif."
                 )
-        
+
         return valeur
 
     def clean(self):
         cleaned_data = super().clean()
         date_debut = cleaned_data.get('date_debut')
         date_fin = cleaned_data.get('date_fin')
-        
+
         if date_debut and date_fin and date_debut > date_fin:
             raise forms.ValidationError(
                 "La date de début doit être antérieure à la date de fin."
             )
-        
+
         return cleaned_data
 
 

@@ -11,6 +11,8 @@ import sys
 import shutil
 import subprocess
 
+from app_version import APP_VERSION
+
 # Repertoire du projet
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, 'dist')
@@ -121,14 +123,12 @@ def copy_extra_files():
         shutil.copytree(static_src, static_dst)
         print("  [OK] Fichiers statiques copies")
 
-    # NE PAS copier la base de données ni la config/licence du développeur dans
-    # le build. PyInstaller >= 6 place les 'datas' dans OUTPUT_DIR/_internal/,
-    # et son hook-django.py embarque automatiquement tout fichier 'db.*' trouvé
-    # a cote de manage.py (donc le vrai db.sqlite3 du poste de dev) : il faut
-    # donc chercher dans TOUT l'arbre de sortie, pas seulement a la racine.
+    # PyInstaller peut embarquer automatiquement la base ou une configuration
+    # située près de manage.py. Le nettoyage couvre donc tout le dossier de
+    # sortie, y compris ``_internal``.
     forbidden_names = {
         'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
-        'license.dat', '.trial_start', '.secret_key', '.env',
+        'license.dat', 'licence.json', '.trial_start', '.secret_key', '.env',
         '.integrity.dat', 'sync_config.json', 'backup_config.json',
         '.restauration_en_attente.json',
     }
@@ -140,11 +140,9 @@ def copy_extra_files():
                 rel_path = os.path.relpath(full_path, OUTPUT_DIR)
                 print(f"  [INFO] {rel_path} du dev supprime du build")
 
-    # Le dossier media contient les photos/documents propres a chaque ecole :
-    # il doit rester vide dans la distribution. On ne vise QUE les deux
-    # emplacements possibles de MEDIA_ROOT (racine et _internal), jamais un
-    # dossier 'media' quelconque : des bibliotheques tierces et des feuilles de
-    # style embarquent legitimement un dossier de ce nom.
+    # Les photos et documents propres à une école ne sont jamais distribués.
+    # Seuls les emplacements possibles de MEDIA_ROOT sont vidés afin de ne pas
+    # toucher aux dossiers ``media`` légitimes de bibliothèques tierces.
     for media_rel in ('media', os.path.join('_internal', 'media')):
         media_dir = os.path.join(OUTPUT_DIR, media_rel)
         if not os.path.isdir(media_dir):
@@ -165,16 +163,20 @@ def copy_extra_files():
         folder_path = os.path.join(OUTPUT_DIR, folder)
         os.makedirs(folder_path, exist_ok=True)
 
+    # Version lisible par le support technique dans le dossier installé.
+    with open(os.path.join(OUTPUT_DIR, 'version.json'), 'w', encoding='utf-8') as f:
+        f.write('{\n  "version": "' + APP_VERSION + '"\n}\n')
+
     print("  [OK] Fichiers supplementaires copies")
 
 
 def verify_distribution_has_no_user_data():
-    """Bloque le build si des données d'une école ont été embarquées."""
+    """Annule le build si des données d'une école ont été embarquées."""
     step("Verification de la protection des donnees utilisateur")
 
     forbidden_names = {
         'db.sqlite3', 'db.sqlite3-wal', 'db.sqlite3-shm', 'db.sqlite3-journal',
-        'license.dat', '.trial_start', '.secret_key', '.env',
+        'license.dat', 'licence.json', '.trial_start', '.secret_key', '.env',
         '.integrity.dat', 'sync_config.json', 'backup_config.json',
         '.restauration_en_attente.json',
     }
@@ -182,14 +184,17 @@ def verify_distribution_has_no_user_data():
     for dirpath, _dirnames, filenames in os.walk(OUTPUT_DIR):
         for filename in filenames:
             if filename in forbidden_names:
-                errors.append(os.path.relpath(os.path.join(dirpath, filename), OUTPUT_DIR))
+                errors.append(
+                    os.path.relpath(os.path.join(dirpath, filename), OUTPUT_DIR)
+                )
 
-    # Seuls les emplacements possibles de MEDIA_ROOT doivent etre vides.
     for media_rel in ('media', os.path.join('_internal', 'media')):
         media_dir = os.path.join(OUTPUT_DIR, media_rel)
         for mdirpath, _, mfilenames in os.walk(media_dir):
             for mfilename in mfilenames:
-                errors.append(os.path.relpath(os.path.join(mdirpath, mfilename), OUTPUT_DIR))
+                errors.append(
+                    os.path.relpath(os.path.join(mdirpath, mfilename), OUTPUT_DIR)
+                )
 
     if errors:
         print("  [ERREUR] Donnees utilisateur detectees dans la distribution :")
@@ -451,7 +456,7 @@ def generate_guard_file():
 def main():
     print("")
     print("*" * 60)
-    print("  MySchoolGN - Compilation en .exe")
+    print(f"  MySchoolGN {APP_VERSION} - Compilation en .exe")
     print("  AVEC PROTECTION ANTI-MODIFICATION")
     print("*" * 60)
 
