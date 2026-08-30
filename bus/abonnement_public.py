@@ -8,7 +8,6 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.db.models import Sum
 from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 import logging
@@ -199,17 +198,14 @@ def abonnement_public_pdf(request, abonnement_id):
             top -= 22
             total_du = 0
             total_paye = 0
+            situation_grille = abonnement.grille.situation_paiements(abonnement.eleve)
             for code, libelle, montant_du in (
                 ('T1', 'Tranche 1', abonnement.grille.tranche_1),
                 ('T2', 'Tranche 2', abonnement.grille.tranche_2),
                 ('T3', 'Tranche 3', abonnement.grille.tranche_3),
             ):
-                montant_paye = AbonnementBus.objects.filter(
-                    eleve=abonnement.eleve,
-                    grille=abonnement.grille,
-                    periodicite=code,
-                ).aggregate(total=Sum('montant'))['total'] or 0
-                reste = max(montant_du - montant_paye, 0)
+                montant_paye = situation_grille[code]['paye']
+                reste = situation_grille[code]['reste']
                 total_du += montant_du
                 total_paye += montant_paye
                 c.setFillColor(colors.black)

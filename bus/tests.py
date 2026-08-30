@@ -9,8 +9,8 @@ from paiements.models import ModePaiement
 from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from utilisateurs.models import Profil
 
-from .forms import AbonnementBusForm
-from .models import AbonnementBus, GrilleTarifaireBus
+from .forms import AbonnementBusForm, AbonnementCantineForm
+from .models import AbonnementBus, AbonnementCantine, GrilleTarifaireBus
 
 
 @override_settings(MIDDLEWARE=MIDDLEWARE_SANS_LICENCE)
@@ -175,6 +175,119 @@ class GrilleEtPaiementBusTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn('eleve', form.errors)
+
+    def test_liste_eleves_affiche_matricule_prenom_nom_et_filtre_classe(self):
+        form = AbonnementBusForm(ecole=self.ecole)
+
+        self.assertEqual(
+            form.fields['eleve'].label_from_instance(self.eleve),
+            f'BUS-A-001 — {self.eleve.prenom} {self.eleve.nom}',
+        )
+        self.assertQuerySetEqual(
+            form.fields['classe'].queryset,
+            [self.classe],
+        )
+        self.assertQuerySetEqual(
+            form.fields['eleve'].queryset,
+            [self.eleve],
+        )
+
+        form_mauvaise_classe = AbonnementBusForm(
+            data=self.donnees_paiement(classe=self.autre_classe.pk),
+            ecole=None,
+        )
+        self.assertFalse(form_mauvaise_classe.is_valid())
+        self.assertIn('eleve', form_mauvaise_classe.errors)
+
+    def test_paiement_bus_annuel_utilise_le_total_des_trois_tranches(self):
+        form = AbonnementBusForm(ecole=self.ecole)
+        self.assertIn(
+            ('ANNUEL', 'Annuel — totalité des 3 tranches'),
+            list(form.fields['periodicite'].choices),
+        )
+
+        suggestion = self.client.get(reverse('bus:tarif_bus_json'), {
+            'eleve_id': self.eleve.pk,
+            'grille_id': self.grille.pk,
+            'periodicite': 'ANNUEL',
+        })
+        self.assertEqual(suggestion.status_code, 200)
+        self.assertEqual(suggestion.json()['du'], 400000)
+        self.assertEqual(suggestion.json()['reste'], 400000)
+        self.assertEqual(suggestion.json()['echeance'], '2027-04-15')
+
+        response = self.client.post(
+            reverse('bus:nouveau'),
+            self.donnees_paiement(
+                classe=self.classe.pk,
+                periodicite='ANNUEL',
+                montant=400000,
+            ),
+        )
+        self.assertRedirects(response, reverse('bus:liste'))
+        self.assertTrue(
+            AbonnementBus.objects.filter(
+                eleve=self.eleve,
+                periodicite=AbonnementBus.Periodicite.ANNUEL,
+                montant=400000,
+            ).exists()
+        )
+        situation = self.grille.situation_paiements(self.eleve)
+        self.assertEqual(situation['T1']['paye'], 150000)
+        self.assertEqual(situation['T2']['paye'], 125000)
+        self.assertEqual(situation['T3']['paye'], 125000)
+        self.assertEqual(situation['ANNUEL']['reste'], 0)
+
+    def test_cantine_propose_annuel_et_les_repas_10h_14h(self):
+        form = AbonnementCantineForm(
+            data={
+                'classe': self.classe.pk,
+                'eleve': self.eleve.pk,
+                'montant': 300000,
+                'periodicite': 'ANNUEL',
+                'type_repas': 'REPAS_10H_14H',
+                'date_debut': '2026-09-01',
+                'date_expiration': '2027-06-30',
+                'statut': 'ACTIF',
+                'alerte_avant_jours': 7,
+                'regime_alimentaire': '',
+                'allergies': '',
+                'contact_parent': '',
+                'reference_externe': '',
+                'observations': '',
+            },
+            ecole=self.ecole,
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        abonnement = form.save()
+        self.assertEqual(abonnement.periodicite, AbonnementCantine.Periodicite.ANNUEL)
+        self.assertEqual(
+            abonnement.type_repas,
+            AbonnementCantine.TypeRepas.REPAS_10H_14H,
+        )
+        repas_choices = dict(AbonnementCantine.TypeRepas.choices)
+        self.assertEqual(repas_choices['REPAS_10H'], 'Repas de 10 h')
+        self.assertEqual(repas_choices['REPAS_14H'], 'Repas de 14 h')
+        self.assertEqual(repas_choices['REPAS_10H_14H'], 'Repas de 10 h + 14 h')
+
+    def test_formulaires_affichent_filtre_classe_et_libelles_eleves(self):
+        libelle_eleve = f'BUS-A-001 — {self.eleve.prenom} {self.eleve.nom}'
+
+        bus_response = self.client.get(reverse('bus:nouveau'))
+        self.assertEqual(bus_response.status_code, 200)
+        self.assertContains(bus_response, 'Filtrer par classe')
+        self.assertContains(bus_response, libelle_eleve)
+        self.assertNotContains(bus_response, 'BUS-B-001')
+        self.assertContains(bus_response, 'Annuel — totalité des 3 tranches')
+
+        cantine_response = self.client.get(reverse('bus:creer_abonnement_cantine'))
+        self.assertEqual(cantine_response.status_code, 200)
+        self.assertContains(cantine_response, 'Filtrer par classe')
+        self.assertContains(cantine_response, libelle_eleve)
+        self.assertNotContains(cantine_response, 'BUS-B-001')
+        self.assertContains(cantine_response, 'Repas de 14 h')
+        self.assertContains(cantine_response, 'Repas de 10 h + 14 h')
 
     def test_recu_pdf_affiche_la_grille_et_la_situation_des_tranches(self):
         from io import BytesIO

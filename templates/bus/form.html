@@ -49,30 +49,19 @@
         <h5 class="d-flex align-items-center"><i class="fas fa-user me-2"></i>Élève</h5>
 
         <div class="row">
-          {% if not form.instance.pk and not form.initial.eleve %}
-          <!-- Recherche par matricule -->
-          <div class="col-md-6 mb-3">
-            <label class="form-label small-label">Matricule de l'élève <span class="required-field">*</span></label>
-            <div class="input-group">
-              <input type="text" id="matriculeInput" class="form-control" placeholder="Ex: 1CE00048" maxlength="20">
-              <button type="button" id="rechercherBtn" class="btn btn-outline-primary">
-                <i class="fas fa-search"></i> Rechercher
-              </button>
-            </div>
-            <div id="matriculeHelp" class="help-text">Saisissez le matricule puis cliquez sur Rechercher.</div>
-            <div id="matriculeError" class="text-danger small" style="display:none;"></div>
+          {% if not form.instance.pk %}
+          <div class="col-md-5 mb-3">
+            <label class="form-label small-label" for="{{ form.classe.id_for_label }}">Filtrer par classe</label>
+            {{ form.classe }}
+            <div class="help-text">Choisissez d'abord une classe pour réduire la liste.</div>
+            {% if form.classe.errors %}<div class="text-danger small">{{ form.classe.errors.0 }}</div>{% endif %}
           </div>
 
-          <!-- Sélection manuelle alternative (datalist) -->
-          <div class="col-md-6 mb-3">
-            <label class="form-label small-label">Ou sélectionner manuellement</label>
-            <input type="text" id="eleveInput" class="form-control" list="elevesList" placeholder="Tapez: nom, prénom, classe...">
-            <datalist id="elevesList">
-              {% for e in form.fields.eleve.queryset %}
-                <option value="{{ e.prenom }} {{ e.nom }} ({{ e.matricule }}) - {{ e.classe.nom }} / {{ e.classe.ecole.nom }}" data-id="{{ e.id }}"></option>
-              {% endfor %}
-            </datalist>
-            <div class="help-text">Astuce: choisissez depuis la liste si vous ne connaissez pas le matricule.</div>
+          <div class="col-md-7 mb-3">
+            <label class="form-label small-label" for="{{ form.eleve.id_for_label }}">Élève <span class="required-field">*</span></label>
+            {{ form.eleve }}
+            <div class="help-text">Format : matricule — prénom nom.</div>
+            {% if form.eleve.errors %}<div class="text-danger small">{{ form.eleve.errors.0 }}</div>{% endif %}
           </div>
 
           <!-- Élève sélectionné (infos) -->
@@ -93,11 +82,15 @@
             </div>
           </div>
 
-          <!-- Champ réel masqué pour la soumission -->
-          <div class="d-none">{{ form.eleve }}</div>
           <div id="eleveError" class="text-danger small" style="display:none;">Veuillez sélectionner un élève.</div>
           {% else %}
             {{ form.eleve.as_hidden }}
+            <div class="col-12">
+              <div class="eleve-info">
+                <strong>{{ form.instance.eleve.matricule }} — {{ form.instance.eleve.prenom }} {{ form.instance.eleve.nom }}</strong>
+                <div class="text-muted small">{{ form.instance.eleve.classe.nom }}</div>
+              </div>
+            </div>
           {% endif %}
         </div>
       </div>
@@ -112,7 +105,7 @@
             {% if form.grille.errors %}<div class="text-danger small">{{ form.grille.errors.0 }}</div>{% endif %}
           </div>
           <div class="col-md-6 mb-3">
-            <label class="form-label small-label" for="{{ form.periodicite.id_for_label }}">Type / tranche <span class="required-field">*</span></label>
+            <label class="form-label small-label" for="{{ form.periodicite.id_for_label }}">Type de paiement / tranche <span class="required-field">*</span></label>
             {{ form.periodicite }}
             {% if form.periodicite.errors %}<div class="text-danger small">{{ form.periodicite.errors.0 }}</div>{% endif %}
           </div>
@@ -153,7 +146,7 @@
 
         <div id="tarifInfo" class="alert alert-info mb-0" style="display:none;">
           <div class="row text-center">
-            <div class="col-md-4"><small>Dû pour la tranche</small><div class="fw-bold" id="tarifDu">0 GNF</div></div>
+            <div class="col-md-4"><small>Montant dû</small><div class="fw-bold" id="tarifDu">0 GNF</div></div>
             <div class="col-md-4"><small>Déjà payé</small><div class="fw-bold" id="tarifPaye">0 GNF</div></div>
             <div class="col-md-4"><small>Reste avant ce reçu</small><div class="fw-bold text-danger" id="tarifReste">0 GNF</div></div>
           </div>
@@ -183,6 +176,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const rechercherBtn = document.getElementById('rechercherBtn');
   const eleveInput = document.getElementById('eleveInput');
   const eleveSelect = document.querySelector('[name="eleve"]');
+  const classeSelect = document.getElementById('id_classe');
   const eleveInfoSection = document.getElementById('eleveInfoSection');
   const eleveNomPrenom = document.getElementById('eleveNomPrenom');
   const eleveMatricule = document.getElementById('eleveMatricule');
@@ -200,10 +194,53 @@ document.addEventListener('DOMContentLoaded', function() {
   const tarifPaye = document.getElementById('tarifPaye');
   const tarifReste = document.getElementById('tarifReste');
   const tarifBusUrl = '{% url "bus:tarif_bus_json" %}';
+  const eleveInfoUrlTemplate = '{% url "bus:get_eleve_info_json" 0 %}';
   const paiementEnModification = '{{ form.instance.pk|default:"" }}';
+  const eleveClasseMap = {
+    {% for e in form.fields.eleve.queryset %}"{{ e.pk }}": "{{ e.classe_id|default:'' }}"{% if not forloop.last %},{% endif %}{% endfor %}
+  };
+  const eleveOptions = eleveSelect ? Array.from(eleveSelect.options).map(option => option.cloneNode(true)) : [];
 
   function formatGNF(value) {
     return Number(value || 0).toLocaleString('fr-FR') + ' GNF';
+  }
+
+  function filtrerEleves(conserverSelection) {
+    if (!classeSelect || !eleveSelect || !eleveOptions.length) return;
+    const classeId = classeSelect.value;
+    const selection = conserverSelection ? eleveSelect.value : '';
+    eleveSelect.replaceChildren();
+    eleveOptions.forEach(option => {
+      if (!option.value || !classeId || eleveClasseMap[option.value] === classeId) {
+        eleveSelect.appendChild(option.cloneNode(true));
+      }
+    });
+    if (selection && Array.from(eleveSelect.options).some(option => option.value === selection)) {
+      eleveSelect.value = selection;
+    }
+  }
+
+  async function chargerEleveSelectionne() {
+    if (!eleveSelect || !eleveSelect.value || !eleveInfoSection) {
+      if (eleveInfoSection) eleveInfoSection.style.display = 'none';
+      return;
+    }
+    try {
+      const url = eleveInfoUrlTemplate.replace('/0/', `/${eleveSelect.value}/`);
+      const response = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Élève indisponible');
+      eleveNomPrenom.textContent = `${data.prenom} ${data.nom}`;
+      eleveMatricule.textContent = `Matricule : ${data.matricule || '—'}`;
+      eleveClasse.textContent = `Classe : ${data.classe || 'Non définie'}`;
+      if (data.photo_url) {
+        elevePhotoContainer.innerHTML = `<img src="${data.photo_url}" alt="Photo" />`;
+      }
+      eleveInfoSection.style.display = 'block';
+      if (eleveError) eleveError.style.display = 'none';
+    } catch (error) {
+      eleveInfoSection.style.display = 'none';
+    }
   }
 
   async function chargerTarif() {
@@ -298,9 +335,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  filtrerEleves(true);
+  if (classeSelect) classeSelect.addEventListener('change', function() {
+    filtrerEleves(false);
+    if (eleveInfoSection) eleveInfoSection.style.display = 'none';
+    chargerTarif();
+  });
   if (periodiciteSelect) periodiciteSelect.addEventListener('change', chargerTarif);
   if (grilleSelect) grilleSelect.addEventListener('change', chargerTarif);
-  if (eleveSelect) eleveSelect.addEventListener('change', chargerTarif);
+  if (eleveSelect) eleveSelect.addEventListener('change', function() {
+    chargerEleveSelectionne();
+    chargerTarif();
+  });
 
   // Affichage du montant formaté
   if (montantInput) {
@@ -316,6 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
     montantInput.addEventListener('input', updateMontant);
     updateMontant();
   }
+  chargerEleveSelectionne();
   chargerTarif();
 
   // Validation élève à la soumission

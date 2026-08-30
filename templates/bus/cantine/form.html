@@ -33,10 +33,21 @@
                             </div>
                             <div class="card-body">
                                 <div class="row">
-                                    <div class="col-md-8">
+                                    <div class="col-md-4">
+                                        <div class="mb-3">
+                                            <label class="form-label">Filtrer par classe</label>
+                                            {{ form.classe }}
+                                            <small class="form-text text-muted">Réduit la liste des élèves à la classe choisie.</small>
+                                            {% if form.classe.errors %}
+                                                <div class="text-danger">{{ form.classe.errors }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
                                         <div class="mb-3">
                                             <label class="form-label">Élève *</label>
                                             {{ form.eleve }}
+                                            <small class="form-text text-muted">Matricule — prénom nom</small>
                                             {% if form.eleve.errors %}
                                                 <div class="text-danger">{{ form.eleve.errors }}</div>
                                             {% endif %}
@@ -240,12 +251,41 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const eleveSelect = document.getElementById('id_eleve');
+    const classeSelect = document.getElementById('id_classe');
     const contactParentInput = document.getElementById('id_contact_parent');
     const eleveInfoDiv = document.getElementById('eleve-info');
     const infoNomComplet = document.getElementById('info-nom-complet');
     const infoClasse = document.getElementById('info-classe');
     const infoPhoto = document.getElementById('info-photo');
     const infoNoPhoto = document.getElementById('info-no-photo');
+    const eleveClasseMap = {
+        {% for e in form.fields.eleve.queryset %}"{{ e.pk }}": "{{ e.classe_id|default:'' }}"{% if not forloop.last %},{% endif %}{% endfor %}
+    };
+    const eleveOptions = eleveSelect ? Array.from(eleveSelect.options).map(option => option.cloneNode(true)) : [];
+
+    function filtrerEleves(conserverSelection) {
+        if (!classeSelect || !eleveSelect || !eleveOptions.length) return;
+        const classeId = classeSelect.value;
+        const selection = conserverSelection ? eleveSelect.value : '';
+        eleveSelect.replaceChildren();
+        eleveOptions.forEach(option => {
+            if (!option.value || !classeId || eleveClasseMap[option.value] === classeId) {
+                eleveSelect.appendChild(option.cloneNode(true));
+            }
+        });
+        if (selection && Array.from(eleveSelect.options).some(option => option.value === selection)) {
+            eleveSelect.value = selection;
+        }
+    }
+
+    filtrerEleves(true);
+    if (classeSelect) {
+        classeSelect.addEventListener('change', function() {
+            filtrerEleves(false);
+            eleveInfoDiv.style.display = 'none';
+            if (contactParentInput) contactParentInput.value = '';
+        });
+    }
     
     if (eleveSelect) {
         // Charger les infos si un élève est déjà sélectionné (mode édition)

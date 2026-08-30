@@ -40,26 +40,85 @@ class GrilleTarifaireBusAdmin(admin.ModelAdmin):
 
 @admin.register(AbonnementBus)
 class AbonnementBusAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
-    list_display = ('numero_recu', 'eleve', 'montant', 'periodicite', 'mode_paiement', 'date_debut', 'statut', 'zone')
-    list_filter = ('statut', 'periodicite', 'zone', 'mode_paiement')
-    search_fields = ('numero_recu', 'eleve__nom', 'eleve__prenom', 'eleve__matricule', 'zone', 'point_arret', 'contact_parent')
-    list_select_related = ('eleve', 'grille', 'mode_paiement')
-    raw_id_fields = ('eleve',)
+    list_display = (
+        'numero_recu', 'eleve', 'montant', 'periodicite', 'mode_paiement',
+        'date_debut', 'date_expiration', 'statut', 'zone',
+    )
+    list_filter = (
+        'statut', 'periodicite', 'eleve__classe__ecole', 'eleve__classe',
+        'zone', 'mode_paiement',
+    )
+    search_fields = (
+        'numero_recu', 'reference_externe', 'eleve__nom', 'eleve__prenom',
+        'eleve__matricule', 'zone', 'point_arret', 'contact_parent',
+    )
+    list_select_related = (
+        'eleve', 'eleve__classe', 'eleve__classe__ecole', 'grille', 'mode_paiement'
+    )
+    autocomplete_fields = ('eleve',)
+    readonly_fields = ('numero_recu', 'created_at', 'updated_at', 'derniere_relance')
+    radio_fields = {
+        'periodicite': admin.HORIZONTAL,
+        'statut': admin.HORIZONTAL,
+    }
+    fieldsets = (
+        ('Élève et grille tarifaire', {
+            'fields': ('eleve', 'grille', 'annee_scolaire'),
+        }),
+        ('Paiement de l’abonnement', {
+            'fields': (
+                'periodicite', 'montant', 'mode_paiement', 'numero_recu',
+                'reference_externe', 'date_debut', 'date_expiration', 'statut',
+            ),
+            'description': "Le choix Annuel correspond au total des trois tranches de la grille.",
+        }),
+        ('Transport et contact', {
+            'fields': ('zone', 'itineraire', 'point_arret', 'contact_parent'),
+        }),
+        ('Alertes', {
+            'fields': ('alerte_avant_jours', 'derniere_relance'),
+        }),
+        ('Observations', {
+            'fields': ('observations',),
+            'classes': ('collapse',),
+        }),
+        ('Métadonnées', {
+            'fields': ('cree_par', 'created_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
 
 
 @admin.register(AbonnementCantine)
 class AbonnementCantineAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ('eleve', 'type_repas', 'montant', 'periodicite', 'date_debut', 'date_expiration', 'statut', 'jours_restants')
-    list_filter = ('statut', 'periodicite', 'type_repas', 'regime_alimentaire')
-    search_fields = ('eleve__nom', 'eleve__prenom', 'eleve__matricule', 'contact_parent', 'regime_alimentaire')
+    list_filter = (
+        'statut', 'periodicite', 'type_repas', 'eleve__classe__ecole',
+        'eleve__classe', 'regime_alimentaire',
+    )
+    search_fields = (
+        'eleve__nom', 'eleve__prenom', 'eleve__matricule',
+        'reference_externe', 'contact_parent', 'regime_alimentaire',
+    )
+    list_select_related = ('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    autocomplete_fields = ('eleve',)
     readonly_fields = ('created_at', 'updated_at')
+    radio_fields = {
+        'periodicite': admin.HORIZONTAL,
+        'type_repas': admin.HORIZONTAL,
+        'statut': admin.HORIZONTAL,
+    }
     
     fieldsets = (
         ('Informations Élève', {
             'fields': ('eleve', 'contact_parent')
         }),
         ('Abonnement', {
-            'fields': ('montant', 'periodicite', 'type_repas', 'date_debut', 'date_expiration', 'statut')
+            'fields': (
+                'montant', 'periodicite', 'type_repas', 'reference_externe',
+                'date_debut', 'date_expiration', 'statut',
+            ),
+            'description': "Les périodicités et horaires de repas sont proposés sous forme de choix rapides.",
         }),
         ('Régime Alimentaire', {
             'fields': ('regime_alimentaire', 'allergies'),
