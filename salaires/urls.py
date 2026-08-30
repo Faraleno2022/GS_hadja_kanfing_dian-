@@ -29,6 +29,12 @@ urlpatterns = [
     path('etats/<int:etat_id>/ajuster/', views.ajuster_etat_salaire, name='ajuster_etat_salaire'),
     path('valider/<int:etat_id>/', views.valider_etat_salaire, name='valider_etat_salaire'),
     path('marquer-paye/<int:etat_id>/', views.marquer_paye, name='marquer_paye'),
+
+    # Avances de salaire
+    path('avances/', views.liste_avances, name='liste_avances'),
+    path('avances/ajouter/', views.ajouter_avance, name='ajouter_avance'),
+    path('avances/<int:avance_id>/modifier/', views.modifier_avance, name='modifier_avance'),
+    path('avances/<int:avance_id>/supprimer/', views.supprimer_avance, name='supprimer_avance'),
     
     # Gestion des périodes
     path('periodes/', views.gestion_periodes, name='gestion_periodes'),

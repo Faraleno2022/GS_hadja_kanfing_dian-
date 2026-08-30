@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db.models import Sum
+from django.utils import timezone
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from eleves.models import Classe, Ecole
@@ -437,6 +439,14 @@ class EtatSalaire(SyncTrackedModel):
         verbose_name="Déductions",
         validators=[MinValueValidator(Decimal('0'))],
     )
+    avances = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Avances déjà versées",
+        help_text="Total des avances de salaire rattachées à cette période",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
     salaire_net = models.DecimalField(
         max_digits=12, 
         decimal_places=2,
@@ -495,11 +505,13 @@ class EtatSalaire(SyncTrackedModel):
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
+        avances = self.avances or Decimal('0')
         errors = {}
 
-        if deductions > salaire_base + primes:
+        if deductions + avances > salaire_base + primes:
             errors['deductions'] = (
-                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.'
+                'Le total des retenues et avances ne peut pas dépasser le '
+                'salaire de base et les primes.'
             )
 
         if (
@@ -519,7 +531,10 @@ class EtatSalaire(SyncTrackedModel):
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
-        self.salaire_net = (salaire_base + primes - deductions).quantize(
+        avances = self.avances or Decimal('0')
+        self.salaire_net = (
+            salaire_base + primes - deductions - avances
+        ).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP
         )
         self.full_clean()
@@ -549,6 +564,171 @@ class EtatSalaire(SyncTrackedModel):
     def peut_etre_paye(self):
         """Vérifie si l'état de salaire peut être marqué comme payé"""
         return self.valide and not self.paye
+
+
+class AvanceSalaire(SyncTrackedModel):
+    """Somme versée avant la paie et déduite d'une période de salaire."""
+
+    enseignant = models.ForeignKey(
+        Enseignant,
+        on_delete=models.CASCADE,
+        related_name='avances_salaire',
+        verbose_name="Enseignant",
+    )
+    periode = models.ForeignKey(
+        PeriodeSalaire,
+        on_delete=models.PROTECT,
+        related_name='avances_salaire',
+        verbose_name="Période de retenue",
+    )
+    montant = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        verbose_name="Montant de l'avance (GNF)",
+        validators=[MinValueValidator(Decimal('1'))],
+    )
+    date_avance = models.DateField(
+        default=timezone.localdate,
+        db_index=True,
+        verbose_name="Date de versement",
+    )
+    mode_paiement = models.ForeignKey(
+        'paiements.ModePaiement',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='avances_salaire',
+        verbose_name="Mode de paiement",
+    )
+    reference_externe = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Référence externe",
+        help_text="Numéro de reçu, transaction Mobile Money, chèque, etc.",
+    )
+    motif = models.TextField(
+        blank=True,
+        verbose_name="Motif / observations",
+    )
+    cree_par = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='avances_salaire_creees',
+        verbose_name="Créée par",
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Avance de salaire"
+        verbose_name_plural = "Avances de salaire"
+        ordering = ['-date_avance', '-date_creation']
+        indexes = [
+            models.Index(fields=['enseignant', 'periode']),
+            models.Index(fields=['date_avance']),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.enseignant.nom_complet} - {self.montant:,.0f} GNF "
+            f"({self.periode.nom_periode})"
+        )
+
+    @property
+    def peut_etre_modifiee(self):
+        if self.periode.cloturee:
+            return False
+        etat = EtatSalaire.objects.filter(
+            enseignant_id=self.enseignant_id,
+            periode_id=self.periode_id,
+        ).only('valide', 'paye').first()
+        return not etat or (not etat.valide and not etat.paye)
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if (
+            self.enseignant_id
+            and self.periode_id
+            and self.enseignant.ecole_id != self.periode.ecole_id
+        ):
+            errors['periode'] = (
+                "L'enseignant et la période doivent appartenir à la même école."
+            )
+
+        if self.periode_id and self.periode.cloturee:
+            errors['periode'] = (
+                "Une avance ne peut pas être modifiée sur une période clôturée."
+            )
+
+        etat = None
+        if self.enseignant_id and self.periode_id:
+            etat = EtatSalaire.objects.filter(
+                enseignant_id=self.enseignant_id,
+                periode_id=self.periode_id,
+            ).first()
+
+        if etat and (etat.valide or etat.paye):
+            errors['periode'] = (
+                "Le salaire de cette période est déjà validé ou payé."
+            )
+
+        if etat and self.montant is not None:
+            autres_avances = AvanceSalaire.objects.filter(
+                enseignant_id=self.enseignant_id,
+                periode_id=self.periode_id,
+            )
+            if self.pk:
+                autres_avances = autres_avances.exclude(pk=self.pk)
+            total_autres = autres_avances.aggregate(total=Sum('montant'))['total'] or Decimal('0')
+            montant_disponible = (
+                (etat.salaire_base or Decimal('0'))
+                + (etat.primes or Decimal('0'))
+                - (etat.deductions or Decimal('0'))
+            )
+            if total_autres + self.montant > montant_disponible:
+                errors['montant'] = (
+                    "Le total des avances ne peut pas dépasser le salaire "
+                    "disponible de cette période."
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        ancienne_portee = None
+        if self.pk:
+            ancienne_portee = AvanceSalaire.objects.filter(pk=self.pk).values_list(
+                'enseignant_id', 'periode_id'
+            ).first()
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+        from .services import synchroniser_avances_etat
+
+        synchroniser_avances_etat(self.enseignant_id, self.periode_id)
+        nouvelle_portee = (self.enseignant_id, self.periode_id)
+        if ancienne_portee and ancienne_portee != nouvelle_portee:
+            synchroniser_avances_etat(*ancienne_portee)
+
+    def delete(self, *args, **kwargs):
+        if not self.peut_etre_modifiee:
+            raise ValidationError(
+                "Cette avance ne peut plus être supprimée car la paie est "
+                "validée, payée ou clôturée."
+            )
+        enseignant_id = self.enseignant_id
+        periode_id = self.periode_id
+        resultat = super().delete(*args, **kwargs)
+
+        from .services import synchroniser_avances_etat
+
+        synchroniser_avances_etat(enseignant_id, periode_id)
+        return resultat
 
 
 class PresenceEnseignant(SyncTrackedModel):

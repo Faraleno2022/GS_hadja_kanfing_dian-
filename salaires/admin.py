@@ -1,9 +1,52 @@
 from django.contrib import admin
 from .models import (
     Enseignant, TypeEnseignant, StatutEnseignant, 
-    AffectationClasse, PeriodeSalaire, EtatSalaire, 
+    AffectationClasse, AvanceSalaire, PeriodeSalaire, EtatSalaire,
     DetailHeuresClasse, PresenceEnseignant
 )
+
+
+@admin.register(AvanceSalaire)
+class AvanceSalaireAdmin(admin.ModelAdmin):
+    list_display = [
+        'enseignant', 'periode', 'montant', 'date_avance',
+        'mode_paiement', 'reference_externe',
+    ]
+    list_filter = [
+        'date_avance', 'periode__annee', 'periode__mois',
+        'enseignant__ecole', 'mode_paiement',
+    ]
+    search_fields = [
+        'enseignant__nom', 'enseignant__prenoms',
+        'reference_externe', 'motif',
+    ]
+    date_hierarchy = 'date_avance'
+    ordering = ['-date_avance', '-date_creation']
+    readonly_fields = ['cree_par', 'date_creation', 'date_modification']
+    fieldsets = (
+        ('Bénéficiaire et période', {
+            'fields': ('enseignant', 'periode'),
+        }),
+        ('Versement', {
+            'fields': (
+                'montant', 'date_avance', 'mode_paiement',
+                'reference_externe', 'motif',
+            ),
+        }),
+        ('Traçabilité', {
+            'fields': ('cree_par', 'date_creation', 'date_modification'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not obj.cree_par_id:
+            obj.cree_par = request.user
+        super().save_model(request, obj, form, change)
+
+    def delete_queryset(self, request, queryset):
+        for avance in queryset:
+            avance.delete()
 
 
 @admin.register(PresenceEnseignant)

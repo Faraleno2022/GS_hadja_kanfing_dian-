@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 
 from .models import (
+    AvanceSalaire,
     DetailHeuresClasse,
     Enseignant,
     EtatSalaire,
@@ -33,6 +34,29 @@ def arrondir_heures(valeur):
 
 def arrondir_montant(valeur):
     return Decimal(valeur or 0).quantize(MONTANT, rounding=ROUND_HALF_UP)
+
+
+def total_avances_salaire(enseignant, periode):
+    """Retourne le total des avances à retenir sur une période."""
+    total = AvanceSalaire.objects.filter(
+        enseignant=enseignant,
+        periode=periode,
+    ).aggregate(total=Sum('montant'))['total']
+    return arrondir_montant(total)
+
+
+def synchroniser_avances_etat(enseignant_id, periode_id):
+    """Met à jour immédiatement le net d'un état existant après une avance."""
+    etat = EtatSalaire.objects.filter(
+        enseignant_id=enseignant_id,
+        periode_id=periode_id,
+    ).first()
+    if etat is None:
+        return None
+
+    etat.avances = total_avances_salaire(etat.enseignant, etat.periode)
+    etat.save(update_fields=['avances', 'salaire_net'])
+    return etat
 
 
 def bornes_periode(periode):
@@ -166,6 +190,7 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
         return etat, False
 
     etat.details_heures.all().delete()
+    etat.avances = total_avances_salaire(enseignant, periode)
 
     if enseignant.est_taux_horaire:
         total_heures = heures_pour_calcul(enseignant, periode)

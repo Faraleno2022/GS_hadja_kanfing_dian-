@@ -1,15 +1,19 @@
 from django import forms
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from .models import (
     AffectationClasse,
+    AvanceSalaire,
     Enseignant,
     EtatSalaire,
     ModeCalculHoraire,
+    PeriodeSalaire,
     PresenceEnseignant,
     StatutEnseignant,
     TypeEnseignant,
 )
 from eleves.models import Ecole, Classe
+from paiements.models import ModePaiement
 
 
 class EnseignantForm(forms.ModelForm):
@@ -382,11 +386,100 @@ class EtatSalaireAjustementForm(forms.ModelForm):
         primes = cleaned_data.get('primes') or 0
         deductions = cleaned_data.get('deductions') or 0
         salaire_base = self.instance.salaire_base or 0
+        avances = self.instance.avances or 0
 
-        if deductions > salaire_base + primes:
+        if deductions + avances > salaire_base + primes:
             self.add_error(
                 'deductions',
-                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.',
+                'Le total des retenues et avances ne peut pas dépasser le '
+                'salaire de base et les primes.',
             )
 
         return cleaned_data
+
+
+class EnseignantAvanceChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return f"{obj.nom_complet} — {obj.ecole.nom}"
+
+
+class AvanceSalaireForm(forms.ModelForm):
+    """Création et modification contrôlées d'une avance de salaire."""
+
+    enseignant = EnseignantAvanceChoiceField(
+        queryset=Enseignant.objects.none(),
+        widget=forms.Select(attrs={'class': 'form-select'}),
+    )
+
+    class Meta:
+        model = AvanceSalaire
+        fields = [
+            'enseignant',
+            'periode',
+            'montant',
+            'date_avance',
+            'mode_paiement',
+            'reference_externe',
+            'motif',
+        ]
+        widgets = {
+            'periode': forms.Select(attrs={'class': 'form-select'}),
+            'montant': forms.NumberInput(attrs={
+                'class': 'form-control',
+                'min': '1',
+                'step': '1',
+                'placeholder': "Montant de l'avance",
+            }),
+            'date_avance': forms.DateInput(attrs={
+                'class': 'form-control',
+                'type': 'date',
+            }, format='%Y-%m-%d'),
+            'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
+            'reference_externe': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'N° de reçu ou référence de transaction',
+            }),
+            'motif': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 3,
+                'placeholder': "Motif ou observations sur l'avance",
+            }),
+        }
+
+    def __init__(self, *args, ecole=None, enseignant=None, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        enseignants = Enseignant.objects.select_related('ecole').order_by(
+            'nom', 'prenoms'
+        )
+        periodes = PeriodeSalaire.objects.select_related('ecole').filter(
+            cloturee=False
+        ).order_by('-annee', '-mois', 'ecole__nom')
+
+        if ecole is not None:
+            enseignants = enseignants.filter(ecole=ecole)
+            periodes = periodes.filter(ecole=ecole)
+
+        if self.instance and self.instance.pk:
+            enseignants = enseignants.filter(
+                Q(statut='ACTIF') | Q(pk=self.instance.enseignant_id)
+            )
+            periodes = periodes | PeriodeSalaire.objects.filter(
+                pk=self.instance.periode_id
+            )
+        else:
+            enseignants = enseignants.filter(statut='ACTIF')
+
+        self.fields['enseignant'].queryset = enseignants.distinct()
+        self.fields['periode'].queryset = periodes.distinct()
+        modes_paiement = ModePaiement.objects.filter(actif=True)
+        if self.instance and self.instance.pk and self.instance.mode_paiement_id:
+            modes_paiement = ModePaiement.objects.filter(
+                Q(actif=True) | Q(pk=self.instance.mode_paiement_id)
+            )
+        self.fields['mode_paiement'].queryset = modes_paiement.order_by('nom')
+        self.fields['mode_paiement'].required = False
+        self.fields['mode_paiement'].empty_label = 'Non précisé'
+
+        if enseignant is not None and not self.is_bound:
+            self.initial['enseignant'] = enseignant.pk

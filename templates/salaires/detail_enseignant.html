@@ -315,6 +315,50 @@
     </div>
     {% endif %}
 
+    <!-- Avances de salaire -->
+    <div class="row">
+        <div class="col-12">
+            <div class="teacher-info-card">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-hand-holding-usd me-2 text-warning"></i>
+                        Avances de salaire ({{ avances_salaire|length }})
+                    </h5>
+                    <a href="{% url 'salaires:ajouter_avance' %}?enseignant={{ enseignant.id }}" class="btn btn-warning">
+                        <i class="fas fa-plus me-1"></i>Ajouter une avance
+                    </a>
+                </div>
+                <p class="text-muted">Total historique : <strong>{{ stats.total_avances|floatformat:0|intcomma }} GNF</strong></p>
+                {% if avances_salaire %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead><tr><th>Date</th><th>Période</th><th>Référence</th><th class="text-end">Montant</th><th></th></tr></thead>
+                        <tbody>
+                            {% for avance in avances_salaire %}
+                            <tr>
+                                <td>{{ avance.date_avance|date:'d/m/Y' }}</td>
+                                <td>{{ avance.periode.nom_periode }}</td>
+                                <td>{{ avance.reference_externe|default:'—' }}</td>
+                                <td class="text-end fw-bold text-warning">{{ avance.montant|floatformat:0|intcomma }} GNF</td>
+                                <td class="text-end">
+                                    {% if avance.peut_etre_modifiee %}
+                                    <a href="{% url 'salaires:modifier_avance' avance.id %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i></a>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Verrouillée</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Aucune avance enregistrée pour cet enseignant.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     <!-- Historique des Salaires -->
     <div class="row">
         <div class="col-12">

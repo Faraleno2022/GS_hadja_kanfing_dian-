@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse, Http404
 from django.core.paginator import Paginator
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Avg
 from django.utils import timezone
@@ -21,11 +22,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 
 from .models import (
-    Enseignant, AffectationClasse, PeriodeSalaire, 
+    Enseignant, AffectationClasse, AvanceSalaire, PeriodeSalaire,
     EtatSalaire, DetailHeuresClasse, TypeEnseignant, PresenceEnseignant
 )
 from .forms import (
     AffectationClasseForm,
+    AvanceSalaireForm,
     EnseignantForm,
     EtatSalaireAjustementForm,
     PresenceForm,
@@ -84,6 +86,17 @@ def tableau_bord(request):
     if restreindre:
         etats_recents = etats_recents.filter(periode__ecole=ecole_user)
     etats_recents = etats_recents.order_by('-date_calcul')[:10]
+
+    avances_qs = AvanceSalaire.objects.select_related(
+        'enseignant', 'periode', 'enseignant__ecole'
+    )
+    if restreindre:
+        avances_qs = avances_qs.filter(enseignant__ecole=ecole_user)
+    maintenant = timezone.localdate()
+    stats['avances_mois'] = avances_qs.filter(
+        date_avance__year=maintenant.year,
+        date_avance__month=maintenant.month,
+    ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
     
     # Statistiques par école
     stats_ecoles = []
@@ -479,6 +492,10 @@ def detail_enseignant(request, enseignant_id):
     etats_salaire = enseignant.etats_salaire.select_related(
         'periode'
     ).order_by('-periode__annee', '-periode__mois')[:12]
+
+    avances_salaire = enseignant.avances_salaire.select_related(
+        'periode', 'mode_paiement'
+    ).order_by('-date_avance', '-date_creation')[:12]
     
     # Statistiques
     stats = {
@@ -486,6 +503,9 @@ def detail_enseignant(request, enseignant_id):
         'affectations_actuelles': affectations_actuelles.count(),
         'etats_salaire': enseignant.etats_salaire.count(),
         'etats_valides': enseignant.etats_salaire.filter(valide=True).count(),
+        'total_avances': enseignant.avances_salaire.aggregate(
+            total=Sum('montant')
+        )['total'] or Decimal('0'),
     }
     
     # Calcul du salaire moyen si applicable
@@ -501,10 +521,248 @@ def detail_enseignant(request, enseignant_id):
         'affectations_actuelles': affectations_actuelles,
         'historique_affectations': historique_affectations,
         'etats_salaire': etats_salaire,
+        'avances_salaire': avances_salaire,
         'stats': stats,
     }
     
     return render(request, 'salaires/detail_enseignant.html', context)
+
+
+def _reporter_erreurs_validation(form, exc):
+    """Reporte une ValidationError de modèle dans le formulaire affiché."""
+    if hasattr(exc, 'message_dict'):
+        for champ, erreurs in exc.message_dict.items():
+            cible = champ if champ in form.fields else None
+            for erreur in erreurs:
+                form.add_error(cible, erreur)
+    else:
+        for erreur in exc.messages:
+            form.add_error(None, erreur)
+
+
+@login_required
+def liste_avances(request):
+    """Historique filtrable des avances de salaire."""
+    ecole_user = _ecole_utilisateur(request)
+    restreindre = not user_is_admin(request.user) and ecole_user is not None
+
+    avances = AvanceSalaire.objects.select_related(
+        'enseignant', 'enseignant__ecole', 'periode', 'mode_paiement', 'cree_par'
+    )
+    enseignants = Enseignant.objects.select_related('ecole').order_by('nom', 'prenoms')
+    periodes = PeriodeSalaire.objects.select_related('ecole').order_by('-annee', '-mois')
+    ecoles = Ecole.objects.all().order_by('nom')
+
+    if restreindre:
+        avances = avances.filter(enseignant__ecole=ecole_user)
+        enseignants = enseignants.filter(ecole=ecole_user)
+        periodes = periodes.filter(ecole=ecole_user)
+        ecoles = ecoles.filter(pk=ecole_user.pk)
+
+    ecole_id = request.GET.get('ecole', '')
+    enseignant_id = request.GET.get('enseignant', '')
+    periode_id = request.GET.get('periode', '')
+    recherche = request.GET.get('search', '').strip()
+
+    if ecole_id:
+        avances = avances.filter(enseignant__ecole_id=ecole_id)
+    if enseignant_id:
+        avances = avances.filter(enseignant_id=enseignant_id)
+    if periode_id:
+        avances = avances.filter(periode_id=periode_id)
+    if recherche:
+        avances = avances.filter(
+            Q(enseignant__nom__icontains=recherche)
+            | Q(enseignant__prenoms__icontains=recherche)
+            | Q(reference_externe__icontains=recherche)
+            | Q(motif__icontains=recherche)
+        )
+
+    avances = avances.order_by('-date_avance', '-date_creation')
+    totaux = avances.aggregate(total=Sum('montant'), nombre=Count('id'))
+    paginator = Paginator(avances, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    filtres_pagination = request.GET.copy()
+    filtres_pagination.pop('page', None)
+
+    return render(
+        request,
+        'salaires/avances_liste.html',
+        {
+            'page_obj': page_obj,
+            'avances': page_obj,
+            'enseignants': enseignants,
+            'periodes': periodes,
+            'ecoles': ecoles,
+            'totaux': {
+                'montant': totaux['total'] or Decimal('0'),
+                'nombre': totaux['nombre'] or 0,
+            },
+            'filtres_pagination': filtres_pagination.urlencode(),
+        },
+    )
+
+
+@login_required
+def ajouter_avance(request):
+    """Enregistre une avance et recalcule immédiatement le salaire net."""
+    ecole_user = _ecole_utilisateur(request)
+    restreindre = not user_is_admin(request.user) and ecole_user is not None
+    enseignant_initial = None
+    enseignant_id = request.GET.get('enseignant')
+    if enseignant_id:
+        qs = Enseignant.objects.all()
+        if restreindre:
+            qs = qs.filter(ecole=ecole_user)
+        enseignant_initial = qs.filter(pk=enseignant_id).first()
+
+    form = AvanceSalaireForm(
+        request.POST or None,
+        ecole=ecole_user if restreindre else None,
+        enseignant=enseignant_initial,
+    )
+    if request.method == 'POST' and form.is_valid():
+        avance = form.save(commit=False)
+        avance.cree_par = request.user
+        try:
+            with transaction.atomic():
+                periode = PeriodeSalaire.objects.select_for_update().get(
+                    pk=avance.periode_id
+                )
+                if not enseignants_eligibles(periode).filter(
+                    pk=avance.enseignant_id
+                ).exists():
+                    raise ValidationError({
+                        'enseignant': (
+                            "Cet enseignant n'est pas éligible au salaire de cette période."
+                        )
+                    })
+
+                calculer_etat_salaire(avance.enseignant, periode, request.user)
+                avance.save()
+        except ValidationError as exc:
+            _reporter_erreurs_validation(form, exc)
+        else:
+            messages.success(
+                request,
+                f"Avance de {avance.montant:,.0f} GNF enregistrée pour "
+                f"{avance.enseignant.nom_complet}. Le salaire net a été recalculé.",
+            )
+            return redirect('salaires:liste_avances')
+
+    return render(
+        request,
+        'salaires/avance_form.html',
+        {'form': form, 'titre': 'Ajouter une avance de salaire'},
+    )
+
+
+@login_required
+@require_school_object(
+    model=AvanceSalaire,
+    pk_kwarg='avance_id',
+    field_path='enseignant__ecole',
+)
+def modifier_avance(request, avance_id):
+    """Modifie une avance tant que la paie reste ouverte."""
+    avance = get_object_or_404(
+        AvanceSalaire.objects.select_related('enseignant', 'periode'),
+        pk=avance_id,
+    )
+    if not avance.peut_etre_modifiee:
+        messages.error(
+            request,
+            "Cette avance ne peut plus être modifiée car la paie est "
+            "validée, payée ou clôturée.",
+        )
+        return redirect('salaires:liste_avances')
+    ecole_user = _ecole_utilisateur(request)
+    restreindre = not user_is_admin(request.user) and ecole_user is not None
+    form = AvanceSalaireForm(
+        request.POST or None,
+        instance=avance,
+        ecole=ecole_user if restreindre else None,
+    )
+
+    if request.method == 'POST' and form.is_valid():
+        avance_modifiee = form.save(commit=False)
+        try:
+            with transaction.atomic():
+                periode = PeriodeSalaire.objects.select_for_update().get(
+                    pk=avance_modifiee.periode_id
+                )
+                if not enseignants_eligibles(periode).filter(
+                    pk=avance_modifiee.enseignant_id
+                ).exists():
+                    raise ValidationError({
+                        'enseignant': (
+                            "Cet enseignant n'est pas éligible au salaire de cette période."
+                        )
+                    })
+                calculer_etat_salaire(
+                    avance_modifiee.enseignant, periode, request.user
+                )
+                avance_modifiee.save()
+        except ValidationError as exc:
+            _reporter_erreurs_validation(form, exc)
+        else:
+            messages.success(
+                request,
+                "Avance modifiée. Le salaire net a été recalculé.",
+            )
+            return redirect('salaires:liste_avances')
+
+    return render(
+        request,
+        'salaires/avance_form.html',
+        {'form': form, 'titre': "Modifier l'avance de salaire", 'avance': avance},
+    )
+
+
+@login_required
+@require_school_object(
+    model=AvanceSalaire,
+    pk_kwarg='avance_id',
+    field_path='enseignant__ecole',
+)
+def supprimer_avance(request, avance_id):
+    """Supprime une avance et restaure le salaire net correspondant."""
+    avance = get_object_or_404(
+        AvanceSalaire.objects.select_related('enseignant', 'periode'),
+        pk=avance_id,
+    )
+
+    if request.method == 'POST':
+        with transaction.atomic():
+            avance = AvanceSalaire.objects.select_for_update().select_related(
+                'enseignant', 'periode'
+            ).get(pk=avance_id)
+            etat = EtatSalaire.objects.select_for_update().filter(
+                enseignant=avance.enseignant,
+                periode=avance.periode,
+            ).first()
+            if avance.periode.cloturee or (etat and (etat.valide or etat.paye)):
+                messages.error(
+                    request,
+                    "Cette avance ne peut plus être supprimée car la paie est "
+                    "validée, payée ou clôturée.",
+                )
+                return redirect('salaires:liste_avances')
+
+            nom = avance.enseignant.nom_complet
+            avance.delete()
+
+        messages.success(
+            request,
+            f"Avance de {nom} supprimée. Le salaire net a été recalculé.",
+        )
+        return redirect('salaires:liste_avances')
+
+    return render(
+        request,
+        'salaires/avance_confirmer_suppression.html',
+        {'avance': avance},
+    )
 
 
 @login_required
@@ -738,7 +996,8 @@ def export_etats_salaire_csv(request):
     writer = csv.writer(response)
     writer.writerow([
         'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Salaire Base', 'Primes', 'Retenues', 'Avances', 'Salaire Net',
+        'Total Heures', 'Date Calcul'
     ])
 
     for e in etats:
@@ -750,6 +1009,9 @@ def export_etats_salaire_csv(request):
             'Oui' if e.valide else 'Non',
             'Oui' if e.paye else 'Non',
             e.salaire_base,
+            e.primes,
+            e.deductions,
+            e.avances,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
@@ -807,7 +1069,7 @@ def export_etats_salaire_pdf(request):
     # Table
     data = [[
         'École', 'Période', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Salaire Base', 'Avances', 'Salaire Net', 'Total Heures', 'Date Calcul'
     ]]
     for e in etats:
         data.append([
@@ -818,6 +1080,7 @@ def export_etats_salaire_pdf(request):
             'Oui' if e.valide else 'Non',
             'Oui' if e.paye else 'Non',
             e.salaire_base,
+            e.avances,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
@@ -1169,6 +1432,12 @@ def fiche_paie_pdf(request, etat_id):
     
     if etat.deductions:
         data.append(['Déductions', f"-{etat.deductions:,.0f}".replace(',', ' ')])
+
+    if etat.avances:
+        data.append([
+            'Avances déjà versées',
+            f"-{etat.avances:,.0f}".replace(',', ' '),
+        ])
     
     data.append(['SALAIRE NET', f"{etat.salaire_net:,.0f}".replace(',', ' ')])
     
