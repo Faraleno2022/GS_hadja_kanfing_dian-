@@ -4381,6 +4381,65 @@ def generer_recu_pdf(request, paiement_id:int):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+
+@login_required
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
+def generer_carnet_paiement_pdf(request, paiement_id: int):
+    """Télécharge le carnet annuel des paiements validés d'un élève."""
+    paiement_qs = Paiement.objects.select_related(
+        'eleve', 'eleve__classe', 'eleve__classe__ecole',
+        'type_paiement', 'mode_paiement',
+    )
+    paiement_qs = filter_by_user_school(
+        paiement_qs, request.user, 'eleve__classe__ecole'
+    )
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
+
+    if paiement.statut != 'VALIDE':
+        messages.warning(
+            request,
+            "Le carnet de paiement est disponible après validation du paiement.",
+        )
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+
+    try:
+        with transaction.atomic():
+            ensure_echeancier_for_eleve(
+                paiement.eleve,
+                created_by=getattr(paiement, 'cree_par', None),
+                registration_kind=registration_kind_for_type(paiement.type_paiement),
+                annee_scolaire=paiement.annee_scolaire,
+            )
+            _auto_validate_echeancier_for_eleve(
+                paiement.eleve,
+                annee_scolaire=paiement.annee_scolaire,
+            )
+    except Exception:
+        logger.exception(
+            "Synchronisation de l'échéancier avant carnet de paiement échouée"
+        )
+
+    try:
+        from .carnet_paiement import generer_carnet_paiement_pdf as construire_pdf
+
+        pdf = construire_pdf(paiement)
+    except Exception:
+        logger.exception("Erreur lors de la génération du carnet de paiement")
+        return HttpResponse(
+            "Une erreur est survenue lors de la génération du carnet de paiement.",
+            status=500,
+        )
+
+    identifiant = getattr(paiement.eleve, 'matricule', '') or str(paiement.eleve_id)
+    identifiant = ''.join(
+        caractere if caractere.isalnum() or caractere in '-_' else '_'
+        for caractere in str(identifiant)
+    )
+    filename = f"Carnet_paiement_{identifiant}_{paiement.annee_scolaire}.pdf"
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
 @login_required
 def export_liste_paiements_excel(request):
     """Exporte en Excel la liste des paiements selon les filtres (q, statut).

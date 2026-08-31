@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse, Http404
+from django.urls import reverse
 from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -52,6 +53,32 @@ from .views_presences import (
 def _ecole_utilisateur(request):
     """Compat: utiliser l'utilitaire centralisé"""
     return user_school(request.user)
+
+
+def _calculer_etats_salaire_periode(periode, utilisateur):
+    """Regroupe et calcule tous les enseignants éligibles d'une période.
+
+    Cette fonction doit être appelée dans une transaction atomique. Les états
+    déjà validés restent intacts et les brouillons devenus inéligibles sont
+    retirés de l'état mensuel.
+    """
+    enseignants = list(
+        enseignants_eligibles(periode).select_for_update()
+    )
+    ids_eligibles = [enseignant.id for enseignant in enseignants]
+    periode.etats_salaire.filter(
+        valide=False,
+        paye=False,
+    ).exclude(enseignant_id__in=ids_eligibles).delete()
+
+    calculs_effectues = 0
+    for enseignant in enseignants:
+        _, modifie = calculer_etat_salaire(
+            enseignant, periode, utilisateur
+        )
+        calculs_effectues += int(modifie)
+
+    return calculs_effectues, len(enseignants)
 
 @login_required
 def tableau_bord(request):
@@ -1168,28 +1195,15 @@ def calculer_salaires(request, periode_id):
                 )
                 return redirect('salaires:etats_salaire')
 
-            calculs_effectues = 0
-            enseignants = list(
-                enseignants_eligibles(periode).select_for_update()
+            calculs_effectues, enseignants_regroupes = (
+                _calculer_etats_salaire_periode(periode, request.user)
             )
-            ids_eligibles = [enseignant.id for enseignant in enseignants]
-            # Retirer les brouillons devenus inéligibles afin qu'un ancien état
-            # ne puisse pas être validé après une démission ou une correction
-            # de date d'embauche. Les états déjà validés/payés restent archivés.
-            periode.etats_salaire.filter(
-                valide=False,
-                paye=False,
-            ).exclude(enseignant_id__in=ids_eligibles).delete()
-
-            for enseignant in enseignants:
-                _, modifie = calculer_etat_salaire(
-                    enseignant, periode, request.user
-                )
-                calculs_effectues += int(modifie)
 
         messages.success(
             request,
-            f"Calcul des salaires terminé. {calculs_effectues} état(s) calculé(s).",
+            "Calcul des salaires terminé. "
+            f"{enseignants_regroupes} enseignant(s) regroupé(s), "
+            f"{calculs_effectues} état(s) calculé(s).",
         )
     except Exception as exc:
         messages.error(
@@ -1877,18 +1891,38 @@ def creer_periode(request):
                 )
                 return redirect('salaires:gestion_periodes')
             
-            # Créer la nouvelle période
-            nouvelle_periode = PeriodeSalaire.objects.create(
-                mois=mois,
-                annee=annee,
-                ecole=ecole,
-                nombre_semaines=nombre_semaines,
-                cree_par=request.user
-            )
+            # Créer la période et son état mensuel complet en une transaction.
+            # Si un seul calcul échoue, la période et tous les brouillons sont
+            # annulés afin de ne jamais présenter un état salarial incomplet.
+            with transaction.atomic():
+                nouvelle_periode = PeriodeSalaire.objects.create(
+                    mois=mois,
+                    annee=annee,
+                    ecole=ecole,
+                    nombre_semaines=nombre_semaines,
+                    cree_par=request.user,
+                )
+                calculs_effectues, enseignants_regroupes = (
+                    _calculer_etats_salaire_periode(
+                        nouvelle_periode, request.user
+                    )
+                )
+                total_net = (
+                    nouvelle_periode.etats_salaire.aggregate(
+                        total=Sum('salaire_net')
+                    )['total']
+                    or Decimal('0')
+                )
             
             messages.success(
-                request, 
-                f"Période {nouvelle_periode} créée avec succès !"
+                request,
+                f"Période {nouvelle_periode.nom_periode} créée : "
+                f"{enseignants_regroupes} enseignant(s) regroupé(s), "
+                f"{calculs_effectues} salaire(s) calculé(s), total net "
+                f"{total_net:,.0f} GNF.",
+            )
+            return redirect(
+                f"{reverse('salaires:etats_salaire')}?periode={nouvelle_periode.id}"
             )
             
         except (ValueError, TypeError, InvalidOperation):
