@@ -29,6 +29,7 @@ def get_or_create_session_id(request):
     return session_id
 
 
+@login_required
 def chatbot_home(request):
     """Page d'accueil du chatbot éducatif"""
     matieres = Matiere.objects.filter(actif=True)
@@ -52,6 +53,7 @@ def chatbot_home(request):
     return render(request, 'chatbot/home.html', context)
 
 
+@login_required
 def chat_interface(request, matiere_id=None):
     """Interface de chat pour une matière spécifique ou générale"""
     matieres = Matiere.objects.filter(actif=True)
@@ -193,6 +195,7 @@ def envoyer_message(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
 def liste_documents(request):
     """Liste tous les documents disponibles"""
     matieres = Matiere.objects.filter(actif=True)
@@ -231,6 +234,7 @@ def liste_documents(request):
     return render(request, 'chatbot/documents.html', context)
 
 
+@login_required
 def detail_document(request, document_id):
     """Affiche les détails d'un document"""
     document = get_object_or_404(DocumentCours, id=document_id, actif=True)
@@ -398,6 +402,7 @@ def gestion_matieres(request):
     return render(request, 'chatbot/gestion_matieres.html', context)
 
 
+@login_required
 def nouvelle_conversation(request):
     """Démarre une nouvelle conversation"""
     matiere_id = request.GET.get('matiere')
@@ -420,12 +425,14 @@ def nouvelle_conversation(request):
     return redirect('chatbot:chat')
 
 
+@login_required
 def api_matieres(request):
     """API pour récupérer la liste des matières"""
     matieres = Matiere.objects.filter(actif=True).values('id', 'nom', 'icone', 'description')
     return JsonResponse({'matieres': list(matieres)})
 
 
+@login_required
 def api_suggestions(request):
     """API pour récupérer des suggestions de questions"""
     matiere_id = request.GET.get('matiere')

@@ -12,7 +12,10 @@ from decimal import Decimal
 import json
 import os
 import io
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 from eleves.models import Classe as ClasseEleve, Eleve
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
@@ -1088,8 +1091,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
@@ -1327,8 +1330,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
@@ -1564,8 +1567,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 def course_month_avg(eleve, matiere, annee_scolaire, mois):
     """Calcule la moyenne des devoirs pour un mois donné"""
@@ -1910,8 +1913,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
@@ -2123,8 +2126,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def bulletins_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
@@ -2490,8 +2493,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str = "T1"):
@@ -2649,8 +2652,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: int) -> Decimal | None:
     s_num = Decimal('0'); s_den = Decimal('0')
@@ -2792,8 +2795,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
@@ -2964,8 +2967,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 def _collect_evals_all_trimestres(classe, matieres):
     """Retourne un dict {matiere_id: [evaluations sur T1+T2+T3]} triées par date."""
     evals_by_matiere = {}
@@ -3253,8 +3256,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def bulletins_annuels_classe_pdf(request, classe_id: int):
@@ -3510,8 +3513,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 @require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
@@ -3841,8 +3844,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @admin_required
 def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
@@ -4062,8 +4065,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 @require_school_object(model=ClasseEleve, pk_kwarg='classe_id', field_path='ecole')
@@ -4472,8 +4475,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 def carte_eleve_pdf(request, matricule):
@@ -4896,8 +4899,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 def statistiques(request):
@@ -5484,9 +5487,10 @@ def supprimer_classe(request, classe_id):
                 'success': True,
                 'message': f'Classe "{nom_classe}" supprimée avec succès'
             })
-    
+
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception("Erreur lors de la gestion des classes")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'})
 
 @login_required
 def gerer_matieres(request):
@@ -5675,9 +5679,10 @@ def supprimer_matiere(request, matiere_id):
                 'message': f'Matière "{nom_matiere}" supprimée avec succès',
                 'classe_id': classe_id
             })
-    
+
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        logger.exception("Erreur lors de la gestion des matières")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'})
 
 @login_required
 def charger_matieres_defaut(request, classe_id):
@@ -6007,8 +6012,6 @@ def saisir_notes(request):
     
     if matiere_selectionnee and periode and eleves:
         import json as _json
-        import logging
-        logger = logging.getLogger(__name__)
         notes_map = {}
         
         # Définir les types de périodes
@@ -6207,7 +6210,8 @@ def liste_saisie_pdf(request):
         classe = get_object_or_404(ClasseNote, pk=classe_id)
         matiere = get_object_or_404(MatiereNote, pk=matiere_id)
     except Exception as e:
-        return HttpResponse(f"Erreur lors de la récupération des données: {str(e)}", status=400)
+        logger.exception("Erreur lors de la récupération des données")
+        return HttpResponse("Erreur lors de la récupération des données.", status=400)
     
     # Déterminer le type de notation selon le niveau
     niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
@@ -6426,8 +6430,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 def sauvegarder_notes(request):
@@ -6437,10 +6441,7 @@ def sauvegarder_notes(request):
     from django.db import transaction
     import json
     from decimal import Decimal, InvalidOperation
-    import logging
-    
-    logger = logging.getLogger(__name__)
-    
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
     
@@ -6664,8 +6665,8 @@ def sauvegarder_notes(request):
                 except Eleve.DoesNotExist:
                     erreurs.append(f"Élève ID {eleve_id} introuvable")
                 except Exception as e:
-                    logger.error(f"Erreur lors de la sauvegarde de la note pour l'élève {eleve_id}: {str(e)}")
-                    erreurs.append(f"Erreur: {str(e)}")
+                    logger.exception("Erreur lors de la sauvegarde de la note pour l'élève %s", eleve_id)
+                    erreurs.append("Erreur lors de la sauvegarde de la note")
         
         # Préparer la réponse
         total_notes = notes_sauvegardees + notes_modifiees
@@ -6708,8 +6709,8 @@ def sauvegarder_notes(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
     except Exception as e:
-        logger.error(f"Erreur lors de la sauvegarde des notes: {str(e)}")
-        return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
+        logger.exception("Erreur lors de la sauvegarde des notes")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'}, status=500)
 
 @login_required
 def supprimer_notes(request):
@@ -6726,13 +6727,10 @@ def supprimer_notes(request):
     from django.db import transaction
     from .models import NoteMensuelle, CompositionNote, AppreciationMaternelle
     import json
-    import logging
-    
-    logger = logging.getLogger(__name__)
-    
+
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-    
+
     try:
         data = json.loads(request.body)
         matiere_id = data.get('matiere_id')
@@ -6828,8 +6826,8 @@ def supprimer_notes(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
     except Exception as e:
-        logger.error(f"Erreur lors de la suppression des notes: {str(e)}")
-        return JsonResponse({'success': False, 'error': f'Erreur serveur: {str(e)}'}, status=500)
+        logger.exception("Erreur lors de la suppression des notes")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'}, status=500)
 
 @login_required
 def consulter_notes(request):
@@ -7910,7 +7908,8 @@ def sauvegarder_appreciations_maternelle(request):
                 except MatiereNote.DoesNotExist:
                     errors.append(f"Matière {matiere_id} non trouvée")
                 except Exception as e:
-                    errors.append(str(e))
+                    logger.exception("Erreur lors de la sauvegarde d'une appréciation")
+                    errors.append("Erreur lors de la sauvegarde")
             
             if errors:
                 return JsonResponse({
@@ -8009,11 +8008,12 @@ def sauvegarder_appreciations_maternelle(request):
                 return JsonResponse({'success': False, 'error': 'Élève non trouvé'})
             except MatiereNote.DoesNotExist:
                 return JsonResponse({'success': False, 'error': 'Matière non trouvée'})
-        
+
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        logger.exception("Erreur lors du traitement des notes")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'}, status=500)
 
 @login_required
 def saisie_notes_simple(request):
@@ -8025,9 +8025,6 @@ def imprimer_tableau_notes_html(request):
     """Imprimer le tableau des notes avec ajustement des colonnes sur A4 landscape (version navigateur)"""
     from django.template.loader import render_to_string
     from django.http import HttpResponse
-    import logging
-    
-    logger = logging.getLogger(__name__)
     
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
@@ -8116,8 +8113,8 @@ def imprimer_tableau_notes_html(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 @login_required
 def saisie_notes_simple(request):
@@ -8391,7 +8388,8 @@ def sauvegarder_notes_guineen(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        logger.exception("Erreur lors du traitement des notes")
+        return JsonResponse({'success': False, 'error': 'Erreur interne du serveur'}, status=500)
 
 @login_required
 def imprimer_tableau_notes_pdf(request):
@@ -8510,8 +8508,8 @@ def imprimer_tableau_notes_pdf(request):
         return response
         
     except Exception as e:
-        logger.error(f"Erreur lors de l'impression du tableau: {str(e)}")
-        return HttpResponse(f"Erreur: {str(e)}", status=500)
+        logger.exception("Erreur lors de l'impression du tableau")
+        return HttpResponse("Une erreur est survenue lors du traitement.", status=500)
 
 
 # ============================================================================
@@ -9114,14 +9112,15 @@ def fiche_saisie_notes_pdf(request):
     classe_id = request.GET.get('classe_id')
     matiere_id = request.GET.get('matiere_id')
     system_type = request.GET.get('system_type', 'trimestre')  # trimestre ou semestre
-    
+
     if not classe_id:
         return HttpResponse("Paramètre classe_id requis", status=400)
-    
+
     try:
         classe = get_object_or_404(ClasseNote, pk=classe_id)
     except Exception as e:
-        return HttpResponse(f"Erreur: {str(e)}", status=400)
+        logger.exception("Erreur lors de la récupération de la classe")
+        return HttpResponse("Erreur lors de la récupération des données.", status=400)
     
     # Récupérer la matière si spécifiée
     matiere = None
@@ -9250,14 +9249,15 @@ def fiche_report_notes_pdf(request):
     # Récupérer les paramètres
     classe_id = request.GET.get('classe_id')
     periode = request.GET.get('periode', 'TRIMESTRE_1')
-    
+
     if not classe_id:
         return HttpResponse("Paramètre classe_id requis", status=400)
-    
+
     try:
         classe = get_object_or_404(ClasseNote, pk=classe_id)
     except Exception as e:
-        return HttpResponse(f"Erreur: {str(e)}", status=400)
+        logger.exception("Erreur lors de la récupération de la classe")
+        return HttpResponse("Erreur lors de la récupération des données.", status=400)
     
     # Récupérer toutes les matières de la classe
     matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
