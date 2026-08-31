@@ -637,6 +637,77 @@ class MoteurPaieTests(TestCase):
             ).exists()
         )
 
+    def test_creation_periode_regroupe_et_calcule_les_enseignants(self):
+        enseignant_fixe = self.creer_fixe(nom='Primaire actif')
+        enseignant_secondaire = self.creer_secondaire(nom='Secondaire actif')
+        enseignant_futur = self.creer_fixe(
+            nom='Embauche future', embauche=date(2026, 9, 1)
+        )
+
+        response = self.client.post(
+            reverse('salaires:creer_periode'),
+            {
+                'mois': '8',
+                'annee': '2026',
+                'ecole': str(self.ecole.id),
+                'nombre_semaines': '4.33',
+            },
+        )
+
+        periode = PeriodeSalaire.objects.get(
+            ecole=self.ecole, mois=8, annee=2026
+        )
+        self.assertRedirects(
+            response,
+            f"{reverse('salaires:etats_salaire')}?periode={periode.id}",
+            fetch_redirect_response=False,
+        )
+        etats = EtatSalaire.objects.filter(periode=periode)
+        self.assertSetEqual(
+            set(etats.values_list('enseignant_id', flat=True)),
+            {enseignant_fixe.id, enseignant_secondaire.id},
+        )
+        self.assertFalse(
+            etats.filter(enseignant=enseignant_futur).exists()
+        )
+        self.assertEqual(
+            etats.get(enseignant=enseignant_fixe).salaire_base,
+            Decimal('1000000.00'),
+        )
+
+    def test_creation_periode_et_calcul_sont_atomiques(self):
+        self.creer_fixe(nom='A enseignant')
+        self.creer_fixe(nom='B enseignant')
+        appels = 0
+
+        def calcul_avec_erreur(enseignant, periode, utilisateur):
+            nonlocal appels
+            appels += 1
+            if appels == 2:
+                raise RuntimeError('erreur simulée')
+            return calculer_etat_salaire_reel(enseignant, periode, utilisateur)
+
+        with patch(
+            'salaires.views.calculer_etat_salaire',
+            side_effect=calcul_avec_erreur,
+        ):
+            self.client.post(
+                reverse('salaires:creer_periode'),
+                {
+                    'mois': '8',
+                    'annee': '2026',
+                    'ecole': str(self.ecole.id),
+                    'nombre_semaines': '4.33',
+                },
+            )
+
+        self.assertFalse(
+            PeriodeSalaire.objects.filter(
+                ecole=self.ecole, mois=8, annee=2026
+            ).exists()
+        )
+        self.assertEqual(EtatSalaire.objects.count(), 0)
+
     def test_formulaire_ajustement_refuse_les_valeurs_negatives(self):
         enseignant = self.creer_fixe()
         etat = EtatSalaire.objects.create(

@@ -13,6 +13,7 @@ from paiements.models import (
     RemiseReduction,
     TypePaiement,
 )
+from paiements.carnet_paiement import construire_donnees_carnet
 from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from utilisateurs.models import Profil
 
@@ -199,6 +200,48 @@ class SchoolFilteringTests(TestCase):
         url = reverse("paiements:generer_recu_pdf", kwargs={"paiement_id": self.paiement2.id})
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 404)
+
+    def test_generer_carnet_paiement_pdf_own_school(self):
+        self.login1()
+        url = reverse(
+            "paiements:generer_carnet_paiement_pdf",
+            kwargs={"paiement_id": self.paiement1.id},
+        )
+
+        resp = self.client.get(url)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "application/pdf")
+        self.assertIn("Carnet_paiement_A-001_2024-2025.pdf", resp["Content-Disposition"])
+        self.assertTrue(resp.content.startswith(b"%PDF"))
+
+    def test_generer_carnet_paiement_pdf_other_school_is_404(self):
+        self.login1()
+        url = reverse(
+            "paiements:generer_carnet_paiement_pdf",
+            kwargs={"paiement_id": self.paiement2.id},
+        )
+
+        resp = self.client.get(url)
+
+        self.assertEqual(resp.status_code, 404)
+
+    def test_carnet_recalcule_le_reste_apres_chaque_versement(self):
+        second_paiement = Paiement.objects.create(
+            eleve=self.eleve1,
+            type_paiement=self.type_insc,
+            mode_paiement=self.mode_espece,
+            montant=20000,
+            statut='VALIDE',
+            date_paiement=date(2024, 10, 10),
+        )
+
+        donnees = construire_donnees_carnet(second_paiement)
+
+        self.assertEqual(len(donnees["lignes"]), 2)
+        self.assertEqual(donnees["lignes"][0]["reste"], 100000)
+        self.assertEqual(donnees["lignes"][1]["reste"], 80000)
+        self.assertEqual(donnees["reste"], 80000)
 
     def test_echeancier_eleve_other_school_is_404(self):
         self.login1()
