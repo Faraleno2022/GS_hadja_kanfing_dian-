@@ -4,6 +4,10 @@ from .models import Eleve, Responsable, Classe, Ecole, GrilleTarifaire
 from utilisateurs.utils import user_is_admin, user_school
 from datetime import date
 
+
+GARDERIE_AGE_MIN_MOIS = 4
+GARDERIE_AGE_MAX_ANNEES = 10
+
 class ResponsableForm(forms.ModelForm):
     """Formulaire pour créer/modifier un responsable"""
     
@@ -338,7 +342,7 @@ class EleveForm(forms.ModelForm):
 
     def clean(self):
         """Validation croisée tenant compte de la classe pour l'âge minimal.
-        - Garderie (niveau == 'GARDERIE'): autoriser 5 à 11 mois inclus.
+        - Garderie (cycle maternel): autoriser de 4 mois à 10 ans inclus.
         - Autres niveaux: 2 à 25 ans.
         """
         cleaned = super().clean()
@@ -357,11 +361,12 @@ class EleveForm(forms.ModelForm):
         # Si classe sélectionnée et c'est la Garderie, appliquer règle spéciale
         niveau = getattr(classe, 'niveau', None)
         if niveau == 'GARDERIE':
-            # Autorisé: de 4 mois à 36 mois inclus (≤ 3 ans)
-            if months < 4 or months > 36:
+            age_max_mois = GARDERIE_AGE_MAX_ANNEES * 12
+            if months < GARDERIE_AGE_MIN_MOIS or months > age_max_mois:
                 self.add_error(
                     'date_naissance',
-                    "Pour la Garderie, l'âge doit être compris entre 4 mois et 3 ans inclus."
+                    "Pour la Garderie, l'âge doit être compris entre "
+                    f"{GARDERIE_AGE_MIN_MOIS} mois et {GARDERIE_AGE_MAX_ANNEES} ans inclus."
                 )
             return cleaned
 

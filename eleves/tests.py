@@ -1,8 +1,11 @@
+from datetime import date
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
+from .forms import EleveForm
 from .models import Classe, Ecole, Eleve, GrilleTarifaire
 
 
@@ -27,6 +30,52 @@ class ClasseNiveauxMaternelleTests(SimpleTestCase):
 
         for code, libelle in self.NIVEAUX_MATERNELLE_ATTENDUS.items():
             self.assertEqual(niveaux[code], libelle)
+
+
+class EleveFormAgeMaternelleTests(TestCase):
+    def setUp(self):
+        self.ecole = Ecole.objects.create(
+            nom="École maternelle",
+            adresse="Conakry",
+            telephone="+224622000010",
+            directeur="Direction",
+            etat="VALIDE",
+        )
+        self.garderie = Classe.objects.create(
+            ecole=self.ecole,
+            nom="Garderie A",
+            niveau="GARDERIE",
+            annee_scolaire="2026-2027",
+        )
+
+    def _donnees_eleve(self, date_naissance):
+        return {
+            "prenom": "FATOUMATA",
+            "nom": "DIALLO",
+            "sexe": "F",
+            "date_naissance": date_naissance.isoformat(),
+            "classe": self.garderie.pk,
+            "date_inscription": date.today().isoformat(),
+            "statut": "ACTIF",
+        }
+
+    def test_garderie_accepte_un_eleve_de_plus_de_trois_ans(self):
+        aujourd_hui = date.today()
+        naissance = date(aujourd_hui.year - 6, aujourd_hui.month, 1)
+
+        form = EleveForm(data=self._donnees_eleve(naissance))
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_garderie_refuse_un_age_superieur_a_dix_ans(self):
+        aujourd_hui = date.today()
+        naissance = date(aujourd_hui.year - 11, aujourd_hui.month, 1)
+
+        form = EleveForm(data=self._donnees_eleve(naissance))
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("date_naissance", form.errors)
+        self.assertIn("10 ans", form.errors["date_naissance"][0])
 
 
 class NouvelElevePaiementWorkflowTests(TestCase):
