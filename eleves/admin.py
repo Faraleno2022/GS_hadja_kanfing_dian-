@@ -70,6 +70,15 @@ class EcoleAdmin(admin.ModelAdmin):
             "fields": ("logo", "logo_preview", "image", "image_preview"),
             "description": "Logo pour filigrane et en-tetes. Photo de l'ecole pour le livret scolaire."
         }),
+        ("Couleurs des cartes", {
+            "fields": (
+                "couleur_carte_scolaire",
+                "couleur_carte_retrait",
+                "couleur_carte_bus",
+                "couleur_carte_cantine",
+            ),
+            "description": "Couleurs principales utilisées sur les cartes PDF de cette école.",
+        }),
     )
     actions = ("valider_ecoles", "rejeter_ecoles")
 

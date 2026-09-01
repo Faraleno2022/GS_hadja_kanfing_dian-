@@ -5,6 +5,12 @@ from decimal import Decimal
 import unicodedata
 from synchronisation.mixins import SyncTrackedModel
 
+COULEUR_HEX_VALIDATOR = RegexValidator(
+    r'^#[0-9A-Fa-f]{6}$',
+    'Utilisez une couleur hexadécimale au format #RRGGBB.',
+)
+
+
 class Ecole(SyncTrackedModel):
     """Modèle pour représenter une école"""
     ETAT_CHOICES = [
@@ -41,6 +47,30 @@ class Ecole(SyncTrackedModel):
     image = models.ImageField(upload_to='ecoles/images/', blank=True, null=True,
                               verbose_name="Photo de l'ecole",
                               help_text="Photo du batiment de l'ecole (affichee sur le livret scolaire)")
+    couleur_carte_scolaire = models.CharField(
+        max_length=7,
+        default="#1746A2",
+        validators=[COULEUR_HEX_VALIDATOR],
+        verbose_name="Couleur de la carte scolaire",
+    )
+    couleur_carte_retrait = models.CharField(
+        max_length=7,
+        default="#0F766E",
+        validators=[COULEUR_HEX_VALIDATOR],
+        verbose_name="Couleur de la carte de retrait",
+    )
+    couleur_carte_bus = models.CharField(
+        max_length=7,
+        default="#2563EB",
+        validators=[COULEUR_HEX_VALIDATOR],
+        verbose_name="Couleur de la carte bus",
+    )
+    couleur_carte_cantine = models.CharField(
+        max_length=7,
+        default="#B45309",
+        validators=[COULEUR_HEX_VALIDATOR],
+        verbose_name="Couleur de la carte cantine",
+    )
     # Préfixe explicite pour les matricules (ex: "AL-FUR/")
     code_prefixe = models.CharField(
         max_length=20,
@@ -68,6 +98,15 @@ class Ecole(SyncTrackedModel):
                 self.code_prefixe = _normalize_code_prefixe(self.code_prefixe)
         except Exception:
             pass
+        for champ_couleur in (
+            'couleur_carte_scolaire',
+            'couleur_carte_retrait',
+            'couleur_carte_bus',
+            'couleur_carte_cantine',
+        ):
+            valeur = getattr(self, champ_couleur, None)
+            if valeur:
+                setattr(self, champ_couleur, valeur.upper())
         super().save(*args, **kwargs)
     
     @property

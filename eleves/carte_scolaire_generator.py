@@ -16,6 +16,7 @@ import io
 import os
 from django.utils import timezone
 from datetime import timedelta
+from .couleurs_cartes import palette_carte
 
 
 def _safe_text(value, default=""):
@@ -676,20 +677,21 @@ def generer_cartes_classe_moderne(classe, eleves, response):
 
 def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     """Draw one print-ready CR80 student card for batch PDFs."""
-    primary = "#1746a2"
-    accent = "#0f766e"
+    school = eleve.classe.ecole
+    palette = palette_carte(school, "scolaire")
+    primary = palette["primary"]
+    accent = palette["accent"]
     dark = "#0f172a"
     muted = "#64748b"
-    line = "#dbe3ef"
+    line = palette["line"]
     paper = "#ffffff"
-    soft = "#f5f8fc"
+    soft = palette["soft"]
 
     margin = 2.2 * mm
     header_h = 10.5 * mm
     footer_h = 6.2 * mm
     radius = 4.5
 
-    school = eleve.classe.ecole
     school_name = _safe_text(getattr(school, "nom", "")).upper()
     student_name = _safe_text(f"{getattr(eleve, 'prenom', '')} {getattr(eleve, 'nom', '')}").upper()
     matricule = _safe_text(getattr(eleve, "matricule", ""))
@@ -732,8 +734,8 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
 
     title_x = logo_x + logo_size + 2 * mm
     title_w = width - (title_x - x) - margin
-    _draw_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, bold_font, 7.6, 4.8, "#ffffff")
-    _draw_fit_text(c, "CARTE SCOLAIRE", title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, "#dbeafe")
+    _draw_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, bold_font, 7.6, 4.8, palette["header_text"])
+    _draw_fit_text(c, "CARTE SCOLAIRE", title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, palette["subtitle"])
 
     try:
         c.saveState()
@@ -779,7 +781,7 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
 
     if not photo_drawn:
         initials = (_safe_text(getattr(eleve, "prenom", "E"))[:1] + _safe_text(getattr(eleve, "nom", "L"))[:1]).upper()
-        c.setFillColor(colors.HexColor("#e8eef8"))
+        c.setFillColor(colors.HexColor(palette["placeholder"]))
         c.roundRect(photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, 2.5, stroke=0, fill=1)
         c.setFillColor(colors.HexColor(primary))
         c.setFont(bold_font, 17)
@@ -823,7 +825,7 @@ def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
             row_y -= 4.2 * mm
             _draw_value_row(c, "Contact", contact, info_x, row_y, label_w, value_w, main_font, bold_font)
 
-    c.setFillColor(colors.HexColor("#eef4fb"))
+    c.setFillColor(colors.HexColor(palette["footer"]))
     c.rect(x + 0.8, y + 0.8, width - 1.6, footer_h, stroke=0, fill=1)
     c.setStrokeColor(colors.HexColor(line))
     c.setLineWidth(0.5)

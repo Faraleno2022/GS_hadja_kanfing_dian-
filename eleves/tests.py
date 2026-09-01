@@ -5,7 +5,8 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .forms import EleveForm
+from .couleurs_cartes import palette_carte
+from .forms import CouleursCartesEcoleForm, EleveForm
 from .models import Classe, Ecole, Eleve, GrilleTarifaire
 
 
@@ -76,6 +77,87 @@ class EleveFormAgeMaternelleTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("date_naissance", form.errors)
         self.assertIn("10 ans", form.errors["date_naissance"][0])
+
+
+class CouleursCartesEcoleTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_superuser(
+            username="admin_couleurs_cartes",
+            email="cartes@test.local",
+            password="secret",
+        )
+        self.client.force_login(self.user)
+        self.ecole = Ecole.objects.create(
+            nom="École couleurs",
+            adresse="Conakry",
+            telephone="+224622000011",
+            directeur="Direction",
+            etat="VALIDE",
+        )
+
+    def _middleware_sans_licence(self):
+        return [
+            middleware
+            for middleware in settings.MIDDLEWARE
+            if middleware != "ecole_moderne.licence_middleware.LicenceMiddleware"
+        ]
+
+    def test_valeurs_par_defaut_et_palette_derivee(self):
+        self.assertEqual(self.ecole.couleur_carte_scolaire, "#1746A2")
+        self.assertEqual(self.ecole.couleur_carte_retrait, "#0F766E")
+        self.assertEqual(self.ecole.couleur_carte_bus, "#2563EB")
+        self.assertEqual(self.ecole.couleur_carte_cantine, "#B45309")
+
+        self.ecole.couleur_carte_bus = "#123456"
+        palette = palette_carte(self.ecole, "bus")
+
+        self.assertEqual(palette["primary"], "#123456")
+        self.assertRegex(palette["soft"], r"^#[0-9A-F]{6}$")
+        self.assertIn(palette["header_text"], ("#111827", "#FFFFFF"))
+
+    def test_formulaire_refuse_une_couleur_invalide(self):
+        form = CouleursCartesEcoleForm(
+            data={
+                "couleur_carte_scolaire": "bleu",
+                "couleur_carte_retrait": "#0F766E",
+                "couleur_carte_bus": "#2563EB",
+                "couleur_carte_cantine": "#B45309",
+            },
+            instance=self.ecole,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("couleur_carte_scolaire", form.errors)
+
+    def test_parametres_ecole_enregistrent_les_quatre_couleurs(self):
+        url = reverse("eleves:configurer_ecole", args=[self.ecole.pk])
+        with self.settings(MIDDLEWARE=self._middleware_sans_licence()):
+            page = self.client.get(url)
+            response = self.client.post(
+                url,
+                {
+                    "action": "update_card_colors",
+                    "couleur_carte_scolaire": "#102030",
+                    "couleur_carte_retrait": "#204060",
+                    "couleur_carte_bus": "#306090",
+                    "couleur_carte_cantine": "#4080A0",
+                },
+            )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "Couleurs des cartes imprimées")
+        self.assertContains(
+            page,
+            'class="form-control form-control-color w-100"',
+            count=4,
+        )
+        self.assertRedirects(response, url)
+        self.ecole.refresh_from_db()
+        self.assertEqual(self.ecole.couleur_carte_scolaire, "#102030")
+        self.assertEqual(self.ecole.couleur_carte_retrait, "#204060")
+        self.assertEqual(self.ecole.couleur_carte_bus, "#306090")
+        self.assertEqual(self.ecole.couleur_carte_cantine, "#4080A0")
 
 
 class NouvelElevePaiementWorkflowTests(TestCase):

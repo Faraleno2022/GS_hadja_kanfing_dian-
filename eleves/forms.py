@@ -510,6 +510,41 @@ class GrilleTarifaireForm(forms.ModelForm):
         return cleaned
 
 
+class CouleursCartesEcoleForm(forms.ModelForm):
+    """Paramètres visuels des cartes imprimées d'une école."""
+
+    class Meta:
+        model = Ecole
+        fields = [
+            'couleur_carte_scolaire',
+            'couleur_carte_retrait',
+            'couleur_carte_bus',
+            'couleur_carte_cantine',
+        ]
+        widgets = {
+            'couleur_carte_scolaire': forms.TextInput(attrs={
+                'type': 'color',
+                'class': 'form-control form-control-color w-100',
+                'title': 'Choisir la couleur',
+            }),
+            'couleur_carte_retrait': forms.TextInput(attrs={
+                'type': 'color',
+                'class': 'form-control form-control-color w-100',
+                'title': 'Choisir la couleur',
+            }),
+            'couleur_carte_bus': forms.TextInput(attrs={
+                'type': 'color',
+                'class': 'form-control form-control-color w-100',
+                'title': 'Choisir la couleur',
+            }),
+            'couleur_carte_cantine': forms.TextInput(attrs={
+                'type': 'color',
+                'class': 'form-control form-control-color w-100',
+                'title': 'Choisir la couleur',
+            }),
+        }
+
+
 class EcoleForm(forms.ModelForm):
     """Formulaire public (hors admin) pour créer une école avec upload du logo.
     Utilisé par la vue creer_ecole.

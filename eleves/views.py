@@ -27,6 +27,7 @@ from .forms import (
     ResponsableForm,
     RechercheEleveForm,
     ClasseForm,
+    CouleursCartesEcoleForm,
     EcoleForm,
     GrilleTarifaireForm,
 )
@@ -41,6 +42,7 @@ from utilisateurs.utils import (
     user_school,
 )
 from .utils_annee import get_annee_active
+from .couleurs_cartes import palette_carte
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 
@@ -646,11 +648,34 @@ def configurer_ecole(request, ecole_id: int):
         or (meme_ecole and user_can_manage_school_structure(request.user, 'peut_gerer_grilles_tarifaires'))
         or can_submit_validation
     )
-    can_edit = can_manage_classes or can_manage_grilles
+    can_manage_card_colors = bool(
+        user_is_admin(request.user)
+        or est_createur
+        or est_principal
+        or configuration_anonyme
+    )
+    can_edit = can_manage_classes or can_manage_grilles or can_manage_card_colors
 
     if request.method == 'POST' and can_edit:
         action = request.POST.get('action')
         try:
+            if action == 'update_card_colors':
+                if not can_manage_card_colors:
+                    messages.error(request, "Vous n'êtes pas autorisé à modifier les couleurs des cartes.")
+                    return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+                couleurs_form = CouleursCartesEcoleForm(request.POST, instance=ecole)
+                if couleurs_form.is_valid():
+                    couleurs_form.save()
+                    messages.success(request, "Les couleurs des cartes ont été enregistrées.")
+                else:
+                    erreurs = " ".join(
+                        message
+                        for messages_champ in couleurs_form.errors.values()
+                        for message in messages_champ
+                    )
+                    messages.error(request, f"Couleurs invalides : {erreurs}")
+                return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+
             if action == 'add_classe':
                 if not can_manage_classes:
                     messages.error(request, "Vous n'êtes pas autorisé à gérer les classes.")
@@ -752,13 +777,16 @@ def configurer_ecole(request, ecole_id: int):
 
     # Niveaux affichables (depuis modèle Classe)
     niveaux = getattr(Classe, 'NIVEAUX_CHOICES', [])
+    couleurs_form = CouleursCartesEcoleForm(instance=ecole)
 
     return render(request, 'eleves/configurer_ecole.html', {
         'ecole': ecole,
         'can_edit': can_edit,
         'can_manage_classes': can_manage_classes,
         'can_manage_grilles': can_manage_grilles,
+        'can_manage_card_colors': can_manage_card_colors,
         'can_submit_validation': can_submit_validation,
+        'couleurs_form': couleurs_form,
         'classes': classes,
         'grilles': grilles,
         'niveaux': niveaux,
@@ -3700,18 +3728,19 @@ def _ticket_draw_row(c, label, value, x, y, value_width, accent_color, main_font
     _ticket_fit_text(c, value, x, y - 3, value_width, main_font_bold, 8.2, 5.2, '#0f172a')
 
 
-def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_bold, title, accent_color, light_color, rows, serial_label):
+def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_bold, title, type_carte, rows, serial_label):
     c.saveState()
     from reportlab.lib.units import mm
 
     ecole = eleve.classe.ecole
-    primary = '#1746a2'
-    accent = accent_color or '#0f766e'
+    palette = palette_carte(ecole, type_carte)
+    primary = palette['primary']
+    accent = palette['accent']
     dark = '#0f172a'
     muted = '#64748b'
-    line = '#dbe3ef'
-    soft = '#f5f8fc'
-    footer_soft = '#eef4fb'
+    line = palette['line']
+    soft = palette['soft']
+    footer_soft = palette['footer']
 
     margin = 2.2 * mm
     header_h = 10.5 * mm
@@ -3755,8 +3784,8 @@ def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_b
 
     title_x = logo_x + logo_size + 2 * mm
     title_w = width - (title_x - x) - margin
-    _ticket_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, '#ffffff')
-    _ticket_fit_text(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, '#dbeafe')
+    _ticket_fit_text(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, palette['header_text'])
+    _ticket_fit_text(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, palette['subtitle'])
 
     try:
         c.saveState()
@@ -3802,7 +3831,7 @@ def _dessiner_ticket_carte(c, eleve, x, y, width, height, main_font, main_font_b
 
     if not photo_drawn:
         initials = (_ticket_safe_text(getattr(eleve, 'prenom', 'E'), 'E')[:1] + _ticket_safe_text(getattr(eleve, 'nom', 'L'), 'L')[:1]).upper()
-        c.setFillColor(colors.HexColor('#e8eef8'))
+        c.setFillColor(colors.HexColor(palette['placeholder']))
         c.roundRect(photo_x + 1, photo_y + 1, photo_w - 2, photo_h - 2, 2.5, stroke=0, fill=1)
         c.setFillColor(colors.HexColor(primary))
         c.setFont(main_font_bold, 17)
@@ -3865,7 +3894,7 @@ def _dessiner_ticket_retrait(c, eleve, x, y, width, height, main_font, main_font
     ]
     return _dessiner_ticket_carte(
         c, eleve, x, y, width, height, main_font, main_font_bold,
-        'CARTE DE RETRAIT', '#0f766e', '#dbeafe', rows, 'RETRAIT'
+        'CARTE DE RETRAIT', 'retrait', rows, 'RETRAIT'
     )
 
 
@@ -3884,7 +3913,7 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
     ]
     return _dessiner_ticket_carte(
         c, eleve, x, y, width, height, main_font, main_font_bold,
-        'CARTE BUS', '#0f766e', '#fef3c7', rows, 'BUS'
+        'CARTE BUS', 'bus', rows, 'BUS'
     )
 
 
@@ -3918,7 +3947,7 @@ def _dessiner_ticket_cantine(c, eleve, abonnement, x, y, width, height, main_fon
     ]
     return _dessiner_ticket_carte(
         c, eleve, x, y, width, height, main_font, main_font_bold,
-        'CARTE CANTINE', '#b45309', '#fef3c7', rows, 'CANTINE'
+        'CARTE CANTINE', 'cantine', rows, 'CANTINE'
     )
 
 
