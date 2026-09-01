@@ -33,6 +33,7 @@ from .calculs_intelligent import (
     formater_rang_intelligent,
 )
 from .classes_utils import trouver_classe_eleve
+from .charte_graphique import get_charte_reportlab
 
 # Import centralisé du filigrane - chargé une seule fois
 try:
@@ -66,6 +67,7 @@ def _draw_school_header(c, ecole, *, y_start, margin, page_width):
     Retourne la nouvelle coordonnée y après dessin."""
     from reportlab.lib import colors
     y = y_start
+    charte = get_charte_reportlab(ecole)
     # En-tête national
     center_x = page_width / 2
     c.setFont('Helvetica-Bold', 18)
@@ -130,7 +132,9 @@ def _draw_school_header(c, ecole, *, y_start, margin, page_width):
     top_line_y = y + 12
     school_name = (getattr(ecole, 'nom', '') or 'ÉCOLE').upper()
     c.setFont('Helvetica-Bold', 16)
+    c.setFillColor(charte['couleur_primaire'])
     c.drawCentredString(center_x, top_line_y, school_name)
+    c.setFillColor(charte['couleur_texte_principal'])
 
     c.setFont('Helvetica', 10)
     adresse = getattr(ecole, 'adresse', None) or ''
@@ -194,13 +198,13 @@ def _draw_school_header(c, ecole, *, y_start, margin, page_width):
     frame_start_y = top_line_y - 8  # En dessous du nom de l'école
     adjusted_box_height = box_height  # Utiliser la hauteur fixe définie
     c.setLineWidth(1)
-    c.setStrokeColor(colors.black)
+    c.setStrokeColor(charte['couleur_bordure'])
     c.roundRect(margin, frame_start_y - adjusted_box_height, page_width - 2*margin, adjusted_box_height, 6, stroke=1, fill=0)
 
     # Retourner y en dessous du cadre
     y = y - box_height - 8
     # Ligne séparatrice légère
-    c.setFillColor(colors.grey)
+    c.setFillColor(charte['couleur_secondaire'])
     c.rect(margin, y, page_width-2*margin, 1, fill=1, stroke=0)
     c.setFillColor(colors.black)
     y -= 8
@@ -2957,6 +2961,7 @@ def imprimer_tableau_notes_pdf(request):
 def bulletins_annuels_classe_pdf(request, classe_id: int):
     """Bulletins annuels (T1+T2+T3) pour tous les élèves d'une classe en un seul PDF."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
+    charte = get_charte_reportlab(classe.ecole)
     eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom','prenom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
     evals_by_matiere = _collect_evals_all_trimestres(classe, matieres)
@@ -3043,7 +3048,7 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
         margin = 2*cm; y = height - margin
         if getattr(classe, 'ecole', None):
             y = _draw_school_header(c, classe.ecole, y_start=y, margin=margin, page_width=width)
-        y -= 20; c.setFont('Helvetica-Bold', 14); c.drawCentredString(width/2, y, "Bulletin de notes — Annuel"); y -= 40
+        y -= 20; c.setFont('Helvetica-Bold', 14); c.setFillColor(charte['couleur_primaire']); c.drawCentredString(width/2, y, "Bulletin de notes — Annuel"); c.setFillColor(charte['couleur_texte_principal']); y -= 40
         c.setFont('Helvetica', 12); c.drawString(margin, y, f"Élève: {eleve.prenom} {eleve.nom} (Matricule: {eleve.matricule or '-'})"); y -= 16
         c.drawString(margin, y, f"Classe: {classe.nom} — Année: {getattr(classe, 'annee_scolaire', '')}"); y -= 12
         c.setFillColor(colors.grey); c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0); c.setFillColor(colors.black); y -= 16
@@ -3307,6 +3312,7 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
 def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Export PDF du classement d'une classe."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
+    charte = get_charte_reportlab(classe.ecole)
     
     # Récupérer le classement (même logique que la vue HTML)
     eleves = classe.eleves.filter(statut='actif').order_by('prenom', 'nom')
@@ -3391,7 +3397,9 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     
     y -= 20
     c.setFont('Helvetica-Bold', 16)
+    c.setFillColor(charte['couleur_primaire'])
     c.drawCentredString(width/2, y, f"Classement de la classe {classe.nom} - {trimestre}")
+    c.setFillColor(charte['couleur_texte_principal'])
     y -= 40
     
     c.setFont('Helvetica', 12)
@@ -3410,7 +3418,7 @@ def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
         x += colw[i]
     
     y -= 14
-    c.setFillColor(colors.lightgrey)
+    c.setFillColor(charte['couleur_secondaire'])
     c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
     c.setFillColor(colors.black)
     y -= 10
@@ -5830,6 +5838,7 @@ def liste_saisie_pdf(request):
     except Exception as e:
         logger.exception("Erreur lors de la récupération des données")
         return HttpResponse("Erreur lors de la récupération des données.", status=400)
+    charte = get_charte_reportlab(classe.ecole)
     
     # Déterminer le type de notation selon le niveau
     niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
@@ -5877,7 +5886,7 @@ def liste_saisie_pdf(request):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=charte['couleur_primaire'],
         spaceAfter=12,
         alignment=TA_CENTER
     )
@@ -5922,7 +5931,7 @@ def liste_saisie_pdf(request):
     # Style du tableau
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+        ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),

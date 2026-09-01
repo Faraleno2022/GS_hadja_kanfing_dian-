@@ -19,6 +19,7 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
+from .charte_graphique import get_charte_reportlab
 from PIL import Image
 
 # OpenPyXL pour Excel
@@ -333,24 +334,28 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     width, height = A4
     
     # Couleurs du design (exactement comme le modèle)
-    BLEU_HEADER = colors.HexColor('#4a90d9')  # Bleu de l'en-tête du tableau
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')   # Fond des infos élève
-    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')  # Fond appréciation
+    charte = get_charte_reportlab(ecole)
+    BLEU_HEADER = charte['couleur_fond_header']
+    BLEU_CLAIR = charte['primaire_clair']
+    BLEU_APPRECIATION = charte['secondaire_clair']
+    COULEUR_SECONDAIRE = charte['couleur_secondaire']
+    COULEUR_BORDURE = charte['couleur_bordure']
+    COULEUR_FOND_TABLEAU = charte['couleur_fond_tableau']
     VERT_MOY = colors.HexColor('#c8e6c9')     # Colonne MOY
     ROUGE_PTS = colors.HexColor('#ffcdd2')    # Colonne PTS
     ROUGE_DRAPEAU = colors.HexColor('#CE1126')
     JAUNE_DRAPEAU = colors.HexColor('#FCD116')
     VERT_DRAPEAU = colors.HexColor('#009460')
-    GRIS_TOTAL = colors.HexColor('#37474f')   # Ligne total
+    GRIS_TOTAL = charte['couleur_primaire']
     
     # Couleurs des mentions
     MENTION_COLORS = {
         'EXCELLENT': colors.HexColor('#1b5e20'),
-        'TRÈS BIEN': colors.HexColor('#2e7d32'),
-        'BIEN': colors.HexColor('#0277bd'),
-        'ASSEZ BIEN': colors.HexColor('#f9a825'),
-        'PASSABLE': colors.HexColor('#ef6c00'),
-        'INSUFFISANT': colors.HexColor('#c62828'),
+        'TRÈS BIEN': charte['couleur_mention_tb'],
+        'BIEN': charte['couleur_mention_bien'],
+        'ASSEZ BIEN': charte['couleur_mention_ab'],
+        'PASSABLE': charte['couleur_mention_passable'],
+        'INSUFFISANT': charte['couleur_mention_insuffisant'],
         'FAIBLE': colors.HexColor('#b71c1c'),
     }
     
@@ -1146,12 +1151,13 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     from reportlab.platypus import Table, TableStyle
     
     # Couleurs
-    BLEU_HEADER = colors.HexColor('#4a90d9')
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')
+    charte = get_charte_reportlab(ecole)
+    BLEU_HEADER = charte['couleur_fond_header']
+    BLEU_CLAIR = charte['primaire_clair']
     VERT_ACQUIS = colors.HexColor('#c8e6c9')
     JAUNE_ENCOURS = colors.HexColor('#fff9c4')
     ROUGE_NONACQUIS = colors.HexColor('#ffcdd2')
-    GRIS_TOTAL = colors.HexColor('#37474f')
+    GRIS_TOTAL = charte['couleur_primaire']
     
     table_total_width = width - 2.4*cm
     margin_left = 1.2*cm
@@ -1278,8 +1284,8 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     
     # Couleurs des cartes
     VERT_TAUX = colors.HexColor('#27ae60')
-    BLEU_RANG = colors.HexColor('#3498db')
-    VIOLET_APPRECIATION = colors.HexColor('#9b59b6')
+    BLEU_RANG = charte['couleur_secondaire']
+    VIOLET_APPRECIATION = charte['couleur_accent']
     
     # Largeur de chaque carte (3 cartes)
     card_width = (table_total_width - 0.4*cm) / 3
@@ -1907,23 +1913,24 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     width, height = A4
     
     # Couleurs du design (constantes)
-    BLEU_HEADER = colors.HexColor('#4a90d9')
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')
-    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')
+    charte = get_charte_reportlab(ecole)
+    BLEU_HEADER = charte['couleur_fond_header']
+    BLEU_CLAIR = charte['primaire_clair']
+    BLEU_APPRECIATION = charte['secondaire_clair']
     VERT_MOY = colors.HexColor('#c8e6c9')
     ROUGE_PTS = colors.HexColor('#ffcdd2')
     ROUGE_DRAPEAU = colors.HexColor('#CE1126')
     JAUNE_DRAPEAU = colors.HexColor('#FCD116')
     VERT_DRAPEAU = colors.HexColor('#009460')
-    GRIS_TOTAL = colors.HexColor('#37474f')
+    GRIS_TOTAL = charte['couleur_primaire']
     
     MENTION_COLORS = {
         'EXCELLENT': colors.HexColor('#1b5e20'),
-        'TRÈS BIEN': colors.HexColor('#2e7d32'),
-        'BIEN': colors.HexColor('#0277bd'),
-        'ASSEZ BIEN': colors.HexColor('#f9a825'),
-        'PASSABLE': colors.HexColor('#ef6c00'),
-        'INSUFFISANT': colors.HexColor('#c62828'),
+        'TRÈS BIEN': charte['couleur_mention_tb'],
+        'BIEN': charte['couleur_mention_bien'],
+        'ASSEZ BIEN': charte['couleur_mention_ab'],
+        'PASSABLE': charte['couleur_mention_passable'],
+        'INSUFFISANT': charte['couleur_mention_insuffisant'],
         'FAIBLE': colors.HexColor('#b71c1c'),
     }
     

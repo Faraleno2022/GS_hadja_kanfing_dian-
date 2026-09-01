@@ -30,6 +30,7 @@ from notes.models import (
     CompositionNote, AppreciationMaternelle,
     ActiviteJournaliere, PieceJointeActivite, Classement,
 )
+from notes.charte_graphique import couleur_document, document_avec_charte
 from paiements.models import Paiement, EcheancierPaiement
 
 from django.utils.crypto import get_random_string
@@ -478,6 +479,7 @@ def rapport_scolaire_recu_pdf(request, paiement_id):
     return _generer_recu_paiement_pdf(paiement)
 
 
+@document_avec_charte(ecole_position=0)
 def _generer_recu_paiement_pdf(paiement):
     """Génère le reçu PDF pour un paiement (version publique rapport-scolaire)."""
     from django.db.models import Sum
@@ -610,6 +612,7 @@ def _generer_recu_paiement_pdf(paiement):
 # GÉNÉRATION PDF COMPLÈTE
 # ────────────────────────────────────────────────────────────────
 
+@document_avec_charte(ecole_position=0)
 def _generer_rapport_pdf(eleve):
     """Génère le PDF complet du rapport scolaire pour un élève."""
     buf = io.BytesIO()
@@ -791,7 +794,7 @@ def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
 
     # Titre du document
     y -= 10
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.setFont('Helvetica-Bold', 16)
     c.drawCentredString(center, y, "RAPPORT SCOLAIRE COMPLET")
     y -= 14
@@ -801,7 +804,7 @@ def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
     y -= 6
 
     # Ligne séparatrice
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.setLineWidth(1.5)
     c.line(margin, y, page_width - margin, y)
     y -= 6
@@ -810,7 +813,7 @@ def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
 
 def _draw_section_title(c, title, y, margin, col_width):
     """Dessine un titre de section avec fond coloré."""
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.roundRect(margin, y - 4, col_width, 18, 3, fill=1, stroke=0)
     c.setFillColor(colors.white)
     c.setFont('Helvetica-Bold', 10)
@@ -896,12 +899,12 @@ def _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 6.5),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_primaire')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, couleur_document('couleur_fond_tableau')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
@@ -937,12 +940,12 @@ def _draw_classements(c, classements, y, margin, col_width, new_page):
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_primaire')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (4, 1), (4, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, couleur_document('couleur_fond_tableau')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
@@ -958,7 +961,7 @@ def _draw_classements(c, classements, y, margin, col_width, new_page):
 def _draw_activites(c, activites, y, margin, col_width, new_page):
     """Dessine le tableau des activités journalières."""
     TYPE_COLORS = {
-        'EVALUATION': colors.HexColor('#1976d2'),
+        'EVALUATION': couleur_document('couleur_secondaire'),
         'SPORTIVE': colors.HexColor('#388e3c'),
         'CULTURELLE': colors.HexColor('#f57c00'),
         'ARTISTIQUE': colors.HexColor('#7b1fa2'),
@@ -987,12 +990,12 @@ def _draw_activites(c, activites, y, margin, col_width, new_page):
     base_style = [
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7.5),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e91e63')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_accent')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fce4ec')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, couleur_document('accent_clair')]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),

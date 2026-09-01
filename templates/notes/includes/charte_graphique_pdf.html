@@ -1,0 +1,40 @@
+{% load note_theme %}{% charte_notes as charte_notes %}
+<style>
+  /* Surcharge commune aux documents imprimés du module Notes. */
+  body { color: {{ charte_notes.couleur_texte_principal }} !important; }
+  .header, .bulletin-container, .certificate, .certificat {
+    border-color: {{ charte_notes.couleur_bordure }} !important;
+  }
+  .header {
+    border-bottom-color: {{ charte_notes.couleur_secondaire }} !important;
+  }
+  .republique, .ecole-nom, .school-name, .header-center h1,
+  .main-title h1, .document-title, .title, h1 {
+    color: {{ charte_notes.couleur_primaire }} !important;
+  }
+  .bulletin-titre, .subtitle-accent, .accent, h2.document-subtitle {
+    color: {{ charte_notes.couleur_accent }} !important;
+  }
+  .section-title, .periode-title, .table-title, .title-bar,
+  table thead th, table th {
+    background: {{ charte_notes.couleur_fond_header }} !important;
+    color: {{ charte_notes.texte_sur_header }} !important;
+  }
+  .eleve-info, .student-info, .info-box {
+    border-left-color: {{ charte_notes.couleur_secondaire }} !important;
+    background: {{ charte_notes.primaire_clair }} !important;
+  }
+  table, table td, table th, .section-content, .signature-box {
+    border-color: {{ charte_notes.couleur_bordure }} !important;
+  }
+  table tbody tr:nth-child(even), .info-row span, .table-light {
+    background-color: {{ charte_notes.couleur_fond_tableau }} !important;
+  }
+  .text-muted, .school-details, .date, .subtitle {
+    color: {{ charte_notes.couleur_texte_secondaire }} !important;
+  }
+  .rang-other, .niveau-primaire, .brand-background {
+    background: {{ charte_notes.couleur_secondaire }} !important;
+    color: {{ charte_notes.texte_sur_secondaire }} !important;
+  }
+</style>

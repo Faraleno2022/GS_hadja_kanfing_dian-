@@ -12,6 +12,7 @@ from io import BytesIO
 from django.http import HttpResponse
 import os
 from .calculs_moyennes import detecter_niveau_scolaire
+from .charte_graphique import get_charte_reportlab
 
 
 def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
@@ -21,6 +22,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*cm, bottomMargin=1*cm)
     elements = []
+    charte = get_charte_reportlab(getattr(classe, 'ecole', None))
     
     # Styles
     styles = getSampleStyleSheet()
@@ -28,7 +30,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=charte['couleur_primaire'],
         spaceAfter=12,
         alignment=1  # Center
     )
@@ -37,7 +39,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
         'CustomHeader',
         parent=styles['Heading2'],
         fontSize=12,
-        textColor=colors.HexColor('#333333'),
+        textColor=charte['couleur_texte_principal'],
         spaceAfter=6
     )
     
@@ -57,14 +59,14 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     
     info_table = Table(info_data, colWidths=[3*cm, 6*cm, 3*cm, 6*cm])
     info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e9ecef')),
-        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#e9ecef')),
+        ('BACKGROUND', (0, 0), (0, -1), charte['couleur_fond_tableau']),
+        ('BACKGROUND', (2, 0), (2, -1), charte['couleur_fond_tableau']),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 0.5, charte['couleur_bordure']),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
@@ -152,7 +154,7 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     notes_table = Table(notes_data, colWidths=[7*cm, 2*cm, 3*cm, 3*cm, 3*cm])
     notes_table.setStyle(TableStyle([
         # En-tête
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+        ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
@@ -166,14 +168,14 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
         ('ALIGN', (1, 1), (-1, -2), 'CENTER'),
         
         # Ligne de total
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('BACKGROUND', (0, -1), (-1, -1), charte['primaire_clair']),
         ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, -1), (-1, -1), 11),
         ('ALIGN', (1, -1), (-1, -1), 'CENTER'),
         
         # Grille
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 1, charte['couleur_bordure']),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
@@ -229,6 +231,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     Génère les éléments d'un bulletin (sans créer de document)
     """
     elements = []
+    charte = get_charte_reportlab(getattr(classe, 'ecole', None))
     
     # Styles
     styles = getSampleStyleSheet()
@@ -236,7 +239,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=charte['couleur_primaire'],
         spaceAfter=12,
         alignment=1  # Center
     )
@@ -245,7 +248,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
         'CustomHeader',
         parent=styles['Heading2'],
         fontSize=12,
-        textColor=colors.HexColor('#333333'),
+        textColor=charte['couleur_texte_principal'],
         spaceAfter=6
     )
     
@@ -265,14 +268,14 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     
     info_table = Table(info_data, colWidths=[3*cm, 6*cm, 3*cm, 6*cm])
     info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e9ecef')),
-        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#e9ecef')),
+        ('BACKGROUND', (0, 0), (0, -1), charte['couleur_fond_tableau']),
+        ('BACKGROUND', (2, 0), (2, -1), charte['couleur_fond_tableau']),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME', (2, 0), (2, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 0.5, charte['couleur_bordure']),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
@@ -360,7 +363,7 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     notes_table = Table(notes_data, colWidths=[7*cm, 2*cm, 3*cm, 3*cm, 3*cm])
     notes_table.setStyle(TableStyle([
         # En-tête
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+        ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
@@ -374,14 +377,14 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
         ('ALIGN', (1, 1), (-1, -2), 'CENTER'),
         
         # Ligne de total
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('BACKGROUND', (0, -1), (-1, -1), charte['primaire_clair']),
         ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, -1), (-1, -1), 11),
         ('ALIGN', (1, -1), (-1, -1), 'CENTER'),
         
         # Grille
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 1, charte['couleur_bordure']),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),

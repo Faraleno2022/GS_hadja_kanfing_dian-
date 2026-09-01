@@ -17,6 +17,7 @@ from django.http import HttpResponse
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404
 from utilisateurs.permissions import can_manage_notes
+from .charte_graphique import get_charte_reportlab
 
 
 # ── Libellés lisibles pour les codes de période ────────────────────────────
@@ -504,6 +505,8 @@ def exporter_statistiques_pdf(request):
         classe_note = get_object_or_404(ClasseNote, pk=classe_id, ecole=ecole)
     else:
         classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+    ecole = ecole or classe_note.ecole
+    charte = get_charte_reportlab(ecole)
     
     # Calculer les statistiques
     stats = _calculer_statistiques_classe(classe_note, periode)
@@ -538,13 +541,13 @@ def exporter_statistiques_pdf(request):
         
         # Titre du rapport
         c.setFont("Helvetica-Bold", 16)
-        c.setFillColor(colors.HexColor('#2C3E50'))
+        c.setFillColor(charte['couleur_primaire'])
         c.drawCentredString(width/2, y_pos, "RAPPORT STATISTIQUE D'ÉVOLUTION DU NIVEAU")
         y_pos -= 0.6*cm
         
         # Sous-titre
         c.setFont("Helvetica-Bold", 12)
-        c.setFillColor(colors.HexColor('#3498DB'))
+        c.setFillColor(charte['couleur_secondaire'])
         periode_libelle = periode.replace('_', ' ').title()
         c.drawCentredString(width/2, y_pos, f"Classe: {classe_note.nom} - Période: {periode_libelle}")
         y_pos -= 0.4*cm
@@ -555,7 +558,7 @@ def exporter_statistiques_pdf(request):
         y_pos -= 0.8*cm
         
         # Ligne de séparation
-        c.setStrokeColor(colors.HexColor('#3498DB'))
+        c.setStrokeColor(charte['couleur_secondaire'])
         c.setLineWidth(2)
         c.line(margin, y_pos, width - margin, y_pos)
         y_pos -= 0.5*cm
@@ -1174,6 +1177,8 @@ def exporter_conseils_pdf(request):
         classe_note = get_object_or_404(ClasseNote, pk=classe_id, ecole=ecole)
     else:
         classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+    ecole = ecole or classe_note.ecole
+    charte = get_charte_reportlab(ecole)
     ecole_nom = ecole.nom if ecole else "L'École"
     
     # Calculer les statistiques
@@ -1193,12 +1198,12 @@ def exporter_conseils_pdf(request):
     margin = 1.5*cm
     
     # Couleurs
-    BLEU_FONCE = colors.HexColor('#1a5276')
-    VERT = colors.HexColor('#27AE60')
-    ORANGE = colors.HexColor('#F39C12')
-    ROUGE = colors.HexColor('#E74C3C')
-    VIOLET = colors.HexColor('#8E44AD')
-    GRIS = colors.HexColor('#7F8C8D')
+    BLEU_FONCE = charte['couleur_primaire']
+    VERT = charte['couleur_mention_tb']
+    ORANGE = charte['couleur_mention_ab']
+    ROUGE = charte['couleur_mention_insuffisant']
+    VIOLET = charte['couleur_accent']
+    GRIS = charte['couleur_texte_secondaire']
     
     def dessiner_filigrane():
         """Dessine le logo de l'école en filigrane au centre de la page"""

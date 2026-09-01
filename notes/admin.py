@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import NoteSuivi, Devoir, RemiseDevoir, CreneauEmploiDuTemps
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote, AppreciationMaternelle, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
+from .forms import ThemeBulletinForm
 
 @admin.register(ClasseNote)
 class ClasseNoteAdmin(admin.ModelAdmin):
@@ -149,6 +150,7 @@ class AppreciationMaternelleAdmin(admin.ModelAdmin):
 
 @admin.register(ThemeBulletin)
 class ThemeBulletinAdmin(admin.ModelAdmin):
+    form = ThemeBulletinForm
     list_display = ['nom', 'ecole', 'actif', 'par_defaut', 'date_creation']
     list_filter = ['actif', 'par_defaut', 'ecole']
     search_fields = ['nom']
@@ -161,7 +163,7 @@ class ThemeBulletinAdmin(admin.ModelAdmin):
         }),
         ('Couleurs principales', {
             'fields': ('couleur_primaire', 'couleur_secondaire', 'couleur_accent'),
-            'description': 'Couleurs principales utilisées dans le bulletin'
+            'description': 'Couleurs principales utilisées dans les bulletins et tous les documents PDF du module Notes.'
         }),
         ('Couleurs de texte', {
             'fields': ('couleur_texte_principal', 'couleur_texte_secondaire'),

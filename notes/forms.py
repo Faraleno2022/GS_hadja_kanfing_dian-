@@ -255,6 +255,43 @@ class ThemeBulletinForm(forms.ModelForm):
         }
 
 
+_CHARTE_DOCUMENTS_FIELDS = [
+    'couleur_primaire', 'couleur_secondaire', 'couleur_accent',
+    'couleur_texte_principal', 'couleur_texte_secondaire',
+    'couleur_fond_header', 'couleur_fond_tableau', 'couleur_fond_carte',
+    'couleur_bordure', 'couleur_mention_tb', 'couleur_mention_bien',
+    'couleur_mention_ab', 'couleur_mention_passable',
+    'couleur_mention_insuffisant',
+]
+
+
+class CharteDocumentsNotesForm(forms.ModelForm):
+    """Charte graphique appliquée à tous les documents imprimés de Notes."""
+
+    class Meta:
+        model = ThemeBulletin
+        fields = _CHARTE_DOCUMENTS_FIELDS
+        widgets = {
+            field: forms.TextInput(attrs={
+                'class': 'form-control form-control-color w-100',
+                'type': 'color',
+                'title': 'Choisir une couleur',
+            })
+            for field in _CHARTE_DOCUMENTS_FIELDS
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        from .charte_graphique import CHAMPS_COULEUR, normaliser_couleur
+        for field in CHAMPS_COULEUR:
+            value = cleaned.get(field)
+            if value and normaliser_couleur(value, '') != str(value).upper():
+                self.add_error(field, "Utilisez une couleur hexadécimale, par exemple #1746A2.")
+            elif value:
+                cleaned[field] = str(value).upper()
+        return cleaned
+
+
 class ActiviteJournaliereForm(forms.ModelForm):
     class Meta:
         model = ActiviteJournaliere

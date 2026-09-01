@@ -22,7 +22,7 @@
   <div class="alert alert-info d-flex align-items-start" role="alert">
     <div class="me-2"><i class="fas fa-info-circle"></i></div>
     <div>
-      Gérez les classes, les échéances et les couleurs des cartes de votre école.
+      Gérez les classes, les échéances et la charte graphique des documents de votre école.
       {% if can_submit_validation %}Une fois le brouillon terminé, soumettez-le pour validation.{% endif %}
     </div>
   </div>
@@ -112,6 +112,56 @@
     </div>
   </div>
 
+  <div class="card shadow-sm mb-4" id="charte-documents-notes">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">
+        <i class="fas fa-file-pdf me-2 text-danger"></i>Charte graphique des documents Notes
+      </h5>
+      <span class="badge bg-light text-dark border">Bulletins et PDF</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Cette palette s'applique aux bulletins, relevés, classements, tableaux d'honneur,
+        certificats, livrets et fiches PDF du module Notes. Les couleurs de contraste sont calculées automatiquement.
+      </p>
+
+      {% if can_manage_notes_branding %}
+      <form method="post" id="form-charte-notes">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update_notes_branding">
+        <div class="row g-3">
+          {% for field in charte_notes_form %}
+          <div class="col-md-6 col-xl-3 color-setting">
+            <label class="form-label fw-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            <div class="color-preview color-preview-compact mt-2" style="background-color: {{ field.value }};">
+              <span>{{ field.label }}</span>
+            </div>
+            <code class="d-block text-center mt-1 color-value">{{ field.value }}</code>
+            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-outline-secondary" id="reset-charte-notes">
+            <i class="fas fa-undo me-1"></i>Palette par défaut
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>Enregistrer la charte Notes
+          </button>
+        </div>
+      </form>
+      {% else %}
+      <div class="row g-3">
+        <div class="col-md-4"><div class="color-preview" style="background-color: {{ charte_notes.couleur_primaire }};">Couleur primaire</div></div>
+        <div class="col-md-4"><div class="color-preview" style="background-color: {{ charte_notes.couleur_secondaire }};">Couleur secondaire</div></div>
+        <div class="col-md-4"><div class="color-preview" style="background-color: {{ charte_notes.couleur_accent }};">Couleur d'accent</div></div>
+      </div>
+      <div class="form-text mt-2">Seul le compte principal de l'école peut modifier cette charte.</div>
+      {% endif %}
+    </div>
+  </div>
+
   <style>
     .color-preview {
       min-height: 64px;
@@ -126,7 +176,9 @@
       text-align: center;
       text-shadow: 0 1px 3px rgba(0, 0, 0, .65);
     }
-    #form-couleurs-cartes .form-control-color {
+    .color-preview-compact { min-height: 48px; font-size: .85rem; }
+    #form-couleurs-cartes .form-control-color,
+    #form-charte-notes .form-control-color {
       min-height: 44px;
       cursor: pointer;
     }
@@ -167,6 +219,48 @@
               input.value = defauts[nom];
               actualiser(input);
             }
+          });
+        });
+      }
+    })();
+  </script>
+  {% endif %}
+
+  {% if can_manage_notes_branding %}
+  <script>
+    (function () {
+      var form = document.getElementById('form-charte-notes');
+      if (!form) return;
+
+      function actualiser(input) {
+        var bloc = input.closest('.color-setting');
+        if (!bloc) return;
+        var apercu = bloc.querySelector('.color-preview');
+        var valeur = bloc.querySelector('.color-value');
+        if (apercu) apercu.style.backgroundColor = input.value;
+        if (valeur) valeur.textContent = input.value.toUpperCase();
+      }
+
+      form.querySelectorAll('input[type="color"]').forEach(function (input) {
+        input.addEventListener('input', function () { actualiser(input); });
+        actualiser(input);
+      });
+
+      var reset = document.getElementById('reset-charte-notes');
+      if (reset) {
+        reset.addEventListener('click', function () {
+          var defauts = {
+            couleur_primaire: '#2C3E50', couleur_secondaire: '#3498DB', couleur_accent: '#E74C3C',
+            couleur_texte_principal: '#2C3E50', couleur_texte_secondaire: '#7F8C8D',
+            couleur_fond_header: '#2C3E50', couleur_fond_tableau: '#ECF0F1',
+            couleur_fond_carte: '#FFFFFF', couleur_bordure: '#BDC3C7',
+            couleur_mention_tb: '#27AE60', couleur_mention_bien: '#3498DB',
+            couleur_mention_ab: '#F39C12', couleur_mention_passable: '#E67E22',
+            couleur_mention_insuffisant: '#E74C3C'
+          };
+          Object.keys(defauts).forEach(function (nom) {
+            var input = form.querySelector('[name="' + nom + '"]');
+            if (input) { input.value = defauts[nom]; actualiser(input); }
           });
         });
       }

@@ -13,6 +13,7 @@ import re
 logger = logging.getLogger(__name__)
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
+from .charte_graphique import get_charte_reportlab
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
@@ -419,13 +420,14 @@ def exporter_notes_complet_pdf(request):
         
         # Récupérer les informations de l'école
         ecole = classe.ecole
+        charte = get_charte_reportlab(ecole)
         
         # Styles personnalisés
         title_style = ParagraphStyle(
             'Title',
             parent=styles['Heading1'],
             fontSize=14,
-            textColor=colors.HexColor('#007bff'),
+            textColor=charte['couleur_primaire'],
             alignment=TA_CENTER,
             spaceAfter=4
         )
@@ -534,7 +536,7 @@ def exporter_notes_complet_pdf(request):
         
         # Styles du tableau
         style_commands = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+            ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -543,8 +545,8 @@ def exporter_notes_complet_pdf(request):
             ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('GRID', (0, 0), (-1, -1), 0.5, charte['couleur_bordure']),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [charte['couleur_fond_carte'], charte['couleur_fond_tableau']]),
             ('ALIGN', (2, 1), (2, -1), 'LEFT'),  # Nom complet aligné à gauche
         ]
         
