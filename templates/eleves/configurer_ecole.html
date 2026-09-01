@@ -22,7 +22,7 @@
   <div class="alert alert-info d-flex align-items-start" role="alert">
     <div class="me-2"><i class="fas fa-info-circle"></i></div>
     <div>
-      Gérez les classes et les échéances (grilles tarifaires) de votre école.
+      Gérez les classes, les échéances et les couleurs des cartes de votre école.
       {% if can_submit_validation %}Une fois le brouillon terminé, soumettez-le pour validation.{% endif %}
     </div>
   </div>
@@ -30,6 +30,148 @@
   <div class="alert alert-secondary" role="alert">
     Vous pouvez consulter la configuration, mais votre compte ne possède pas de droit de modification.
   </div>
+  {% endif %}
+
+  <div class="card shadow-sm mb-4" id="parametres-couleurs-cartes">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">
+        <i class="fas fa-palette me-2 text-primary"></i>Couleurs des cartes imprimées
+      </h5>
+      <span class="badge bg-light text-dark border">Propres à {{ ecole.nom }}</span>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Chaque couleur est appliquée à l'en-tête, aux bordures et aux détails de la carte PDF correspondante.
+        Le contraste du texte et les nuances claires sont calculés automatiquement.
+      </p>
+
+      {% if can_manage_card_colors %}
+      <form method="post" id="form-couleurs-cartes">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update_card_colors">
+        <div class="row g-3">
+          <div class="col-md-6 col-xl-3 color-setting">
+            <label class="form-label fw-semibold" for="{{ couleurs_form.couleur_carte_scolaire.id_for_label }}">
+              <i class="fas fa-id-card me-1"></i>Carte scolaire
+            </label>
+            {{ couleurs_form.couleur_carte_scolaire }}
+            <div class="color-preview mt-2" style="background-color: {{ couleurs_form.couleur_carte_scolaire.value }};">
+              <span>Carte scolaire</span>
+            </div>
+            <code class="d-block text-center mt-1 color-value">{{ couleurs_form.couleur_carte_scolaire.value }}</code>
+          </div>
+          <div class="col-md-6 col-xl-3 color-setting">
+            <label class="form-label fw-semibold" for="{{ couleurs_form.couleur_carte_retrait.id_for_label }}">
+              <i class="fas fa-user-check me-1"></i>Carte de retrait
+            </label>
+            {{ couleurs_form.couleur_carte_retrait }}
+            <div class="color-preview mt-2" style="background-color: {{ couleurs_form.couleur_carte_retrait.value }};">
+              <span>Carte de retrait</span>
+            </div>
+            <code class="d-block text-center mt-1 color-value">{{ couleurs_form.couleur_carte_retrait.value }}</code>
+          </div>
+          <div class="col-md-6 col-xl-3 color-setting">
+            <label class="form-label fw-semibold" for="{{ couleurs_form.couleur_carte_bus.id_for_label }}">
+              <i class="fas fa-bus me-1"></i>Carte bus
+            </label>
+            {{ couleurs_form.couleur_carte_bus }}
+            <div class="color-preview mt-2" style="background-color: {{ couleurs_form.couleur_carte_bus.value }};">
+              <span>Carte bus</span>
+            </div>
+            <code class="d-block text-center mt-1 color-value">{{ couleurs_form.couleur_carte_bus.value }}</code>
+          </div>
+          <div class="col-md-6 col-xl-3 color-setting">
+            <label class="form-label fw-semibold" for="{{ couleurs_form.couleur_carte_cantine.id_for_label }}">
+              <i class="fas fa-utensils me-1"></i>Carte cantine
+            </label>
+            {{ couleurs_form.couleur_carte_cantine }}
+            <div class="color-preview mt-2" style="background-color: {{ couleurs_form.couleur_carte_cantine.value }};">
+              <span>Carte cantine</span>
+            </div>
+            <code class="d-block text-center mt-1 color-value">{{ couleurs_form.couleur_carte_cantine.value }}</code>
+          </div>
+        </div>
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-outline-secondary" id="reset-couleurs-cartes">
+            <i class="fas fa-undo me-1"></i>Couleurs par défaut
+          </button>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i>Enregistrer les couleurs
+          </button>
+        </div>
+      </form>
+      {% else %}
+      <div class="row g-3">
+        <div class="col-md-6 col-xl-3"><div class="color-preview" style="background-color: {{ ecole.couleur_carte_scolaire }};">Carte scolaire</div></div>
+        <div class="col-md-6 col-xl-3"><div class="color-preview" style="background-color: {{ ecole.couleur_carte_retrait }};">Carte de retrait</div></div>
+        <div class="col-md-6 col-xl-3"><div class="color-preview" style="background-color: {{ ecole.couleur_carte_bus }};">Carte bus</div></div>
+        <div class="col-md-6 col-xl-3"><div class="color-preview" style="background-color: {{ ecole.couleur_carte_cantine }};">Carte cantine</div></div>
+      </div>
+      <div class="form-text mt-2">Seul le compte principal de l'école peut modifier ces couleurs.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <style>
+    .color-preview {
+      min-height: 64px;
+      border-radius: .65rem;
+      border: 1px solid rgba(15, 23, 42, .15);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 700;
+      text-align: center;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, .65);
+    }
+    #form-couleurs-cartes .form-control-color {
+      min-height: 44px;
+      cursor: pointer;
+    }
+  </style>
+
+  {% if can_manage_card_colors %}
+  <script>
+    (function () {
+      var form = document.getElementById('form-couleurs-cartes');
+      if (!form) return;
+
+      function actualiser(input) {
+        var bloc = input.closest('.color-setting');
+        if (!bloc) return;
+        var apercu = bloc.querySelector('.color-preview');
+        var valeur = bloc.querySelector('.color-value');
+        if (apercu) apercu.style.backgroundColor = input.value;
+        if (valeur) valeur.textContent = input.value.toUpperCase();
+      }
+
+      form.querySelectorAll('input[type="color"]').forEach(function (input) {
+        input.addEventListener('input', function () { actualiser(input); });
+        actualiser(input);
+      });
+
+      var reset = document.getElementById('reset-couleurs-cartes');
+      if (reset) {
+        reset.addEventListener('click', function () {
+          var defauts = {
+            couleur_carte_scolaire: '#1746A2',
+            couleur_carte_retrait: '#0F766E',
+            couleur_carte_bus: '#2563EB',
+            couleur_carte_cantine: '#B45309'
+          };
+          Object.keys(defauts).forEach(function (nom) {
+            var input = form.querySelector('[name="' + nom + '"]');
+            if (input) {
+              input.value = defauts[nom];
+              actualiser(input);
+            }
+          });
+        });
+      }
+    })();
+  </script>
   {% endif %}
 
   <div class="row g-4">
