@@ -20,6 +20,7 @@ from reportlab.pdfbase import pdfmetrics
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
 from eleves.models import Eleve, Classe as ClasseEleve
 from .calculs_moyennes import calculer_moyenne_generale_eleve, calculer_classement_classe, detecter_niveau_scolaire
+from .charte_graphique import get_charte_reportlab
 
 
 def formater_rang(rang, sexe=None):
@@ -596,6 +597,7 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     """Dessine un en-tête officiel pour le classement"""
     y = y_start
     center_x = page_width / 2
+    charte = get_charte_reportlab(ecole)
     
     # En-tête national
     c.setFont('Helvetica-Bold', 16)
@@ -661,6 +663,7 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     # Nom de l'école
     school_name = (getattr(ecole, 'nom', '') or 'ÉCOLE').upper()
     c.setFont('Helvetica-Bold', 14)
+    c.setFillColor(charte['couleur_primaire'])
     c.drawCentredString(center_x, y - 8, school_name)
     
     # Contacts (sans l'adresse)
@@ -728,6 +731,7 @@ def exporter_classement_classe_pdf(request):
     
     # Récupérer la classe
     classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+    charte = get_charte_reportlab(classe_note.ecole)
     
     # Récupérer la classe élève correspondante avec mapping spécial (même logique que les autres vues)
     try:
@@ -840,6 +844,7 @@ def exporter_classement_classe_pdf(request):
     # Titre du document
     y -= 15
     c.setFont('Helvetica-Bold', 16)
+    c.setFillColor(charte['couleur_primaire'])
     c.drawCentredString(page_width/2, y, titre_export)
     y -= 15
     
@@ -879,11 +884,11 @@ def exporter_classement_classe_pdf(request):
         col_x.append(col_x[-1] + w)
 
     # Fond gris pour les en-têtes
-    c.setFillColorRGB(0.2, 0.3, 0.4)
+    c.setFillColor(charte['couleur_fond_header'])
     c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
 
     # Texte des en-têtes (adapter selon le niveau)
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColor(charte['texte_sur_header'])
     c.setFont('Helvetica-Bold', 10)
     moyenne_header = 'Moy /10' if est_primaire else 'Moy /20'
     headers = ['Rang', 'Matricule', 'Nom Complet', 'Sexe', moyenne_header]
@@ -911,9 +916,9 @@ def exporter_classement_classe_pdf(request):
             y -= 20
             
             # Redessiner les en-têtes
-            c.setFillColorRGB(0.2, 0.3, 0.4)
+            c.setFillColor(charte['couleur_fond_header'])
             c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
-            c.setFillColorRGB(1, 1, 1)
+            c.setFillColor(charte['texte_sur_header'])
             c.setFont('Helvetica-Bold', 10)
             for i, header in enumerate(headers):
                 c.drawString(col_x[i] + 0.2*cm, y - 10, header)
@@ -924,7 +929,7 @@ def exporter_classement_classe_pdf(request):
         
         # Fond alterné pour faciliter la lecture
         if line_count % 2 == 0:
-            c.setFillColorRGB(0.95, 0.95, 0.95)
+            c.setFillColor(charte['couleur_fond_tableau'])
             c.rect(margin, y - line_height + 2, sum(col_widths), line_height, fill=1, stroke=0)
             c.setFillColorRGB(0, 0, 0)
         

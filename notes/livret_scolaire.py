@@ -31,6 +31,7 @@ from .models import (
     NoteMensuelle, CompositionNote,
     AppreciationMaternelle,
 )
+from .charte_graphique import couleur_document, document_avec_charte
 from .calculs_moyennes import (
     calculer_classement_classe,
     calculer_moyenne_generale_annuelle,
@@ -255,7 +256,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
     # Bande classe
     band_h = 14
     cy -= band_h
-    c.setFillColor(colors.HexColor('#f0f0f0'))
+    c.setFillColor(couleur_document('couleur_fond_tableau'))
     c.rect(x, cy, w, band_h, fill=1, stroke=1)
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
@@ -372,7 +373,7 @@ def _draw_half_college(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 1), colors.HexColor('#f0f0f0')),
+        ('BACKGROUND', (0, 0), (-1, 1), couleur_document('couleur_fond_tableau')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -483,7 +484,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     band_h = 14
     cy -= band_h
-    c.setFillColor(colors.HexColor('#f0f0f0'))
+    c.setFillColor(couleur_document('couleur_fond_tableau'))
     c.rect(x, cy, w, band_h, fill=1, stroke=1)
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
@@ -603,7 +604,7 @@ def _draw_half_primaire(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_fond_tableau')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -699,7 +700,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
 
     band_h = 14
     cy -= band_h
-    c.setFillColor(colors.HexColor('#f0f0f0'))
+    c.setFillColor(couleur_document('couleur_fond_tableau'))
     c.rect(x, cy, w, band_h, fill=1, stroke=1)
     c.setFont('Helvetica-Bold', 9)
     c.setFillColor(colors.black)
@@ -716,7 +717,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
     # Zone centrale
     cy -= 14
     c.setFont('Helvetica-Oblique', 7)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawString(lx, cy, "\u00c9valuation qualitative : A+ Excellent | A Tr\u00e8s bien | B+ Bien | B Assez bien | B- Moyen | C Passable | D Difficult\u00e9s")
 
     # Tableau avec vraies matieres et appreciations de la base de donnees
@@ -780,7 +781,7 @@ def _draw_half_maternelle(c, x, y, w, h, ecole, entry, eleve, page_number):
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_fond_tableau')),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -885,7 +886,7 @@ def _draw_guinea_flag(c, cx, y_top, flag_w=60, flag_h=40):
     c.rect(fx + 2 * stripe_w, y_top - flag_h, stripe_w, flag_h, fill=1, stroke=0)
 
     # Bordure fine
-    c.setStrokeColor(colors.HexColor('#333333'))
+    c.setStrokeColor(couleur_document('couleur_texte_principal'))
     c.setLineWidth(0.5)
     c.rect(fx, y_top - flag_h, flag_w, flag_h, fill=0, stroke=1)
 
@@ -945,19 +946,19 @@ def _draw_mont_nimba(c, cx, y_top, size=50):
     c.circle(sun_x, sun_y, size * 0.09, fill=1, stroke=0)
 
     # Bordure
-    c.setStrokeColor(colors.HexColor('#333333'))
+    c.setStrokeColor(couleur_document('couleur_texte_principal'))
     c.setLineWidth(0.5)
     c.rect(cx - mw / 2, base_y, mw, mh, fill=0, stroke=1)
 
     # Texte
     c.setFont('Helvetica-Bold', 4)
-    c.setFillColor(colors.HexColor('#333333'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     c.drawCentredString(cx, base_y - 8, "MONT NIMBA")
 
 
 def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     """Dessine la couverture (page 1) sur une demi-page GAUCHE."""
-    c.setStrokeColor(colors.HexColor('#555555'))
+    c.setStrokeColor(couleur_document('couleur_texte_secondaire'))
     c.setLineWidth(1.5)
     c.rect(x, y, w, h)
 
@@ -988,12 +989,12 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
             pass
     else:
         # Placeholder si pas de logo
-        c.setStrokeColor(colors.HexColor('#999999'))
+        c.setStrokeColor(couleur_document('couleur_bordure'))
         c.setDash(2, 2)
         c.rect(cx - logo_size / 2, img_row_y - logo_size, logo_size, logo_size, stroke=1, fill=0)
         c.setDash()
         c.setFont('Helvetica', 5)
-        c.setFillColor(colors.HexColor('#999999'))
+        c.setFillColor(couleur_document('couleur_bordure'))
         c.drawCentredString(cx, img_row_y - logo_size / 2, 'Logo')
 
     # Photo de l'eleve (DROITE)
@@ -1013,20 +1014,20 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     if not photo_drawn:
         # Placeholder si pas de photo
         c.setFillColor(colors.HexColor('#F0F0F0'))
-        c.setStrokeColor(colors.HexColor('#888888'))
+        c.setStrokeColor(couleur_document('couleur_bordure'))
         c.setLineWidth(0.5)
         c.rect(photo_x, photo_y, photo_w, photo_h, fill=1, stroke=1)
         c.setFont('Helvetica', 5)
-        c.setFillColor(colors.HexColor('#999999'))
+        c.setFillColor(couleur_document('couleur_bordure'))
         c.drawCentredString(photo_x + photo_w / 2, photo_y + photo_h / 2, 'Photo')
     # Bordure de la photo
-    c.setStrokeColor(colors.HexColor('#555555'))
+    c.setStrokeColor(couleur_document('couleur_texte_secondaire'))
     c.setLineWidth(0.6)
     c.rect(photo_x, photo_y, photo_w, photo_h, fill=0, stroke=1)
 
     # Titre sous les images
     title_y = img_row_y - img_h - 18
-    c.setFillColor(colors.HexColor('#222222'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     c.setFont('Helvetica-Bold', 18)
     c.drawCentredString(cx, title_y, "LIVRET SCOLAIRE")
 
@@ -1042,7 +1043,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.line(cx - 80, line_y - 6, cx + 80, line_y - 6)
 
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#222222'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     ty = line_y - 18
     c.drawCentredString(cx, ty, "REPUBLIQUE DE GUINEE")
     ty -= 11
@@ -1052,23 +1053,23 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.drawCentredString(cx, ty, "et de l'Alphabetisation")
     ty -= 10
     c.setFont('Helvetica-Oblique', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, ty, "Travail - Justice - Solidarite")
     ty -= 16
 
     # Ligne separatrice
-    c.setStrokeColor(colors.HexColor('#999999'))
+    c.setStrokeColor(couleur_document('couleur_bordure'))
     c.setLineWidth(0.5)
     c.line(x + pad, ty + 5, x + w - pad, ty + 5)
 
     # Ecole
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#222222'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     c.drawCentredString(cx, ty - 6, _s(ecole.nom))
     ty -= 20
 
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#333333'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     for label, val in [
         ("DSEE", ecole.desee), ("Adresse", ecole.adresse),
         ("Tel", ecole.telephone),
@@ -1084,18 +1085,18 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     box_x = x + pad
     box_y = ty - box_h
     c.setFillColor(colors.white)
-    c.setStrokeColor(colors.HexColor('#888888'))
+    c.setStrokeColor(couleur_document('couleur_bordure'))
     c.setLineWidth(1)
     c.rect(box_x, box_y, box_w, box_h, fill=1, stroke=1)
 
     # Bande de titre du cadre eleve
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.rect(box_x, box_y + box_h - 16, box_w, 16, fill=1, stroke=0)
     c.setFont('Helvetica-Bold', 8)
     c.setFillColor(colors.white)
     c.drawCentredString(cx, box_y + box_h - 13, "IDENTIFICATION DE L'ELEVE")
 
-    c.setFillColor(colors.HexColor('#222222'))
+    c.setFillColor(couleur_document('couleur_texte_principal'))
     # Adapter la taille du nom si trop long
     nom_complet = f"{_s(eleve.prenom)} {_s(eleve.nom)}"
     from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -1112,7 +1113,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     sexe_txt = 'Masculin' if getattr(eleve, 'sexe', '') == 'M' else 'Feminin'
     c.drawCentredString(cx, box_y + box_h - 78, f"Sexe: {sexe_txt}")
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, box_y + box_h - 92,
                         f"Parcours : {len(parcours)} annee(s)")
 
@@ -1129,7 +1130,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
                             img_avail_w, img_avail_h,
                             preserveAspectRatio=True, mask='auto')
                 # Bordure
-                c.setStrokeColor(colors.HexColor('#888888'))
+                c.setStrokeColor(couleur_document('couleur_bordure'))
                 c.setLineWidth(0.5)
                 c.rect(x + pad, img_bottom, img_avail_w, img_avail_h, fill=0, stroke=1)
             except Exception:
@@ -1137,7 +1138,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
 
     # Numero de page
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
@@ -1156,12 +1157,12 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "FICHE DE SANTE DE L'ELEVE")
 
     cy -= 5
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     # Infos generales
@@ -1178,7 +1179,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Tableau de sante
     cy -= 18
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "Etat de sante general")
 
     cy -= 5
@@ -1204,7 +1205,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Personne a contacter en cas d'urgence
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "Personne a contacter en cas d'urgence")
 
     urgence_fields = [
@@ -1225,7 +1226,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Tableau suivi annuel
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "Suivi medical annuel")
 
     cy -= 5
@@ -1246,7 +1247,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+        ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_fond_tableau')),
     ]))
     th_s = rh_s * len(suivi_data)
     table_s.wrapOn(c, w - 2 * pad, th_s + 10)
@@ -1273,12 +1274,12 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "RENSEIGNEMENTS SUR LES PARENTS")
 
     cy -= 5
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     # Infos eleve recap
@@ -1291,7 +1292,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # ------- PERE / Responsable principal -------
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "RESPONSABLE PRINCIPAL")
     cy -= 3
     c.setLineWidth(0.3)
@@ -1328,11 +1329,11 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     cy -= 22
     if cy > y + 15:
         c.setFont('Helvetica-Bold', 9)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(couleur_document('couleur_primaire'))
         c.drawString(lx, cy, "RESPONSABLE SECONDAIRE")
         cy -= 3
         c.setLineWidth(0.3)
-        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.setStrokeColor(couleur_document('couleur_primaire'))
         c.line(lx, cy, rx, cy)
 
     resp2 = getattr(eleve, 'responsable_secondaire', None)
@@ -1360,7 +1361,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # ------- SITUATION FAMILIALE -------
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "ADRESSE ET SITUATION FAMILIALE")
     cy -= 3
     c.setLineWidth(0.3)
@@ -1848,7 +1849,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "SYNTHESE DU PARCOURS SCOLAIRE")
 
     cy -= 12
@@ -1872,7 +1873,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             break
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
         c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(couleur_document('couleur_primaire'))
         c.drawString(lx, cy, cycle_label)
         cy -= 10
 
@@ -1907,10 +1908,10 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             ('FONTSIZE', (0, 0), (-1, -1), 6.5),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#555555')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+            ('GRID', (0, 0), (-1, -1), 0.4, couleur_document('couleur_texte_secondaire')),
+            ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_primaire')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8eef5')),
+            ('BACKGROUND', (0, -1), (-1, -1), couleur_document('primaire_clair')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
@@ -1928,10 +1929,10 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     if moyennes_all and cy > y_base + 100:
         cy -= 8
         c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(couleur_document('couleur_primaire'))
         c.drawString(lx, cy, "EVOLUTION DES MOYENNES")
         cy -= 3
-        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.setStrokeColor(couleur_document('couleur_primaire'))
         c.setLineWidth(0.4)
         c.line(lx, cy, rx, cy)
 
@@ -1951,10 +1952,10 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             c.setFillColor(colors.HexColor(color))
             c.rect(bx, graph_y, bar_w_each, bh, fill=1, stroke=0)
             c.setFont('Helvetica-Bold', 5.5)
-            c.setFillColor(colors.HexColor('#222222'))
+            c.setFillColor(couleur_document('couleur_texte_principal'))
             c.drawCentredString(bx + bar_w_each / 2, graph_y + bh + 2, f"{moy:.1f}")
             c.setFont('Helvetica', 5)
-            c.setFillColor(colors.HexColor('#555555'))
+            c.setFillColor(couleur_document('couleur_texte_secondaire'))
             # Annee courte: "24-25"
             short_annee = annee[-5:] if len(annee) >= 5 else annee
             c.drawCentredString(bx + bar_w_each / 2, graph_y - 8, short_annee)
@@ -2010,16 +2011,16 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
 
     # Titre
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "ANALYSE ET ORIENTATION")
     cy -= 4
     c.setLineWidth(0.6)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx + 40, cy, rx - 40, cy)
 
     cy -= 12
     c.setFont('Helvetica', 7)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, cy,
                         f"{_s(eleve.prenom)} {_s(eleve.nom)}  -  "
                         f"Matricule : {_s(eleve.matricule)}")
@@ -2043,28 +2044,28 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
                 or line.startswith('POINTS A') or line.startswith('ORIENTATION'):
             cy -= 3
             c.setFont('Helvetica-Bold', 8)
-            c.setFillColor(colors.HexColor('#003d82'))
+            c.setFillColor(couleur_document('couleur_primaire'))
             c.drawString(lx, cy, line)
             cy -= 2
-            c.setStrokeColor(colors.HexColor('#003d82'))
+            c.setStrokeColor(couleur_document('couleur_primaire'))
             c.setLineWidth(0.3)
             c.line(lx, cy, lx + 180, cy)
         elif line.startswith('  >>'):
             cy -= 2
             c.setFont('Helvetica-Bold', 8)
-            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.setFillColor(couleur_document('couleur_mention_tb'))
             c.drawString(lx + 4, cy, line.strip())
         elif line.startswith('  +'):
             c.setFont('Helvetica', 7)
-            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.setFillColor(couleur_document('couleur_mention_tb'))
             c.drawString(lx + 8, cy, line.strip())
         elif line.startswith('  -') and not line.startswith('  - '):
             c.setFont('Helvetica', 7)
-            c.setFillColor(colors.HexColor('#c62828'))
+            c.setFillColor(couleur_document('couleur_mention_insuffisant'))
             c.drawString(lx + 8, cy, line.strip())
         elif line.startswith('     Filieres') or line.startswith('     Options'):
             c.setFont('Helvetica-Bold', 7)
-            c.setFillColor(colors.HexColor('#333333'))
+            c.setFillColor(couleur_document('couleur_texte_principal'))
             c.drawString(lx + 12, cy, line.strip())
         elif line.startswith('       - '):
             c.setFont('Helvetica', 7)
@@ -2072,11 +2073,11 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
             c.drawString(lx + 18, cy, line.strip())
         elif line.startswith('  Niveau'):
             c.setFont('Helvetica-Bold', 7.5)
-            c.setFillColor(colors.HexColor('#003d82'))
+            c.setFillColor(couleur_document('couleur_primaire'))
             c.drawString(lx + 8, cy, line.strip())
         elif line.startswith('  Note') or line.startswith('  Attention') or line.startswith('  L\''):
             c.setFont('Helvetica-Oblique', 7)
-            c.setFillColor(colors.HexColor('#555555'))
+            c.setFillColor(couleur_document('couleur_texte_secondaire'))
             c.drawString(lx + 8, cy, line.strip())
         elif line == '':
             cy -= 2
@@ -2111,7 +2112,7 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
 
     # Numero de page
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, y_base + 3, f"-{page_number}-")
 
 
@@ -2142,17 +2143,17 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
 
     # --- Titre ---
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "LETTRE DE REMERCIEMENT AUX PARENTS")
     cy -= 4
     c.setLineWidth(0.8)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx + 30, cy, rx - 30, cy)
 
     # --- Entete ecole ---
     cy -= 14
     c.setFont('Helvetica', 7)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, cy, f"{_s(ecole.nom)}  -  {_s(ecole.adresse)}")
     if ecole.telephone:
         cy -= 10
@@ -2218,11 +2219,11 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     # --- Section Recommandations ---
     cy -= 6
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "RECOMMANDATIONS POUR LE PROGR\u00c8S SCOLAIRE :")
     cy -= 3
     c.setLineWidth(0.4)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, lx + 200, cy)
 
     cy -= 12
@@ -2274,7 +2275,7 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     c.drawRightString(rx, cy, f"{directeur}")
     cy -= 10
     c.setFont('Helvetica', 7)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawRightString(rx, cy, f"Directeur de {_s(ecole.nom)}")
 
     # --- Bordure decorative tricolore en bas ---
@@ -2287,7 +2288,7 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
 
     # Numero de page
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
@@ -2446,16 +2447,16 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
 
     # === TITRE ===
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "FICHE D'ORIENTATION - FIN DE CYCLE COLLEGE")
     cy -= 4
     c.setLineWidth(0.6)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx + 20, cy, rx - 20, cy)
 
     cy -= 11
     c.setFont('Helvetica', 7)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, cy,
                         f"R\u00e9publique de Guin\u00e9e - Minist\u00e8re de l'Education Nationale")
     cy -= 9
@@ -2466,7 +2467,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === IDENTIFICATION ===
     cy -= 14
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "IDENTIFICATION DE L'ELEVE")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2527,7 +2528,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === TABLEAU COMPARATIF DES 3 SERIES ===
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "ANALYSE COMPARATIVE DES TROIS SERIES")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2553,7 +2554,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
         is_best = (serie_code == serie_recommandee)
         if is_best:
             # Fond surbrillance pour la serie recommandee
-            c.setFillColor(colors.HexColor('#f0f7ff'))
+            c.setFillColor(couleur_document('primaire_clair'))
             c.rect(lx - 2, cy - bar_h_each + 2, usable_w + 4, bar_h_each + 2, fill=1, stroke=0)
 
         c.setFillColor(colors.HexColor(color))
@@ -2567,7 +2568,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
         c.drawString(lx, cy - 3, lbl_text)
         if is_best:
             c.setFont('Helvetica-Bold', 5.5)
-            c.setFillColor(colors.HexColor('#2e7d32'))
+            c.setFillColor(couleur_document('couleur_mention_tb'))
             c.drawString(lx, cy - 3 - lbl_fs, "RECOMMANDE")
 
         # Barre
@@ -2590,7 +2591,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === DETAIL DES MATIERES PAR SERIE ===
     cy -= 8
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "DETAIL PAR SERIE (moyennes ponderees sur tout le parcours)")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2635,14 +2636,14 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
 
     # Cadre recommandation
     rec_h = 55
-    c.setFillColor(colors.HexColor('#f5f9ff'))
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('primaire_clair'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.setLineWidth(1)
     c.rect(lx, cy - rec_h, usable_w, rec_h, fill=1, stroke=1)
 
     rec_y = cy - 10
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, rec_y, "SERIE RECOMMANDEE")
     rec_y -= 13
 
@@ -2654,7 +2655,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
         rec_y -= 11
         score_rec = resultats[serie_recommandee]['score']
         c.setFont('Helvetica', 7)
-        c.setFillColor(colors.HexColor('#555555'))
+        c.setFillColor(couleur_document('couleur_texte_secondaire'))
         c.drawCentredString(cx, rec_y,
                             f"Score d'ad\u00e9quation : {score_rec:.1f}/20")
         rec_y -= 10
@@ -2666,7 +2667,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
                                 f"({alt[1]['score']:.1f}/20)")
     else:
         c.setFont('Helvetica', 8)
-        c.setFillColor(colors.HexColor('#666666'))
+        c.setFillColor(couleur_document('couleur_texte_secondaire'))
         c.drawCentredString(cx, rec_y, "Donn\u00e9es insuffisantes pour une recommandation.")
 
     cy -= rec_h + 8
@@ -2674,7 +2675,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === DEBOUCHES DE LA SERIE RECOMMANDEE ===
     if serie_recommandee and cy > y + 80:
         c.setFont('Helvetica-Bold', 7.5)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(couleur_document('couleur_primaire'))
         c.drawString(lx, cy, f"DEBOUCHES - {_SERIES_LYCEE[serie_recommandee]['label'].upper()}")
         cy -= 3
         c.setLineWidth(0.3)
@@ -2717,7 +2718,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
 
     # Numero de page
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#555555'))
+    c.setFillColor(couleur_document('couleur_texte_secondaire'))
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
@@ -2731,12 +2732,12 @@ def _eleve_a_termine_college(parcours):
 
 def _draw_blank_half(c, x, y, w, h, page_number):
     """Dessine une demi-page vide (remplissage pour multiple de 4)."""
-    c.setStrokeColor(colors.HexColor('#cccccc'))
+    c.setStrokeColor(couleur_document('couleur_bordure'))
     c.setDash(3, 3)
     c.rect(x, y, w, h)
     c.setDash()
     c.setFont('Helvetica', 8)
-    c.setFillColor(colors.HexColor('#999999'))
+    c.setFillColor(couleur_document('couleur_bordure'))
     c.drawCentredString(x + w / 2, y + 5, f"-{page_number}-")
 
 
@@ -2771,7 +2772,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === TITRE ===
     cy = top - 14
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawCentredString(cx, cy, "ANALYSE DU NIVEAU DE L'ELEVE")
     cy -= 10
     c.setFont('Helvetica', 7)
@@ -2783,11 +2784,11 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 1 : STATISTIQUES GENERALES ===
     cy -= 14
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "STATISTIQUES GENERALES")
     cy -= 3
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     cy -= 12
@@ -2825,26 +2826,26 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         # Position moyenne classe
         if moy_classe:
             mc_pos = ((moy_classe - note_min) / (note_max - note_min)) * bar_w
-            c.setStrokeColor(colors.HexColor('#1565c0'))
+            c.setStrokeColor(couleur_document('couleur_secondaire'))
             c.setLineWidth(1.5)
             c.line(bar_x + mc_pos, cy, bar_x + mc_pos, cy + bar_h)
         # Position eleve
         el_pos = ((moy_ann - note_min) / (note_max - note_min)) * bar_w
         el_pos = max(0, min(el_pos, bar_w))
-        c.setFillColor(colors.HexColor('#d32f2f') if moy_ann < seuil else colors.HexColor('#2e7d32'))
+        c.setFillColor(colors.HexColor('#d32f2f') if moy_ann < seuil else couleur_document('couleur_mention_tb'))
         c.circle(bar_x + el_pos, cy + bar_h / 2, 4, fill=1, stroke=0)
         # Bordure barre
-        c.setStrokeColor(colors.HexColor('#999999'))
+        c.setStrokeColor(couleur_document('couleur_bordure'))
         c.setLineWidth(0.5)
         c.rect(bar_x, cy, bar_w, bar_h, fill=0, stroke=1)
         # Legende
         cy -= 10
         c.setFont('Helvetica', 6)
-        c.setFillColor(colors.HexColor('#2e7d32'))
+        c.setFillColor(couleur_document('couleur_mention_tb'))
         c.drawString(lx, cy, "o Eleve")
-        c.setFillColor(colors.HexColor('#1565c0'))
+        c.setFillColor(couleur_document('couleur_secondaire'))
         c.drawString(lx + 40, cy, "| Moy. classe")
-        c.setFillColor(colors.HexColor('#666666'))
+        c.setFillColor(couleur_document('couleur_texte_secondaire'))
         c.drawString(lx + 100, cy, f"Min: {min_txt}")
         c.drawString(lx + 155, cy, f"Max: {max_txt}")
     else:
@@ -2853,10 +2854,10 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 2 : MATIERES FORTES ET FAIBLES ===
     cy -= 12
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "ANALYSE PAR MATIERE")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     # Calculer la moyenne par matiere
@@ -2920,8 +2921,8 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
             ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#999999')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
+            ('GRID', (0, 0), (-1, -1), 0.3, couleur_document('couleur_bordure')),
+            ('BACKGROUND', (0, 0), (-1, 0), couleur_document('couleur_primaire')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('LEFTPADDING', (0, 0), (-1, -1), 3),
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
@@ -2945,7 +2946,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
 
         # Resume texte
         c.setFont('Helvetica-Bold', 6)
-        c.setFillColor(colors.HexColor('#2e7d32'))
+        c.setFillColor(couleur_document('couleur_mention_tb'))
         c.drawString(lx, cy, f"Forts ({len(fortes)}) : ")
         c.setFont('Helvetica', 6)
         noms_fortes = ', '.join(n for n, _ in fortes[:3])
@@ -2954,7 +2955,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         c.drawString(lx + 45, cy, noms_fortes if noms_fortes else 'Aucune')
         cy -= 9
         c.setFont('Helvetica-Bold', 6)
-        c.setFillColor(colors.HexColor('#c62828'))
+        c.setFillColor(couleur_document('couleur_mention_insuffisant'))
         c.drawString(lx, cy, f"Faibles ({len(faibles)}) : ")
         c.setFont('Helvetica', 6)
         noms_faibles = ', '.join(n for n, _ in faibles[:3])
@@ -2965,10 +2966,10 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 3 : EVOLUTION PAR PERIODE (graphique barres) ===
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "EVOLUTION PAR PERIODE")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     cy -= 5
@@ -2981,25 +2982,25 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
         bar_w_each = (graph_w - (nb + 1) * bar_gap) / nb if nb > 0 else 0
 
         # Axe et fond
-        c.setStrokeColor(colors.HexColor('#cccccc'))
+        c.setStrokeColor(couleur_document('couleur_bordure'))
         c.setLineWidth(0.3)
         for frac in [0.25, 0.5, 0.75, 1.0]:
             ly = graph_y + graph_h * frac
             c.line(lx, ly, rx, ly)
             c.setFont('Helvetica', 5)
-            c.setFillColor(colors.HexColor('#999999'))
+            c.setFillColor(couleur_document('couleur_bordure'))
             c.drawRightString(lx - 2, ly - 2, f"{sur * frac:.0f}")
 
         # Ligne de seuil
         seuil_frac = seuil / sur
         seuil_y = graph_y + graph_h * seuil_frac
-        c.setStrokeColor(colors.HexColor('#ff5722'))
+        c.setStrokeColor(couleur_document('couleur_accent'))
         c.setLineWidth(0.6)
         c.setDash(3, 2)
         c.line(lx, seuil_y, rx, seuil_y)
         c.setDash()
         c.setFont('Helvetica', 5)
-        c.setFillColor(colors.HexColor('#ff5722'))
+        c.setFillColor(couleur_document('couleur_accent'))
         c.drawRightString(lx - 2, seuil_y - 2, f"{seuil:.0f}")
 
         # Barres
@@ -3022,7 +3023,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
 
             # Valeur au-dessus de la barre
             c.setFont('Helvetica-Bold', 6)
-            c.setFillColor(colors.HexColor('#222222'))
+            c.setFillColor(couleur_document('couleur_texte_principal'))
             c.drawCentredString(bx + bar_w_each / 2, graph_y + bh + 2, f"{val:.1f}")
 
             # Fleche tendance
@@ -3030,36 +3031,36 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
                 arrow_x = bx + bar_w_each / 2
                 arrow_y = graph_y - 6
                 if val > prev_val:
-                    c.setFillColor(colors.HexColor('#2e7d32'))
+                    c.setFillColor(couleur_document('couleur_mention_tb'))
                     c.drawCentredString(arrow_x, arrow_y, "^")
                 elif val < prev_val:
-                    c.setFillColor(colors.HexColor('#c62828'))
+                    c.setFillColor(couleur_document('couleur_mention_insuffisant'))
                     c.drawCentredString(arrow_x, arrow_y, "v")
                 else:
-                    c.setFillColor(colors.HexColor('#666666'))
+                    c.setFillColor(couleur_document('couleur_texte_secondaire'))
                     c.drawCentredString(arrow_x, arrow_y, "=")
             prev_val = val
 
             # Label periode
             label = mp['periode'].replace('SEMESTRE_', 'S').replace('TRIMESTRE_', 'T')
             c.setFont('Helvetica', 5.5)
-            c.setFillColor(colors.HexColor('#333333'))
+            c.setFillColor(couleur_document('couleur_texte_principal'))
             c.drawCentredString(bx + bar_w_each / 2, graph_y - 12, label)
 
         cy = graph_y - 18
     else:
         c.setFont('Helvetica-Oblique', 7)
-        c.setFillColor(colors.HexColor('#999999'))
+        c.setFillColor(couleur_document('couleur_bordure'))
         c.drawString(lx, cy - 10, "Donnees insuffisantes pour le graphique d'evolution.")
         cy -= 20
 
     # === SECTION 4 : DECISION ET ACCOMPAGNEMENT ===
     cy -= 6
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(couleur_document('couleur_primaire'))
     c.drawString(lx, cy, "DECISION ET ACCOMPAGNEMENT")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(couleur_document('couleur_primaire'))
     c.line(lx, cy, rx, cy)
 
     cy -= 11
@@ -3100,7 +3101,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     if faibles_prio:
         cy -= 12
         c.setFont('Helvetica-Bold', 7)
-        c.setFillColor(colors.HexColor('#c62828'))
+        c.setFillColor(couleur_document('couleur_mention_insuffisant'))
         c.drawString(lx, cy, "Matieres a travailler en priorite :")
         cy -= 9
         c.setFont('Helvetica', 7)
@@ -3123,6 +3124,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
+@document_avec_charte(ecole_position=1)
 def _generer_livret_pdf(eleve, ecole, parcours):
     """Genere le PDF du livret scolaire en pages sequentielles.
 
@@ -3215,6 +3217,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     return buffer
 
 
+@document_avec_charte(ecole_position=1)
 def _generer_livret_annuel_pdf(eleve, ecole, parcours, annee_scolaire):
     """Genere le livret scolaire pour une seule annee.
 
@@ -3725,6 +3728,7 @@ def livret_scolaire_annuel_pdf(request, eleve_id):
 
 
 @login_required
+@document_avec_charte(ecole_position=0)
 def livret_scolaire_classe_pdf(request, classe_id):
     """Genere les livrets scolaires de tous les eleves d'une classe en un seul PDF."""
     ecole = user_school(request.user)

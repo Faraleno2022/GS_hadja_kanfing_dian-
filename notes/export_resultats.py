@@ -8,6 +8,7 @@ import io
 import re
 
 from .models import ClasseNote, MatiereNote
+from .charte_graphique import get_charte_reportlab
 from eleves.models import Eleve, Classe as ClasseEleve
 
 
@@ -81,6 +82,7 @@ def exporter_resultats_pdf(request):
         
         # Récupérer les informations de l'école
         ecole = classe.ecole
+        charte = get_charte_reportlab(ecole)
         
         # Styles personnalisés
         header_style = ParagraphStyle(
@@ -95,7 +97,7 @@ def exporter_resultats_pdf(request):
             'SchoolName',
             parent=styles['Heading1'],
             fontSize=14,
-            textColor=colors.HexColor('#007bff'),
+            textColor=charte['couleur_primaire'],
             alignment=TA_CENTER,
             spaceAfter=4
         )
@@ -104,7 +106,7 @@ def exporter_resultats_pdf(request):
             'Title', 
             parent=styles['Heading1'], 
             fontSize=16, 
-            textColor=colors.HexColor('#007bff'), 
+            textColor=charte['couleur_primaire'],
             spaceAfter=8, 
             alignment=TA_CENTER
         )
@@ -223,7 +225,7 @@ def exporter_resultats_pdf(request):
         
         # Styles de base
         style_commands = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+            ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -232,7 +234,7 @@ def exporter_resultats_pdf(request):
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [charte['couleur_fond_carte'], charte['couleur_fond_tableau']]),
             ('ALIGN', (2, 1), (3, -1), 'LEFT'),
         ]
         
@@ -276,7 +278,7 @@ def exporter_resultats_pdf(request):
                 'StatsTitle',
                 parent=styles['Heading2'],
                 fontSize=12,
-                textColor=colors.HexColor('#007bff'),
+                textColor=charte['couleur_primaire'],
                 spaceAfter=6,
                 alignment=TA_CENTER
             )
@@ -300,15 +302,15 @@ def exporter_resultats_pdf(request):
             
             stats_table = Table(stats_data, colWidths=[8*cm, 6*cm])
             stats_style = TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+                ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                 ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
                 ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+                ('GRID', (0, 0), (-1, -1), 0.5, charte['couleur_bordure']),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [charte['couleur_fond_carte'], charte['couleur_fond_tableau']]),
                 ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
                 ('ALIGN', (0, 1), (0, -1), 'LEFT'),
                 # Non admis en rouge
@@ -344,7 +346,7 @@ def exporter_resultats_pdf(request):
         sig_section_style = ParagraphStyle(
             'SigSection', parent=styles['Normal'],
             fontSize=9, fontName='Helvetica-Bold',
-            textColor=colors.HexColor('#2b3e50'),
+            textColor=charte['couleur_texte_principal'],
             alignment=TA_LEFT, spaceAfter=4
         )
         elements.append(Paragraph("VISA ET SIGNATURE :", sig_section_style))
@@ -368,7 +370,7 @@ def exporter_resultats_pdf(request):
         sig_mention_style = ParagraphStyle(
             'SigMention', parent=styles['Normal'],
             fontSize=8, fontName='Helvetica',
-            textColor=colors.HexColor('#666666'),
+            textColor=charte['couleur_texte_secondaire'],
             alignment=TA_CENTER
         )
 

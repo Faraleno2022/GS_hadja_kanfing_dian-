@@ -609,6 +609,13 @@ def configurer_ecole(request, ecole_id: int):
     Accès limité au créateur, au compte principal et aux délégations de la même école.
     """
     ecole = get_object_or_404(Ecole, pk=ecole_id)
+    from notes.charte_graphique import get_charte_notes
+    from notes.forms import CharteDocumentsNotesForm
+    from notes.models import ThemeBulletin
+
+    theme_notes = ThemeBulletin.objects.filter(ecole=ecole).order_by(
+        '-par_defaut', '-actif', '-date_modification', '-pk'
+    ).first()
 
     if request.user.is_authenticated and not user_is_superadmin(request.user):
         profil = getattr(request.user, 'profil', None)
@@ -654,7 +661,11 @@ def configurer_ecole(request, ecole_id: int):
         or est_principal
         or configuration_anonyme
     )
-    can_edit = can_manage_classes or can_manage_grilles or can_manage_card_colors
+    can_manage_notes_branding = can_manage_card_colors
+    can_edit = (
+        can_manage_classes or can_manage_grilles
+        or can_manage_card_colors or can_manage_notes_branding
+    )
 
     if request.method == 'POST' and can_edit:
         action = request.POST.get('action')
@@ -674,6 +685,33 @@ def configurer_ecole(request, ecole_id: int):
                         for message in messages_champ
                     )
                     messages.error(request, f"Couleurs invalides : {erreurs}")
+                return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+
+            if action == 'update_notes_branding':
+                if not can_manage_notes_branding:
+                    messages.error(request, "Vous n'êtes pas autorisé à modifier la charte des documents Notes.")
+                    return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+                charte_notes_form = CharteDocumentsNotesForm(request.POST, instance=theme_notes)
+                if charte_notes_form.is_valid():
+                    theme = charte_notes_form.save(commit=False)
+                    theme.ecole = ecole
+                    theme.nom = f"Charte graphique - {ecole.nom}"[:100]
+                    theme.actif = True
+                    theme.par_defaut = True
+                    if not theme.cree_par_id and request.user.is_authenticated:
+                        theme.cree_par = request.user
+                    theme.save()
+                    messages.success(
+                        request,
+                        "La charte graphique des bulletins et documents Notes a été enregistrée."
+                    )
+                else:
+                    erreurs = " ".join(
+                        message
+                        for messages_champ in charte_notes_form.errors.values()
+                        for message in messages_champ
+                    )
+                    messages.error(request, f"Charte graphique invalide : {erreurs}")
                 return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
 
             if action == 'add_classe':
@@ -778,6 +816,8 @@ def configurer_ecole(request, ecole_id: int):
     # Niveaux affichables (depuis modèle Classe)
     niveaux = getattr(Classe, 'NIVEAUX_CHOICES', [])
     couleurs_form = CouleursCartesEcoleForm(instance=ecole)
+    charte_notes_form = CharteDocumentsNotesForm(instance=theme_notes)
+    charte_notes = get_charte_notes(ecole)
 
     return render(request, 'eleves/configurer_ecole.html', {
         'ecole': ecole,
@@ -785,8 +825,11 @@ def configurer_ecole(request, ecole_id: int):
         'can_manage_classes': can_manage_classes,
         'can_manage_grilles': can_manage_grilles,
         'can_manage_card_colors': can_manage_card_colors,
+        'can_manage_notes_branding': can_manage_notes_branding,
         'can_submit_validation': can_submit_validation,
         'couleurs_form': couleurs_form,
+        'charte_notes_form': charte_notes_form,
+        'charte_notes': charte_notes,
         'classes': classes,
         'grilles': grilles,
         'niveaux': niveaux,

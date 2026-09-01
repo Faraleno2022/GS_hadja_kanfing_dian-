@@ -146,6 +146,8 @@ def emploi_du_temps_pdf(request):
     from reportlab.lib.enums import TA_CENTER
 
     classe = get_object_or_404(ClasseNote, pk=request.GET.get('classe_id'))
+    from .charte_graphique import get_charte_reportlab
+    charte = get_charte_reportlab(classe.ecole)
     lignes, _ = _grille_edt(classe)
 
     buffer = io.BytesIO()
@@ -154,7 +156,7 @@ def emploi_du_temps_pdf(request):
                             leftMargin=1 * cm, rightMargin=1 * cm)
     styles = getSampleStyleSheet()
     titre = ParagraphStyle('T', parent=styles['Heading1'], fontSize=14,
-                           textColor=colors.HexColor('#007bff'), alignment=TA_CENTER)
+                           textColor=charte['couleur_primaire'], alignment=TA_CENTER)
     cell_style = ParagraphStyle('C', parent=styles['Normal'], fontSize=7.5, alignment=TA_CENTER, leading=9)
 
     elements = [Paragraph(f"<b>{(classe.ecole.nom if classe.ecole else '').upper()}</b>", titre)]
@@ -185,15 +187,15 @@ def emploi_du_temps_pdf(request):
         colj = (page_w - col0) / len(JOURS)
         table = Table(data, colWidths=[col0] + [colj] * len(JOURS), repeatRows=1)
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
+            ('BACKGROUND', (0, 0), (-1, 0), charte['couleur_fond_header']),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#eef3f8')),
+            ('BACKGROUND', (0, 1), (0, -1), charte['couleur_fond_tableau']),
             ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('GRID', (0, 0), (-1, -1), 0.5, charte['couleur_bordure']),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
