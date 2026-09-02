@@ -291,6 +291,10 @@
                             </span>
                             {% endif %}
                         </div>
+                        <div class="teacher-meta">
+                            <i class="fas fa-calendar-check me-1"></i>
+                            {{ etat.nombre_jours_presence }} jour{{ etat.nombre_jours_presence|pluralize }} de présence
+                        </div>
                         <div class="mt-2">
                             <span class="period-badge">{{ etat.periode }}</span>
                             <span class="status-badge {% if etat.paye %}status-paid{% elif etat.valide %}status-validated{% else %}status-pending{% endif %} ms-2">
@@ -376,7 +380,7 @@
                     {% if not etat.valide and not etat.paye %}
                     <a href="{% url 'salaires:ajuster_etat_salaire' etat.id %}"
                        class="btn btn-warning btn-action">
-                        <i class="fas fa-sliders-h"></i> Primes / retenues
+                        <i class="fas fa-sliders-h"></i> Ajuster le salaire
                     </a>
                     <form method="post" action="{% url 'salaires:valider_etat_salaire' etat.id %}" class="d-inline">
                         {% csrf_token %}

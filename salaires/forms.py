@@ -1,6 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from decimal import Decimal, ROUND_HALF_UP
 from .models import (
     AffectationClasse,
     AvanceSalaire,
@@ -363,12 +364,28 @@ class PresenceForm(forms.ModelForm):
 
 
 class EtatSalaireAjustementForm(forms.ModelForm):
-    """Modification contrôlée des primes et retenues avant validation."""
+    """Modification contrôlée d'un état avant sa validation finale."""
 
     class Meta:
         model = EtatSalaire
-        fields = ['primes', 'deductions', 'observations']
+        fields = [
+            'salaire_base',
+            'taux_horaire_applique',
+            'total_heures',
+            'primes',
+            'deductions',
+            'observations',
+        ]
         widgets = {
+            'salaire_base': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.01'
+            }),
+            'taux_horaire_applique': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0.01', 'step': '0.01'
+            }),
+            'total_heures': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.01'
+            }),
             'primes': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': '0', 'step': '0.01'
             }),
@@ -381,12 +398,83 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             }),
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.a_des_pointages = False
+        # Compatibilité avec les anciens appels qui ne transmettaient que les
+        # primes et retenues : le salaire courant reste alors inchangé.
+        self.fields['salaire_base'].required = False
+
+        enseignant = getattr(self.instance, 'enseignant', None)
+        periode = getattr(self.instance, 'periode', None)
+        if enseignant is None or periode is None:
+            return
+
+        if enseignant.est_taux_horaire:
+            self.fields['salaire_base'].widget.attrs['readonly'] = 'readonly'
+            self.fields['salaire_base'].help_text = (
+                'Recalculé automatiquement : nombre d’heures × taux horaire.'
+            )
+
+            if enseignant.mode_calcul_horaire == ModeCalculHoraire.POINTAGE:
+                from .services import pointages_existent
+
+                self.a_des_pointages = pointages_existent(
+                    enseignant, periode
+                )
+                if self.a_des_pointages:
+                    self.fields['total_heures'].disabled = True
+                    self.fields['total_heures'].help_text = (
+                        'Calculé depuis les pointages journaliers de la période.'
+                    )
+                else:
+                    self.fields['total_heures'].help_text = (
+                        'Aucun pointage trouvé : saisissez les heures travaillées '
+                        'pour cette période.'
+                    )
+            else:
+                self.fields['total_heures'].help_text = (
+                    'Total mensuel modifiable pour cette période.'
+                )
+
+            self.fields['taux_horaire_applique'].help_text = (
+                'Taux appliqué à cette période uniquement.'
+            )
+        else:
+            self.fields['taux_horaire_applique'].widget = forms.HiddenInput()
+            self.fields['total_heures'].widget = forms.HiddenInput()
+
     def clean(self):
         cleaned_data = super().clean()
-        primes = cleaned_data.get('primes') or 0
-        deductions = cleaned_data.get('deductions') or 0
-        salaire_base = self.instance.salaire_base or 0
-        avances = self.instance.avances or 0
+        salaire_base = cleaned_data.get('salaire_base')
+        if salaire_base is None:
+            salaire_base = self.instance.salaire_base or Decimal('0')
+            cleaned_data['salaire_base'] = salaire_base
+
+        enseignant = getattr(self.instance, 'enseignant', None)
+        if enseignant is not None and enseignant.est_taux_horaire:
+            taux_horaire = cleaned_data.get('taux_horaire_applique')
+            total_heures = cleaned_data.get('total_heures')
+
+            if taux_horaire is None or taux_horaire <= 0:
+                self.add_error(
+                    'taux_horaire_applique',
+                    'Le taux horaire appliqué doit être supérieur à zéro.',
+                )
+            if total_heures is None:
+                self.add_error(
+                    'total_heures',
+                    "Le nombre d'heures travaillées est obligatoire.",
+                )
+            if taux_horaire is not None and taux_horaire > 0 and total_heures is not None:
+                salaire_base = (total_heures * taux_horaire).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP
+                )
+                cleaned_data['salaire_base'] = salaire_base
+
+        primes = cleaned_data.get('primes') or Decimal('0')
+        deductions = cleaned_data.get('deductions') or Decimal('0')
+        avances = self.instance.avances or Decimal('0')
 
         if deductions + avances > salaire_base + primes:
             self.add_error(

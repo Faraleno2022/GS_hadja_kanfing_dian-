@@ -34,6 +34,14 @@ class ModeCalculHoraire(models.TextChoices):
     MENSUEL = 'MENSUEL', 'Total mensuel global'
 
 
+class SourceHeuresSalaire(models.TextChoices):
+    """Source conservée sur l'état mensuel après son calcul."""
+
+    POINTAGE = 'POINTAGE', 'Pointage arrivée / départ'
+    MENSUEL = 'MENSUEL', 'Total mensuel global'
+    SAISIE = 'SAISIE', 'Saisie manuelle de la période'
+
+
 class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
     
@@ -398,11 +406,12 @@ class EtatSalaire(SyncTrackedModel):
         null=True, 
         blank=True,
         verbose_name="Total heures",
-        help_text="Total des heures enseignées dans le mois"
+        help_text="Total des heures enseignées dans le mois",
+        validators=[MinValueValidator(Decimal('0'))],
     )
     mode_calcul_heures = models.CharField(
         max_length=10,
-        choices=ModeCalculHoraire.choices,
+        choices=SourceHeuresSalaire.choices,
         blank=True,
         default='',
         verbose_name="Source des heures",
@@ -416,6 +425,20 @@ class EtatSalaire(SyncTrackedModel):
         verbose_name="Taux horaire appliqué",
         help_text="Taux conservé au moment du calcul pour l'historique",
         validators=[MinValueValidator(Decimal('0'))],
+    )
+    nombre_jours_presence = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Jours de présence",
+        help_text=(
+            "Nombre de jours avec une présence ou un retard pendant la période"
+        ),
+    )
+    ajuste_manuellement = models.BooleanField(
+        default=False,
+        verbose_name="Ajusté manuellement",
+        help_text=(
+            "Conserve les paramètres de salaire modifiés avant la validation"
+        ),
     )
     
     # Montants

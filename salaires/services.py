@@ -20,12 +20,14 @@ from .models import (
     EtatSalaire,
     ModeCalculHoraire,
     PeriodeSalaire,
+    SourceHeuresSalaire,
 )
 
 
 HEURE = Decimal('0.01')
 MONTANT = Decimal('0.01')
 STATUTS_HEURES_PAYEES = ('PRESENT', 'RETARD', 'PERMISSION')
+STATUTS_JOURS_PRESENTS = ('PRESENT', 'RETARD')
 
 
 def arrondir_heures(valeur):
@@ -88,11 +90,72 @@ def heures_reellement_travaillees(enseignant, periode):
     return arrondir_heures(total)
 
 
-def heures_pour_calcul(enseignant, periode):
-    """Retourne les heures selon le mode explicitement choisi."""
+def pointages_existent(enseignant, periode):
+    """Indique si au moins un pointage a été enregistré dans la période."""
+    premier_jour, dernier_jour = bornes_periode(periode)
+    return enseignant.presences.filter(
+        date__range=(premier_jour, dernier_jour)
+    ).exists()
+
+
+def nombre_jours_presence(enseignant, periode):
+    """Compte les jours réellement présents, retards compris."""
+    premier_jour, dernier_jour = bornes_periode(periode)
+    return (
+        enseignant.presences.filter(
+            date__range=(premier_jour, dernier_jour),
+            statut__in=STATUTS_JOURS_PRESENTS,
+        )
+        .values('date')
+        .distinct()
+        .count()
+    )
+
+
+def source_et_heures_pour_calcul(enseignant, periode, etat=None):
+    """Retourne la source et les heures applicables à un salaire horaire.
+
+    Le mode mensuel reste prioritaire lorsqu'il a été explicitement choisi.
+    En mode pointage, une saisie propre à la période est conservée tant
+    qu'aucun pointage n'existe. Dès qu'un pointage est disponible, il devient
+    la source de vérité du calcul.
+    """
     if enseignant.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
-        return arrondir_heures(enseignant.heures_mensuelles)
-    return heures_reellement_travaillees(enseignant, periode)
+        if (
+            etat is not None
+            and etat.ajuste_manuellement
+            and etat.mode_calcul_heures == SourceHeuresSalaire.SAISIE
+            and etat.total_heures is not None
+        ):
+            return SourceHeuresSalaire.SAISIE, arrondir_heures(etat.total_heures)
+        return (
+            SourceHeuresSalaire.MENSUEL,
+            arrondir_heures(enseignant.heures_mensuelles),
+        )
+
+    if pointages_existent(enseignant, periode):
+        return (
+            SourceHeuresSalaire.POINTAGE,
+            heures_reellement_travaillees(enseignant, periode),
+        )
+
+    if (
+        etat is not None
+        and etat.ajuste_manuellement
+        and etat.mode_calcul_heures == SourceHeuresSalaire.SAISIE
+        and etat.total_heures is not None
+    ):
+        return SourceHeuresSalaire.SAISIE, arrondir_heures(etat.total_heures)
+
+    return SourceHeuresSalaire.POINTAGE, Decimal('0.00')
+
+
+def heures_pour_calcul(enseignant, periode, etat=None):
+    """Retourne les heures selon la source configurée ou saisie."""
+    _, total_heures = source_et_heures_pour_calcul(
+        enseignant, periode, etat=etat
+    )
+    return total_heures
 
 
 def affectations_de_la_periode(enseignant, periode):
@@ -160,6 +223,29 @@ def repartir_heures(total_heures, lignes_prevues):
     return repartition
 
 
+def actualiser_details_heures(etat):
+    """Aligne la ventilation par classe sur le total courant de l'état."""
+    etat.details_heures.all().delete()
+    if not etat.enseignant.est_taux_horaire:
+        return
+
+    total_heures = arrondir_heures(etat.total_heures)
+    taux_horaire = arrondir_montant(etat.taux_horaire_applique)
+    lignes_prevues = heures_prevues_par_affectation(
+        etat.enseignant, etat.periode
+    )
+    for affectation, heures_prevues, heures_realisees in repartir_heures(
+        total_heures, lignes_prevues
+    ):
+        DetailHeuresClasse.objects.create(
+            etat_salaire=etat,
+            affectation_classe=affectation,
+            heures_prevues=heures_prevues,
+            heures_realisees=heures_realisees,
+            taux_horaire_applique=taux_horaire,
+        )
+
+
 def salaire_fixe_proratise(enseignant, periode):
     premier_jour, dernier_jour = bornes_periode(periode)
     if enseignant.date_embauche > dernier_jour:
@@ -189,35 +275,31 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
     if etat.valide:
         return etat, False
 
-    etat.details_heures.all().delete()
     etat.avances = total_avances_salaire(enseignant, periode)
+    etat.nombre_jours_presence = nombre_jours_presence(enseignant, periode)
 
     if enseignant.est_taux_horaire:
-        total_heures = heures_pour_calcul(enseignant, periode)
-        taux_horaire = enseignant.taux_horaire or Decimal('0')
+        source_heures, total_heures = source_et_heures_pour_calcul(
+            enseignant, periode, etat=etat
+        )
+        if etat.ajuste_manuellement and etat.taux_horaire_applique is not None:
+            taux_horaire = etat.taux_horaire_applique
+        else:
+            taux_horaire = enseignant.taux_horaire or Decimal('0')
         etat.total_heures = total_heures
-        etat.mode_calcul_heures = enseignant.mode_calcul_horaire
+        etat.mode_calcul_heures = source_heures
         etat.taux_horaire_applique = taux_horaire
         etat.salaire_base = arrondir_montant(total_heures * taux_horaire)
         etat.calcule_par = utilisateur
         etat.save()
-
-        lignes_prevues = heures_prevues_par_affectation(enseignant, periode)
-        for affectation, heures_prevues, heures_realisees in repartir_heures(
-            total_heures, lignes_prevues
-        ):
-            DetailHeuresClasse.objects.create(
-                etat_salaire=etat,
-                affectation_classe=affectation,
-                heures_prevues=heures_prevues,
-                heures_realisees=heures_realisees,
-                taux_horaire_applique=taux_horaire,
-            )
+        actualiser_details_heures(etat)
     else:
+        etat.details_heures.all().delete()
         etat.total_heures = None
         etat.mode_calcul_heures = ''
         etat.taux_horaire_applique = None
-        etat.salaire_base = salaire_fixe_proratise(enseignant, periode)
+        if not etat.ajuste_manuellement:
+            etat.salaire_base = salaire_fixe_proratise(enseignant, periode)
         etat.calcule_par = utilisateur
         etat.save()
 
