@@ -24,7 +24,8 @@ from reportlab.lib.units import cm
 
 from .models import (
     Enseignant, AffectationClasse, AvanceSalaire, PeriodeSalaire,
-    EtatSalaire, DetailHeuresClasse, TypeEnseignant, PresenceEnseignant
+    EtatSalaire, DetailHeuresClasse, ModeCalculHoraire, SourceHeuresSalaire,
+    TypeEnseignant, PresenceEnseignant
 )
 from .forms import (
     AffectationClasseForm,
@@ -34,8 +35,14 @@ from .forms import (
     PresenceForm,
 )
 from .services import (
+    actualiser_details_heures,
+    arrondir_heures,
+    arrondir_montant,
     calculer_etat_salaire,
     enseignants_eligibles,
+    heures_reellement_travaillees,
+    nombre_jours_presence,
+    pointages_existent,
     recalculer_salaire_ouvert_pour_date,
 )
 from eleves.models import Ecole, Classe
@@ -1024,7 +1031,7 @@ def export_etats_salaire_csv(request):
     writer.writerow([
         'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
         'Salaire Base', 'Primes', 'Retenues', 'Avances', 'Salaire Net',
-        'Total Heures', 'Date Calcul'
+        'Jours Présence', 'Total Heures', 'Date Calcul'
     ])
 
     for e in etats:
@@ -1040,6 +1047,7 @@ def export_etats_salaire_csv(request):
             e.deductions,
             e.avances,
             e.salaire_net,
+            e.nombre_jours_presence,
             e.total_heures if e.total_heures is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
@@ -1096,7 +1104,8 @@ def export_etats_salaire_pdf(request):
     # Table
     data = [[
         'École', 'Période', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Avances', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Salaire Base', 'Avances', 'Salaire Net', 'Jours Prés.',
+        'Total Heures', 'Date Calcul'
     ]]
     for e in etats:
         data.append([
@@ -1109,6 +1118,7 @@ def export_etats_salaire_pdf(request):
             e.salaire_base,
             e.avances,
             e.salaire_net,
+            e.nombre_jours_presence,
             e.total_heures if e.total_heures is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
@@ -1218,7 +1228,7 @@ def calculer_salaires(request, periode_id):
 @login_required
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def ajuster_etat_salaire(request, etat_id):
-    """Modifier les primes, retenues et observations avant validation."""
+    """Modifier les paramètres d'un salaire avant validation."""
     etat = get_object_or_404(
         EtatSalaire.objects.select_related('enseignant', 'periode'), id=etat_id
     )
@@ -1234,19 +1244,70 @@ def ajuster_etat_salaire(request, etat_id):
         form = EtatSalaireAjustementForm(request.POST, instance=etat)
         if form.is_valid():
             with transaction.atomic():
-                etat_verrouille = EtatSalaire.objects.select_for_update().get(pk=etat.pk)
+                etat_verrouille = (
+                    EtatSalaire.objects.select_for_update()
+                    .select_related('enseignant', 'periode')
+                    .get(pk=etat.pk)
+                )
                 if etat_verrouille.valide or etat_verrouille.periode.cloturee:
                     messages.error(request, "Cet état ne peut plus être ajusté.")
                     return redirect('salaires:etats_salaire')
 
+                enseignant = etat_verrouille.enseignant
+                periode = etat_verrouille.periode
+                if enseignant.est_taux_horaire:
+                    taux_horaire = arrondir_montant(
+                        form.cleaned_data['taux_horaire_applique']
+                    )
+                    if (
+                        enseignant.mode_calcul_horaire
+                        == ModeCalculHoraire.POINTAGE
+                        and pointages_existent(enseignant, periode)
+                    ):
+                        total_heures = heures_reellement_travaillees(
+                            enseignant, periode
+                        )
+                        source_heures = SourceHeuresSalaire.POINTAGE
+                    else:
+                        total_heures = arrondir_heures(
+                            form.cleaned_data['total_heures']
+                        )
+                        if (
+                            'total_heures' in form.changed_data
+                            or enseignant.mode_calcul_horaire
+                            == ModeCalculHoraire.POINTAGE
+                        ):
+                            source_heures = SourceHeuresSalaire.SAISIE
+                        else:
+                            source_heures = (
+                                etat_verrouille.mode_calcul_heures
+                                or enseignant.mode_calcul_horaire
+                            )
+
+                    etat_verrouille.total_heures = total_heures
+                    etat_verrouille.mode_calcul_heures = source_heures
+                    etat_verrouille.taux_horaire_applique = taux_horaire
+                    etat_verrouille.salaire_base = arrondir_montant(
+                        total_heures * taux_horaire
+                    )
+                else:
+                    etat_verrouille.salaire_base = arrondir_montant(
+                        form.cleaned_data['salaire_base']
+                    )
+
                 etat_verrouille.primes = form.cleaned_data['primes']
                 etat_verrouille.deductions = form.cleaned_data['deductions']
                 etat_verrouille.observations = form.cleaned_data['observations']
+                etat_verrouille.nombre_jours_presence = nombre_jours_presence(
+                    enseignant, periode
+                )
+                etat_verrouille.ajuste_manuellement = True
                 etat_verrouille.save()
+                actualiser_details_heures(etat_verrouille)
 
             messages.success(
                 request,
-                f"Primes et retenues de {etat.enseignant.nom_complet} mises à jour.",
+                f"Salaire de {etat.enseignant.nom_complet} mis à jour avant validation.",
             )
             return redirect('salaires:etats_salaire')
     else:
@@ -1433,11 +1494,15 @@ def fiche_paie_pdf(request, etat_id):
     
     # Tableau des montants
     data = [
-        ['Élément', 'Montant (GNF)'],
+        ['Élément', 'Valeur / Montant'],
         ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
+        [
+            'Jours de présence',
+            f"{etat.nombre_jours_presence} jour(s)",
+        ],
     ]
     
-    if etat.total_heures:
+    if etat.total_heures is not None:
         data.append(['Heures travaillées', f"{etat.total_heures}h"])
         data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
     

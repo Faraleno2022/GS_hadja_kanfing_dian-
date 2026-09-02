@@ -19,6 +19,7 @@ from .models import (
     ModeCalculHoraire,
     PeriodeSalaire,
     PresenceEnseignant,
+    SourceHeuresSalaire,
     TypeEnseignant,
 )
 from .services import calculer_etat_salaire as calculer_etat_salaire_reel
@@ -319,6 +320,82 @@ class MoteurPaieTests(TestCase):
         self.assertEqual(etat.total_heures, Decimal('0.00'))
         self.assertEqual(etat.salaire_base, Decimal('0.00'))
 
+    def test_heures_saisies_sans_pointage_sont_conservees_au_recalcul(self):
+        enseignant = self.creer_secondaire()
+        self.calculer()
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
+            {
+                'salaire_base': '0',
+                'taux_horaire_applique': '12000',
+                'total_heures': '42.5',
+                'primes': '0',
+                'deductions': '0',
+                'observations': 'Heures transmises par le secondaire',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.total_heures, Decimal('42.50'))
+        self.assertEqual(etat.taux_horaire_applique, Decimal('12000.00'))
+        self.assertEqual(etat.salaire_base, Decimal('510000.00'))
+        self.assertEqual(
+            etat.mode_calcul_heures, SourceHeuresSalaire.SAISIE
+        )
+        self.assertTrue(etat.ajuste_manuellement)
+
+        self.calculer()
+        etat.refresh_from_db()
+        self.assertEqual(etat.total_heures, Decimal('42.50'))
+        self.assertEqual(etat.taux_horaire_applique, Decimal('12000.00'))
+        self.assertEqual(etat.salaire_base, Decimal('510000.00'))
+
+    def test_pointages_calculent_heures_et_jours_et_bloquent_saisie_heures(self):
+        enseignant = self.creer_secondaire()
+        self.pointer(enseignant, [1, 2, 3])
+        PresenceEnseignant.objects.create(
+            enseignant=enseignant,
+            date=date(2026, 7, 4),
+            statut='ABSENT',
+            pointe_par=self.user,
+        )
+        self.calculer()
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+        self.assertEqual(etat.total_heures, Decimal('24.00'))
+        self.assertEqual(etat.nombre_jours_presence, 3)
+
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
+            {
+                'salaire_base': '0',
+                'taux_horaire_applique': '12500',
+                'total_heures': '99',
+                'primes': '0',
+                'deductions': '0',
+                'observations': '',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.total_heures, Decimal('24.00'))
+        self.assertEqual(etat.taux_horaire_applique, Decimal('12500.00'))
+        self.assertEqual(etat.salaire_base, Decimal('300000.00'))
+        self.assertEqual(etat.mode_calcul_heures, ModeCalculHoraire.POINTAGE)
+
+        response = self.client.get(
+            reverse('salaires:fiche_paie_pdf', args=[etat.id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
     def test_pointage_arrivee_depart_recalcule_immediatement_le_salaire(self):
         enseignant = self.creer_secondaire()
 
@@ -589,6 +666,32 @@ class MoteurPaieTests(TestCase):
         etat.refresh_from_db()
         self.assertEqual(etat.salaire_net, Decimal('1075000.00'))
         self.assertEqual(etat.observations, 'Ajustement contrôlé')
+
+    def test_salaire_fixe_modifie_reste_stable_apres_recalcul(self):
+        enseignant = self.creer_fixe()
+        self.pointer(enseignant, [1, 2])
+        self.calculer()
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
+            {
+                'salaire_base': '1150000',
+                'primes': '50000',
+                'deductions': '0',
+                'observations': 'Salaire de base ajusté',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.calculer()
+        etat.refresh_from_db()
+        self.assertEqual(etat.salaire_base, Decimal('1150000.00'))
+        self.assertEqual(etat.salaire_net, Decimal('1200000.00'))
+        self.assertEqual(etat.nombre_jours_presence, 2)
+        self.assertTrue(etat.ajuste_manuellement)
 
     def test_formulaire_presence_sans_heures_ne_plante_plus(self):
         enseignant = self.creer_secondaire()
