@@ -3934,6 +3934,13 @@ def generer_recu_pdf(request, paiement_id:int):
 
     # Calcul total remises
     remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+    # Sur le reçu uniquement, le montant payé est présenté net de la remise.
+    # La remise reste visible séparément en bas du document afin qu'elle ne
+    # soit jamais confondue avec une somme effectivement réglée par le parent.
+    montant_paye_recu = max(
+        Decimal('0'),
+        Decimal(str(paiement.montant or 0)) - Decimal(str(remises_total or 0)),
+    )
 
     # Préparer le buffer et le canvas
     buffer = BytesIO()
@@ -4215,8 +4222,10 @@ def generer_recu_pdf(request, paiement_id:int):
         draw_line(f"Montant global annuel : {str(f'{montant_global_annuel:,}').replace(',', ' ')} GNF", bold=True)
         top -= 5  # Petit espace
     
-    # L'encaissement et la remise sont deux composantes distinctes de la couverture.
-    draw_line(f"Montant encaissé : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
+    draw_line(
+        f"Montant payé : {str(f'{montant_paye_recu:,.0f}').replace(',', ' ')} GNF",
+        bold=True,
+    )
 
     # Affectation réelle du paiement courant, reconstruite avec la même règle
     # séquentielle que celle utilisée lors de la validation.
@@ -4328,14 +4337,17 @@ def generer_recu_pdf(request, paiement_id:int):
         except Exception:
             pass
 
-    # Remises détaillées
+    # La remise est volontairement placée en bas, hors du montant payé.
     if remises_total and int(remises_total) > 0:
         top -= 6
-        draw_line("Remises appliquées", bold=True)
+        montant_total_remise = str(
+            f"{int(remises_total):,}"
+        ).replace(',', ' ')
+        draw_line(f"Remise de : {montant_total_remise} GNF", bold=True)
         for pr in paiement.remises.select_related('remise').all():
             nom = getattr(pr.remise, 'nom', 'Remise')
             montant = str(f"{int(pr.montant_remise):,}").replace(',', ' ')
-            draw_line(f"- {nom} : -{montant} GNF")
+            draw_line(f"- {nom} : {montant} GNF")
 
     # Bloc signatures
     top -= 20
