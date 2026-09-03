@@ -245,6 +245,22 @@ class ComptesPrincipauxTests(TestCase):
         self.assertContains(response, reverse('utilisateurs:sous_utilisateur_list'))
         self.assertContains(response, reverse('eleves:configurer_ecole', args=[self.ecole.id]))
 
+    def test_navbar_distingue_ordinateur_et_appareil_tactile(self):
+        self.client.force_login(self.principal)
+        with self.settings(MIDDLEWARE=middleware_sans_licence()):
+            response = self.client.get(reverse('eleves:gestion_classes'))
+
+        self.assertContains(
+            response,
+            'navbar navbar-expand-lg navbar-dark bg-primary fixed-top app-navbar',
+        )
+        self.assertNotContains(response, 'navbar-expand-xl')
+        self.assertContains(response, 'compact-navigation')
+        self.assertContains(response, '/iPad|iPhone|iPod/i')
+        self.assertContains(response, '/Android/i')
+        self.assertContains(response, '(hover: hover) and (pointer: fine)')
+        self.assertContains(response, 'aria-controls="navbarNav" aria-expanded="false"')
+
     def test_validation_nouvelle_ecole_active_toutes_les_nouvelles_fonctions(self):
         user = User.objects.create_user(
             username='nouvelle_direction',
