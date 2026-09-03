@@ -353,8 +353,11 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertIn('3ème tranche: 0 GNF', allocation)
         self.assertNotIn('Remise accordée', text)
         self.assertNotIn('Dette couverte par ce reçu', text)
-        self.assertIn('Remises appliquées', text)
-        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', text)
+        self.assertIn('Montant payé : 525 000 GNF', text)
+        self.assertNotIn('Montant payé : 550 000 GNF', text)
+        self.assertIn('Remise de : 25 000 GNF', text)
+        self.assertIn('Remise scolarité 5% (T1) : 25 000 GNF', text)
+        self.assertLess(text.index('Montant payé'), text.index('Remise de'))
 
     def test_recu_public_pdf_garde_la_remise_uniquement_dans_son_bloc(self):
         from pypdf import PdfReader
@@ -380,8 +383,11 @@ class ExportTranchesParClasseTests(TestCase):
         self.assertIn('3ème tranche: 0 GNF', allocation)
         self.assertNotIn('Remise accordée', text)
         self.assertNotIn('Dette couverte', text)
-        self.assertIn('REMISES APPLIQUÉES', text)
-        self.assertIn('Remise scolarité 5% (T1) : -25 000 GNF', text)
+        self.assertIn('Montant payé : 525 000 GNF', text)
+        self.assertNotIn('Montant payé : 550 000 GNF', text)
+        self.assertIn('Remise de : 25 000 GNF', text)
+        self.assertIn('Remise scolarité 5% (T1) : 25 000 GNF', text)
+        self.assertLess(text.index('Montant payé'), text.index('Remise de'))
 
     # ── Accès ─────────────────────────────────────────────────────────
     def test_directeur_peut_telecharger_le_pdf(self):

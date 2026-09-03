@@ -170,11 +170,17 @@ def recu_public_pdf(request, paiement_id):
             strict=True,
         )
         
-        # Calcul total remises
+        from decimal import Decimal
+
+        # Calcul total remises et montant payé affiché sur le reçu. La remise
+        # est retirée de ce montant puis détaillée séparément en bas.
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+        montant_paye_recu = max(
+            Decimal('0'),
+            Decimal(str(paiement.montant or 0)) - Decimal(str(remises_total or 0)),
+        )
 
         # Situation financière globale de l'élève (via échéancier)
-        from decimal import Decimal
         ech = EcheancierPaiement.objects.filter(
             eleve=paiement.eleve,
             annee_scolaire=paiement.annee_scolaire,
@@ -261,7 +267,11 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h
         c.drawString(left, top, f"Mode: {paiement.mode_paiement.nom if paiement.mode_paiement else 'N/A'}")
         top -= line_h
-        c.drawString(left, top, f"Montant encaissé: {paiement.montant:,.0f} GNF".replace(",", " "))
+        c.drawString(
+            left,
+            top,
+            f"Montant payé : {montant_paye_recu:,.0f} GNF".replace(",", " "),
+        )
         top -= line_h
 
         # Répartition de ce paiement selon l'ordre inscription -> T1 -> T2 -> T3.
@@ -312,7 +322,8 @@ def recu_public_pdf(request, paiement_id):
         if remises_total > 0:
             top -= 10
             c.setFont('Helvetica-Bold', 12)
-            c.drawString(left, top, "REMISES APPLIQUÉES")
+            total_discount = f"{remises_total:,.0f}".replace(',', ' ')
+            c.drawString(left, top, f"Remise de : {total_discount} GNF")
             top -= line_h
             c.setFont('Helvetica', 10)
             for payment_discount in paiement.remises.select_related('remise').all():
@@ -321,7 +332,7 @@ def recu_public_pdf(request, paiement_id):
                 c.drawString(
                     left + 12,
                     top,
-                    f"- {discount_name} : -{discount_amount} GNF",
+                    f"- {discount_name} : {discount_amount} GNF",
                 )
                 top -= 14
 
