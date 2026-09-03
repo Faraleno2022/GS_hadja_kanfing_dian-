@@ -52,6 +52,29 @@
     <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
     <link href="{% static 'vendor/fontawesome/all.min.css' %}" rel="stylesheet">
 
+    <script>
+    (function () {
+        const userAgent = navigator.userAgent || '';
+        const isIOS = /iPad|iPhone|iPod/i.test(userAgent)
+            || (/Macintosh/i.test(userAgent) && navigator.maxTouchPoints > 1);
+        const isAndroid = /Android/i.test(userAgent);
+
+        function updateNavigationMode() {
+            const narrowScreen = window.matchMedia('(max-width: 991.98px)').matches;
+            const touchTablet = window.matchMedia('(hover: none) and (pointer: coarse)').matches
+                && window.innerWidth <= 1366;
+            document.documentElement.classList.toggle(
+                'compact-navigation',
+                narrowScreen || touchTablet || isIOS || isAndroid
+            );
+        }
+
+        updateNavigationMode();
+        window.addEventListener('resize', updateNavigationMode, { passive: true });
+        window.addEventListener('orientationchange', updateNavigationMode, { passive: true });
+    })();
+    </script>
+
     <style>
         body { padding-top: 70px; }
         .navbar-brand {
@@ -182,29 +205,93 @@
             display: block;
         }
 
-        /* Les tablettes et iPad gardent un menu compact, défilable et tactile. */
-        @media (max-width: 1199.98px) {
-            .navbar-collapse {
-                max-height: calc(100vh - 64px);
-                max-height: calc(100dvh - 64px);
-                overflow-y: auto;
-                overscroll-behavior: contain;
-                -webkit-overflow-scrolling: touch;
-                padding: 0.5rem 0 1rem;
+        /* Sur ordinateur, tous les boutons restent alignés sur une seule rangée. */
+        @media (min-width: 992px) and (hover: hover) and (pointer: fine) {
+            html:not(.compact-navigation) .app-navbar > .container-fluid,
+            html:not(.compact-navigation) .app-navbar .navbar-collapse,
+            html:not(.compact-navigation) .app-navbar .navbar-nav {
+                flex-wrap: nowrap;
             }
-            .navbar-nav .nav-link,
-            .navbar-nav .btn-link.dropdown-toggle {
-                width: 100%;
-                text-align: left;
-            }
-            .navbar-nav .dropdown-menu {
-                position: static;
-                right: auto;
-                left: auto;
-                transform: none;
+            html:not(.compact-navigation) .app-navbar .navbar-collapse {
                 min-width: 0;
-                margin: 0 0.75rem 0.35rem;
             }
+            html:not(.compact-navigation) .app-navbar .navbar-nav {
+                align-items: center;
+            }
+            html:not(.compact-navigation) .app-navbar .nav-item {
+                flex: 0 0 auto;
+                white-space: nowrap;
+            }
+        }
+
+        /* Les ordinateurs entre 992 et 1199 px utilisent une navbar plus compacte. */
+        @media (min-width: 992px) and (max-width: 1199.98px) and (hover: hover) and (pointer: fine) {
+            html:not(.compact-navigation) .app-navbar .navbar-brand span {
+                display: none;
+            }
+            html:not(.compact-navigation) .app-navbar .navbar-brand img {
+                margin-right: 0;
+            }
+            html:not(.compact-navigation) .app-navbar .navbar-nav .nav-link,
+            html:not(.compact-navigation) .app-navbar .navbar-nav .btn-link.dropdown-toggle {
+                font-size: 0.7rem;
+                padding: 0.5rem 0.22rem;
+            }
+            html:not(.compact-navigation) .app-navbar .navbar-nav .nav-link .fas,
+            html:not(.compact-navigation) .app-navbar .navbar-nav .btn-link.dropdown-toggle .fas {
+                margin-right: 0.1rem !important;
+            }
+        }
+
+        /* Ajustement intermédiaire pour les ordinateurs de 1200 à 1399 px. */
+        @media (min-width: 1200px) and (max-width: 1399.98px) and (hover: hover) and (pointer: fine) {
+            html:not(.compact-navigation) .app-navbar .navbar-nav .nav-link,
+            html:not(.compact-navigation) .app-navbar .navbar-nav .btn-link.dropdown-toggle {
+                font-size: 0.78rem;
+                padding: 0.5rem 0.35rem;
+            }
+        }
+
+        /* Téléphones et tablettes tactiles : hamburger et menu vertical défilable. */
+        html.compact-navigation .app-navbar.navbar-expand-lg > .container-fluid {
+            flex-wrap: wrap;
+        }
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-toggler {
+            display: block;
+        }
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-collapse {
+            flex-basis: 100%;
+            flex-grow: 1;
+            max-height: calc(100vh - 64px);
+            max-height: calc(100dvh - 64px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 0.5rem 0 1rem;
+        }
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-collapse.collapse:not(.show) {
+            display: none !important;
+        }
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-collapse.collapse.show,
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-collapse.collapsing {
+            display: block !important;
+        }
+        html.compact-navigation .app-navbar.navbar-expand-lg .navbar-nav {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        html.compact-navigation .app-navbar .navbar-nav .nav-link,
+        html.compact-navigation .app-navbar .navbar-nav .btn-link.dropdown-toggle {
+            width: 100%;
+            text-align: left;
+        }
+        html.compact-navigation .app-navbar .navbar-nav .dropdown-menu {
+            position: static;
+            right: auto;
+            left: auto;
+            transform: none;
+            min-width: 0;
+            margin: 0 0.75rem 0.35rem;
         }
 
         /* Footer */
@@ -219,7 +306,7 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-xl navbar-dark bg-primary fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top app-navbar">
         <div class="container-fluid">
             <a class="navbar-brand d-flex align-items-center" href="{% url 'home' %}">
                 <img src="{% static_versioned 'logos/logo.png' %}" alt="Logo Myschool" width="36" height="36" loading="eager" decoding="async" fetchpriority="high">
