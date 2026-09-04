@@ -1,6 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.forms.models import BaseInlineFormSet, inlineformset_factory
 from decimal import Decimal, ROUND_HALF_UP
 from .models import (
     AffectationClasse,
@@ -12,6 +13,7 @@ from .models import (
     PresenceEnseignant,
     StatutEnseignant,
     TypeEnseignant,
+    niveaux_classes_pour_type_enseignant,
 )
 from eleves.models import Ecole, Classe
 from paiements.models import ModePaiement
@@ -23,8 +25,9 @@ class EnseignantForm(forms.ModelForm):
     class Meta:
         model = Enseignant
         fields = [
-            'nom', 'prenoms', 'telephone', 'adresse',
+            'nom', 'prenoms', 'telephone', 'email', 'adresse',
             'ecole', 'type_enseignant', 'statut', 
+            'fonction',
             'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe',
             'heures_mensuelles', 'date_embauche'
         ]
@@ -41,6 +44,10 @@ class EnseignantForm(forms.ModelForm):
                 'class': 'form-control',
                 'placeholder': '+224 XXX XX XX XX'
             }),
+            'email': forms.EmailInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'enseignant@ecole.com'
+            }),
             'adresse': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 3,
@@ -54,6 +61,10 @@ class EnseignantForm(forms.ModelForm):
             }),
             'statut': forms.Select(attrs={
                 'class': 'form-select'
+            }),
+            'fonction': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex : Directeur, secrétaire, comptable'
             }),
             'taux_horaire': forms.NumberInput(attrs={
                 'class': 'form-control',
@@ -83,10 +94,12 @@ class EnseignantForm(forms.ModelForm):
             'nom': 'Nom de famille *',
             'prenoms': 'Prénoms *',
             'telephone': 'Téléphone',
+            'email': 'Adresse e-mail',
             'adresse': 'Adresse',
             'ecole': 'École *',
             'type_enseignant': 'Type d\'enseignant *',
             'statut': 'Statut',
+            'fonction': 'Fonction administrative *',
             'taux_horaire': 'Taux horaire (GNF)',
             'mode_calcul_horaire': 'Calcul des heures',
             'salaire_fixe': 'Salaire fixe (GNF)',
@@ -99,6 +112,9 @@ class EnseignantForm(forms.ModelForm):
                 "Choisissez le pointage arrivée/départ ou la saisie d'un total mensuel."
             ),
             'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
+            'fonction': (
+                'À renseigner uniquement pour le personnel administratif.'
+            ),
             'heures_mensuelles': (
                 "Total global du mois multiplié par le taux horaire."
             ),
@@ -118,12 +134,14 @@ class EnseignantForm(forms.ModelForm):
         
         # Restreindre les écoles visibles selon l'utilisateur
         if self.user:
-            from utilisateurs.utils import user_is_admin, user_school
-            if not user_is_admin(self.user):
+            from utilisateurs.utils import user_school
+            if not self.user.is_superuser:
                 ecole_user = user_school(self.user)
                 if ecole_user:
                     self.fields['ecole'].queryset = Ecole.objects.filter(id=ecole_user.id)
                     self.fields['ecole'].initial = ecole_user
+                else:
+                    self.fields['ecole'].queryset = Ecole.objects.none()
         
         # Définir le statut par défaut
         if not self.instance.pk:
@@ -138,6 +156,7 @@ class EnseignantForm(forms.ModelForm):
         mode_calcul = cleaned_data.get(
             'mode_calcul_horaire', ModeCalculHoraire.POINTAGE
         )
+        fonction = (cleaned_data.get('fonction') or '').strip()
 
         # Validation selon le type d'enseignant
         if type_enseignant == TypeEnseignant.SECONDAIRE:
@@ -167,6 +186,18 @@ class EnseignantForm(forms.ModelForm):
                 cleaned_data['taux_horaire'] = None  # Effacer le taux horaire
             cleaned_data['mode_calcul_horaire'] = ModeCalculHoraire.POINTAGE
             cleaned_data['heures_mensuelles'] = None
+
+        if type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+            if not fonction:
+                raise ValidationError({
+                    'fonction': (
+                        'La fonction est obligatoire pour un membre du '
+                        'personnel administratif.'
+                    )
+                })
+            cleaned_data['fonction'] = fonction
+        else:
+            cleaned_data['fonction'] = ''
         
         # Validation des heures mensuelles
         if heures_mensuelles is not None and heures_mensuelles <= 0:
@@ -250,14 +281,41 @@ class AffectationClasseForm(forms.ModelForm):
             )
             if annee_recente:
                 qs = qs.filter(annee_scolaire=annee_recente)
-            self.fields['classe'].queryset = qs
+            niveaux = niveaux_classes_pour_type_enseignant(
+                self.enseignant.type_enseignant
+            )
+            if niveaux:
+                qs = qs.filter(niveau__in=niveaux)
+            else:
+                qs = qs.none()
+            if self.instance.pk and self.instance.classe_id:
+                qs = Classe.objects.filter(
+                    Q(pk=self.instance.classe_id) | Q(pk__in=qs.values('pk'))
+                )
+            self.fields['classe'].queryset = qs.order_by(
+                '-annee_scolaire', 'niveau', 'nom'
+            )
         else:
             self.fields['classe'].queryset = Classe.objects.none()
+
+        if not self.instance.pk:
+            # Les formulaires supplémentaires doivent rester réellement vides.
+            # La date et le statut sont initialisés côté interface dès qu'une
+            # classe est choisie, sinon Django les considérerait tous remplis.
+            self.initial['date_debut'] = None
+            self.initial['actif'] = False
 
     def clean(self):
         cleaned_data = super().clean()
         if not self.enseignant:
             raise ValidationError('Enseignant requis pour créer une affectation.')
+
+        if not niveaux_classes_pour_type_enseignant(
+            self.enseignant.type_enseignant
+        ):
+            raise ValidationError(
+                "Ce type de personnel ne reçoit pas d'affectation de classe."
+            )
 
         # Validation spécifique aux enseignants du secondaire
         if self.enseignant.type_enseignant == TypeEnseignant.SECONDAIRE:
@@ -279,6 +337,73 @@ class AffectationClasseForm(forms.ModelForm):
         if commit:
             obj.save()
         return obj
+
+
+class BaseAffectationEnseignantFormSet(BaseInlineFormSet):
+    """Valide les affectations saisies avec la fiche de l'enseignant."""
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs['enseignant'] = self.instance
+        return kwargs
+
+    def clean(self):
+        super().clean()
+        if any(
+            form.errors
+            for form in self.forms
+            if not self._should_delete_form(form)
+        ):
+            return
+
+        type_enseignant = self.instance.type_enseignant
+        affectations = []
+        for form in self.forms:
+            if self._should_delete_form(form):
+                continue
+            donnees = getattr(form, 'cleaned_data', {})
+            if donnees.get('classe') and donnees.get('actif', True):
+                affectations.append(donnees)
+
+        if type_enseignant in (
+            TypeEnseignant.MATERNELLE,
+            TypeEnseignant.PRIMAIRE,
+        ) and len(affectations) != 1:
+            raise ValidationError(
+                "Sélectionnez une seule classe principale pour cet enseignant."
+            )
+
+        if (
+            type_enseignant == TypeEnseignant.SECONDAIRE
+            and not affectations
+        ):
+            raise ValidationError(
+                "Ajoutez au moins une affectation de classe pour cet enseignant."
+            )
+
+        if type_enseignant in (
+            TypeEnseignant.GARDERIE,
+            TypeEnseignant.ADMINISTRATEUR,
+        ) and affectations:
+            raise ValidationError(
+                "Ce type de personnel ne doit pas avoir d'affectation de classe."
+            )
+
+        classes = [donnees['classe'].pk for donnees in affectations]
+        if len(classes) != len(set(classes)):
+            raise ValidationError(
+                "Une même classe ne peut être sélectionnée qu'une seule fois."
+            )
+
+
+EnseignantAffectationFormSet = inlineformset_factory(
+    Enseignant,
+    AffectationClasse,
+    form=AffectationClasseForm,
+    formset=BaseAffectationEnseignantFormSet,
+    extra=8,
+    can_delete=True,
+)
 
 
 class PresenceForm(forms.ModelForm):

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load humanize %}
 
-{% block title %}Détail Enseignant - {{ enseignant.nom }} {{ enseignant.prenom }}{% endblock %}
+{% block title %}Détail Enseignant - {{ enseignant.nom_complet }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -138,7 +138,7 @@
             <div class="col-md-8">
                 <h1 class="mb-2">
                     <i class="fas fa-user-tie me-3"></i>
-                    {{ enseignant.nom }} {{ enseignant.prenom }}
+                    {{ enseignant.nom_complet }}
                 </h1>
                 <p class="mb-0 opacity-75">
                     <i class="fas fa-school me-2"></i>{{ enseignant.ecole.nom }}
@@ -167,7 +167,7 @@
                 
                 <div class="info-row">
                     <span class="info-label">Nom complet :</span>
-                    <span class="info-value">{{ enseignant.nom }} {{ enseignant.prenom }}</span>
+                    <span class="info-value">{{ enseignant.nom_complet }}</span>
                 </div>
                 
                 <div class="info-row">
@@ -209,6 +209,13 @@
                     <span class="info-label">Type :</span>
                     <span class="info-value">{{ enseignant.get_type_enseignant_display }}</span>
                 </div>
+
+                {% if enseignant.type_enseignant == 'ADMINISTRATEUR' %}
+                <div class="info-row">
+                    <span class="info-label">Fonction :</span>
+                    <span class="info-value">{{ enseignant.fonction|default:"Non renseignée" }}</span>
+                </div>
+                {% endif %}
                 
                 <div class="info-row">
                     <span class="info-label">Statut :</span>
@@ -256,21 +263,26 @@
     </div>
 
     <!-- Affectations de Classes -->
-    {% if affectations %}
+    {% if enseignant.type_enseignant == 'MATERNELLE' or enseignant.type_enseignant == 'PRIMAIRE' or enseignant.type_enseignant == 'SECONDAIRE' %}
     <div class="row">
         <div class="col-12">
             <div class="teacher-info-card">
                 <h5 class="card-title mb-3">
                     <i class="fas fa-chalkboard-teacher me-2 text-warning"></i>
-                    Affectations de Classes ({{ affectations.count }})
+                    {% if enseignant.type_enseignant == 'SECONDAIRE' %}
+                        Affectations de classes
+                    {% else %}
+                        Classe principale
+                    {% endif %}
+                    ({{ affectations_actuelles.count }})
                 </h5>
                 <div class="mb-3">
-                    <a class="btn btn-primary" href="{% url 'salaires:ajouter_affectation' enseignant.id %}">
-                        <i class="fas fa-plus me-1"></i> Affecter une classe
+                    <a class="btn btn-primary" href="{% url 'salaires:modifier_enseignant' enseignant.id %}">
+                        <i class="fas fa-edit me-1"></i> Gérer les affectations
                     </a>
                 </div>
-                
-                {% for affectation in affectations %}
+
+                {% for affectation in affectations_actuelles %}
                 <div class="assignment-card">
                     <div class="row align-items-center">
                         <div class="col-md-6">
@@ -278,7 +290,14 @@
                             <small class="text-muted d-block">{{ affectation.classe.niveau }}</small>
                         </div>
                         <div class="col-md-3">
-                            <span class="badge bg-info">{{ affectation.heures_par_semaine }}h/semaine</span>
+                            {% if enseignant.type_enseignant == 'SECONDAIRE' %}
+                                <span class="badge bg-info">{{ affectation.heures_par_semaine }}h/semaine</span>
+                                {% if affectation.matiere %}
+                                    <small class="d-block text-muted mt-1">{{ affectation.matiere }}</small>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-primary">Classe principale</span>
+                            {% endif %}
                         </div>
                         <div class="col-md-3 text-end">
                             <div class="mb-1">
@@ -308,6 +327,10 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                {% empty %}
+                <div class="alert alert-warning mb-0">
+                    Aucune classe n'est actuellement affectée à cet enseignant.
                 </div>
                 {% endfor %}
             </div>

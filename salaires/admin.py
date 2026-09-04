@@ -6,6 +6,73 @@ from .models import (
 )
 
 
+class AffectationClasseInline(admin.TabularInline):
+    model = AffectationClasse
+    extra = 1
+    fields = [
+        'classe', 'matiere', 'heures_par_semaine',
+        'date_debut', 'date_fin', 'actif',
+    ]
+
+
+@admin.register(Enseignant)
+class EnseignantAdmin(admin.ModelAdmin):
+    list_display = [
+        'nom', 'prenoms', 'ecole', 'type_enseignant',
+        'fonction', 'statut', 'date_embauche',
+    ]
+    list_filter = ['ecole', 'type_enseignant', 'statut', 'date_embauche']
+    search_fields = ['nom', 'prenoms', 'telephone', 'email', 'fonction']
+    ordering = ['ecole__nom', 'nom', 'prenoms']
+    inlines = [AffectationClasseInline]
+    fieldsets = (
+        ('Identité', {
+            'fields': (
+                'nom', 'prenoms', 'telephone', 'email', 'adresse',
+            ),
+        }),
+        ('Poste', {
+            'fields': (
+                'ecole', 'type_enseignant', 'fonction',
+                'statut', 'date_embauche',
+            ),
+        }),
+        ('Rémunération', {
+            'fields': (
+                'salaire_fixe', 'taux_horaire',
+                'mode_calcul_horaire', 'heures_mensuelles',
+            ),
+        }),
+        ('Traçabilité', {
+            'fields': ('cree_par', 'date_creation', 'date_modification'),
+            'classes': ('collapse',),
+        }),
+    )
+    readonly_fields = ['cree_par', 'date_creation', 'date_modification']
+
+    def save_model(self, request, obj, form, change):
+        if not obj.cree_par_id:
+            obj.cree_par = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(AffectationClasse)
+class AffectationClasseAdmin(admin.ModelAdmin):
+    list_display = [
+        'enseignant', 'classe', 'matiere', 'heures_par_semaine',
+        'date_debut', 'date_fin', 'actif',
+    ]
+    list_filter = [
+        'actif', 'classe__ecole', 'enseignant__type_enseignant',
+        'date_debut',
+    ]
+    search_fields = [
+        'enseignant__nom', 'enseignant__prenoms',
+        'classe__nom', 'matiere',
+    ]
+    autocomplete_fields = ['enseignant', 'classe']
+
+
 @admin.register(AvanceSalaire)
 class AvanceSalaireAdmin(admin.ModelAdmin):
     list_display = [

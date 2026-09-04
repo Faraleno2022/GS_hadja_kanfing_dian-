@@ -25,11 +25,13 @@ from reportlab.lib.units import cm
 from .models import (
     Enseignant, AffectationClasse, AvanceSalaire, PeriodeSalaire,
     EtatSalaire, DetailHeuresClasse, ModeCalculHoraire, SourceHeuresSalaire,
-    TypeEnseignant, PresenceEnseignant
+    TypeEnseignant, PresenceEnseignant,
+    niveaux_classes_pour_type_enseignant,
 )
 from .forms import (
     AffectationClasseForm,
     AvanceSalaireForm,
+    EnseignantAffectationFormSet,
     EnseignantForm,
     EtatSalaireAjustementForm,
     PresenceForm,
@@ -2099,13 +2101,32 @@ def changer_statut_enseignant(request, enseignant_id):
 @can_add_teachers
 def ajouter_enseignant(request):
     """Ajouter un nouvel enseignant"""
+    form = EnseignantForm(request.POST or None, user=request.user)
+    form_valide = form.is_valid() if request.method == 'POST' else False
+    enseignant_formset = form.instance
+    if not enseignant_formset.ecole_id:
+        ecole_user = _ecole_utilisateur(request)
+        if ecole_user is not None:
+            enseignant_formset.ecole = ecole_user
+
+    affectations = EnseignantAffectationFormSet(
+        request.POST or None,
+        instance=enseignant_formset,
+        prefix='affectations',
+        queryset=AffectationClasse.objects.none(),
+    )
+    affectations_valides = (
+        affectations.is_valid() if request.method == 'POST' else False
+    )
+
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, user=request.user)
-        if form.is_valid():
+        if form_valide and affectations_valides:
             with transaction.atomic():
                 enseignant = form.save(commit=False)
                 enseignant.cree_par = request.user
                 enseignant.save()
+                affectations.instance = enseignant
+                affectations.save()
                 _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
                     enseignant, timezone.localdate(), request.user
                 )
@@ -2122,11 +2143,10 @@ def ajouter_enseignant(request):
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
-    else:
-        form = EnseignantForm(user=request.user)
     
     context = {
         'form': form,
+        'affectations': affectations,
         'title': 'Ajouter un Enseignant',
         'submit_text': 'Créer l\'Enseignant',
     }
@@ -2135,6 +2155,7 @@ def ajouter_enseignant(request):
 
 
 @login_required
+@require_school_object(model=Enseignant, pk_kwarg='enseignant_id', field_path='ecole')
 def modifier_enseignant(request, enseignant_id):
     """Modifier un enseignant existant"""
     ecole_user = _ecole_utilisateur(request)
@@ -2143,11 +2164,30 @@ def modifier_enseignant(request, enseignant_id):
         qs = qs.filter(ecole=ecole_user)
     enseignant = get_object_or_404(qs, id=enseignant_id)
     
+    form = EnseignantForm(
+        request.POST or None,
+        instance=enseignant,
+        user=request.user,
+    )
+    form_valide = form.is_valid() if request.method == 'POST' else False
+    affectations = EnseignantAffectationFormSet(
+        request.POST or None,
+        instance=form.instance,
+        prefix='affectations',
+        queryset=enseignant.affectations.filter(actif=True).order_by(
+            'classe__nom', 'id'
+        ),
+    )
+    affectations_valides = (
+        affectations.is_valid() if request.method == 'POST' else False
+    )
+
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, instance=enseignant, user=request.user)
-        if form.is_valid():
+        if form_valide and affectations_valides:
             with transaction.atomic():
                 enseignant = form.save()
+                affectations.instance = enseignant
+                affectations.save()
                 _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
                     enseignant, timezone.localdate(), request.user
                 )
@@ -2163,17 +2203,51 @@ def modifier_enseignant(request, enseignant_id):
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
-    else:
-        form = EnseignantForm(instance=enseignant, user=request.user)
     
     context = {
         'form': form,
+        'affectations': affectations,
         'enseignant': enseignant,
         'title': f'Modifier {enseignant.nom_complet}',
         'submit_text': 'Enregistrer les Modifications',
     }
     
     return render(request, 'salaires/ajouter_enseignant.html', context)
+
+
+@login_required
+def classes_affectables_enseignant(request):
+    """Retourne les classes compatibles avec l'école et le type sélectionnés."""
+    ecole_id = request.GET.get('ecole')
+    type_enseignant = request.GET.get('type_enseignant', '')
+    niveaux = niveaux_classes_pour_type_enseignant(type_enseignant)
+    if not ecole_id or not niveaux:
+        return JsonResponse({'classes': []})
+
+    classes = Classe.objects.filter(
+        ecole_id=ecole_id,
+        niveau__in=niveaux,
+    )
+    if not request.user.is_superuser:
+        ecole_user = _ecole_utilisateur(request)
+        if ecole_user is None or str(ecole_user.pk) != str(ecole_id):
+            return JsonResponse({'classes': []}, status=403)
+
+    annee_recente = (
+        classes.values_list('annee_scolaire', flat=True)
+        .distinct()
+        .order_by('-annee_scolaire')
+        .first()
+    )
+    if annee_recente:
+        classes = classes.filter(annee_scolaire=annee_recente)
+
+    return JsonResponse({
+        'classes': [
+            {'id': classe.pk, 'label': str(classe)}
+            for classe in classes.order_by('niveau', 'nom')
+        ]
+    })
 
 
 @login_required

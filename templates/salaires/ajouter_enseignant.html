@@ -72,6 +72,23 @@
         display: block;
         animation: fadeIn 0.3s ease;
     }
+
+    .assignment-row {
+        background: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .conditional-field {
+        display: none;
+    }
+
+    .conditional-field.show {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
     
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(-10px); }
@@ -353,6 +370,137 @@
                 </div>
             </div>
 
+            <!-- Fonction et affectations -->
+            <div class="form-section">
+                <h6>
+                    <i class="fas fa-chalkboard-teacher me-2 text-info"></i>
+                    Fonction et affectations
+                </h6>
+
+                <div id="fonction-administrative-field" class="conditional-field">
+                    <div class="form-group">
+                        <label for="{{ form.fonction.id_for_label }}" class="form-label">
+                            {{ form.fonction.label }}
+                        </label>
+                        {{ form.fonction }}
+                        {% if form.fonction.help_text %}
+                            <div class="help-text">{{ form.fonction.help_text }}</div>
+                        {% endif %}
+                        {% if form.fonction.errors %}
+                            <ul class="error-list">
+                                {% for error in form.fonction.errors %}<li>{{ error }}</li>{% endfor %}
+                            </ul>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div
+                    id="affectations-classe-field"
+                    class="conditional-field"
+                    data-classes-url="{% url 'salaires:classes_affectables_enseignant' %}"
+                >
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <span id="affectation-help">
+                            Sélectionnez la classe principale de l'enseignant.
+                        </span>
+                    </div>
+
+                    {{ affectations.management_form }}
+                    {% if affectations.non_form_errors %}
+                        <div class="alert alert-danger">
+                            {% for error in affectations.non_form_errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <div id="affectation-rows">
+                        {% for affectation_form in affectations %}
+                        <div
+                            class="assignment-row"
+                            data-assignment-row
+                            data-existing="{% if affectation_form.instance.pk %}true{% else %}false{% endif %}"
+                            data-revealed="{% if affectation_form.instance.pk or forloop.counter <= 3 %}true{% else %}false{% endif %}"
+                        >
+                            {% for hidden in affectation_form.hidden_fields %}{{ hidden }}{% endfor %}
+                            {% if affectation_form.non_field_errors %}
+                                <div class="alert alert-danger py-2">
+                                    {{ affectation_form.non_field_errors }}
+                                </div>
+                            {% endif %}
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label classe-label">
+                                        Classe
+                                    </label>
+                                    {{ affectation_form.classe }}
+                                    {% if affectation_form.classe.errors %}
+                                        <div class="text-danger small">{{ affectation_form.classe.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-3 secondary-assignment-field">
+                                    <label class="form-label">{{ affectation_form.heures_par_semaine.label }}</label>
+                                    {{ affectation_form.heures_par_semaine }}
+                                    {% if affectation_form.heures_par_semaine.errors %}
+                                        <div class="text-danger small">{{ affectation_form.heures_par_semaine.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-3 secondary-assignment-field">
+                                    <label class="form-label">{{ affectation_form.matiere.label }}</label>
+                                    {{ affectation_form.matiere }}
+                                    {% if affectation_form.matiere.errors %}
+                                        <div class="text-danger small">{{ affectation_form.matiere.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">{{ affectation_form.date_debut.label }}</label>
+                                    {{ affectation_form.date_debut }}
+                                    {% if affectation_form.date_debut.errors %}
+                                        <div class="text-danger small">{{ affectation_form.date_debut.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">{{ affectation_form.date_fin.label }}</label>
+                                    {{ affectation_form.date_fin }}
+                                    {% if affectation_form.date_fin.errors %}
+                                        <div class="text-danger small">{{ affectation_form.date_fin.errors }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-4 d-flex align-items-center gap-4 pt-md-4">
+                                    <div class="form-check">
+                                        {{ affectation_form.actif }}
+                                        <label class="form-check-label">{{ affectation_form.actif.label }}</label>
+                                    </div>
+                                    {% if affectation_form.instance.pk %}
+                                    <div class="form-check text-danger">
+                                        {{ affectation_form.DELETE }}
+                                        <label class="form-check-label" for="{{ affectation_form.DELETE.id_for_label }}">
+                                            Retirer
+                                        </label>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button
+                        type="button"
+                        id="ajouter-affectation-row"
+                        class="btn btn-outline-primary"
+                    >
+                        <i class="fas fa-plus me-1"></i> Ajouter une autre classe
+                    </button>
+                </div>
+
+                <div id="sans-affectation-field" class="conditional-field alert alert-secondary mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    La garderie n'exige pas d'affectation de classe. Pour un
+                    administrateur, renseignez plutôt sa fonction.
+                </div>
+            </div>
+
             <!-- Rémunération -->
             <div class="form-section">
                 <h6><i class="fas fa-money-bill-wave me-2 text-warning"></i>Rémunération</h6>
@@ -483,6 +631,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const tauxHoraireInput = document.getElementById('{{ form.taux_horaire.id_for_label }}');
     const modeCalculSelect = document.getElementById('{{ form.mode_calcul_horaire.id_for_label }}');
     const heuresMensuellesInput = document.getElementById('{{ form.heures_mensuelles.id_for_label }}');
+    const dateEmbaucheInput = document.getElementById('{{ form.date_embauche.id_for_label }}');
+    const ecoleSelect = document.getElementById('{{ form.ecole.id_for_label }}');
+    const fonctionField = document.getElementById('fonction-administrative-field');
+    const fonctionInput = document.getElementById('{{ form.fonction.id_for_label }}');
+    const affectationsField = document.getElementById('affectations-classe-field');
+    const sansAffectationField = document.getElementById('sans-affectation-field');
+    const affectationHelp = document.getElementById('affectation-help');
+    const assignmentRows = Array.from(document.querySelectorAll('[data-assignment-row]'));
+    const ajouterAffectationButton = document.getElementById('ajouter-affectation-row');
 
     function afficher(champ, visible) {
         champ.classList.toggle('show', visible);
@@ -526,13 +683,141 @@ document.addEventListener('DOMContentLoaded', function() {
             afficher(heuresMensuellesField, false);
         }
     }
+
+    function actualiserObligationsAffectation() {
+        const secondaire = typeEnseignantSelect.value === 'SECONDAIRE';
+        assignmentRows.forEach((row) => {
+            const classe = row.querySelector('select[name$="-classe"]');
+            const heures = row.querySelector('input[name$="-heures_par_semaine"]');
+            const dateDebut = row.querySelector('input[name$="-date_debut"]');
+            const actif = row.querySelector('input[name$="-actif"]');
+            const visible = row.style.display !== 'none';
+            const classeChoisie = Boolean(classe && classe.value);
+            if (
+                classeChoisie
+                && row.dataset.existing !== 'true'
+                && row.dataset.initialized !== String(classe.value)
+            ) {
+                if (dateDebut && !dateDebut.value) {
+                    dateDebut.value = dateEmbaucheInput.value;
+                }
+                if (actif) actif.checked = true;
+                row.dataset.initialized = String(classe.value);
+            }
+            if (heures) heures.required = secondaire && visible && classeChoisie;
+            if (dateDebut) dateDebut.required = visible && classeChoisie;
+        });
+    }
+
+    function toggleProfessionalFields() {
+        const type = typeEnseignantSelect.value;
+        const administrateur = type === 'ADMINISTRATEUR';
+        const affectable = ['MATERNELLE', 'PRIMAIRE', 'SECONDAIRE'].includes(type);
+        const classeUnique = ['MATERNELLE', 'PRIMAIRE'].includes(type);
+
+        afficher(fonctionField, administrateur);
+        afficher(affectationsField, affectable);
+        afficher(sansAffectationField, Boolean(type) && !affectable && !administrateur);
+        fonctionInput.required = administrateur;
+        if (!administrateur) fonctionInput.value = '';
+
+        affectationHelp.textContent = type === 'SECONDAIRE'
+            ? "Ajoutez une ou plusieurs classes, la matière et les heures hebdomadaires de chaque affectation."
+            : "Sélectionnez l'unique classe principale de l'enseignant.";
+
+        assignmentRows.forEach((row, index) => {
+            const afficherLigne = affectable && (
+                classeUnique
+                    ? index === 0
+                    : row.dataset.revealed === 'true'
+            );
+            const suppression = row.querySelector('input[name$="-DELETE"]');
+            row.style.display = afficherLigne ? '' : 'none';
+            row.querySelectorAll('.secondary-assignment-field').forEach((field) => {
+                field.style.display = type === 'SECONDAIRE' ? '' : 'none';
+            });
+            row.querySelectorAll('.classe-label').forEach((label) => {
+                label.textContent = classeUnique ? 'Classe principale' : 'Classe affectée';
+            });
+
+            if (suppression && !afficherLigne && row.dataset.existing === 'true') {
+                suppression.checked = true;
+                suppression.dataset.automatic = 'true';
+            } else if (
+                suppression
+                && afficherLigne
+                && suppression.dataset.automatic === 'true'
+            ) {
+                suppression.checked = false;
+                delete suppression.dataset.automatic;
+            }
+        });
+        ajouterAffectationButton.style.display = type === 'SECONDAIRE' ? '' : 'none';
+        ajouterAffectationButton.disabled = !assignmentRows.some(
+            (row) => row.dataset.revealed !== 'true'
+        );
+        actualiserObligationsAffectation();
+    }
+
+    async function chargerClassesAffectables() {
+        const ecole = ecoleSelect.value;
+        const type = typeEnseignantSelect.value;
+        if (!ecole || !['MATERNELLE', 'PRIMAIRE', 'SECONDAIRE'].includes(type)) {
+            return;
+        }
+
+        const url = new URL(affectationsField.dataset.classesUrl, window.location.origin);
+        url.searchParams.set('ecole', ecole);
+        url.searchParams.set('type_enseignant', type);
+        try {
+            const response = await fetch(url, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'}
+            });
+            if (!response.ok) return;
+            const data = await response.json();
+            assignmentRows.forEach((row) => {
+                const select = row.querySelector('select[name$="-classe"]');
+                if (!select) return;
+                const ancienneValeur = select.value;
+                select.innerHTML = '<option value="">---------</option>';
+                data.classes.forEach((classe) => {
+                    const option = new Option(classe.label, classe.id);
+                    option.selected = String(classe.id) === String(ancienneValeur);
+                    select.add(option);
+                });
+            });
+            actualiserObligationsAffectation();
+        } catch (error) {
+            console.warn('Chargement des classes impossible', error);
+        }
+    }
     
     // Initialiser l'affichage
     toggleSalaryFields();
+    toggleProfessionalFields();
     
     // Écouter les changements
-    typeEnseignantSelect.addEventListener('change', toggleSalaryFields);
+    typeEnseignantSelect.addEventListener('change', function() {
+        toggleSalaryFields();
+        toggleProfessionalFields();
+        chargerClassesAffectables();
+    });
+    ecoleSelect.addEventListener('change', chargerClassesAffectables);
     modeCalculSelect.addEventListener('change', toggleHourMode);
+    ajouterAffectationButton.addEventListener('click', function() {
+        const prochaineLigne = assignmentRows.find(
+            (row) => row.dataset.revealed !== 'true'
+        );
+        if (prochaineLigne) {
+            prochaineLigne.dataset.revealed = 'true';
+            toggleProfessionalFields();
+            prochaineLigne.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }
+    });
+    assignmentRows.forEach((row) => {
+        const select = row.querySelector('select[name$="-classe"]');
+        if (select) select.addEventListener('change', actualiserObligationsAffectation);
+    });
     
     // Animation d'apparition du formulaire
     const formContainer = document.querySelector('.form-container');
