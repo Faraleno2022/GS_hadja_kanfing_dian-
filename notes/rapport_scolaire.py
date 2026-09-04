@@ -14,13 +14,17 @@ from types import SimpleNamespace
 from django.http import HttpResponse, Http404, JsonResponse
 from django.shortcuts import render, redirect
 from django.db.models import Q, Avg
+from django.utils.html import escape
+from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import Table, TableStyle
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.lib.utils import ImageReader
 from PIL import Image
 
@@ -28,9 +32,13 @@ from eleves.models import Eleve, Classe, Ecole
 from notes.models import (
     ClasseNote, MatiereNote, NoteEleve, NoteMensuelle,
     CompositionNote, AppreciationMaternelle,
-    ActiviteJournaliere, PieceJointeActivite, Classement,
+    ActiviteJournaliere, PieceJointeActivite, Classement, NoteSuivi,
 )
-from notes.charte_graphique import couleur_document, document_avec_charte
+from notes.charte_graphique import (
+    couleur_document,
+    document_avec_charte,
+    get_charte_reportlab,
+)
 from paiements.models import Paiement, EcheancierPaiement
 
 from django.utils.crypto import get_random_string
@@ -53,6 +61,70 @@ def _verify_token(token, max_age=1800):
         return int(_signer.unsign(token, max_age=max_age))
     except (BadSignature, SignatureExpired, ValueError):
         return None
+
+
+def _eleve_parent_depuis_token(request):
+    """Retourne uniquement l'élève désigné par le token temporaire du parent."""
+    eleve_id = _verify_token(request.GET.get('token', ''))
+    if not eleve_id:
+        raise Http404("Lien parent invalide ou expiré.")
+    try:
+        return Eleve.objects.select_related(
+            'classe', 'classe__ecole',
+            'responsable_principal', 'responsable_secondaire',
+        ).get(pk=eleve_id, statut='ACTIF')
+    except Eleve.DoesNotExist:
+        raise Http404("Élève introuvable.")
+
+
+def _bulletins_disponibles(eleve, classe_note, annee):
+    """Liste les périodes réellement renseignées et signe chaque bulletin."""
+    if not classe_note:
+        return []
+
+    periodes = set(
+        NoteMensuelle.objects.filter(
+            eleve=eleve,
+            matiere__classe=classe_note,
+            annee_scolaire=annee,
+        ).filter(Q(note__isnull=False) | Q(absent=True)).values_list('mois', flat=True)
+    )
+    periodes.update(
+        CompositionNote.objects.filter(
+            eleve=eleve,
+            matiere__classe=classe_note,
+            annee_scolaire=annee,
+        ).filter(Q(note__isnull=False) | Q(absent=True)).values_list('periode', flat=True)
+    )
+    periodes.update(
+        AppreciationMaternelle.objects.filter(
+            eleve=eleve,
+            matiere__classe=classe_note,
+            annee_scolaire=annee,
+        ).values_list('trimestre', flat=True)
+    )
+
+    labels = dict(NoteMensuelle.MOIS_CHOICES)
+    labels.update(dict(CompositionNote.PERIODE_CHOICES))
+    labels.update(dict(AppreciationMaternelle.TRIMESTRE_CHOICES))
+    ordre = {
+        'OCTOBRE': 1, 'NOVEMBRE': 2, 'DECEMBRE': 3,
+        'TRIMESTRE_1': 4, 'JANVIER': 5, 'FEVRIER': 6, 'MARS': 7,
+        'TRIMESTRE_2': 8, 'SEMESTRE_1': 9, 'AVRIL': 10, 'MAI': 11,
+        'JUIN': 12, 'TRIMESTRE_3': 13, 'SEMESTRE_2': 14,
+    }
+    from .bulletin_public import generer_token_bulletin
+
+    return [
+        {
+            'periode': periode,
+            'libelle': labels.get(periode, periode.replace('_', ' ').title()),
+            'token': generer_token_bulletin(
+                eleve.pk, classe_note.pk, periode, duree_validite_jours=1,
+            ),
+        }
+        for periode in sorted(periodes, key=lambda item: ordre.get(item, 999))
+    ]
 
 
 class ClassementList(list):
@@ -415,15 +487,45 @@ def rapport_scolaire_detail(request):
     ).select_related('type_paiement', 'mode_paiement').order_by('-date_paiement')
     donnees['paiements'] = paiements
 
+    # ─── Centre de documents du parent ───
+    classe_note = donnees.get('classe_note')
+    annee = donnees.get('annee') or ''
+    donnees['bulletins_disponibles'] = _bulletins_disponibles(
+        eleve, classe_note, annee,
+    )
+    notes_suivi = NoteSuivi.objects.filter(eleve=eleve, annee_scolaire=annee)
+    if classe_note:
+        notes_suivi = notes_suivi.filter(matiere__classe=classe_note)
+    donnees['notes_suivi_count'] = notes_suivi.count()
+    donnees['participations_count'] = notes_suivi.filter(
+        type_note='PARTICIPATION',
+    ).count()
+    vie_scolaire = ActiviteJournaliere.objects.filter(
+        eleve=eleve,
+        type_activite__in=['ABSENCE', 'RETARD', 'DISCIPLINE', 'CONVOCATION'],
+    )
+    if classe_note:
+        vie_scolaire = vie_scolaire.filter(classe=classe_note)
+    donnees['vie_scolaire_count'] = vie_scolaire.count()
+    donnees['emploi_du_temps_disponible'] = bool(
+        classe_note and classe_note.creneaux_edt.exists()
+    )
+    donnees['carnet_disponible'] = paiements.filter(
+        annee_scolaire=annee,
+    ).exists()
+
     # ─── Situation financière (échéancier) ───
     try:
         ech = eleve.echeancier
-        donnees['echeancier'] = {
-            'total_du': ech.total_du,
-            'total_paye': ech.total_paye,
-            'solde_restant': ech.solde_restant,
-            'pourcentage_paye': ech.pourcentage_paye,
-        }
+        donnees['echeancier'] = (
+            {
+                'total_du': ech.total_du,
+                'total_paye': ech.total_paye,
+                'solde_restant': ech.solde_restant,
+                'pourcentage_paye': ech.pourcentage_paye,
+            }
+            if ech else None
+        )
     except EcheancierPaiement.DoesNotExist:
         donnees['echeancier'] = None
 
@@ -477,6 +579,315 @@ def rapport_scolaire_recu_pdf(request, paiement_id):
         raise Http404
 
     return _generer_recu_paiement_pdf(paiement)
+
+
+def _reponse_pdf_parent(eleve, titre, introduction, entetes=None, lignes=None,
+                        nom_fichier='document', paysage=False, paragraphes=None,
+                        signature=False):
+    """Construit un document parent professionnel selon la charte de l'école."""
+    ecole = eleve.classe.ecole if eleve.classe else None
+    annee = eleve.classe.annee_scolaire if eleve.classe else ''
+    palette = get_charte_reportlab(ecole)
+    page_size = landscape(A4) if paysage else A4
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=page_size,
+        leftMargin=1.25 * cm,
+        rightMargin=1.25 * cm,
+        topMargin=1.25 * cm,
+        bottomMargin=1.35 * cm,
+        title=titre,
+        author=getattr(ecole, 'nom', 'MySchoolGN') or 'MySchoolGN',
+    )
+    styles = getSampleStyleSheet()
+    titre_style = ParagraphStyle(
+        'ParentDocumentTitle', parent=styles['Title'], fontSize=17, leading=20,
+        alignment=TA_CENTER, textColor=palette['couleur_primaire'], spaceAfter=6,
+    )
+    sous_titre_style = ParagraphStyle(
+        'ParentDocumentSubtitle', parent=styles['Normal'], fontSize=9,
+        leading=12, alignment=TA_CENTER,
+        textColor=palette['couleur_texte_secondaire'], spaceAfter=12,
+    )
+    corps_style = ParagraphStyle(
+        'ParentDocumentBody', parent=styles['BodyText'], fontSize=10,
+        leading=15, alignment=TA_JUSTIFY, spaceAfter=10,
+    )
+    cellule_style = ParagraphStyle(
+        'ParentDocumentCell', parent=styles['Normal'], fontSize=7.5,
+        leading=9, alignment=TA_CENTER,
+    )
+
+    nom_ecole = getattr(ecole, 'nom', 'Établissement scolaire') or 'Établissement scolaire'
+    elements = [
+        Paragraph(escape(nom_ecole.upper()), titre_style),
+        Paragraph(escape(titre.upper()), titre_style),
+        Paragraph(
+            f"Élève : <b>{escape(eleve.nom_complet)}</b> &nbsp; | &nbsp; "
+            f"Matricule : <b>{escape(eleve.matricule or '—')}</b> &nbsp; | &nbsp; "
+            f"Classe : <b>{escape(eleve.classe.nom if eleve.classe else '—')}</b> &nbsp; | &nbsp; "
+            f"Année : <b>{escape(annee or '—')}</b>",
+            sous_titre_style,
+        ),
+    ]
+    if introduction:
+        elements.append(Paragraph(escape(introduction), corps_style))
+    for paragraphe in paragraphes or []:
+        elements.append(Paragraph(escape(paragraphe), corps_style))
+
+    lignes = list(lignes or [])
+    if entetes:
+        donnees_tableau = [
+            [Paragraph(f"<b>{escape(str(valeur))}</b>", cellule_style) for valeur in entetes]
+        ]
+        for ligne in lignes:
+            donnees_tableau.append([
+                Paragraph(escape(str(valeur if valeur not in (None, '') else '—')), cellule_style)
+                for valeur in ligne
+            ])
+        if not lignes:
+            donnees_tableau.append([
+                Paragraph("Aucune donnée enregistrée pour cette période.", cellule_style)
+            ] + [''] * (len(entetes) - 1))
+
+        largeur_disponible = page_size[0] - doc.leftMargin - doc.rightMargin
+        tableau = Table(
+            donnees_tableau,
+            colWidths=[largeur_disponible / len(entetes)] * len(entetes),
+            repeatRows=1,
+        )
+        tableau.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), palette['couleur_fond_header']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['texte_sur_header']),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, palette['couleur_fond_tableau']]),
+            ('GRID', (0, 0), (-1, -1), 0.5, palette['couleur_bordure']),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        elements.extend([Spacer(1, 0.2 * cm), tableau])
+
+    if signature:
+        elements.extend([
+            Spacer(1, 1.2 * cm),
+            Paragraph(
+                "Document à faire viser par la direction de l'établissement",
+                sous_titre_style,
+            ),
+            Paragraph("Signature et cachet : ______________________________", sous_titre_style),
+        ])
+
+    def dessiner_page(canvas_pdf, document):
+        canvas_pdf.saveState()
+        try:
+            from ecole_moderne.pdf_utils import draw_logo_watermark
+            draw_logo_watermark(canvas_pdf, page_size[0], page_size[1], ecole=ecole)
+        except Exception:
+            pass
+        canvas_pdf.setStrokeColor(palette['couleur_bordure'])
+        canvas_pdf.line(
+            document.leftMargin, 0.8 * cm,
+            page_size[0] - document.rightMargin, 0.8 * cm,
+        )
+        canvas_pdf.setFillColor(palette['couleur_texte_secondaire'])
+        canvas_pdf.setFont('Helvetica', 7)
+        canvas_pdf.drawString(
+            document.leftMargin, 0.5 * cm,
+            f"{titre} — généré le {datetime.now():%d/%m/%Y}",
+        )
+        canvas_pdf.drawRightString(
+            page_size[0] - document.rightMargin, 0.5 * cm,
+            f"Page {document.page}",
+        )
+        canvas_pdf.restoreState()
+
+    doc.build(elements, onFirstPage=dessiner_page, onLaterPages=dessiner_page)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    suffixe = slugify(f"{eleve.matricule}-{eleve.nom}") or str(eleve.pk)
+    response['Content-Disposition'] = (
+        f'attachment; filename="{nom_fichier}_{suffixe}.pdf"'
+    )
+    return response
+
+
+def _lettre_recommandation_parent(eleve):
+    donnees = _collecter_donnees_scolaires(eleve)
+    moyenne = donnees.get('moyenne_generale')
+    if moyenne is None:
+        niveau = "son sérieux et son implication dans la vie de la classe"
+    elif moyenne >= 14:
+        niveau = f"ses très bons résultats scolaires, avec une moyenne générale de {moyenne}/20"
+    elif moyenne >= 10:
+        niveau = f"ses résultats satisfaisants, avec une moyenne générale de {moyenne}/20"
+    else:
+        niveau = f"les efforts fournis dans sa progression scolaire, avec une moyenne actuelle de {moyenne}/20"
+
+    forces = ', '.join(item['matiere'] for item in donnees.get('forces', [])[:3])
+    texte_forces = (
+        f"Ses principaux points forts ressortent notamment en {forces}."
+        if forces else
+        "Son parcours témoigne d'une volonté de progresser et de consolider ses acquis."
+    )
+    participation = NoteSuivi.objects.filter(
+        eleve=eleve,
+        annee_scolaire=donnees.get('annee') or '',
+        type_note='PARTICIPATION',
+    ).aggregate(moyenne=Avg('note'))['moyenne']
+    texte_participation = (
+        f"Sa participation en classe est évaluée en moyenne à {participation:.2f}/20."
+        if participation is not None else
+        "L'élève est encouragé à poursuivre une participation régulière en classe."
+    )
+    paragraphes = [
+        "À qui de droit,",
+        (
+            f"La direction atteste que {eleve.nom_complet}, matricule {eleve.matricule}, "
+            f"est régulièrement inscrit(e) en {eleve.classe.nom if eleve.classe else 'classe non précisée'} "
+            f"au titre de l'année scolaire {donnees.get('annee') or 'en cours'}."
+        ),
+        f"Nous recommandons cet(te) élève pour {niveau}. {texte_forces}",
+        texte_participation,
+        (
+            "La présente lettre est établie à la demande de la famille sur la base des "
+            "informations enregistrées dans le dossier scolaire de l'élève."
+        ),
+    ]
+    return _reponse_pdf_parent(
+        eleve,
+        "Lettre de recommandation",
+        "Recommandation scolaire individuelle",
+        nom_fichier='lettre_recommandation',
+        paragraphes=paragraphes,
+        signature=True,
+    )
+
+
+def rapport_scolaire_document(request, document_type, format_document='pdf'):
+    """Télécharge un document de l'enfant, exclusivement via le token du parent."""
+    eleve = _eleve_parent_depuis_token(request)
+    classe_note = ClasseNote.objects.filter(
+        nom=eleve.classe.nom,
+        ecole=eleve.classe.ecole,
+        annee_scolaire=eleve.classe.annee_scolaire,
+        actif=True,
+    ).first() if eleve.classe else None
+    annee = eleve.classe.annee_scolaire if eleve.classe else ''
+
+    if document_type == 'carnet-paiement' and format_document == 'pdf':
+        paiement = Paiement.objects.filter(
+            eleve=eleve,
+            annee_scolaire=annee,
+            statut='VALIDE',
+        ).select_related('eleve__classe', 'eleve__classe__ecole').order_by(
+            '-date_paiement', '-pk',
+        ).first()
+        if not paiement:
+            raise Http404("Aucun paiement validé pour cette année scolaire.")
+        from paiements.carnet_paiement import generer_carnet_paiement_pdf
+        contenu = generer_carnet_paiement_pdf(paiement)
+        response = HttpResponse(contenu, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="carnet_paiement_{slugify(eleve.matricule)}.pdf"'
+        )
+        return response
+
+    if document_type == 'lettre-recommandation' and format_document == 'pdf':
+        return _lettre_recommandation_parent(eleve)
+
+    if document_type in ('participation-classe', 'notes-suivi') and format_document == 'pdf':
+        suivis = NoteSuivi.objects.filter(
+            eleve=eleve,
+            annee_scolaire=annee,
+        ).select_related('matiere').order_by('date', 'mois', 'matiere__nom')
+        if classe_note:
+            suivis = suivis.filter(matiere__classe=classe_note)
+        if document_type == 'participation-classe':
+            suivis = suivis.filter(type_note='PARTICIPATION')
+            titre = "Participation en classe"
+            introduction = "Relevé des évaluations de participation enregistrées par les enseignants."
+            nom_fichier = 'participation_classe'
+        else:
+            titre = "Notes de suivi"
+            introduction = "Relevé des contrôles continus, devoirs, évaluations et participations."
+            nom_fichier = 'notes_suivi'
+        lignes = [
+            (
+                suivi.date.strftime('%d/%m/%Y') if suivi.date else '—',
+                suivi.get_mois_display(),
+                suivi.matiere.nom,
+                suivi.get_type_note_display(),
+                f"{suivi.note}/20",
+                suivi.observation or '—',
+            )
+            for suivi in suivis
+        ]
+        return _reponse_pdf_parent(
+            eleve, titre, introduction,
+            entetes=['Date', 'Mois', 'Matière', 'Type', 'Note', 'Observation'],
+            lignes=lignes,
+            nom_fichier=nom_fichier,
+            paysage=True,
+        )
+
+    if document_type == 'vie-scolaire' and format_document == 'pdf':
+        activites = ActiviteJournaliere.objects.filter(
+            eleve=eleve,
+            type_activite__in=['ABSENCE', 'RETARD', 'DISCIPLINE', 'CONVOCATION'],
+        ).select_related('classe').order_by('-date')
+        if classe_note:
+            activites = activites.filter(classe=classe_note)
+        lignes = [
+            (
+                activite.date.strftime('%d/%m/%Y'),
+                activite.get_type_activite_display(),
+                activite.titre,
+                activite.appreciation or '—',
+                activite.description or '—',
+            )
+            for activite in activites
+        ]
+        return _reponse_pdf_parent(
+            eleve,
+            "Vie scolaire",
+            "Relevé des absences, retards, faits disciplinaires et convocations.",
+            entetes=['Date', 'Type', 'Intitulé', 'Appréciation', 'Observation'],
+            lignes=lignes,
+            nom_fichier='vie_scolaire',
+            paysage=True,
+        )
+
+    if document_type == 'livret-scolaire' and format_document == 'pdf':
+        from .livret_scolaire import _collecter_parcours_eleve, _generer_livret_pdf
+        ecole = eleve.classe.ecole if eleve.classe else None
+        parcours = _collecter_parcours_eleve(eleve, ecole) if ecole else []
+        if parcours:
+            pdf_buffer = _generer_livret_pdf(eleve, ecole, parcours)
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            response['Content-Disposition'] = (
+                f'attachment; filename="livret_scolaire_{slugify(eleve.matricule)}.pdf"'
+            )
+            return response
+        return _reponse_pdf_parent(
+            eleve,
+            "Livret scolaire",
+            "Aucun historique scolaire détaillé n'est encore enregistré pour cet élève.",
+            nom_fichier='livret_scolaire',
+        )
+
+    if document_type == 'emploi-du-temps' and format_document in ('pdf', 'excel'):
+        if not classe_note:
+            raise Http404("Aucun emploi du temps associé à la classe de cet élève.")
+        from .views_edt import (
+            _generer_emploi_du_temps_excel,
+            _generer_emploi_du_temps_pdf,
+        )
+        if format_document == 'excel':
+            return _generer_emploi_du_temps_excel(classe_note)
+        return _generer_emploi_du_temps_pdf(classe_note)
+
+    raise Http404("Document non disponible.")
 
 
 @document_avec_charte(ecole_position=0)

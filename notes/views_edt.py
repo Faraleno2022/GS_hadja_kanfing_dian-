@@ -138,6 +138,15 @@ def supprimer_creneau(request, creneau_id):
 
 @login_required
 def emploi_du_temps_pdf(request):
+    classe = get_object_or_404(
+        _classes_utilisateur(request),
+        pk=request.GET.get('classe_id'),
+    )
+    return _generer_emploi_du_temps_pdf(classe)
+
+
+def _generer_emploi_du_temps_pdf(classe):
+    """Construit le PDF d'une classe déjà autorisée par la vue appelante."""
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
@@ -145,7 +154,6 @@ def emploi_du_temps_pdf(request):
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.enums import TA_CENTER
 
-    classe = get_object_or_404(ClasseNote, pk=request.GET.get('classe_id'))
     from .charte_graphique import get_charte_reportlab
     charte = get_charte_reportlab(classe.ecole)
     lignes, _ = _grille_edt(classe)
@@ -210,13 +218,21 @@ def emploi_du_temps_pdf(request):
 
 @login_required
 def emploi_du_temps_excel(request):
+    classe = get_object_or_404(
+        _classes_utilisateur(request),
+        pk=request.GET.get('classe_id'),
+    )
+    return _generer_emploi_du_temps_excel(classe)
+
+
+def _generer_emploi_du_temps_excel(classe):
+    """Construit le classeur d'une classe déjà autorisée par la vue appelante."""
     try:
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
     except ImportError:
         return HttpResponse("Module openpyxl non installé", status=500)
 
-    classe = get_object_or_404(ClasseNote, pk=request.GET.get('classe_id'))
     lignes, _ = _grille_edt(classe)
 
     wb = openpyxl.Workbook()
