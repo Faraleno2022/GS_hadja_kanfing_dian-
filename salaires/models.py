@@ -42,6 +42,39 @@ class SourceHeuresSalaire(models.TextChoices):
     SAISIE = 'SAISIE', 'Saisie manuelle de la période'
 
 
+NIVEAUX_CLASSE_PAR_TYPE_ENSEIGNANT = {
+    TypeEnseignant.MATERNELLE: {
+        'TOUTE_PETITE_SECTION',
+        'PETITE_SECTION',
+        'MOYENNE_SECTION',
+        'GRANDE_SECTION',
+        'MATERNELLE',
+    },
+    TypeEnseignant.PRIMAIRE: {
+        'PRIMAIRE_1',
+        'PRIMAIRE_2',
+        'PRIMAIRE_3',
+        'PRIMAIRE_4',
+        'PRIMAIRE_5',
+        'PRIMAIRE_6',
+    },
+    TypeEnseignant.SECONDAIRE: {
+        'COLLEGE_7',
+        'COLLEGE_8',
+        'COLLEGE_9',
+        'COLLEGE_10',
+        'LYCEE_11',
+        'LYCEE_12',
+        'TERMINALE',
+    },
+}
+
+
+def niveaux_classes_pour_type_enseignant(type_enseignant):
+    """Retourne les niveaux de classe compatibles avec le type de personnel."""
+    return NIVEAUX_CLASSE_PAR_TYPE_ENSEIGNANT.get(type_enseignant, set())
+
+
 class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
     
@@ -64,6 +97,15 @@ class Enseignant(SyncTrackedModel):
         choices=StatutEnseignant.choices,
         default=StatutEnseignant.ACTIF,
         verbose_name="Statut"
+    )
+    fonction = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Fonction administrative",
+        help_text=(
+            "Poste occupé par un membre du personnel administratif "
+            "(ex. directeur, secrétaire, comptable)."
+        ),
     )
     
     # Rémunération
@@ -171,6 +213,18 @@ class Enseignant(SyncTrackedModel):
             raise ValidationError({
                 'salaire_fixe': f'Le salaire fixe est obligatoire pour les {self.get_type_enseignant_display().lower()}.'
             })
+
+        if self.type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+            self.fonction = (self.fonction or '').strip()
+            if not self.fonction:
+                raise ValidationError({
+                    'fonction': (
+                        'La fonction est obligatoire pour un membre du '
+                        'personnel administratif.'
+                    )
+                })
+        else:
+            self.fonction = ''
 
     def save(self, *args, **kwargs):
         # Les validateurs doivent aussi protéger les imports, scripts et API,
@@ -285,6 +339,42 @@ class AffectationClasse(SyncTrackedModel):
     
     def clean(self):
         super().clean()
+
+        if not self.enseignant_id or not self.classe_id:
+            return
+
+        niveaux_autorises = niveaux_classes_pour_type_enseignant(
+            self.enseignant.type_enseignant
+        )
+        if not niveaux_autorises:
+            raise ValidationError({
+                'classe': (
+                    "Ce type de personnel ne reçoit pas d'affectation de classe."
+                )
+            })
+        if self.classe.niveau not in niveaux_autorises:
+            raise ValidationError({
+                'classe': (
+                    "Le niveau de cette classe ne correspond pas au type "
+                    "d'enseignant sélectionné."
+                )
+            })
+
+        if (
+            self.enseignant.type_enseignant
+            in (TypeEnseignant.MATERNELLE, TypeEnseignant.PRIMAIRE)
+            and self.actif
+            and AffectationClasse.objects.filter(
+                enseignant_id=self.enseignant_id,
+                actif=True,
+            ).exclude(pk=self.pk).exists()
+        ):
+            raise ValidationError({
+                'classe': (
+                    "Un enseignant de maternelle ou du primaire ne peut avoir "
+                    "qu'une seule classe principale active."
+                )
+            })
         
         if self.enseignant.est_taux_horaire and not self.heures_par_semaine:
             raise ValidationError({

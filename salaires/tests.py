@@ -826,3 +826,206 @@ class MoteurPaieTests(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn('primes', form.errors)
+
+    def donnees_creation_enseignant(self, type_enseignant, **valeurs):
+        donnees = {
+            'nom': 'Camara',
+            'prenoms': 'Fatoumata',
+            'telephone': '+224610000001',
+            'email': 'fatoumata@example.com',
+            'adresse': 'Conakry',
+            'ecole': str(self.ecole.pk),
+            'type_enseignant': type_enseignant,
+            'statut': 'ACTIF',
+            'fonction': '',
+            'taux_horaire': '',
+            'mode_calcul_horaire': ModeCalculHoraire.POINTAGE,
+            'salaire_fixe': '1500000',
+            'heures_mensuelles': '',
+            'date_embauche': '2026-07-01',
+            'affectations-TOTAL_FORMS': '3',
+            'affectations-INITIAL_FORMS': '0',
+            'affectations-MIN_NUM_FORMS': '0',
+            'affectations-MAX_NUM_FORMS': '1000',
+        }
+        donnees.update(valeurs)
+        return donnees
+
+    def test_creation_primaire_enregistre_sa_classe_principale(self):
+        classe = Classe.objects.create(
+            ecole=self.ecole,
+            nom='Primaire 3 A',
+            niveau='PRIMAIRE_3',
+            annee_scolaire='2026-2027',
+        )
+        donnees = self.donnees_creation_enseignant(
+            TypeEnseignant.PRIMAIRE,
+            **{
+                'affectations-0-classe': str(classe.pk),
+                'affectations-0-date_debut': '2026-07-01',
+                'affectations-0-actif': 'on',
+            },
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajouter_enseignant'),
+            donnees,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+            (
+                {
+                    'enseignant': response.context['form'].errors,
+                    'affectations': response.context['affectations'].errors,
+                    'global': response.context[
+                        'affectations'
+                    ].non_form_errors(),
+                }
+                if response.context
+                else response.content[:500]
+            ),
+        )
+        enseignant = Enseignant.objects.get(email='fatoumata@example.com')
+        self.assertRedirects(
+            response,
+            reverse('salaires:detail_enseignant', args=[enseignant.pk]),
+        )
+        affectation = enseignant.affectations.get()
+        self.assertEqual(affectation.classe, classe)
+        self.assertIsNone(affectation.heures_par_semaine)
+
+    def test_creation_secondaire_enregistre_plusieurs_affectations(self):
+        donnees = self.donnees_creation_enseignant(
+            TypeEnseignant.SECONDAIRE,
+            salaire_fixe='',
+            taux_horaire='10000',
+            **{
+                'affectations-0-classe': str(self.classe_a.pk),
+                'affectations-0-heures_par_semaine': '8',
+                'affectations-0-matiere': 'Mathématiques',
+                'affectations-0-date_debut': '2026-07-01',
+                'affectations-0-actif': 'on',
+                'affectations-1-classe': str(self.classe_b.pk),
+                'affectations-1-heures_par_semaine': '6',
+                'affectations-1-matiere': 'Mathématiques',
+                'affectations-1-date_debut': '2026-07-01',
+                'affectations-1-actif': 'on',
+            },
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajouter_enseignant'),
+            donnees,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+            (
+                response.context['affectations'].errors
+                if response.context
+                else response.content[:500]
+            ),
+        )
+        enseignant = Enseignant.objects.get(email='fatoumata@example.com')
+        self.assertEqual(response.status_code, 302)
+        self.assertSetEqual(
+            set(enseignant.affectations.values_list('classe_id', flat=True)),
+            {self.classe_a.pk, self.classe_b.pk},
+        )
+        self.assertEqual(
+            enseignant.affectations.get(classe=self.classe_a).heures_par_semaine,
+            Decimal('8'),
+        )
+
+    def test_creation_administrateur_enregistre_sa_fonction(self):
+        donnees = self.donnees_creation_enseignant(
+            TypeEnseignant.ADMINISTRATEUR,
+            fonction='Comptable',
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajouter_enseignant'),
+            donnees,
+        )
+
+        self.assertEqual(
+            response.status_code,
+            302,
+            (
+                response.context['form'].errors
+                if response.context
+                else response.content[:500]
+            ),
+        )
+        enseignant = Enseignant.objects.get(email='fatoumata@example.com')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(enseignant.fonction, 'Comptable')
+        self.assertFalse(enseignant.affectations.exists())
+
+    def test_creation_administrateur_exige_la_fonction(self):
+        response = self.client.post(
+            reverse('salaires:ajouter_enseignant'),
+            self.donnees_creation_enseignant(TypeEnseignant.ADMINISTRATEUR),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'La fonction est obligatoire')
+        self.assertFalse(
+            Enseignant.objects.filter(email='fatoumata@example.com').exists()
+        )
+
+    def test_classe_d_une_autre_ecole_est_refusee(self):
+        autre_ecole = Ecole.objects.create(
+            nom='Autre école',
+            adresse='Kindia',
+            telephone='+224620000000',
+            directeur='Autre direction',
+        )
+        classe = Classe.objects.create(
+            ecole=autre_ecole,
+            nom='Primaire externe',
+            niveau='PRIMAIRE_2',
+            annee_scolaire='2026-2027',
+        )
+        donnees = self.donnees_creation_enseignant(
+            TypeEnseignant.PRIMAIRE,
+            **{
+                'affectations-0-classe': str(classe.pk),
+                'affectations-0-date_debut': '2026-07-01',
+                'affectations-0-actif': 'on',
+            },
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajouter_enseignant'),
+            donnees,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            Enseignant.objects.filter(email='fatoumata@example.com').exists()
+        )
+
+    def test_api_classes_filtre_le_niveau_demande(self):
+        classe_primaire = Classe.objects.create(
+            ecole=self.ecole,
+            nom='Primaire API',
+            niveau='PRIMAIRE_4',
+            annee_scolaire='2026-2027',
+        )
+
+        response = self.client.get(
+            reverse('salaires:classes_affectables_enseignant'),
+            {
+                'ecole': self.ecole.pk,
+                'type_enseignant': TypeEnseignant.PRIMAIRE,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ids = {ligne['id'] for ligne in response.json()['classes']}
+        self.assertIn(classe_primaire.pk, ids)
+        self.assertNotIn(self.classe_a.pk, ids)

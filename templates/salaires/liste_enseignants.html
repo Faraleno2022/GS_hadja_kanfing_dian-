@@ -340,6 +340,12 @@
                         <span><strong>Date d'embauche:</strong></span>
                         <span>{{ enseignant.date_embauche|date:"d/m/Y" }}</span>
                     </div>
+                    {% if enseignant.type_enseignant == 'ADMINISTRATEUR' %}
+                    <div class="detail-row">
+                        <span><strong>Fonction :</strong></span>
+                        <span>{{ enseignant.fonction|default:"Non renseignée" }}</span>
+                    </div>
+                    {% endif %}
                     {% if enseignant.adresse %}
                     <div class="detail-row">
                         <span><strong>Adresse:</strong></span>
@@ -356,7 +362,7 @@
                             {% if affectation.actif %}
                             <div class="assignment-item">
                                 <span>{{ affectation.classe.nom }}</span>
-                                {% if enseignant.type_enseignant == 'SECONDAIRE' %}
+                                {% if enseignant.type_enseignant == 'SECONDAIRE' and affectation.heures_par_semaine %}
                                 <span class="text-info">{{ affectation.heures_par_semaine }}h/sem</span>
                                 {% endif %}
                             </div>
