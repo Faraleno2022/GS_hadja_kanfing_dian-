@@ -1,0 +1,24 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<h1 class="h3">{% if mode == 'intelligent' %}Importation intelligente{% else %}Importer les notes{% endif %} — {{ classe.nom }}</h1>
+<p>{{ classe.annee_scolaire }} · {% if maternelle %}Appréciations{% else %}Notes sur {{ maximum }}{% endif %}</p>
+{% include 'notes/enseignants/filtres.html' %}
+<div class="portal-panel">
+    <h2 class="h5">1. Préparer le fichier</h2>
+    <p>Le matricule identifie chaque élève. {% if mode == 'intelligent' %}Les colonnes sont reconnues par le code ou le nom de chaque matière autorisée.{% else %}Renseignez la colonne {% if maternelle %}Appréciation{% else %}Note{% endif %} pour la matière sélectionnée.{% endif %} Utilisez ABS pour une absence. Les cellules vides ne modifient pas les notes existantes.</p>
+    <a class="btn btn-outline-primary mb-3" href="{% url 'notes:enseignant_template' classe.id %}?mode={{ mode }}&amp;genre={{ genre }}&amp;periode={{ periode }}&amp;matiere={{ matiere_selectionnee }}">Télécharger le modèle Excel de ma classe</a>
+    <h2 class="h5">2. Vérifier l’import</h2>
+    <p class="small text-muted">CSV UTF-8 ou XLSX · feuille active · 2 Mo maximum · 2 000 élèves · 10 000 notes. Les formules ne sont pas acceptées.</p>
+    <form method="post" enctype="multipart/form-data">{% csrf_token %}{% include 'notes/enseignants/champs_contexte.html' %}
+        <label class="form-label" for="fichier">Fichier de notes</label>
+        <input class="form-control mb-3" type="file" name="fichier" id="fichier" accept=".csv,.xlsx" required>
+        <button class="btn btn-primary" name="action" value="apercu">Analyser et afficher l’aperçu</button>
+    </form>
+</div>
+{% if preview %}<div class="portal-panel">
+    <h2 class="h5">3. Confirmer {{ preview|length }} note(s) / appréciation(s)</h2>
+    <div class="alert alert-warning">Aucune note n’est encore enregistrée. La confirmation remplacera les notes existantes pour ces élèves, matières et période. Vérifiez les valeurs ci-dessous.</div>
+    <div class="table-responsive" style="max-height:480px"><table class="table table-striped"><thead><tr><th>Matricule</th><th>Élève</th><th>Matière</th><th>Nouvelle valeur</th></tr></thead><tbody>{% for item in preview %}<tr><td>{{ item.eleve.matricule }}</td><td>{{ item.eleve.prenom }} {{ item.eleve.nom }}</td><td>{{ item.matiere.nom }}</td><td>{{ item.valeur }}</td></tr>{% endfor %}</tbody></table></div>
+    <form method="post">{% csrf_token %}{% include 'notes/enseignants/champs_contexte.html' %}<input type="hidden" name="nonce" value="{{ nonce }}"><button class="btn btn-success" name="action" value="confirmer">Confirmer l’enregistrement</button></form>
+</div>{% endif %}
+{% endblock %}

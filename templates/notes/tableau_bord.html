@@ -115,6 +115,15 @@
 
     <!-- Grille de boutons -->
     <div class="row g-4">
+        {% if request.user.is_superuser or request.user.profil.est_compte_principal %}
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:gerer_acces_enseignants' %}" class="notes-card primary">
+                <i class="fas fa-user-clock notes-card-icon"></i>
+                <h3 class="notes-card-title">Accès temporaires enseignants</h3>
+                <p class="notes-card-description">Créer un lien personnel de saisie et d’import, limité aux classes et matières de l’enseignant.</p>
+            </a>
+        </div>
+        {% endif %}
         <!-- Gérer les Classes -->
         <div class="col-md-6 col-lg-4">
             <a href="{% url 'notes:gerer_classes' %}" class="notes-card primary">

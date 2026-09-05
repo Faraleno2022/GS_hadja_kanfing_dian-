@@ -4,6 +4,43 @@ from eleves.models import Ecole
 from decimal import Decimal
 from synchronisation.mixins import SyncTrackedModel
 
+
+class AccesEnseignantTemporaire(models.Model):
+    """Compte par lien, volontairement exclu de la synchronisation des données."""
+
+    utilisateur = models.OneToOneField(User, on_delete=models.PROTECT, related_name='acces_notes_temporaire')
+    enseignant = models.ForeignKey('salaires.Enseignant', on_delete=models.PROTECT, related_name='acces_notes')
+    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='acces_notes_enseignants')
+    cree_par = models.ForeignKey(User, on_delete=models.PROTECT, related_name='invitations_notes_creees')
+    classes = models.ManyToManyField('ClasseNote', related_name='acces_enseignants')
+    matieres = models.ManyToManyField('MatiereNote', related_name='acces_enseignants')
+    empreinte_lien = models.CharField(max_length=64, unique=True, editable=False)
+    expire_le = models.DateTimeField()
+    revoque_le = models.DateTimeField(null=True, blank=True)
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-cree_le']
+        verbose_name = 'Accès temporaire enseignant'
+        verbose_name_plural = 'Accès temporaires enseignants'
+
+    @property
+    def est_valide(self):
+        from django.utils import timezone
+        profil = getattr(self.utilisateur, 'profil', None)
+        return bool(
+            not self.revoque_le and self.expire_le > timezone.now()
+            and self.utilisateur.is_active and profil and profil.actif
+            and profil.ecole_id == self.ecole_id
+            and self.enseignant.ecole_id == self.ecole_id
+            and self.enseignant.statut == 'ACTIF'
+            and self.enseignant.sync_deleted_at is None
+            and self.enseignant.type_enseignant in ('MATERNELLE', 'PRIMAIRE', 'SECONDAIRE')
+        )
+
+    def __str__(self):
+        return f'{self.enseignant} — jusqu’au {self.expire_le:%d/%m/%Y}'
+
 class ClasseNote(SyncTrackedModel):
     """Classe pour la gestion des notes"""
     NIVEAUX_CHOICES = [
