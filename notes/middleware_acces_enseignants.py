@@ -48,3 +48,17 @@ class AccesEnseignantMiddleware:
             response['Referrer-Policy'] = 'strict-origin'
             response['X-Robots-Tag'] = 'noindex, nofollow'
         return response
+
+    def process_exception(self, request, exception):
+        # Les refus des vues passaient auparavant par la page 403 générique,
+        # qui masque le motif lorsque DEBUG=False.
+        route = getattr(getattr(request, 'resolver_match', None), 'view_name', '')
+        if isinstance(exception, PermissionDenied) and route in self.allowed:
+            response = render(request, 'notes/enseignants/message.html', {
+                'erreur': str(exception) or 'Cet accès enseignant n’est pas autorisé.',
+            }, status=403)
+            response['Cache-Control'] = 'no-store, private'
+            response['Referrer-Policy'] = 'strict-origin'
+            response['X-Robots-Tag'] = 'noindex, nofollow'
+            return response
+        return None

@@ -361,3 +361,27 @@ class AccesEnseignantsTests(TestCase):
                                 secure=True, HTTP_REFERER='https://testserver/')
         self.assertEqual(response.status_code, 302)
         self.assertEqual(teacher.get(reverse('notes:enseignant_accueil'), secure=True).status_code, 200)
+
+    @override_settings(DEBUG=False)
+    def test_saisie_sans_session_explique_comment_se_connecter(self):
+        url = reverse('notes:enseignant_saisie', args=[self.classe.pk]) + '?mode=intelligent'
+        response = Client().get(url)
+        self.assertContains(response, 'Rouvrez le lien personnel', status_code=403)
+        self.assertEqual(response['Cache-Control'], 'no-store, private')
+        self.client.force_login(self.principal)
+        response = self.client.get(url)
+        self.assertContains(response, 'fenêtre privée', status_code=403)
+        self.assertEqual(NoteMensuelle.objects.count(), 0)
+
+    @override_settings(DEBUG=False)
+    def test_saisie_sans_matieres_explique_le_refus_sans_elargir_acces(self):
+        teacher, acces, _ = self.entrer()
+        acces.matieres.clear()
+        url = reverse('notes:enseignant_saisie', args=[self.classe.pk])
+        response = teacher.get(url, {'mode': 'intelligent'})
+        self.assertContains(response, 'Aucune matière autorisée', status_code=403)
+        accueil = teacher.get(reverse('notes:enseignant_accueil'))
+        self.assertContains(accueil, 'La saisie est indisponible')
+        self.assertNotContains(accueil, f'href="{url}?mode=intelligent"')
+        self.assertFalse(acces.matieres.exists())
+        self.assertEqual(NoteMensuelle.objects.count(), 0)
