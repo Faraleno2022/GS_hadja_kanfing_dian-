@@ -204,6 +204,11 @@ def synchroniser_echeancier_apres_changement_paiement(eleve_id, annee_scolaire):
     if echeancier is None:
         return None
 
+    # Le premier paiement d'admission restant peut avoir changé après une
+    # suppression/restauration. Réaligner le tarif avant de répartir le cash.
+    from .views import _align_enrollment_fee
+
+    _align_enrollment_fee(echeancier.eleve, echeancier)
     _synchroniser_couverture(echeancier, conserver_saisie_manuelle=False)
     echeancier.save()
     return echeancier

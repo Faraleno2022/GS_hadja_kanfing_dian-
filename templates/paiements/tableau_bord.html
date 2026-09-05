@@ -801,6 +801,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // Mettre à jour les statistiques au chargement
     updateStatistics();
     
+    // Recharger les cartes au retour d'une correction/suppression, même
+    // lorsque le navigateur restaure la page depuis son cache de navigation.
+    window.addEventListener('pageshow', event => {
+        if (event.persisted) updateStatistics();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') updateStatistics();
+    });
+
     // Actualisation automatique toutes les 30 secondes
     setInterval(updateStatistics, 30000);
 });

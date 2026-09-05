@@ -173,3 +173,115 @@ class PaymentActivityTests(TestCase):
         self.assertContains(response, "Montants modifiés et supprimés")
         self.assertContains(response, "Afficher la liste et les motifs")
         self.assertContains(response, reverse("paiements:historique_activite"))
+
+    def _admission_payment(self):
+        from eleves.models import GrilleTarifaire
+        from paiements.models import PaiementRemise, RemiseReduction
+
+        GrilleTarifaire.objects.create(
+            ecole=self.school, niveau=self.classe.niveau,
+            annee_scolaire=self.school_year,
+            frais_inscription=30000, frais_reinscription=20000,
+            tranche_1=400000, tranche_2=0, tranche_3=0,
+        )
+        self.type_paiement.nom = "Inscription + Tranche 1"
+        self.type_paiement.save()
+        self.echeancier.frais_inscription_du = Decimal("30000")
+        self.echeancier.save()
+        payment = self._payment("120000", "AUD-ADMISSION")
+        discount = RemiseReduction.objects.create(
+            nom="Remise scolarite correction", type_remise="POURCENTAGE",
+            valeur=10, motif="AUTRE", date_debut=self.today, date_fin=self.today,
+        )
+        PaiementRemise.objects.create(
+            paiement=payment, remise=discount, montant_remise=40000,
+        )
+        return payment
+
+    def _correct_type(self, payment, payment_type, amount="120000"):
+        response = self.client.post(
+            reverse("paiements:modifier_paiement", args=[payment.pk]),
+            {
+                "type_paiement": payment_type.pk,
+                "mode_paiement": self.mode_paiement.pk,
+                "montant": amount,
+                "date_paiement": self.today.isoformat(),
+                "motif_modification": "Correction inscription et reinscription",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        payment.refresh_from_db()
+        self.echeancier.refresh_from_db()
+
+    def test_correction_admission_recalcule_tarif_remise_carnet_et_cartes(self):
+        from paiements.carnet_paiement import construire_donnees_carnet
+
+        payment = self._admission_payment()
+        reinscription = TypePaiement.objects.create(nom="Reinscription + Tranche 1")
+        for payment_type, nature, fee, tuition, balance in (
+            (reinscription, "REINSCRIPTION", 20000, 100000, 260000),
+            (self.type_paiement, "INSCRIPTION", 30000, 90000, 270000),
+        ):
+            with self.subTest(nature=nature):
+                self._correct_type(payment, payment_type)
+                self.assertEqual(payment.statut, "VALIDE")
+                self.assertEqual(payment.montant, Decimal("120000"))
+                self.assertEqual(self.echeancier.nature_frais, nature)
+                self.assertEqual(self.echeancier.frais_inscription_du, fee)
+                self.assertEqual(self.echeancier.frais_inscription_paye, fee)
+                self.assertEqual(self.echeancier.tranche_1_payee, tuition)
+                self.assertEqual(self.echeancier.solde_restant, balance)
+                data = construire_donnees_carnet(payment)
+                self.assertEqual(data["total_remises"], 40000)
+                self.assertEqual(data["reste"], balance)
+                payload = self.client.get(reverse("paiements:ajax_statistiques_paiements")).json()
+                metrics = payload["financial_metrics"]
+                admissions = {item["key"]: item for item in metrics["admissions"]}
+                self.assertEqual(admissions[nature.lower()]["values"]["today"]["amount"], fee)
+                other = "inscription" if nature == "REINSCRIPTION" else "reinscription"
+                self.assertEqual(admissions[other]["values"]["today"]["amount"], 0)
+
+    def test_correction_type_et_montant_aligne_tarif_avant_revalidation(self):
+        payment = self._admission_payment()
+        reinscription = TypePaiement.objects.create(nom="Reinscription + Tranche 1")
+        self._correct_type(payment, reinscription, amount="110000")
+        self.assertEqual(payment.statut, "EN_ATTENTE")
+        self.assertEqual(self.echeancier.frais_inscription_du, 20000)
+        self.assertEqual(self.echeancier.total_paye, 0)
+        self.assertEqual(self.echeancier.solde_restant, 420000)
+        _valider_paiement_impl(payment, self.user)
+        self.echeancier.refresh_from_db()
+        self.assertEqual(self.echeancier.solde_restant, 270000)
+
+    def test_suppression_admission_realigne_sur_le_paiement_restant(self):
+        payment = self._admission_payment()
+        self.type_paiement = TypePaiement.objects.create(nom="Reinscription + Tranche 1")
+        remaining = self._payment("50000", "AUD-ADMISSION-KEEP")
+        response = self.client.post(
+            reverse("paiements:supprimer_paiement", args=[payment.pk]),
+            {"motif": "Suppression du paiement inscription errone"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.echeancier.refresh_from_db()
+        self.assertEqual(self.echeancier.nature_frais, "REINSCRIPTION")
+        self.assertEqual(self.echeancier.frais_inscription_du, 20000)
+        self.assertEqual(self.echeancier.total_paye, remaining.montant)
+        self.assertEqual(self.echeancier.total_remises_valides, 0)
+        self.assertEqual(self.echeancier.solde_restant, 370000)
+
+    def test_recu_corrige_affiche_reinscription_et_remise(self):
+        from io import BytesIO
+        from pypdf import PdfReader
+
+        payment = self._admission_payment()
+        reinscription = TypePaiement.objects.create(nom="Reinscription + Tranche 1")
+        self._correct_type(payment, reinscription)
+        response = self.client.get(reverse("paiements:generer_recu_pdf", args=[payment.pk]))
+        self.assertEqual(response.status_code, 200)
+        text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(response.content)).pages)
+        self.assertIn("20 000 GNF", text)
+        self.assertIn("Remise de : 40 000 GNF", text)
+        self.assertIn("Montant payé : 80 000 GNF", text)
+        self.echeancier.refresh_from_db()
+        self.assertEqual(self.echeancier.nature_frais, "REINSCRIPTION")
+        self.assertEqual(self.echeancier.solde_restant, 260000)
