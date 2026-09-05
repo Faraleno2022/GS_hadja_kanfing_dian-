@@ -123,7 +123,7 @@ class AccesEnseignantsTests(TestCase):
         response = teacher.get(lien)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn('_auth_user_id', teacher.session)
-        self.assertEqual(response['Referrer-Policy'], 'no-referrer')
+        self.assertEqual(response['Referrer-Policy'], 'strict-origin')
         self.assertEqual(self.poster_lien(teacher, lien).status_code, 403)
         self.assertEqual(self.poster_lien(teacher, lien, csrfmiddlewaretoken=teacher.cookies['csrftoken'].value).status_code, 302)
 
@@ -305,3 +305,59 @@ class AccesEnseignantsTests(TestCase):
         acces.matieres.remove(self.fr)
         self.assertEqual(teacher.post(url, {**data, 'action': 'confirmer', 'nonce': nonce}).status_code, 403)
         self.assertEqual(NoteMensuelle.objects.count(), 0)
+
+    @override_settings(ALLOWED_HOSTS=['www.myschoolgn.space'], CSRF_COOKIE_SECURE=True,
+                       CSRF_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=True)
+    def test_gestion_https_csrf_creation_renouvellement_revocation(self):
+        from html.parser import HTMLParser
+
+        class TokenParser(HTMLParser):
+            token = None
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == 'input' and attrs.get('name') == 'csrfmiddlewaretoken':
+                    self.token = attrs['value']
+
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.principal)
+        host = {'secure': True, 'HTTP_HOST': 'www.myschoolgn.space'}
+        url = reverse('notes:gerer_acces_enseignants') + f'?enseignant={self.enseignant.pk}'
+        response = client.get(url, **host)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Referrer-Policy'], 'strict-origin')
+        parser = TokenParser()
+        parser.feed(response.content.decode())
+        self.assertTrue(parser.token)
+        data = {'action': 'creer', 'enseignant': self.enseignant.pk,
+                'classes': [self.classe.pk],
+                'expire_le': (timezone.now() + timedelta(days=2)).strftime('%Y-%m-%dT%H:%M'),
+                'csrfmiddlewaretoken': parser.token}
+        # Reproduit le navigateur HTTPS sans Origin et privé de Referer.
+        self.assertEqual(client.post(url, data, **host).status_code, 403)
+        self.assertEqual(AccesEnseignantTemporaire.objects.count(), 0)
+        referer = 'https://www.myschoolgn.space/'
+        self.assertEqual(client.post(url, data, HTTP_REFERER=referer, **host).status_code, 302)
+        acces = AccesEnseignantTemporaire.objects.get()
+        for action in ('renouveler', 'revoquer'):
+            response = client.post(url, {**data, 'action': action, 'acces_id': acces.pk},
+                                   HTTP_REFERER=referer, **host)
+            self.assertEqual(response.status_code, 302)
+        acces.refresh_from_db()
+        self.assertIsNotNone(acces.revoque_le)
+        # Le correctif n'autorise ni les jetons absents ni les sites externes.
+        self.assertEqual(client.post(url, {'action': 'creer'}, HTTP_REFERER=referer, **host).status_code, 403)
+        self.assertEqual(client.post(url, data, HTTP_REFERER='https://example.org/', **host).status_code, 403)
+
+    def test_connexion_enseignant_https_referer_sans_secret(self):
+        _, lien = self.creer_acces()
+        teacher = Client(enforce_csrf_checks=True)
+        response = teacher.get(lien, secure=True)
+        self.assertEqual(response['Referrer-Policy'], 'strict-origin')
+        self.assertContains(response, '<meta name="referrer" content="strict-origin">')
+        data = {'token': lien.rstrip('/').split('/')[-1],
+                'csrfmiddlewaretoken': teacher.cookies['csrftoken'].value}
+        response = teacher.post(reverse('notes:enseignant_connexion'), data,
+                                secure=True, HTTP_REFERER='https://testserver/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(teacher.get(reverse('notes:enseignant_accueil'), secure=True).status_code, 200)
