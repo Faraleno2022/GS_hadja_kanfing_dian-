@@ -38,11 +38,13 @@ class AccesEnseignantMiddleware:
                 if route not in ('notes:enseignant_lien', 'notes:enseignant_connexion'):
                     response = render(request, 'notes/enseignants/message.html', {'erreur': str(exc)}, status=403)
                     response['Cache-Control'] = 'no-store, private'
-                    response['Referrer-Policy'] = 'no-referrer'
+                    response['Referrer-Policy'] = 'strict-origin'
                     return response
+        # Le domaine seul permet le contrôle CSRF HTTPS sans transmettre
+        # le chemin du lien personnel ni son jeton dans le Referer.
         response = self.get_response(request)
         if request.path_info.startswith('/notes/enseignant') or request.path_info.startswith('/notes/acces-enseignants'):
             response['Cache-Control'] = 'no-store, private'
-            response['Referrer-Policy'] = 'no-referrer'
+            response['Referrer-Policy'] = 'strict-origin'
             response['X-Robots-Tag'] = 'noindex, nofollow'
         return response
