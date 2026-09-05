@@ -1,0 +1,35 @@
+{% load static %}
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>{% block title %}Espace enseignant — Notes{% endblock %}</title>
+    <link href="{% static 'vendor/bootstrap/bootstrap.min.css' %}" rel="stylesheet">
+    <style>
+        body{background:#f4f6fa;color:#172b45}header{background:#193a60;color:white}
+        .portal-panel{background:white;border:1px solid #dde4ed;border-radius:16px;padding:1.5rem;margin-bottom:1.5rem}
+        .note-cell{min-width:110px;max-width:170px}.table th{white-space:nowrap}
+        .table thead th{background:#eaf0f8;color:#193a60;vertical-align:middle}
+        .portal-actions{display:flex;flex-wrap:wrap;gap:.5rem}.form-label{font-weight:600}
+        .note-cell:focus{outline:3px solid #a9ceff}.table td{vertical-align:middle}
+        @media(max-width:767px){.portal-panel{padding:1rem}.portal-actions .btn{flex:1 1 45%}}
+    </style>
+</head>
+<body>
+<header class="py-3 mb-4"><div class="container-fluid px-lg-5 d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div><strong>Espace enseignant · Notes</strong>{% if acces %}<div class="small">{{ acces.ecole.nom }} · {{ acces.enseignant.prenoms }} {{ acces.enseignant.nom }}</div>{% endif %}</div>
+    {% if request.acces_enseignant %}<div class="d-flex gap-2 align-items-center">
+        <a class="btn btn-outline-light btn-sm" href="{% url 'notes:enseignant_accueil' %}">Mes classes</a>
+        <form method="post" action="{% url 'notes:enseignant_deconnexion' %}">{% csrf_token %}<button class="btn btn-light btn-sm">Déconnexion</button></form>
+    </div>{% endif %}
+</div></header>
+<main class="container-fluid px-lg-5 pb-5">
+    {% for message in messages %}<div class="alert alert-info" role="status">{{ message }}</div>{% endfor %}
+    {% if erreur %}<div class="alert alert-danger" role="alert">{{ erreur }}</div>{% endif %}
+    {% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

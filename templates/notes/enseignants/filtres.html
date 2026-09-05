@@ -1,0 +1,9 @@
+<form method="get" class="portal-panel row g-3 align-items-end mx-0">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    {% if maternelle %}<input type="hidden" name="genre" value="maternelle">{% else %}
+    <div class="col-12 col-md-4"><label class="form-label" for="genre">Type de notes</label><select class="form-select" name="genre" id="genre" onchange="document.getElementById('periode').removeAttribute('name');this.form.submit()"><option value="mensuelle" {% if genre == 'mensuelle' %}selected{% endif %}>Notes mensuelles</option><option value="composition" {% if genre == 'composition' %}selected{% endif %}>Composition</option></select></div>
+    {% endif %}
+    <div class="col-12 col-md-3"><label class="form-label" for="periode">Période</label><select class="form-select" name="periode" id="periode">{% for code,label in periodes %}<option value="{{ code }}" {% if periode == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    {% if mode == 'simple' %}<div class="col-12 col-md-3"><label class="form-label" for="matiere">Matière</label><select class="form-select" name="matiere" id="matiere">{% for matiere in matieres %}<option value="{{ matiere.id }}" {% if matiere.id|stringformat:'s' == matiere_selectionnee %}selected{% endif %}>{{ matiere.nom }}</option>{% endfor %}</select></div>{% endif %}
+    <div class="col-auto"><button class="btn btn-secondary">Afficher</button></div>
+</form>

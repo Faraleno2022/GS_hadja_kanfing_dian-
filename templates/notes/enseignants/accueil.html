@@ -1,0 +1,17 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<h1 class="h3">Mes classes et matières</h1>
+<p class="text-muted">Votre accès expire le {{ acces.expire_le|date:"d/m/Y à H:i" }}. Les notes enregistrées alimentent les bulletins de l’école.</p>
+<div class="row g-4">
+{% for classe in classes %}<div class="col-12 col-xl-6"><section class="portal-panel h-100">
+    <h2 class="h4">{{ classe.nom }} <small class="text-muted">{{ classe.annee_scolaire }}</small></h2>
+    <p>{{ classe.get_niveau_enseignement_display }} · {% for matiere in classe.matieres_portail %}{{ matiere.nom }}{% if not forloop.last %}, {% endif %}{% empty %}Aucune matière autorisée{% endfor %}</p>
+    <div class="portal-actions">
+        <a class="btn btn-primary" href="{% url 'notes:enseignant_saisie' classe.id %}">Saisir les notes</a>
+        <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_saisie' classe.id %}?mode=intelligent">Saisie intelligente</a>
+        <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_import' classe.id %}">Importer</a>
+        <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_import' classe.id %}?mode=intelligent">Importation intelligente</a>
+    </div>
+</section></div>{% empty %}<div class="col-12"><div class="portal-panel">Aucune affectation active. Demandez à votre école de vérifier votre affectation et les classes autorisées.</div></div>{% endfor %}
+</div>
+{% endblock %}

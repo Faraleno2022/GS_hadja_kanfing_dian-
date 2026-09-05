@@ -1,0 +1,57 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<h1 class="h3">{% if mode == 'intelligent' %}Saisie intelligente{% else %}Saisir les notes{% endif %} — {{ classe.nom }}</h1>
+<p>{{ classe.annee_scolaire }} · {% if maternelle %}Appréciations trimestrielles{% else %}Notes sur {{ maximum }}{% endif %}</p>
+{% include 'notes/enseignants/filtres.html' %}
+<div class="portal-panel">
+    <p>Utilisez <strong>ABS</strong> pour une absence. Les cellules vides conservent les notes existantes. {% if mode == 'intelligent' %}Vous pouvez coller un bloc de cellules depuis Excel, puis vérifier avant d’enregistrer.{% endif %}</p>
+    <form method="post" id="notes-form">{% csrf_token %}{% include 'notes/enseignants/champs_contexte.html' %}
+        <div class="table-responsive"><table class="table table-bordered table-hover" id="notes-table">
+            <thead><tr><th>Matricule</th><th>Élève</th>{% for matiere in colonnes %}<th>{{ matiere.nom }}</th>{% endfor %}</tr></thead>
+            <tbody>{% for ligne in lignes %}<tr><td>{{ ligne.eleve.matricule }}</td><td>{{ ligne.eleve.prenom }} {{ ligne.eleve.nom }}</td>
+                {% for cell in ligne.cellules %}<td>{% if maternelle %}<select class="form-select note-cell" name="{{ cell.name }}" aria-label="{{ ligne.eleve }} — {{ cell.matiere.nom }}"><option value="">—</option>{% for code,label in appreciations %}<option value="{{ code }}" {% if cell.valeur == code %}selected{% endif %}>{{ code }} · {{ label }}</option>{% endfor %}<option value="ABS" {% if cell.valeur == 'ABS' %}selected{% endif %}>Absent</option></select>
+                {% else %}<input class="form-control note-cell" name="{{ cell.name }}" value="{{ cell.valeur }}" aria-label="{{ ligne.eleve }} — {{ cell.matiere.nom }}" autocomplete="off" maxlength="8" placeholder="0–{{ maximum }} / ABS">{% endif %}</td>{% endfor %}
+            </tr>{% empty %}<tr><td colspan="100">Aucun élève actif dans cette classe.</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <p id="saisie-status" class="text-muted" role="status"></p>
+        <button class="btn btn-primary mt-2" {% if not lignes %}disabled{% endif %}>Enregistrer les notes</button>
+    </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const table = document.getElementById('notes-table'), status = document.getElementById('saisie-status');
+    let dirty = false;
+    table.addEventListener('input', () => { dirty = true; status.textContent = 'Modifications non enregistrées.'; });
+    table.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.classList.contains('note-cell')) {
+            e.preventDefault(); const cells = [...table.querySelectorAll('.note-cell')];
+            const next = cells[cells.indexOf(e.target) + 1]; if(next) next.focus();
+        }
+    });
+    table.addEventListener('paste', e => {
+        if (!e.target.classList.contains('note-cell')) return;
+        const text = e.clipboardData.getData('text');
+        if (!text.includes('\t') && !text.includes('\n')) return;
+        e.preventDefault();
+        const block = text.replace(/\r/g, '').replace(/\n$/, '').split('\n').map(row => row.split('\t'));
+        const rows = [...table.tBodies[0].rows], startRow = rows.indexOf(e.target.closest('tr'));
+        const startCol = [...rows[startRow].querySelectorAll('.note-cell')].indexOf(e.target);
+        const changes = [];
+        for(let r=0;r<block.length;r++) for(let c=0;c<block[r].length;c++) {
+            const target = rows[startRow+r]?.querySelectorAll('.note-cell')[startCol+c];
+            const value = block[r][c].trim().toUpperCase();
+            if(!target || (target.tagName === 'SELECT' && ![...target.options].some(o => o.value === value))) {
+                status.textContent = 'Bloc non collé : dimensions ou appréciations invalides.'; return;
+            }
+            changes.push([target,value]);
+        }
+        changes.forEach(([target,value]) => { target.value = value; }); dirty = true;
+        status.textContent = changes.length + ' cellules collées. Vérifiez puis enregistrez.';
+    });
+    document.getElementById('notes-form').addEventListener('submit', () => { dirty = false; });
+    window.addEventListener('beforeunload', e => { if(dirty) { e.preventDefault(); e.returnValue = ''; } });
+})();
+</script>
+{% endblock %}

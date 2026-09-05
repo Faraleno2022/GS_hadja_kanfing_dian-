@@ -1,0 +1,10 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<div class="portal-panel mx-auto" style="max-width:640px">
+    <h1 class="h3">Bienvenue, {{ acces.enseignant.prenoms }}</h1>
+    <p>Votre école vous donne accès à la saisie et à l’import des notes de vos classes et matières autorisées.</p>
+    <p>Valable jusqu’au <strong>{{ acces.expire_le|date:"d/m/Y à H:i" }}</strong>.</p>
+    <div class="alert alert-warning">Ce lien est personnel et donne accès aux notes des élèves. Ne le partagez pas. {% if request.user.is_authenticated %}L’ouverture remplacera votre session actuelle par ce compte enseignant.{% endif %}</div>
+    <form method="post" action="{% url 'notes:enseignant_connexion' %}">{% csrf_token %}<input type="hidden" name="token" value="{{ token }}"><button class="btn btn-primary w-100">Ouvrir mon espace enseignant</button></form>
+</div>
+{% endblock %}

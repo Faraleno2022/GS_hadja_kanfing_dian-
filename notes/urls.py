@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import views_acces_enseignants as enseignants
 from .bulletin_intelligent import (
     bulletin_intelligent_view,
     bulletin_intelligent_pdf,
@@ -52,6 +53,14 @@ from .views_edt import (
 app_name = 'notes'
 
 urlpatterns = [
+    path('acces-enseignants/', enseignants.gerer_acces, name='gerer_acces_enseignants'),
+    path('enseignant/acces/<str:token>/', enseignants.ouvrir_lien, name='enseignant_lien'),
+    path('enseignant/connexion/', enseignants.connecter, name='enseignant_connexion'),
+    path('enseignant/', enseignants.accueil, name='enseignant_accueil'),
+    path('enseignant/deconnexion/', enseignants.deconnexion, name='enseignant_deconnexion'),
+    path('enseignant/classe/<int:classe_id>/saisie/', enseignants.saisie, name='enseignant_saisie'),
+    path('enseignant/classe/<int:classe_id>/import/', enseignants.importer, name='enseignant_import'),
+    path('enseignant/classe/<int:classe_id>/modele/', enseignants.modele_import, name='enseignant_template'),
     path('', views.tableau_bord, name='tableau_bord'),
     path('classes/', views.gerer_classes, name='gerer_classes'),
     path('classes/modifier/<int:classe_id>/', views.modifier_classe, name='modifier_classe'),
