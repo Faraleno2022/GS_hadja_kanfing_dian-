@@ -6,12 +6,16 @@
 {% for classe in classes %}<div class="col-12 col-xl-6"><section class="portal-panel h-100">
     <h2 class="h4">{{ classe.nom }} <small class="text-muted">{{ classe.annee_scolaire }}</small></h2>
     <p>{{ classe.get_niveau_enseignement_display }} · {% for matiere in classe.matieres_portail %}{{ matiere.nom }}{% if not forloop.last %}, {% endif %}{% empty %}Aucune matière autorisée{% endfor %}</p>
+    {% if classe.matieres_portail %}
     <div class="portal-actions">
         <a class="btn btn-primary" href="{% url 'notes:enseignant_saisie' classe.id %}">Saisir les notes</a>
         <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_saisie' classe.id %}?mode=intelligent">Saisie intelligente</a>
         <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_import' classe.id %}">Importer</a>
         <a class="btn btn-outline-primary" href="{% url 'notes:enseignant_import' classe.id %}?mode=intelligent">Importation intelligente</a>
     </div>
+    {% else %}
+    <div class="alert alert-warning mb-0">La saisie est indisponible : aucune matière active n’est autorisée pour cette classe. Demandez au compte principal de vérifier les matières et de recréer votre accès si nécessaire.</div>
+    {% endif %}
 </section></div>{% empty %}<div class="col-12"><div class="portal-panel">Aucune affectation active. Demandez à votre école de vérifier votre affectation et les classes autorisées.</div></div>{% endfor %}
 </div>
 {% endblock %}

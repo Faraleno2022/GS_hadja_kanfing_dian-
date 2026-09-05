@@ -65,7 +65,7 @@ def eleves_autorises(classe):
 
 def verifier_session(request, verrouiller=False):
     if not request.user.is_authenticated:
-        raise PermissionDenied('Utilisez le lien transmis par votre école.')
+        raise PermissionDenied('Votre session enseignant est absente ou a expiré. Rouvrez le lien personnel transmis par votre école, puis cliquez sur « Ouvrir mon espace enseignant ». Une adresse de saisie seule ne permet pas de vous connecter.')
     qs = AccesEnseignantTemporaire.objects
     if verrouiller:
         qs = qs.select_for_update()
@@ -74,7 +74,9 @@ def verifier_session(request, verrouiller=False):
     acces = qs.filter(
         utilisateur=request.user,
     ).first()
-    if not acces or not acces.est_valide or not constant_time_compare(
+    if not acces:
+        raise PermissionDenied('Le compte actuellement connecté ne dispose pas d’un accès temporaire enseignant. Ouvrez le lien personnel de l’enseignant dans une fenêtre privée pour conserver votre session actuelle.')
+    if not acces.est_valide or not constant_time_compare(
         acces.empreinte_lien, request.session.get(SESSION_KEY, ''),
     ):
         raise PermissionDenied('Accès expiré ou révoqué. Demandez un nouveau lien à votre école.')
