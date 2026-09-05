@@ -496,8 +496,7 @@
 
                 <div id="sans-affectation-field" class="conditional-field alert alert-secondary mb-0">
                     <i class="fas fa-info-circle me-1"></i>
-                    La garderie n'exige pas d'affectation de classe. Pour un
-                    administrateur, renseignez plutôt sa fonction.
+                    Ce type de personnel n'exige pas d'affectation de classe.
                 </div>
             </div>
 
@@ -508,9 +507,8 @@
                 <div class="alert alert-info py-2">
                     <i class="fas fa-info-circle me-1"></i>
                     Au secondaire, choisissez entre les heures issues du pointage
-                    arrivée/départ et un total mensuel global. Pour le primaire,
-                    la maternelle, la garderie et les cadres administratifs, le
-                    salaire convenu reste fixe.
+                    arrivée/départ et un total mensuel global. Pour les autres catégories
+                    de personnel, le salaire convenu reste fixe.
                 </div>
                 
                 <div class="row">
@@ -591,6 +589,15 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="form-section">
+                <h6><i class="fas fa-gift me-2 text-success"></i>Primes du travailleur</h6>
+                <label for="{{ form.prime_mensuelle.id_for_label }}" class="form-label">{{ form.prime_mensuelle.label }}</label>
+                {{ form.prime_mensuelle }}
+                <div class="help-text">{{ form.prime_mensuelle.help_text }} Laissez 0 en l'absence de prime récurrente.</div>
+                {% for error in form.prime_mensuelle.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+                <p class="text-muted small mt-2 mb-0">Pour une prime ponctuelle, ouvrez l'état de salaire du mois et choisissez « Primes et ajustements ».</p>
             </div>
 
             <!-- Erreurs générales du formulaire -->

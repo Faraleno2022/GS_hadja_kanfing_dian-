@@ -39,7 +39,7 @@ class EnseignantAdmin(admin.ModelAdmin):
         }),
         ('Rémunération', {
             'fields': (
-                'salaire_fixe', 'taux_horaire',
+                'salaire_fixe', 'prime_mensuelle', 'taux_horaire',
                 'mode_calcul_horaire', 'heures_mensuelles',
             ),
         }),

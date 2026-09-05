@@ -28,7 +28,7 @@ class EnseignantForm(forms.ModelForm):
             'nom', 'prenoms', 'telephone', 'email', 'adresse',
             'ecole', 'type_enseignant', 'statut', 
             'fonction',
-            'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe',
+            'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe', 'prime_mensuelle',
             'heures_mensuelles', 'date_embauche'
         ]
         widgets = {
@@ -79,6 +79,9 @@ class EnseignantForm(forms.ModelForm):
                 'placeholder': 'Salaire fixe en GNF',
                 'step': '0.01'
             }),
+            'prime_mensuelle': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.01',
+            }),
             'heures_mensuelles': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'placeholder': 'Nombre d\'heures par mois',
@@ -97,7 +100,7 @@ class EnseignantForm(forms.ModelForm):
             'email': 'Adresse e-mail',
             'adresse': 'Adresse',
             'ecole': 'École *',
-            'type_enseignant': 'Type d\'enseignant *',
+            'type_enseignant': 'Type de personnel',
             'statut': 'Statut',
             'fonction': 'Fonction administrative *',
             'taux_horaire': 'Taux horaire (GNF)',
@@ -111,7 +114,7 @@ class EnseignantForm(forms.ModelForm):
             'mode_calcul_horaire': (
                 "Choisissez le pointage arrivée/départ ou la saisie d'un total mensuel."
             ),
-            'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
+            'salaire_fixe': 'Pour le personnel à salaire fixe (hors secondaire)',
             'fonction': (
                 'À renseigner uniquement pour le personnel administratif.'
             ),
@@ -146,6 +149,9 @@ class EnseignantForm(forms.ModelForm):
         # Définir le statut par défaut
         if not self.instance.pk:
             self.fields['statut'].initial = StatutEnseignant.ACTIF
+
+    def clean_prime_mensuelle(self):
+        return self.cleaned_data.get('prime_mensuelle') or Decimal('0')
 
     def clean(self):
         cleaned_data = super().clean()
@@ -381,10 +387,7 @@ class BaseAffectationEnseignantFormSet(BaseInlineFormSet):
                 "Ajoutez au moins une affectation de classe pour cet enseignant."
             )
 
-        if type_enseignant in (
-            TypeEnseignant.GARDERIE,
-            TypeEnseignant.ADMINISTRATEUR,
-        ) and affectations:
+        if not niveaux_classes_pour_type_enseignant(type_enseignant) and affectations:
             raise ValidationError(
                 "Ce type de personnel ne doit pas avoir d'affectation de classe."
             )

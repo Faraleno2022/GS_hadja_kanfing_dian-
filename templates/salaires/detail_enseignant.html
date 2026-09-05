@@ -248,6 +248,10 @@
                 {% endif %}
                 
                 <div class="info-row">
+                    <span class="info-label">Prime mensuelle par défaut :</span>
+                    <span class="info-value">{{ enseignant.prime_mensuelle|floatformat:0|intcomma }} GNF</span>
+                </div>
+                <div class="info-row">
                     <span class="info-label">Ancienneté :</span>
                     <span class="info-value">
                         {% now "Y-m-d" as today %}
@@ -411,7 +415,11 @@
                         </div>
                         <div class="text-end">
                             <div class="salary-amount">{{ etat.salaire_net|floatformat:0|intcomma }} GNF</div>
-                            <small class="text-muted">{{ etat.date_creation|date:"d/m/Y" }}</small>
+                            <small class="text-muted d-block">Primes : {{ etat.primes|floatformat:0|intcomma }} GNF</small>
+                            {% if not etat.valide and not etat.periode.cloturee %}
+                            <a class="btn btn-sm btn-outline-success mt-1" href="{% url 'salaires:ajuster_etat_salaire' etat.id %}#primes">Primes et ajustements</a>
+                            {% endif %}
+                            <small class="text-muted d-block">{{ etat.date_creation|date:"d/m/Y" }}</small>
                         </div>
                     </div>
                     {% endfor %}

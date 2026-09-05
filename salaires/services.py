@@ -269,6 +269,8 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
             'calcule_par': utilisateur,
             'salaire_base': Decimal('0'),
             'salaire_net': Decimal('0'),
+            # Copier une seule fois : un recalcul conserve les primes du mois.
+            'primes': enseignant.prime_mensuelle,
         },
     )
 

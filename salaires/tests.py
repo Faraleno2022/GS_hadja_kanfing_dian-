@@ -579,6 +579,14 @@ class MoteurPaieTests(TestCase):
                 'mode_calcul_horaire': ModeCalculHoraire.MENSUEL,
                 'heures_mensuelles': '80',
                 'date_embauche': '2025-01-01',
+                'affectations-TOTAL_FORMS': '1',
+                'affectations-INITIAL_FORMS': '0',
+                'affectations-MIN_NUM_FORMS': '0',
+                'affectations-MAX_NUM_FORMS': '1000',
+                'affectations-0-classe': str(self.classe_a.pk),
+                'affectations-0-heures_par_semaine': '20',
+                'affectations-0-date_debut': '2025-01-01',
+                'affectations-0-actif': 'on',
             },
         )
 
@@ -1029,3 +1037,65 @@ class MoteurPaieTests(TestCase):
         ids = {ligne['id'] for ligne in response.json()['classes']}
         self.assertIn(classe_primaire.pk, ids)
         self.assertNotIn(self.classe_a.pk, ids)
+
+    def test_creation_personnel_services_avec_prime_et_salaire_fixe(self):
+        categories = [TypeEnseignant.CHAUFFEUR, TypeEnseignant.VIGILE,
+                      TypeEnseignant.ENTRETIEN, TypeEnseignant.NOUNOU,
+                      TypeEnseignant.RESTAURATION]
+        for categorie in categories:
+            with self.subTest(categorie=categorie):
+                response = self.client.post(reverse('salaires:ajouter_enseignant'),
+                    self.donnees_creation_enseignant(categorie, nom=categorie,
+                                                     prime_mensuelle='50000'))
+                self.assertEqual(response.status_code, 302)
+                personne = Enseignant.objects.get(nom=categorie)
+                self.assertTrue(personne.est_salaire_fixe)
+                self.assertFalse(personne.affectations.exists())
+                self.assertEqual(personne.prime_mensuelle, Decimal('50000'))
+                etat, _ = calculer_etat_salaire_reel(personne, self.periode, self.user)
+                self.assertEqual(etat.salaire_base, Decimal('1500000'))
+                self.assertEqual(etat.primes, Decimal('50000'))
+                self.assertEqual(etat.salaire_net, Decimal('1550000'))
+                page = self.client.get(reverse('salaires:liste_enseignants'),
+                                       {'type_enseignant': categorie})
+                self.assertContains(page, personne.get_type_enseignant_display())
+
+    def test_prime_mensuelle_et_ponctuelle_ne_se_cumulent_pas_au_recalcul(self):
+        personne = self.creer_fixe()
+        personne.prime_mensuelle = Decimal('50000')
+        personne.save()
+        etat, _ = calculer_etat_salaire_reel(personne, self.periode, self.user)
+        response = self.client.post(reverse('salaires:ajuster_etat_salaire', args=[etat.pk]),
+                                   {'primes': '75000', 'deductions': '10000',
+                                    'observations': 'Prime mensuelle + remplacement'})
+        self.assertEqual(response.status_code, 302)
+        personne.prime_mensuelle = Decimal('60000')
+        personne.save()
+        for _ in range(2):
+            etat, _ = calculer_etat_salaire_reel(personne, self.periode, self.user)
+            self.assertEqual(etat.primes, Decimal('75000'))
+            self.assertEqual(etat.salaire_net, Decimal('1065000'))
+        suivante = PeriodeSalaire.objects.create(mois=8, annee=2026,
+                    ecole=self.ecole, nombre_semaines=4, cree_par=self.user)
+        prochain, _ = calculer_etat_salaire_reel(personne, suivante, self.user)
+        self.assertEqual(prochain.primes, Decimal('60000'))
+        self.assertEqual(prochain.salaire_net, Decimal('1060000'))
+        etat.valide = True
+        etat.valide_par = self.user
+        etat.save()
+        _, modifie = calculer_etat_salaire_reel(personne, self.periode, self.user)
+        self.assertFalse(modifie)
+        etat.refresh_from_db()
+        self.assertEqual(etat.primes, Decimal('75000'))
+
+    def test_personnel_prime_negative_et_salaire_absent_refuses(self):
+        for valeurs, champ in [({'prime_mensuelle': '-1'}, 'prime_mensuelle'),
+                               ({'salaire_fixe': ''}, 'salaire_fixe')]:
+            form = EnseignantForm(self.donnees_creation_enseignant(
+                TypeEnseignant.CHAUFFEUR, **valeurs), user=self.user)
+            self.assertFalse(form.is_valid())
+            self.assertIn(champ, form.errors)
+        personne = self.creer_fixe()
+        personne.prime_mensuelle = Decimal('-1')
+        with self.assertRaises(ValidationError):
+            personne.save()

@@ -66,8 +66,9 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label" for="{{ form.primes.id_for_label }}">Primes (GNF)</label>
+                            <label id="primes" class="form-label" for="{{ form.primes.id_for_label }}">Total des primes du mois (GNF)</label>
                             {{ form.primes }}
+                            <div class="form-text">Saisissez le total souhaité pour ce mois, prime récurrente et prime ponctuelle comprises. Ce montant s'ajoute au salaire de base. Indiquez le motif dans les observations.</div>
                             {% for error in form.primes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                         </div>
 
