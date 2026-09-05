@@ -2452,7 +2452,16 @@ def modifier_paiement(request, paiement_id: int):
                     # L'échéancier gardait l'ancien montant / l'ancienne
                     # répartition inscription-vs-tranche : on le reconstruit
                     # à partir des seuls paiements validés de l'année.
-                    if montant_modifie or type_modifie:
+                    if type_modifie:
+                        echeancier = _echeancier_for_payment(paiement, for_update=True)
+                        if echeancier:
+                            _align_enrollment_fee(
+                                paiement.eleve, echeancier,
+                                preferred_type_name=paiement.type_paiement.nom,
+                            )
+
+                    if (montant_modifie or type_modifie
+                            or 'date_paiement' in form.changed_data or annee_reparee):
                         _auto_validate_echeancier_for_eleve(
                             paiement.eleve,
                             reference_date=paiement.date_paiement,
