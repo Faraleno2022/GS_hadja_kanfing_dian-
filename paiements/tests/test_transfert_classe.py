@@ -171,3 +171,84 @@ class TransfertClassePaiementTests(TestCase):
             )["total"],
             Decimal("600000"),
         )
+
+    def ajouter_remise(self, paiement, base='paiement_echeance'):
+        from paiements.models import PaiementRemise, RemiseReduction
+        from paiements.recalcul_remises import memoriser_regle_remise
+        remise = RemiseReduction.objects.create(
+            nom='Remise transfert', type_remise='POURCENTAGE', valeur=10,
+            motif='AUTRE', date_debut=date(2025, 9, 1), date_fin=date(2026, 8, 31),
+        )
+        return PaiementRemise.objects.create(
+            paiement=paiement, remise=remise, montant_remise=50000,
+            regle_calcul=memoriser_regle_remise(remise, base, ['1']),
+        )
+
+    def test_transfert_recalcule_remise_sur_paiement_et_carnet(self):
+        from paiements.carnet_paiement import construire_donnees_carnet
+        paiement = self.creer_paiement_valide('600000')
+        remise = self.ajouter_remise(paiement)
+        self.eleve.classe = self.nouvelle_classe
+        self.eleve.save()
+        self.echeancier.refresh_from_db()
+        remise.refresh_from_db()
+        self.assertEqual(remise.montant_remise, 40000)
+        self.assertEqual(self.echeancier.total_paye, 600000)
+        self.assertEqual(self.echeancier.solde_restant, 1160000)
+        self.assertEqual(self.eleve._financial_transfer_info['solde_restant'], 1160000)
+        carnet = construire_donnees_carnet(paiement)
+        self.assertEqual(carnet['total_remises'], 40000)
+        self.assertEqual(carnet['reste'], 1160000)
+
+    def test_transfert_recalcule_remise_sur_tranche_due(self):
+        paiement = self.creer_paiement_valide('600000')
+        remise = self.ajouter_remise(paiement, base='tranches_dues')
+        self.eleve.classe = self.nouvelle_classe
+        self.eleve.save()
+        remise.refresh_from_db()
+        self.echeancier.refresh_from_db()
+        self.assertEqual(remise.montant_remise, 60000)
+        self.assertEqual(self.echeancier.solde_restant, 1140000)
+
+    def test_passage_a_vers_b_meme_niveau_conserve_montants(self):
+        classe_b = Classe.objects.create(ecole=self.ecole, nom='7eme B',
+            niveau=self.ancienne_classe.niveau, annee_scolaire='2025-2026')
+        paiement = self.creer_paiement_valide('600000')
+        remise = self.ajouter_remise(paiement)
+        numero = paiement.numero_recu
+        self.eleve.classe = classe_b
+        self.eleve.save()
+        self.echeancier.refresh_from_db()
+        remise.refresh_from_db()
+        paiement.refresh_from_db()
+        self.assertEqual(self.echeancier.total_du, 1500000)
+        self.assertEqual(self.echeancier.total_paye, 600000)
+        self.assertEqual(remise.montant_remise, 50000)
+        self.assertEqual(self.echeancier.solde_restant, 850000)
+        self.assertEqual(paiement.numero_recu, numero)
+        self.assertEqual(self.eleve.echeanciers.count(), 1)
+
+    def test_changement_annee_ne_recalcule_pas_anciennes_remises(self):
+        paiement = self.creer_paiement_valide('600000')
+        remise = self.ajouter_remise(paiement)
+        self.eleve.classe = self.classe_annee_suivante
+        self.eleve.save()
+        remise.refresh_from_db()
+        self.assertEqual(remise.montant_remise, 50000)
+        nouvel = self.eleve.echeanciers.get(annee_scolaire='2026-2027')
+        self.assertEqual(nouvel.total_paye, 0)
+        self.assertEqual(nouvel.total_remises_valides, 0)
+
+    def test_erreur_recalcul_annule_transfert(self):
+        from unittest.mock import patch
+        self.creer_paiement_valide('600000')
+        matricule = self.eleve.matricule
+        with patch('paiements.services._synchroniser_couverture', side_effect=ValueError('Calcul impossible')):
+            self.eleve.classe = self.nouvelle_classe
+            with self.assertRaises(ValueError):
+                self.eleve.save()
+        self.eleve.refresh_from_db()
+        self.echeancier.refresh_from_db()
+        self.assertEqual(self.eleve.classe_id, self.ancienne_classe.pk)
+        self.assertEqual(self.eleve.matricule, matricule)
+        self.assertEqual(self.echeancier.total_du, 1500000)

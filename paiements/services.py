@@ -285,6 +285,11 @@ def reconcilier_transfert_classe(eleve, ancienne_classe, nouvelle_classe, *, cre
     else:
         _appliquer_grille(echeancier, grille, nature)
 
+    # La grille cible change aussi la base des remises (tranches dues ou
+    # part scolaire de chaque reçu). Les recalculer avant le solde/statut.
+    from .recalcul_remises import recalculer_remises_echeancier
+    recalculer_remises_echeancier(echeancier)
+
     couverture = _synchroniser_couverture(
         echeancier,
         conserver_saisie_manuelle=not changement_annee,
