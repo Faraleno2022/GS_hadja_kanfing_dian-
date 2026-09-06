@@ -79,7 +79,7 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
         return {}
     
     # Récupérer les élèves actifs
-    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+    eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
     
     # Récupérer les matières
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)

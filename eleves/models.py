@@ -432,8 +432,16 @@ class GrilleTarifaire(SyncTrackedModel):
     def total_avec_inscription(self):
         return self.frais_inscription + self.total_scolarite
 
+class ElevesPedagogiquesManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(import_verrouille=False)
+
+
 class Eleve(SyncTrackedModel):
     """Modèle principal pour représenter un élève"""
+    objects = models.Manager()
+    pedagogiques = ElevesPedagogiquesManager()
+
     SEXE_CHOICES = [
         ('M', 'Masculin'),
         ('F', 'Féminin'),
@@ -441,6 +449,7 @@ class Eleve(SyncTrackedModel):
     
     STATUT_CHOICES = [
         ('ACTIF', 'Actif'),
+        ('ATTENTE_PAIEMENT', 'Verrouillé — premier paiement attendu'),
         ('SUSPENDU', 'Suspendu'),
         ('EXCLU', 'Exclu'),
         ('TRANSFERE', 'Transféré'),
@@ -460,6 +469,10 @@ class Eleve(SyncTrackedModel):
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
     date_inscription = models.DateField(verbose_name="Date d'inscription", blank=True, null=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
+    import_verrouille = models.BooleanField(
+        default=False, editable=False, db_index=True,
+        verbose_name="Import verrouillé jusqu'au premier paiement validé",
+    )
     evaluation_accueil_effectuee = models.BooleanField(
         default=False,
         db_index=True,
@@ -545,6 +558,11 @@ class Eleve(SyncTrackedModel):
         - Si la classe change, le matricule est automatiquement régénéré avec le code de la nouvelle classe.
         - NOUVEAU: Réaffectation intelligente des matricules de l'ancienne classe pour combler le "trou".
         """
+        if self.import_verrouille:
+            self.statut = 'ATTENTE_PAIEMENT'
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'statut'}
+
         # Détecter un changement de classe pour régénérer le matricule
         regenerer_matricule = False
         ancienne_classe = None

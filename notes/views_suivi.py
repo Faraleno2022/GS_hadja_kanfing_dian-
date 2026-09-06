@@ -23,7 +23,7 @@ def _eleves_de_classe_note(classe_note):
     ).first()
     if not classe_eleve:
         return []
-    return list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+    return list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
                 .order_by('prenom', 'nom'))
 
 

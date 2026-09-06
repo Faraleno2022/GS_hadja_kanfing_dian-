@@ -83,7 +83,7 @@ def _calculer_statistiques_classe(classe_note, periode):
     if not classe_eleve:
         return None
 
-    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+    eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
 
     if not eleves.exists() or not matieres.exists():

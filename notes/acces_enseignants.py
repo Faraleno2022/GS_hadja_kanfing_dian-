@@ -58,9 +58,9 @@ def eleves_autorises(classe):
         ecole_id=classe.ecole_id, nom=classe.nom, annee_scolaire=classe.annee_scolaire,
         sync_deleted_at__isnull=True,
     ).first()
-    return Eleve.objects.filter(
+    return Eleve.pedagogiques.filter(
         classe=classe_eleve, statut='ACTIF', sync_deleted_at__isnull=True,
-    ).order_by('nom', 'prenom', 'matricule') if classe_eleve else Eleve.objects.none()
+    ).order_by('nom', 'prenom', 'matricule') if classe_eleve else Eleve.pedagogiques.none()
 
 
 def verifier_session(request, verrouiller=False):

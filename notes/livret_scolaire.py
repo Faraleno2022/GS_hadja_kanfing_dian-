@@ -1619,7 +1619,7 @@ def _collecter_parcours_eleve(eleve, ecole):
                             ecole=classe_note.ecole,
                             annee_scolaire=annee_scolaire,
                         ).first()
-                        eleves_classe = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF') if classe_eleve else Eleve.objects.none()
+                        eleves_classe = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF') if classe_eleve else Eleve.pedagogiques.none()
                         periode_annuelle = 'ANNUEL_SEM' if is_semestre else 'ANNUEL_TRIM'
                         classement_calc = calculer_classement_classe(
                             eleves_classe, matieres, periode_annuelle, system_type_annuel, use_cache=False
@@ -3628,7 +3628,7 @@ def livret_scolaire_selection(request):
         if classe_id:
             try:
                 classe_selected = classes.get(pk=classe_id)
-                eleves = Eleve.objects.filter(
+                eleves = Eleve.pedagogiques.filter(
                     classe=classe_selected, statut='ACTIF'
                 ).order_by('nom', 'prenom')
             except Classe.DoesNotExist:
@@ -3657,10 +3657,10 @@ def livret_scolaire_pdf(request, eleve_id):
         messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
 
     if not filter_by_user_school(
-        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+        Eleve.pedagogiques.filter(pk=eleve_id), request.user, 'classe__ecole'
     ).exists():
         messages.error(request, "Acces non autorise a cet eleve.")
         return redirect('notes:livret_scolaire')
@@ -3691,10 +3691,10 @@ def livret_scolaire_annuel_pdf(request, eleve_id):
         messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
 
     if not filter_by_user_school(
-        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+        Eleve.pedagogiques.filter(pk=eleve_id), request.user, 'classe__ecole'
     ).exists():
         messages.error(request, "Acces non autorise a cet eleve.")
         return redirect('notes:livret_scolaire')
@@ -3737,7 +3737,7 @@ def livret_scolaire_classe_pdf(request, classe_id):
         return redirect('notes:tableau_bord')
 
     classe = get_object_or_404(Classe, pk=classe_id, ecole=ecole)
-    eleves_qs = Eleve.objects.filter(
+    eleves_qs = Eleve.pedagogiques.filter(
         classe=classe, statut='ACTIF'
     ).order_by('nom', 'prenom')
 

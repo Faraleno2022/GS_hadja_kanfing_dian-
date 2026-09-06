@@ -69,7 +69,7 @@ def _eleve_parent_depuis_token(request):
     if not eleve_id:
         raise Http404("Lien parent invalide ou expiré.")
     try:
-        return Eleve.objects.select_related(
+        return Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire',
         ).get(pk=eleve_id, statut='ACTIF')
@@ -357,7 +357,7 @@ def rapport_scolaire_recherche(request):
 
             # Chercher l'élève
             try:
-                eleve = Eleve.objects.select_related(
+                eleve = Eleve.pedagogiques.select_related(
                     'classe', 'classe__ecole',
                     'responsable_principal', 'responsable_secondaire'
                 ).get(matricule=matricule, statut='ACTIF')
@@ -425,7 +425,7 @@ def rapport_scolaire_classes_ajax(request):
 
     # Chercher l'élève
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(matricule=matricule, statut='ACTIF')
@@ -471,7 +471,7 @@ def rapport_scolaire_detail(request):
         })
 
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(pk=eleve_id, statut='ACTIF')
@@ -546,7 +546,7 @@ def rapport_scolaire_pdf(request):
         })
 
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(pk=eleve_id, statut='ACTIF')

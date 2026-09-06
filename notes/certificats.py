@@ -49,7 +49,7 @@ def certificats_appreciation_pdf(request):
             return HttpResponse(f"Classe élèves non trouvée pour {classe_note.nom}", status=404)
         
         # Récupérer les élèves actifs de la classe
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
         
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
@@ -104,7 +104,7 @@ def certificats_appreciation_pdf(request):
             eleve_data['rang_formate'] = formater_rang(eleve_data['rang'], sexe)
         
         # Total élèves dans la classe
-        total_eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').count()
+        total_eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').count()
         
         # Encoder le logo en base64 si disponible
         logo_base64 = None

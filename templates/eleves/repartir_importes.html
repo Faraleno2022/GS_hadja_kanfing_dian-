@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Répartir les élèves importés{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+        <h1 class="h3">Répartir les élèves importés</h1>
+        <div><a class="btn btn-success" href="{% url 'eleves:importer_eleves' %}">Importer une liste</a> <a class="btn btn-outline-secondary" href="{% url 'eleves:liste_eleves' %}">Tous les élèves</a></div>
+    </div>
+    <p class="text-muted">{{ page_obj.paginator.count }} élève(s) verrouillé(s). Choisissez la classe, puis enregistrez le premier paiement. Seul un paiement validé déverrouille l'élève.</p>
+    <form method="get" class="d-flex gap-2 mb-3"><input class="form-control" name="q" value="{{ recherche }}" placeholder="Nom, prénom ou matricule" aria-label="Rechercher un élève"><button class="btn btn-outline-primary">Rechercher</button></form>
+    <div class="table-responsive"><table class="table table-bordered align-middle bg-white">
+        <thead><tr><th>Élève</th><th>École et niveau</th><th>Classe et premier paiement</th></tr></thead>
+        <tbody>{% for eleve in page_obj %}<tr>
+            <td><a href="{% url 'eleves:detail_eleve' eleve.id %}">{{ eleve.nom_complet }}</a><div class="small text-muted">{{ eleve.matricule }}</div><span class="badge bg-warning text-dark">Verrouillé</span></td>
+            <td>{{ eleve.classe.ecole.nom }}<div class="small">{{ eleve.classe.get_niveau_display }} · {{ eleve.classe.annee_scolaire }}</div></td>
+            <td><form method="post" data-no-fast-submit class="d-flex flex-wrap gap-2 align-items-center">{% csrf_token %}
+                <input type="hidden" name="eleve_id" value="{{ eleve.id }}">
+                <label class="visually-hidden" for="classe-{{ eleve.id }}">Classe de {{ eleve.nom_complet }}</label>
+                <select class="form-select w-auto" name="classe_id" id="classe-{{ eleve.id }}" required>{% for classe in eleve.classes_proposees %}<option value="{{ classe.id }}" {% if classe.id == eleve.classe_id %}selected{% endif %}>{{ classe.nom }}</option>{% endfor %}</select>
+                <button class="btn btn-outline-primary" name="action" value="affecter">Affecter</button>
+                <button class="btn btn-success" name="action" value="payer">Affecter et faire le premier paiement</button>
+            </form></td>
+        </tr>{% empty %}<tr><td colspan="3">Aucun élève verrouillé à répartir.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    <nav class="d-flex gap-3">{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&q={{ recherche|urlencode }}">Précédent</a>{% endif %}<span>Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&q={{ recherche|urlencode }}">Suivant</a>{% endif %}</nav>
+</div>
+{% endblock %}

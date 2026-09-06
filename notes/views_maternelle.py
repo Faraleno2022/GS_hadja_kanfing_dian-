@@ -70,7 +70,7 @@ def saisie_evaluation_maternelle(request):
                 annee_scolaire=classe_selectionnee.annee_scolaire
             ).first()
             if classe_eleves:
-                eleves = Eleve.objects.filter(
+                eleves = Eleve.pedagogiques.filter(
                     classe=classe_eleves,
                     statut='ACTIF'
                 ).order_by('nom', 'prenom')
@@ -114,7 +114,7 @@ def saisie_evaluation_maternelle(request):
 @login_required
 def saisie_eleve_maternelle(request, eleve_id):
     """Vue de saisie détaillée pour un élève"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
     
     classe_id = request.GET.get('classe')
     trimestre = request.GET.get('trimestre', 'TRIMESTRE_1')
@@ -570,7 +570,7 @@ def api_get_eleves_classe(request):
             annee_scolaire=classe_note.annee_scolaire
         ).first()
         if classe_eleves:
-            eleves = Eleve.objects.filter(
+            eleves = Eleve.pedagogiques.filter(
                 classe=classe_eleves,
                 statut='ACTIF'
             ).order_by('nom', 'prenom').values('id', 'nom', 'prenom', 'matricule')

@@ -127,13 +127,13 @@ def ajouter_activite(request):
         classes_qs = classes_qs.filter(annee_scolaire=annee_active)
     form.fields['classe'].queryset = classes_qs
     # Élèves seront chargés en AJAX
-    form.fields['eleve'].queryset = Eleve.objects.none()
+    form.fields['eleve'].queryset = Eleve.pedagogiques.none()
 
     # Si la classe a déjà été choisie (validation échouée)
     if request.POST.get('classe'):
         try:
             classe_note = ClasseNote.objects.get(pk=request.POST['classe'])
-            eleves = Eleve.objects.filter(
+            eleves = Eleve.pedagogiques.filter(
                 classe__nom=classe_note.nom,
                 classe__ecole=classe_note.ecole,
                 statut='ACTIF'
@@ -182,7 +182,7 @@ def modifier_activite(request, activite_id):
         classes_qs = classes_qs.filter(ecole=ecole)
     form.fields['classe'].queryset = classes_qs
 
-    eleves = Eleve.objects.filter(
+    eleves = Eleve.pedagogiques.filter(
         classe__nom=activite.classe.nom,
         classe__ecole=activite.classe.ecole,
         statut='ACTIF'
@@ -243,7 +243,7 @@ def api_eleves_par_classe_note(request):
         return JsonResponse([], safe=False)
     try:
         classe_note = ClasseNote.objects.get(pk=classe_id)
-        eleves = Eleve.objects.filter(
+        eleves = Eleve.pedagogiques.filter(
             classe__nom=classe_note.nom,
             classe__ecole=classe_note.ecole,
             statut='ACTIF'

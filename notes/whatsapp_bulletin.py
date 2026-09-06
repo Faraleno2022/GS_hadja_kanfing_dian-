@@ -46,7 +46,7 @@ class WhatsAppBulletinSender:
         """
         try:
             # Récupérer l'élève et la classe
-            eleve = get_object_or_404(Eleve, id=eleve_id)
+            eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
             classe_eleve = get_object_or_404(ClasseEleve, id=classe_id)
             
             # Essayer de récupérer la ClasseNote correspondante
@@ -109,7 +109,7 @@ class WhatsAppBulletinSender:
             from notes.calculs_moyennes import calculer_classement_classe, obtenir_mention_intelligente
             from notes.bulletin_intelligent import formater_rang_intelligent
             
-            eleves_classe = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF'))
+            eleves_classe = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF'))
             total_eleves = len(eleves_classe)
             
             # Le classement calcule les moyennes ET les rangs avec la même source
@@ -222,7 +222,7 @@ class WhatsAppBulletinSender:
         """
         try:
             # Récupérer l'élève
-            eleve = get_object_or_404(Eleve, id=eleve_id)
+            eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
             
             # Vérifier si l'élève a un numéro WhatsApp
             telephone_parent = self._get_telephone_parent(eleve)
@@ -448,7 +448,7 @@ def apercu_message_whatsapp(request):
                 'error': 'ID élève manquant'
             })
         
-        eleve = get_object_or_404(Eleve, id=eleve_id)
+        eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
         telephone = whatsapp_sender._get_telephone_parent(eleve)
         
         # Récupérer les résultats de l'élève depuis utils_rangs

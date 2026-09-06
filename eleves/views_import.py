@@ -14,6 +14,17 @@ from django.db import transaction
 from eleves.models import Classe, Eleve
 
 
+def peut_importer_eleves(user):
+    return (
+        user.is_staff or
+        user.is_superuser or
+        user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
+        (hasattr(user, 'profil') and user.profil.peut_importer_eleves) or
+        (hasattr(user, 'profil') and user.profil.role == 'COMPTABLE')
+    )
+
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def importer_eleves(request):
@@ -21,13 +32,7 @@ def importer_eleves(request):
     Vue principale pour importer des élèves
     """
     # Vérifier les permissions
-    peut_importer = (
-        request.user.is_staff or 
-        request.user.is_superuser or
-        request.user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
-        (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves) or
-        (hasattr(request.user, 'profil') and request.user.profil.role == 'COMPTABLE')
-    )
+    peut_importer = peut_importer_eleves(request.user)
     
     if not peut_importer:
         messages.error(request, "Vous n'avez pas la permission d'importer des élèves.")
@@ -110,7 +115,7 @@ def _resoudre_ecole_ligne(nom_ecole, ecole_utilisateur, cache):
     return ecole
 
 
-def _importer_multi_classes(request, df, generer_matricules):
+def _importer_multi_classes(request, df, generer_matricules, verrouiller=False):
     """Importe un fichier contenant les colonnes École / Classe / Année scolaire.
 
     Les lignes sont regroupées par classe, puis chaque groupe est confié à
@@ -188,7 +193,7 @@ def _importer_multi_classes(request, df, generer_matricules):
 
         processor = ImportElevesProcessor(
             df=groupe_valide, classe_id=classe.id, user=request.user,
-            generer_matricules=generer_matricules,
+            generer_matricules=generer_matricules, verrouiller=verrouiller,
         )
         stats = processor.importer()
         for cle in totaux:
@@ -222,7 +227,7 @@ def _importer_multi_classes(request, df, generer_matricules):
     if len(echecs) > 5:
         messages.warning(request, f"... et {len(echecs) - 5} autre(s) avertissement(s)")
 
-    return redirect('eleves:gestion_classes')
+    return redirect('eleves:repartir_importes' if verrouiller else 'eleves:gestion_classes')
 
 
 def _traiter_import_eleves(request):
@@ -242,6 +247,7 @@ def _traiter_import_eleves(request):
         classe_id = request.POST.get('classe_id')
         generer_matricules = request.POST.get('generer_matricules') == 'on'
         repartir_auto = request.POST.get('repartition_auto') == 'on'
+        verrouiller = request.POST.get('verrouiller') == 'on'
         fichier = request.FILES.get('fichier')
 
         if not fichier:
@@ -289,7 +295,7 @@ def _traiter_import_eleves(request):
                         "sélectionnez une classe de destination."
                     )
                     return redirect('eleves:importer_eleves')
-                return _importer_multi_classes(request, df, generer_matricules)
+                return _importer_multi_classes(request, df, generer_matricules, verrouiller)
 
             # Valider les données
             validator = ImportElevesValidator(df, classe_id)
@@ -311,7 +317,7 @@ def _traiter_import_eleves(request):
                 df=df,
                 classe_id=classe_id,
                 user=request.user,
-                generer_matricules=generer_matricules
+                generer_matricules=generer_matricules, verrouiller=verrouiller
             )
             
             stats = processor.importer()
@@ -368,7 +374,7 @@ def _traiter_import_eleves(request):
             )
             
             # Rediriger vers la liste des élèves de la classe
-            return redirect('eleves:gestion_classes')
+            return redirect('eleves:repartir_importes' if verrouiller else 'eleves:gestion_classes')
             
         finally:
             # Nettoyer le fichier temporaire

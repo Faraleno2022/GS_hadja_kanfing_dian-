@@ -120,7 +120,7 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
             generer_pdf_avec_filigrane
         )
         
-        eleve = get_object_or_404(Eleve, id=eleve_id)
+        eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
         classe_note = get_object_or_404(ClasseNote, id=classe_note_id)
         
         # Détecter si c'est une classe maternelle
@@ -199,7 +199,7 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
             
             if classe_eleve:
                 from eleves.models import Eleve as EleveModel
-                eleves_classe = list(EleveModel.objects.filter(classe=classe_eleve, statut='ACTIF'))
+                eleves_classe = list(EleveModel.pedagogiques.filter(classe=classe_eleve, statut='ACTIF'))
                 total_eleves = len(eleves_classe)
                 bulletin_data['total_eleves'] = total_eleves
                 
