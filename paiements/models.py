@@ -440,6 +440,13 @@ class PaiementRemise(SyncTrackedModel):
         verbose_name="Montant de la remise (GNF)"
     )
     
+    # Les anciennes remises restent fixes : leur base n'a pas été enregistrée.
+    regle_calcul = models.JSONField(default=dict, blank=True, editable=False)
+
+    @property
+    def tranches_concernees_liste(self):
+        return self.regle_calcul.get('tranches', [])
+
     class Meta:
         verbose_name = "Remise appliquée"
         verbose_name_plural = "Remises appliquées"

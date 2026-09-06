@@ -899,6 +899,9 @@ def _auto_validate_echeancier_for_eleve(
         if not echeancier:
             return
 
+        from .recalcul_remises import recalculer_remises_echeancier
+        recalculer_remises_echeancier(echeancier)
+
         # Totaux dus
         total_du = int((echeancier.frais_inscription_du or 0)
                        + (echeancier.tranche_1_due or 0)
@@ -5321,6 +5324,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                     "Attention: vous appliquez 100% de remise sur les tranches sélectionnées. Vérifiez l'autorisation avant de confirmer."
                 )
 
+            from .recalcul_remises import memoriser_regle_remise, recalculer_remises_echeancier
             base_retenue = _base_retenue(tranches_selectionnees, base_calcul)
 
             with transaction.atomic():
@@ -5338,6 +5342,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         paiement=paiement,
                         remise=remise,
                         montant_remise=montant_remise,
+                        regle_calcul=memoriser_regle_remise(remise, base_calcul, tranches_selectionnees),
                     )
                     created += 1
 
@@ -5377,6 +5382,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         paiement=paiement,
                         remise=remise_pct,
                         montant_remise=montant_remise_pct,
+                        regle_calcul=memoriser_regle_remise(remise_pct, base_calcul, tranches_selectionnees),
                     )
                     created += 1
 
@@ -5390,6 +5396,8 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         "Impossible d'appliquer la remise : échéancier annuel introuvable.",
                     )
                     return _retour_detail()
+
+                recalculer_remises_echeancier(echeancier_verrouille)
 
                 cash_reserve = (
                     Paiement.objects.filter(

@@ -209,6 +209,8 @@ def synchroniser_echeancier_apres_changement_paiement(eleve_id, annee_scolaire):
     from .views import _align_enrollment_fee
 
     _align_enrollment_fee(echeancier.eleve, echeancier)
+    from .recalcul_remises import recalculer_remises_echeancier
+    recalculer_remises_echeancier(echeancier)
     _synchroniser_couverture(echeancier, conserver_saisie_manuelle=False)
     echeancier.save()
     return echeancier
