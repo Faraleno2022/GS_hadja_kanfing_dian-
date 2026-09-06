@@ -322,3 +322,111 @@ class InscriptionReinscriptionIntegrationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Frais de réinscription")
+
+    def _versements_recap(self):
+        for index, (eleve, statut) in enumerate((
+            (self.eleve_inscription, 'VALIDE'),
+            (self.eleve_inscription, 'VALIDE'),
+            (self.eleve_inscription, 'EN_ATTENTE'),
+            (self.eleve_inscription, 'REJETE'),
+            (self.eleve_reinscription, 'VALIDE'),
+        )):
+            Paiement.objects.create(
+                eleve=eleve, type_paiement=self.type_reinscription_t1,
+                mode_paiement=self.mode, montant=10000, statut=statut,
+                annee_scolaire='2024-2025', date_paiement=date(2024, 10, 1),
+                numero_recu=f'RECAP-MULTI-{index}',
+            )
+
+    def test_recap_plusieurs_versements_compte_chaque_du_une_fois(self):
+        self._versements_recap()
+        # Deux élèves avec la même scolarité : SUM(DISTINCT montant) serait faux.
+        response = self.client.get(reverse('paiements:liste_paiements'), {'annee': '2024-2025'})
+        self.assertEqual(response.status_code, 200)
+        totals = response.context['totaux_du']
+        self.assertEqual(totals['eleves_count'], 2)
+        self.assertEqual(totals['du_sco_net'], 200000)
+        self.assertEqual(totals['du_global_net'], 250000)
+        row = response.context['totaux_du_detail_classes'][0]
+        self.assertEqual(row['eleves_count'], 2)
+        self.assertEqual(row['du_sco_net'], 200000)
+        self.assertEqual(row['du_global_net'], 250000)
+        self.assertEqual(response.context['totaux']['montant_total_valide'], 30000)
+
+    def test_recherche_recap_ne_multiplie_pas_les_dus(self):
+        self._versements_recap()
+        for query, count, due in [('Test', 2, 250000), ('RECAP-MULTI', 2, 250000), ('ADM-I', 1, 130000)]:
+            with self.subTest(query=query):
+                response = self.client.get(reverse('paiements:liste_paiements'), {'q': query, 'annee': '2024-2025'})
+                self.assertEqual(response.context['totaux_du']['du_global_net'], due)
+                rows = response.context['totaux_du_detail_classes']
+                self.assertEqual(sum(row['du_global_net'] for row in rows), due)
+                self.assertEqual(sum(row['eleves_count'] for row in rows), count)
+
+    def test_export_recap_plusieurs_versements_et_remises(self):
+        self._versements_recap()
+        for index, montant in enumerate([5000, 10000]):
+            remise = RemiseReduction.objects.create(
+                nom=f'Remise multi {index}', type_remise='MONTANT_FIXE', valeur=montant,
+                motif='AUTRE', date_debut=date(2024, 9, 1), date_fin=date(2025, 8, 31),
+            )
+            PaiementRemise.objects.create(
+                paiement=Paiement.objects.get(numero_recu=f'RECAP-MULTI-{index}'),
+                remise=remise, montant_remise=montant,
+            )
+        for query in ('', 'Test'):
+            with self.subTest(query=query):
+                response = self.client.get(reverse('paiements:export_recap_par_classe_excel'), {'q': query})
+                self.assertEqual(response.status_code, 200)
+                workbook = load_workbook(BytesIO(response.content), data_only=True)
+                rows = list(workbook.active.iter_rows(min_row=2, values_only=True))
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0][2], 2)
+                self.assertEqual(rows[0][3], 185000)
+                self.assertEqual(rows[0][4:6], (30000, 20000))
+                self.assertEqual(rows[0][7], 235000)
+                screen = self.client.get(reverse('paiements:liste_paiements'), {'q': query})
+                self.assertEqual(screen.context['totaux_du_detail_classes'][0]['du_global_net'], rows[0][7])
+
+    def test_transfert_recap_ne_compte_pas_eleve_dans_deux_classes(self):
+        self._versements_recap()
+        classe_b = Classe.objects.create(ecole=self.ecole, nom='6eme B', niveau=self.classe.niveau,
+                                        annee_scolaire='2024-2025')
+        self.eleve_inscription.classe = classe_b
+        self.eleve_inscription.save()
+        response = self.client.get(reverse('paiements:liste_paiements'))
+        rows = {row['classe_id']: row for row in response.context['totaux_du_detail_classes']}
+        self.assertEqual(rows[self.classe.pk]['eleves_count'], 1)
+        self.assertEqual(rows[self.classe.pk]['du_global_net'], 120000)
+        self.assertEqual(rows[classe_b.pk]['eleves_count'], 1)
+        self.assertEqual(rows[classe_b.pk]['du_global_net'], 130000)
+        self.assertEqual(response.context['totaux_du']['du_global_net'], 250000)
+
+    def test_tableau_bord_classe_ne_multiplie_pas_le_du(self):
+        self._versements_recap()
+        response = self.client.get(reverse('paiements:tableau_bord'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['finance_direction']['total_du'], 250000)
+        rows = response.context['classes_a_risque']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['eleves_count'], 2)
+        self.assertEqual(rows[0]['total_du'], 250000)
+
+    def test_rapport_et_export_tranches_comptent_chaque_eleve_une_fois(self):
+        from django.test import RequestFactory
+        from paiements.rapports_professionnels import collect_recovery_data
+        from paiements.views_tranches import _tranche_export_rows
+        self._versements_recap()
+        request = RequestFactory().get('/paiements/liste/', {
+            'classe_id': self.classe.pk, 'annee_scolaire': '2024-2025',
+        })
+        request.user = self.user
+        data = collect_recovery_data(request)
+        self.assertEqual(data['schedule_count'], 2)
+        self.assertEqual(data['total_due'], 250000)
+        self.assertEqual(data['total_cash'], 30000)
+        self.assertEqual(sum(row['due'] for row in data['class_summary'].values()), 250000)
+        rows = _tranche_export_rows(self.classe, '2024-2025')
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(sum(row['total_due'] for row in rows), 250000)
+        self.assertEqual(sum(row['total_paid'] for row in rows), 30000)
