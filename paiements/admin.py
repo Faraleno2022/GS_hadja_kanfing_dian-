@@ -28,6 +28,31 @@ class PaiementAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
     raw_id_fields = ("eleve",)
     date_hierarchy = "date_paiement"
 
+    def save_model(self, request, obj, form, change):
+        from django.db import transaction
+        from .services import synchroniser_echeancier_apres_changement_paiement
+        from .views import _align_enrollment_fee
+
+        with transaction.atomic():
+            ancien = Paiement.objects.select_for_update().get(pk=obj.pk) if change else None
+            if ancien and ancien.statut == 'VALIDE' and ancien.montant != obj.montant:
+                obj.statut = 'EN_ATTENTE'
+                obj.date_validation = None
+                obj.valide_par = None
+            super().save_model(request, obj, form, change)
+            if ancien and ancien.type_paiement_id != obj.type_paiement_id:
+                echeancier = EcheancierPaiement.objects.select_for_update().filter(
+                    eleve_id=obj.eleve_id, annee_scolaire=obj.annee_scolaire,
+                ).first()
+                if echeancier:
+                    _align_enrollment_fee(obj.eleve, echeancier,
+                                          preferred_type_name=obj.type_paiement.nom)
+            contextes = {(obj.eleve_id, obj.annee_scolaire)}
+            if ancien:
+                contextes.add((ancien.eleve_id, ancien.annee_scolaire))
+            for eleve_id, annee in sorted(contextes):
+                synchroniser_echeancier_apres_changement_paiement(eleve_id, annee)
+
 
 @admin.register(RemiseReduction)
 class RemiseReductionAdmin(CorbeilleAdminMixin, admin.ModelAdmin):
