@@ -97,7 +97,7 @@ def _get_top1_par_classe(request, periode):
             if not classe_eleve:
                 continue
 
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+            eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
             if not eleves.exists():
                 continue
 
@@ -148,7 +148,7 @@ def _get_top1_par_classe(request, periode):
                     continue
 
                 try:
-                    eleve = Eleve.objects.get(pk=eleve_id)
+                    eleve = Eleve.pedagogiques.get(pk=eleve_id)
                 except Eleve.DoesNotExist:
                     continue
 

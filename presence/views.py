@@ -46,7 +46,7 @@ def pointage(request):
         classe = next((c for c in classes if c.id == int(classe_id)), None)
 
     if classe:
-        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF')
+        eleves = list(Eleve.pedagogiques.filter(classe=classe, statut='ACTIF')
                       .order_by('prenom', 'nom'))
         presences_existantes = {
             p.eleve_id: p for p in PresenceJournaliere.objects.filter(classe=classe, date=jour)
@@ -125,7 +125,7 @@ def _collecter_rapport(request):
 
     lignes = []
     if classe:
-        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe, statut='ACTIF').order_by('prenom', 'nom'))
         # Agrégats par élève sur la période
         agg = (PresenceJournaliere.objects
                .filter(classe=classe, date__gte=du, date__lte=au)
@@ -193,7 +193,7 @@ def alertes_absences(request):
                         .values_list('eleve_id', flat=True)
                         .distinct())
     alertes = []
-    for eleve in (Eleve.objects.filter(id__in=list(derniers_absents), statut='ACTIF')
+    for eleve in (Eleve.pedagogiques.filter(id__in=list(derniers_absents), statut='ACTIF')
                   .select_related('classe')):
         n = _calculer_absences_consecutives(eleve.id, aujourdhui)
         if n >= seuil:

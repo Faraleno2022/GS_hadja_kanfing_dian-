@@ -215,7 +215,7 @@ class CalculateurBulletinIntelligent:
             'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
             'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom, self.niveau) if moyenne_generale else None,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count()
+            'total_eleves': Eleve.pedagogiques.filter(classe=self.eleve.classe, statut='ACTIF').count()
         }
     
     def _generer_bulletin_maternelle(self, matieres):
@@ -293,7 +293,7 @@ class CalculateurBulletinIntelligent:
             'mention': mention,
             'appreciation': appreciation,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count(),
+            'total_eleves': Eleve.pedagogiques.filter(classe=self.eleve.classe, statut='ACTIF').count(),
             'est_maternelle': True
         }
     
@@ -1494,7 +1494,7 @@ def generer_excel(bulletin_data):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     """Vue pour afficher le bulletin intelligent"""
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
     
     # Déterminer le système
@@ -1523,7 +1523,7 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     """Génère le bulletin en PDF avec filigrane"""
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
     
     # Déterminer le système et le type de système pour l'affichage
@@ -1592,7 +1592,7 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
         ).first()
         
         if classe_eleve:
-            eleves_classe = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF'))
+            eleves_classe = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF'))
             total_eleves = len(eleves_classe)
             bulletin_data['total_eleves'] = total_eleves
             
@@ -1658,7 +1658,7 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
     if not EXCEL_AVAILABLE:
         return HttpResponse("Excel export n'est pas disponible", status=500)
     
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
     classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
     
     # Déterminer le système
@@ -1702,7 +1702,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     if not classe_eleve:
         return HttpResponse("Classe non trouvée", status=404)
     
-    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+    eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
     
     if not eleves:
         return HttpResponse("Aucun élève dans cette classe", status=404)

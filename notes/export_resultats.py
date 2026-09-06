@@ -37,7 +37,7 @@ def exporter_resultats_pdf(request):
             nom=classe.nom, annee_scolaire=classe.annee_scolaire, ecole=classe.ecole
         ).first()
         
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
         
         # IMPORTANT: Récupérer les moyennes et rangs depuis la source centralisée
         # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et bulletins
@@ -440,7 +440,7 @@ def exporter_resultats_excel(request):
             nom=classe.nom, annee_scolaire=classe.annee_scolaire, ecole=classe.ecole
         ).first()
         
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom') if classe_eleve else []
         
         # IMPORTANT: Récupérer les moyennes et rangs depuis la source centralisée
         # Ne PAS recalculer pour garantir la cohérence avec consulter_notes et bulletins

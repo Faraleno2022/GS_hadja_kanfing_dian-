@@ -80,6 +80,14 @@
 {% endblock %}
 
 {% block content %}
+{% if eleve.import_verrouille %}
+<div class="alert alert-warning">
+    <strong>Dossier verrouillé : premier paiement attendu.</strong>
+    Vous pouvez modifier la fiche, choisir la classe et enregistrer le paiement. Les notes, bulletins et présences seront accessibles après validation du premier paiement.
+    <a href="{% url 'eleves:repartir_importes' %}?q={{ eleve.matricule|urlencode }}" class="btn btn-sm btn-outline-dark ms-2">Choisir la classe et payer</a>
+</div>
+{% endif %}
+
 <div class="container-fluid">
     <!-- En-tête du profil -->
     <div class="profile-header">

@@ -95,7 +95,7 @@
                                 <td>
                                     {% if eleve.statut == 'ACTIF' %}
                                         <span class="badge bg-success">{{ eleve.get_statut_display }}</span>
-                                    {% elif eleve.statut == 'SUSPENDU' %}
+                                    {% elif eleve.statut == 'SUSPENDU' or eleve.import_verrouille %}
                                         <span class="badge bg-warning">{{ eleve.get_statut_display }}</span>
                                     {% else %}
                                         <span class="badge bg-danger">{{ eleve.get_statut_display }}</span>

@@ -132,7 +132,7 @@ class PaiementForm(forms.ModelForm):
         # Ordonner les élèves par nom
         self.fields['eleve'].queryset = Eleve.objects.select_related(
             'classe', 'classe__ecole'
-        ).filter(statut='ACTIF').order_by('nom', 'prenom')
+        ).filter(statut__in=['ACTIF', 'ATTENTE_PAIEMENT']).order_by('nom', 'prenom')
         
         # Filtrer les types et modes actifs
         self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)

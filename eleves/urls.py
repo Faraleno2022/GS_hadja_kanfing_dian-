@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from .views_repartition import repartir_importes
 from .views_import import (
     importer_eleves,
     telecharger_template_eleves,
@@ -16,6 +17,7 @@ from .views_nouvelle_annee import (
 app_name = 'eleves'
 
 urlpatterns = [
+    path('importes/repartir/', repartir_importes, name='repartir_importes'),
     # Liste et recherche des élèves
     path('', views.liste_eleves, name='liste_eleves'),
     path('liste/', views.liste_eleves, name='liste_eleves'),

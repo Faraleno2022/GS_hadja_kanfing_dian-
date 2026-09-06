@@ -173,7 +173,7 @@ def exporter_notes_complet_excel(request):
         if not classe_eleve:
             return HttpResponse("Classe élèves non trouvée", status=404)
         
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
@@ -391,7 +391,7 @@ def exporter_notes_complet_pdf(request):
         if not classe_eleve:
             return HttpResponse("Classe élèves non trouvée", status=404)
         
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire

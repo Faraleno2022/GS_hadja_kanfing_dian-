@@ -169,7 +169,7 @@ def exporter_classement_classe(request):
             )
         
         # Récupérer les élèves actifs
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         
         if not eleves.exists():
             return HttpResponse(
@@ -804,7 +804,7 @@ def exporter_classement_classe_pdf(request):
             )
         
         # Récupérer les élèves actifs
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         
         if not eleves.exists():
             return HttpResponse(
