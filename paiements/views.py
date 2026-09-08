@@ -5395,7 +5395,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         request,
                         "Impossible d'appliquer la remise : échéancier annuel introuvable.",
                     )
-                    return _retour_detail()
+                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
                 recalculer_remises_echeancier(echeancier_verrouille)
 
@@ -5429,7 +5429,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         "Remise refusée : paiements et remises dépasseraient le "
                         f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF.",
                     )
-                    return _retour_detail()
+                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
             # Pas de resynchronisation ici : appliquer_remise_paiement est
             # gardée plus haut ("Seuls les paiements en attente peuvent
             # recevoir des remises") donc paiement.statut est toujours

@@ -277,3 +277,142 @@ class ApplicationRemisePaiementTest(TestCase):
         self.echeancier.refresh_from_db()
         self.assertEqual(self.echeancier.solde_restant, Decimal('0'))
         self.assertEqual(self.echeancier.statut, 'PAYE_COMPLET')
+
+    def _remise_existante(self):
+        from paiements.models import RemiseReduction
+        remise = RemiseReduction.objects.create(
+            nom='Remise existante', type_remise='MONTANT_FIXE', valeur=5000,
+            motif='AUTRE', date_debut=date(2025, 1, 1), date_fin=date(2025, 12, 31),
+        )
+        return PaiementRemise.objects.create(
+            paiement=self.paiement, remise=remise, montant_remise=5000,
+        )
+
+    def _appliquer_pourcentage(self, pourcentage, **donnees):
+        data = {
+            'montant_original': '90000', 'pourcentage_scolarite': str(pourcentage),
+            'tranches': ['1'], 'base_calcul': 'tranches_dues', 'motif': 'AUTRE',
+        }
+        data.update(donnees)
+        return self.client.post(
+            reverse('paiements:appliquer_remise', args=[self.paiement.pk]), data,
+        )
+
+    def _assert_remise_preservee(self, ligne):
+        ligne.refresh_from_db()
+        self.paiement.refresh_from_db()
+        self.echeancier.refresh_from_db()
+        self.assertEqual(ligne.montant_remise, 5000)
+        self.assertEqual(self.paiement.remises.count(), 1)
+        self.assertEqual(self.paiement.montant, 90000)
+        self.assertEqual(self.paiement.statut, 'EN_ATTENTE')
+        self.assertEqual(self.echeancier.tranche_1_payee, 0)
+        self.assertEqual(self.echeancier.solde_restant, 100000)
+
+    def test_ouverture_formulaire_avec_et_sans_remise(self):
+        url = reverse('paiements:appliquer_remise', args=[self.paiement.pk])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'paiements/appliquer_remise.html')
+        self.assertEqual(response.context['tranches_info'][0]['due'], 100000)
+        self._remise_existante()
+        response = self.client.get(url)
+        self.assertContains(response, 'Remise existante')
+
+    def test_depassement_affiche_refus_et_preserve_remise_existante(self):
+        from django.contrib.messages import get_messages
+        ligne = self._remise_existante()
+        response = self._appliquer_pourcentage(50)
+        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
+        textes = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any('Remise refusée' in texte and '10,000 GNF' in texte for texte in textes))
+        self._assert_remise_preservee(ligne)
+        self.assertFalse(self.paiement.remises.filter(remise__nom='Remise scolarité 50%').exists())
+
+    def test_echeancier_introuvable_affiche_message_et_preserve_remises(self):
+        from django.contrib.messages import get_messages
+        ligne = self._remise_existante()
+        with patch('paiements.views._echeancier_for_payment', return_value=None), patch(
+            'paiements.views.ensure_echeancier_for_eleve', return_value=None,
+        ):
+            response = self._appliquer_pourcentage(10)
+        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
+        textes = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any('échéancier annuel introuvable' in texte for texte in textes))
+        self._assert_remise_preservee(ligne)
+
+    def test_remise_egale_au_solde_acceptee(self):
+        response = self._appliquer_pourcentage(10)
+        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
+        self.assertEqual(self.paiement.remises.get().montant_remise, 10000)
+
+    def test_refus_tient_compte_des_autres_versements(self):
+        from django.contrib.messages import get_messages
+        autre = Paiement.objects.create(
+            eleve=self.eleve, type_paiement=self.type_p, mode_paiement=self.mode_p,
+            montant=5000, date_paiement=self.paiement.date_paiement,
+            annee_scolaire=self.paiement.annee_scolaire, statut='EN_ATTENTE',
+        )
+        response = self._appliquer_pourcentage(10)
+        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
+        textes = [str(message) for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any('Remise refusée' in texte and '5,000 GNF' in texte for texte in textes))
+        self.assertFalse(self.paiement.remises.exists())
+        autre.refresh_from_db()
+        self.assertEqual(autre.montant, 5000)
+
+    def test_formulaire_invalide_preserve_remise_existante(self):
+        ligne = self._remise_existante()
+        response = self._appliquer_pourcentage(10, tranches=[])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('tranches', response.context['form'].errors)
+        self._assert_remise_preservee(ligne)
+
+    def test_meme_remise_cochee_et_pourcentage_affiche_erreur_formulaire(self):
+        from paiements.models import RemiseReduction
+        ligne = self._remise_existante()
+        remise = RemiseReduction.objects.create(
+            nom='Remise scolarité 10%', type_remise='POURCENTAGE', valeur=10,
+            motif='AUTRE', date_debut=date(2025, 1, 1), date_fin=date(2025, 12, 31),
+        )
+        response = self._appliquer_pourcentage(10, remises=[remise.pk])
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('pourcentage_scolarite', response.context['form'].errors)
+        self._assert_remise_preservee(ligne)
+
+    def test_raccourcis_motif_exigent_une_tranche(self):
+        ligne = self._remise_existante()
+        for motif in ('MOITIE', 'NE_PAIE_RIEN'):
+            with self.subTest(motif=motif):
+                response = self._appliquer_pourcentage('', motif=motif, tranches=[])
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('tranches', response.context['form'].errors)
+                self._assert_remise_preservee(ligne)
+
+    def test_raccourcis_motif_refusent_remise_cochee_en_double(self):
+        from paiements.models import RemiseReduction
+        ligne = self._remise_existante()
+        for motif, pourcentage in (('MOITIE', 50), ('NE_PAIE_RIEN', 100)):
+            with self.subTest(motif=motif):
+                remise = RemiseReduction.objects.create(
+                    nom=f'Remise scolarité {pourcentage}%', type_remise='POURCENTAGE',
+                    valeur=pourcentage, motif=motif, date_debut=date(2025, 1, 1),
+                    date_fin=date(2025, 12, 31),
+                )
+                response = self._appliquer_pourcentage('', motif=motif, remises=[remise.pk])
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('pourcentage_scolarite', response.context['form'].errors)
+                self._assert_remise_preservee(ligne)
+
+    def test_remises_distinctes_peuvent_etre_cumulees(self):
+        from paiements.models import RemiseReduction
+        self.paiement.montant = 80000
+        self.paiement.save()
+        remise = RemiseReduction.objects.create(
+            nom='Remise fratrie', type_remise='POURCENTAGE', valeur=10,
+            motif='FRATRIE', date_debut=date(2025, 1, 1), date_fin=date(2025, 12, 31),
+        )
+        response = self._appliquer_pourcentage(10, remises=[remise.pk], montant_original='80000')
+        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
+        self.assertEqual(self.paiement.remises.count(), 2)
+        self.assertEqual(sum(ligne.montant_remise for ligne in self.paiement.remises.all()), 20000)
