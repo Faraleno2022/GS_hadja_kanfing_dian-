@@ -88,12 +88,29 @@ class PaiementRemiseForm(forms.Form):
         pct_str = cleaned_data.get('pourcentage_scolarite') or ''
         motif = cleaned_data.get('motif') or ''
         tranches = cleaned_data.get('tranches') or []
-        applying_remise = bool(remises) or bool(pct_str)
+        pct_value = int(pct_str) if pct_str else {
+            'NE_PAIE_RIEN': 100, 'MOITIE': 50,
+        }.get(motif, 0)
+        applying_remise = bool(remises) or pct_value > 0
         if applying_remise:
             if not tranches:
                 self.add_error('tranches', "Sélectionnez au moins une tranche concernée par la remise.")
             if not motif:
                 self.add_error('motif', "Le motif de la remise est obligatoire.")
+        # Le pourcentage réutilise une remise du catalogue : une sélection
+        # simultanée tenterait de l'associer deux fois au même paiement.
+        if pct_value > 0 and any(
+            remise.nom == f"Remise scolarité {pct_value}%"
+            and remise.type_remise == 'POURCENTAGE'
+            and remise.valeur == pct_value
+            and remise.motif == motif
+            for remise in remises
+        ):
+            self.add_error(
+                'pourcentage_scolarite',
+                "Cette remise est déjà cochée dans les remises disponibles. "
+                "Décochez-la pour utiliser le pourcentage ou le raccourci du motif.",
+            )
         return cleaned_data
     
     def calculate_total_remise(self, montant_base):
