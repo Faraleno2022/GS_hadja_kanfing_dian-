@@ -175,10 +175,8 @@ def recu_public_pdf(request, paiement_id):
         # Calcul total remises et montant payé affiché sur le reçu. La remise
         # est retirée de ce montant puis détaillée séparément en bas.
         remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-        montant_paye_recu = max(
-            Decimal('0'),
-            Decimal(str(paiement.montant or 0)) - Decimal(str(remises_total or 0)),
-        )
+        from .recalcul_remises import montant_affiche_sur_recu
+        montant_paye_recu = montant_affiche_sur_recu(paiement)
 
         # Situation financière globale de l'élève (via échéancier)
         ech = EcheancierPaiement.objects.filter(

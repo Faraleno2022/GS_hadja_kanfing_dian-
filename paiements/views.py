@@ -3946,13 +3946,8 @@ def generer_recu_pdf(request, paiement_id:int):
 
     # Calcul total remises
     remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
-    # Sur le reçu uniquement, le montant payé est présenté net de la remise.
-    # La remise reste visible séparément en bas du document afin qu'elle ne
-    # soit jamais confondue avec une somme effectivement réglée par le parent.
-    montant_paye_recu = max(
-        Decimal('0'),
-        Decimal(str(paiement.montant or 0)) - Decimal(str(remises_total or 0)),
-    )
+    from .recalcul_remises import montant_affiche_sur_recu
+    montant_paye_recu = montant_affiche_sur_recu(paiement)
 
     # Préparer le buffer et le canvas
     buffer = BytesIO()
@@ -5249,10 +5244,14 @@ def appliquer_remise_paiement(request, paiement_id:int):
     # inscription -> T1 -> T2 -> T3, à partir de l'état actuel de l'échéancier.
     # Sert à afficher "Sur ce paiement" par tranche et à alimenter la base de
     # calcul "Paiement à l'échéance".
+    from .recalcul_remises import montant_brut_pour_remise
+    montant_avant_remise = montant_brut_pour_remise(paiement)
+    allocation_brute = {}
     allocation_paiement = {}
     if ech:
         try:
             allocation_paiement, _paid, _remaining = allocate_amount_sequentially(ech, paiement.montant)
+            allocation_brute, _, _ = allocate_amount_sequentially(ech, montant_avant_remise)
         except Exception:
             allocation_paiement = {}
 
@@ -5264,23 +5263,9 @@ def appliquer_remise_paiement(request, paiement_id:int):
             'num': num,
             'due': due,
             'sur_ce_paiement': sur_ce_paiement,
+            'sur_ce_paiement_brut': int(allocation_brute.get(f'tranche_{num}', 0)),
             'default_checked': sur_ce_paiement > 0,
         })
-
-    def _base_retenue(tranches_selectionnees, base_calcul):
-        total = Decimal('0')
-        for info in tranches_info:
-            if str(info['num']) in (tranches_selectionnees or []):
-                montant = info['due'] if base_calcul == 'tranches_dues' else info['sur_ce_paiement']
-                total += Decimal(str(montant))
-        return total
-
-    def _reste_du_sur_tranches(tranches_selectionnees, total_remises):
-        total_du = Decimal('0')
-        for info in tranches_info:
-            if str(info['num']) in (tranches_selectionnees or []):
-                total_du += Decimal(str(info['due']))
-        return max(Decimal('0'), total_du - Decimal(str(total_remises or 0)))
 
     if request.method == 'POST':
         form = PaiementRemiseForm(request.POST, paiement=paiement)
@@ -5314,6 +5299,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                     'form': form,
                     'remises_existantes': remises_existantes,
                     'tranches_info': tranches_info,
+                    'montant_avant_remise': montant_avant_remise,
                 }
                 return render(request, 'paiements/appliquer_remise.html', context)
 
@@ -5325,9 +5311,28 @@ def appliquer_remise_paiement(request, paiement_id:int):
                 )
 
             from .recalcul_remises import memoriser_regle_remise, recalculer_remises_echeancier
-            base_retenue = _base_retenue(tranches_selectionnees, base_calcul)
 
             with transaction.atomic():
+                paiement = Paiement.objects.select_for_update().get(pk=paiement.pk)
+                if paiement.statut != 'EN_ATTENTE':
+                    messages.warning(request, "Seuls les paiements en attente peuvent recevoir des remises.")
+                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+                echeancier_verrouille = _echeancier_for_payment(paiement, for_update=True)
+                if not echeancier_verrouille:
+                    messages.error(request, "Impossible d'appliquer la remise : échéancier annuel introuvable.")
+                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+
+                deduire_du_montant = form.cleaned_data.get('deduire_du_montant', False)
+                brut = montant_brut_pour_remise(paiement) if deduire_du_montant else None
+                allocation_base, _, _ = allocate_amount_sequentially(
+                    echeancier_verrouille, brut if brut is not None else paiement.montant,
+                )
+                base_retenue = sum((
+                    Decimal(str(getattr(echeancier_verrouille, f'tranche_{num}_due')))
+                    if base_calcul == 'tranches_dues'
+                    else allocation_base[f'tranche_{num}']
+                    for num in tranches_selectionnees
+                ), Decimal('0'))
                 # Remplacer les remises existantes par la sélection
                 PaiementRemise.objects.filter(paiement=paiement).delete()
                 created = 0
@@ -5342,7 +5347,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         paiement=paiement,
                         remise=remise,
                         montant_remise=montant_remise,
-                        regle_calcul=memoriser_regle_remise(remise, base_calcul, tranches_selectionnees),
+                        regle_calcul=memoriser_regle_remise(remise, base_calcul, tranches_selectionnees, montant_avant_remise=brut, montant_net_enregistre=True),
                     )
                     created += 1
 
@@ -5382,22 +5387,29 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         paiement=paiement,
                         remise=remise_pct,
                         montant_remise=montant_remise_pct,
-                        regle_calcul=memoriser_regle_remise(remise_pct, base_calcul, tranches_selectionnees),
+                        regle_calcul=memoriser_regle_remise(remise_pct, base_calcul, tranches_selectionnees, montant_avant_remise=brut, montant_net_enregistre=True),
                     )
                     created += 1
 
-                echeancier_verrouille = _echeancier_for_payment(
-                    paiement, for_update=True
-                )
-                if not echeancier_verrouille:
-                    transaction.set_rollback(True)
-                    messages.error(
-                        request,
-                        "Impossible d'appliquer la remise : échéancier annuel introuvable.",
-                    )
-                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
-
                 recalculer_remises_echeancier(echeancier_verrouille)
+                remise_courante = (
+                    paiement.remises.aggregate(total=Sum('montant_remise'))['total']
+                    or Decimal('0')
+                )
+                if deduire_du_montant:
+                    plafond_scolarite = min(
+                        base_retenue, max(Decimal('0'), brut - allocation_base['inscription']),
+                    )
+                    if remise_courante > plafond_scolarite or brut - remise_courante <= 0:
+                        transaction.set_rollback(True)
+                        messages.error(
+                            request,
+                            "Remise refusée : les remises cumulées doivent rester dans le tarif de scolarité "
+                            "et laisser un montant net positif. Les frais d'inscription ne sont pas remisés.",
+                        )
+                        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+                    paiement.montant = brut - remise_courante
+                    paiement.save(update_fields=['montant', 'date_modification'])
 
                 cash_reserve = (
                     Paiement.objects.filter(
@@ -5422,12 +5434,13 @@ def appliquer_remise_paiement(request, paiement_id:int):
                     transaction.set_rollback(True)
                     disponible = max(
                         Decimal('0'),
-                        echeancier_verrouille.total_du - cash_reserve,
+                        echeancier_verrouille.total_du - cash_reserve - (discount_reserve - remise_courante),
                     )
                     messages.error(
                         request,
                         "Remise refusée : paiements et remises dépasseraient le "
-                        f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF.",
+                        f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF. "
+                        "Si le montant est un tarif avant remise, cochez l'option correspondante sur le formulaire.",
                     )
                     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
             # Pas de resynchronisation ici : appliquer_remise_paiement est
@@ -5458,6 +5471,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
         'form': form,
         'remises_existantes': remises_existantes,
         'tranches_info': tranches_info,
+        'montant_avant_remise': montant_avant_remise,
     }
     return render(request, 'paiements/appliquer_remise.html', context)
 

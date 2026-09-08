@@ -34,6 +34,14 @@ class PaiementRemiseForm(forms.Form):
         label="Montant original"
     )
 
+    deduire_du_montant = forms.BooleanField(
+        required=False,
+        label="Le montant indiqué est le tarif avant remise",
+        help_text="À cocher uniquement si ce montant n'a pas encore été encaissé. "
+                  "La remise sera déduite pour obtenir le net à encaisser.",
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+
     # Nouveau: pourcentage scolarité sélectionnable par l'utilisateur (1 à 10%)
     POURCENT_CHOICES = [("", "— Choisir —")] + [(str(i), f"{i}%") for i in range(1, 101)]
     pourcentage_scolarite = forms.ChoiceField(
@@ -74,6 +82,10 @@ class PaiementRemiseForm(forms.Form):
 
         if paiement:
             self.fields['montant_original'].initial = paiement.montant
+            self.fields['deduire_du_montant'].initial = any(
+                'montant_avant_remise' in (ligne.regle_calcul or {})
+                for ligne in paiement.remises.all()
+            )
             # Filtrer les remises valides à la date du paiement
             today = paiement.date_paiement
             self.fields['remises'].queryset = RemiseReduction.objects.filter(
