@@ -62,11 +62,9 @@
                     <div class="alert alert-danger">
                         <strong>Erreurs dans le formulaire :</strong>
                         <ul class="mb-0">
-                            {% for field, errors in form.errors.items %}
-                                {% for error in errors %}
-                                    <li>
-                                        {% if field != '__all__' %}<strong>{{ field }}:</strong> {% endif %}{{ error }}
-                                    </li>
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li><a href="#{{ field.id_for_label }}">{{ field.label }}</a> : {{ error }}</li>
                                 {% endfor %}
                             {% endfor %}
                             {% for error in form.non_field_errors %}
@@ -241,7 +239,7 @@
                                                                    data-remise-id="{{ remise.id }}"
                                                                    data-remise-type="{{ remise.type_remise }}"
                                                                    data-remise-valeur="{{ remise.valeur|unlocalize }}"
-                                                                   {% if remises_existantes %}{% for r in remises_existantes %}{% if r.remise.id == remise.id %}checked{% endif %}{% endfor %}{% endif %}>
+                                                                   {% if form.is_bound %}{% if remise.id|stringformat:"s" in form.remises.value %}checked{% endif %}{% else %}{% for r in remises_existantes %}{% if r.remise.id == remise.id %}checked{% endif %}{% endfor %}{% endif %}>
                                                             <label class="form-check-label" for="remise_{{ remise.id }}">
                                                                 <strong>{{ remise.nom }}</strong>
                                                             </label>

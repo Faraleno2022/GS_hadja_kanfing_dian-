@@ -320,12 +320,12 @@ class ApplicationRemisePaiementTest(TestCase):
         self.assertContains(response, 'Remise existante')
 
     def test_depassement_affiche_refus_et_preserve_remise_existante(self):
-        from django.contrib.messages import get_messages
         ligne = self._remise_existante()
         response = self._appliquer_pourcentage(50)
-        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
-        textes = [str(message) for message in get_messages(response.wsgi_request)]
-        self.assertTrue(any('Remise refusée' in texte and '10,000 GNF' in texte for texte in textes))
+        self.assertEqual(response.status_code, 200)
+        erreur = str(response.context['form'].errors)
+        self.assertIn('Remise refusée', erreur)
+        self.assertIn('10 000 GNF', erreur)
         self._assert_remise_preservee(ligne)
         self.assertFalse(self.paiement.remises.filter(remise__nom='Remise scolarité 50%').exists())
 
@@ -347,16 +347,16 @@ class ApplicationRemisePaiementTest(TestCase):
         self.assertEqual(self.paiement.remises.get().montant_remise, 10000)
 
     def test_refus_tient_compte_des_autres_versements(self):
-        from django.contrib.messages import get_messages
         autre = Paiement.objects.create(
             eleve=self.eleve, type_paiement=self.type_p, mode_paiement=self.mode_p,
             montant=5000, date_paiement=self.paiement.date_paiement,
             annee_scolaire=self.paiement.annee_scolaire, statut='EN_ATTENTE',
         )
         response = self._appliquer_pourcentage(10)
-        self.assertRedirects(response, reverse('paiements:detail_paiement', args=[self.paiement.pk]))
-        textes = [str(message) for message in get_messages(response.wsgi_request)]
-        self.assertTrue(any('Remise refusée' in texte and '5,000 GNF' in texte for texte in textes))
+        self.assertEqual(response.status_code, 200)
+        erreur = str(response.context['form'].errors)
+        self.assertIn('Remise refusée', erreur)
+        self.assertIn('5 000 GNF', erreur)
         self.assertFalse(self.paiement.remises.exists())
         autre.refresh_from_db()
         self.assertEqual(autre.montant, 5000)

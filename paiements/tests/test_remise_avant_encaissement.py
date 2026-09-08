@@ -2,7 +2,6 @@
 from decimal import Decimal
 from io import BytesIO
 
-from django.contrib.messages import get_messages
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -46,10 +45,10 @@ class RemiseAvantEncaissementTests(TestCase):
 
     def test_tarif_complet_sans_option_reste_refuse_comme_encaissement(self):
         response = self.appliquer(deduire_du_montant='')
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(self.paiement.montant, 2010000)
         self.assertFalse(self.paiement.remises.exists())
-        self.assertTrue(any('0 GNF' in str(m) for m in get_messages(response.wsgi_request)))
+        self.assertIn('0 GNF', str(response.context['form'].errors))
 
     def test_cinq_pourcent_des_tranches_exclut_inscription(self):
         for base in ('paiement_echeance', 'tranches_dues'):

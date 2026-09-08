@@ -5312,6 +5312,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
 
             from .recalcul_remises import memoriser_regle_remise, recalculer_remises_echeancier
 
+            erreur_depassement = None
             with transaction.atomic():
                 paiement = Paiement.objects.select_for_update().get(pk=paiement.pk)
                 if paiement.statut != 'EN_ATTENTE':
@@ -5436,21 +5437,39 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         Decimal('0'),
                         echeancier_verrouille.total_du - cash_reserve - (discount_reserve - remise_courante),
                     )
-                    messages.error(
-                        request,
-                        "Remise refusée : paiements et remises dépasseraient le "
-                        f"montant dû. Remise maximale encore disponible : {disponible:,.0f} GNF. "
-                        "Si le montant est un tarif avant remise, cochez l'option correspondante sur le formulaire.",
-                    )
-                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+                    autres_paiements = cash_reserve - paiement.montant
+                    autres_remises = discount_reserve - remise_courante
+                    erreur_depassement = (
+                        "Remise refusée : paiements et remises dépasseraient le montant dû. "
+                        f"Montant dû annuel : {echeancier_verrouille.total_du:,.0f} GNF. "
+                        f"Autres paiements de cet élève (validés ou en attente) : {autres_paiements:,.0f} GNF. "
+                        f"Remises sur ces autres paiements : {autres_remises:,.0f} GNF. "
+                    ).replace(',', ' ')
+                    if deduire_du_montant:
+                        erreur_depassement += (
+                            "L'option tarif avant remise est déjà prise en compte. "
+                            "Vérifiez le montant de ce paiement et les autres paiements de l'élève."
+                        )
+                    else:
+                        erreur_depassement += (
+                            f"Remise maximale encore disponible : {disponible:,.0f} GNF. ".replace(',', ' ')
+                            + "Si ce montant n'a pas encore été encaissé, cochez « Le montant indiqué est le tarif avant remise » "
+                            "ci-dessous, vérifiez le net à encaisser et confirmez à nouveau."
+                        )
             # Pas de resynchronisation ici : appliquer_remise_paiement est
             # gardée plus haut ("Seuls les paiements en attente peuvent
             # recevoir des remises") donc paiement.statut est toujours
             # EN_ATTENTE à ce stade. La validation (_valider_paiement_impl)
             # prend en compte les remises déjà attachées au moment où elle
             # recalcule l'échéancier.
-            messages.success(request, f"Remises appliquées: {created}.")
-            return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+            if erreur_depassement:
+                # Relire uniquement après la sortie de la transaction annulée :
+                # le formulaire doit afficher les montants réellement conservés.
+                paiement.refresh_from_db()
+                form.add_error(None if deduire_du_montant else 'deduire_du_montant', erreur_depassement)
+            else:
+                messages.success(request, f"Remises appliquées: {created}.")
+                return redirect('paiements:detail_paiement', paiement_id=paiement.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire de remises.")
     else:
