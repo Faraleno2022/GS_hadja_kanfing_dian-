@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static l10n %}
 
 {% block title %}Appliquer des remises - Paiement #{{ paiement.numero_recu }}{% endblock %}
 
@@ -112,8 +112,18 @@
                     </div>
 
                     <!-- Formulaire d'application des remises -->
-                    <form method="post" id="remiseForm">
+                    <form method="post" id="remiseForm" data-montant-brut="{{ montant_avant_remise|unlocalize }}">
                         {% csrf_token %}
+                        <div class="alert alert-info mb-3">
+                            <div class="form-check">
+                                {{ form.deduire_du_montant }}
+                                <label class="form-check-label fw-bold" for="{{ form.deduire_du_montant.id_for_label }}">
+                                    {{ form.deduire_du_montant.label }}
+                                </label>
+                            </div>
+                            <div class="small mt-1">{{ form.deduire_du_montant.help_text }}</div>
+                            <div class="mt-2">Tarif avant remise : <strong>{{ montant_avant_remise|floatformat:0 }} GNF</strong></div>
+                        </div>
 
                         <div class="row">
                             <div class="col-md-8">
@@ -135,7 +145,8 @@
                                                        value="{{ t.num }}"
                                                        id="tranche_{{ t.num }}"
                                                        data-due="{{ t.due }}"
-                                                       data-sur-ce-paiement="{{ t.sur_ce_paiement }}"
+                                                       data-sur-ce-paiement="{{ t.sur_ce_paiement|unlocalize }}"
+                                                       data-sur-ce-paiement-brut="{{ t.sur_ce_paiement_brut|unlocalize }}"
                                                        {% if t.num|stringformat:"s" in form.tranches.value %}checked{% endif %}>
                                                 <label class="form-check-label" for="tranche_{{ t.num }}">
                                                     <strong>
@@ -229,7 +240,7 @@
                                                                    id="remise_{{ remise.id }}"
                                                                    data-remise-id="{{ remise.id }}"
                                                                    data-remise-type="{{ remise.type_remise }}"
-                                                                   data-remise-valeur="{{ remise.valeur }}"
+                                                                   data-remise-valeur="{{ remise.valeur|unlocalize }}"
                                                                    {% if remises_existantes %}{% for r in remises_existantes %}{% if r.remise.id == remise.id %}checked{% endif %}{% endfor %}{% endif %}>
                                                             <label class="form-check-label" for="remise_{{ remise.id }}">
                                                                 <strong>{{ remise.nom }}</strong>
@@ -278,7 +289,7 @@
                                     <div class="card-body">
                                         <div id="calculPreview">
                                             <p class="mb-2">
-                                                <strong>Montant encaissé (ce reçu):</strong><br>
+                                                <strong id="montantBaseLabel">Montant du paiement avant application :</strong><br>
                                                 <span class="montant-original" id="montantOriginal">{{ paiement.montant|floatformat:0 }} GNF</span>
                                             </p>
                                             <p class="mb-2">
@@ -288,6 +299,10 @@
                                             <p class="mb-2">
                                                 <strong>Total des remises:</strong><br>
                                                 <span class="remise-economie" id="totalRemises">0 GNF</span>
+                                            </p>
+                                            <p class="mb-2">
+                                                <strong id="montantNetLabel">Montant encaissé :</strong><br>
+                                                <span class="text-success fw-bold" id="montantNet">{{ paiement.montant|floatformat:0 }} GNF</span>
                                             </p>
                                             <hr>
                                             <p class="mb-2">
@@ -331,6 +346,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnAppliquer = document.getElementById('btnAppliquer');
     const selectPct = document.getElementById('id_pourcentage_scolarite');
     const selectMotif = document.getElementById('id_motif');
+    const deduireMontant = document.getElementById('id_deduire_du_montant');
+    const montantAvantRemise = parseFloat(document.getElementById('remiseForm').dataset.montantBrut);
+
+    function avantEncaissement() {
+        return deduireMontant && deduireMontant.checked;
+    }
+
+    function partPaiement(checkbox) {
+        return parseFloat(avantEncaissement() ? checkbox.dataset.surCePaiementBrut : checkbox.dataset.surCePaiement) || 0;
+    }
+
+    function montantNet(totalRemises) {
+        return avantEncaissement() ? Math.max(0, montantAvantRemise - totalRemises) : montantOriginal;
+    }
 
     function getBaseCalculMode() {
         const checked = document.querySelector('.base-calcul-radio:checked');
@@ -343,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function() {
         trancheCheckboxes.forEach(cb => {
             if (cb.checked) {
                 const due = parseFloat(cb.dataset.due) || 0;
-                const surCePaiement = parseFloat(cb.dataset.surCePaiement) || 0;
+                const surCePaiement = partPaiement(cb);
                 total += (mode === 'tranches_dues') ? due : surCePaiement;
             }
         });
@@ -386,7 +415,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btnCePaiement) {
         btnCePaiement.addEventListener('click', function() {
             trancheCheckboxes.forEach(cb => {
-                cb.checked = (parseFloat(cb.dataset.surCePaiement) || 0) > 0;
+                cb.checked = partPaiement(cb) > 0;
             });
             updatePreview();
         });
@@ -413,11 +442,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 let montantRemise = 0;
                 if (remiseType === 'POURCENTAGE') {
-                    montantRemise = (baseRetenue * remiseValeur) / 100;
+                    montantRemise = Math.min(baseRetenue, (baseRetenue * remiseValeur) / 100);
                 } else {
                     montantRemise = Math.min(remiseValeur, baseRetenue);
                 }
 
+                montantRemise = Math.round(montantRemise);
                 totalRemises += montantRemise;
                 remisesDetails.push({ nom: remiseLabel, montant: montantRemise });
             }
@@ -427,7 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const pct = parseFloat(selectPct.value);
             if (!isNaN(pct) && pct > 0) {
                 hasSelection = true;
-                const montantPct = (baseRetenue * pct) / 100;
+                const montantPct = Math.round((baseRetenue * pct) / 100);
                 totalRemises += montantPct;
                 remisesDetails.push({ nom: `Remise scolarité ${pct}%`, montant: montantPct });
                 const warn = document.getElementById('pct100Warning');
@@ -442,6 +472,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const resteDu = Math.max(0, getResteDuTranches() - totalRemises);
+        document.getElementById('montantBaseLabel').textContent = avantEncaissement() ? 'Tarif avant remise :' : 'Montant du paiement avant application :';
+        document.getElementById('montantOriginal').textContent = (avantEncaissement() ? montantAvantRemise : montantOriginal).toLocaleString('fr-FR') + ' GNF';
+        document.getElementById('montantNetLabel').textContent = avantEncaissement() ? 'Net à encaisser :' : 'Montant encaissé :';
+        document.getElementById('montantNet').textContent = montantNet(totalRemises).toLocaleString('fr-FR') + ' GNF';
 
         document.getElementById('baseRetenueLabel').textContent = baseRetenue.toLocaleString('fr-FR') + ' GNF';
         document.getElementById('baseCalculPreview').textContent = baseRetenue.toLocaleString('fr-FR') + ' GNF';
@@ -467,6 +501,7 @@ document.addEventListener('DOMContentLoaded', function() {
     trancheCheckboxes.forEach(cb => cb.addEventListener('change', updatePreview));
     remiseCheckboxes.forEach(cb => cb.addEventListener('change', updatePreview));
     baseCalculRadios.forEach(r => r.addEventListener('change', updatePreview));
+    if (deduireMontant) deduireMontant.addEventListener('change', updatePreview);
     if (selectPct) selectPct.addEventListener('change', updatePreview);
     if (selectMotif) selectMotif.addEventListener('change', updatePreview);
 
@@ -498,7 +533,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         let message = (
             `Confirmer l'application des remises ?\n\n` +
-            `Montant encaissé (ce reçu, inchangé): ${montantOriginal.toLocaleString('fr-FR')} GNF\n` +
+            `Montant du paiement après application: ${montantNet(totalRemises).toLocaleString('fr-FR')} GNF\n` +
             `Base de calcul: ${baseRetenue.toLocaleString('fr-FR')} GNF\n` +
             `Total des remises: ${totalRemises.toLocaleString('fr-FR')} GNF`
         );
