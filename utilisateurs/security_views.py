@@ -558,40 +558,44 @@ def security_unlock(request):
 @never_cache
 def verify_phone(request):
     """
-    Étape de vérification du numéro de téléphone après connexion.
-    L'utilisateur doit saisir le numéro exactement tel qu'enregistré dans son profil.
-    Exemple de format attendu (validé par le modèle Profil): +224XXXXXXXXX
+    Vérifie le téléphone après connexion lorsqu'un numéro figure sur le profil.
+    Les comptes sans téléphone poursuivent leur navigation normalement.
     """
     profil = getattr(request.user, 'profil', None)
-    if not profil or not profil.telephone:
-        messages.error(request, _("Aucun numéro de téléphone n'est enregistré sur votre profil. Contactez l'administrateur FARA LENO AU +224622613559."))
+    if profil is None and not request.user.is_superuser:
+        messages.error(request, _("Votre profil n'est pas configuré. Contactez l'administrateur."))
         return redirect('utilisateurs:logout')
 
-    # Si déjà vérifié pour la session courante, on passe
+    next_url = request.GET.get('next') or request.POST.get('next')
+    if not next_url or not url_has_allowed_host_and_scheme(
+        next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure(),
+    ):
+        next_url = reverse('eleves:liste_eleves')
+
+    telephone = (getattr(profil, 'telephone', '') or '').strip()
+    # Ne pas marquer comme vérifié un numéro absent : un ajout ultérieur
+    # au profil doit encore déclencher la vérification.
+    if not telephone:
+        request.session.pop('phone_verified', None)
+        request.session.pop('phone_verified_at', None)
+        return redirect(next_url)
     if request.session.get('phone_verified'):
-        next_url = request.GET.get('next')
-        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-            return redirect(next_url)
-        return redirect('eleves:liste_eleves')
+        return redirect(next_url)
 
     if request.method == 'POST':
         numero = (request.POST.get('telephone') or '').strip()
-        # On compare strictement au numéro du profil
-        if numero == profil.telephone:
+        if numero == telephone:
             request.session['phone_verified'] = True
             request.session['phone_verified_at'] = time.time()
             messages.success(request, _('Vérification du téléphone réussie.'))
-            next_url = request.GET.get('next') or request.POST.get('next')
-            if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
-                return redirect(next_url)
-            return redirect('eleves:liste_eleves')
-        else:
-            messages.error(request, _("Le numéro saisi ne correspond pas à celui enregistré."))
+            return redirect(next_url)
+        messages.error(request, _("Le numéro saisi ne correspond pas à celui enregistré."))
 
     return render(request, 'utilisateurs/verify_phone.html', {
-        'telephone_masque': profil.telephone[:-3] + '***' if profil.telephone and len(profil.telephone) > 3 else '***',
-        'next': request.GET.get('next', ''),
+        'telephone_masque': telephone[:-3] + '***' if len(telephone) > 3 else '***',
+        'next': next_url,
     })
+
 
 def check_session_security(request):
     """
