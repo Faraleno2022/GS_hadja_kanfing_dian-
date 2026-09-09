@@ -3,11 +3,19 @@ Production settings for ecole_moderne.
 Use environment variables to configure secrets and database (MySQL on PythonAnywhere).
 """
 
-from .paramètres import *  # noqa
+from .settings import *  # noqa
 import os
 
 # ===== Mode production =====
 DEBUG = False
+from .middleware_config import production_middlewares
+MIDDLEWARE = production_middlewares(MIDDLEWARE)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Strict'
+CSRF_COOKIE_SAMESITE = 'Strict'
+X_FRAME_OPTIONS = 'DENY'
 
 # ===== Hôtes autorisés =====
 ALLOWED_HOSTS = [
@@ -58,7 +66,7 @@ DATABASES = {
 }
 
 # ===== Fichiers statiques et médias =====
-BASE_DIR_SERVER = os.getenv('PROJECT_BASE_DIR', '/home/myschoolgn/myschool-')
+BASE_DIR_SERVER = os.getenv('PROJECT_BASE_DIR', str(BASE_DIR))
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR_SERVER, 'staticfiles')

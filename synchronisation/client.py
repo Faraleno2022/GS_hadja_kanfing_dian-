@@ -131,77 +131,79 @@ def push_pending(server_url, device_id, token, ecole, batch_size=PUSH_BATCH_SIZE
 
 
 def pull_changes(server_url, device_id, token, ecole, since_id=None, initial=False, apply_change=None):
-    """Recupere tous les changements disponibles depuis since_id, par pages, jusqu'a vidage."""
+    """Import paginé et reprenable ; un lot en échec ne fait jamais avancer le curseur."""
+    from django.db import transaction
+    from .models import SyncCheckpoint
+    from .engine import build_change_instance
     if apply_change is None:
         from .engine import apply_sync_change
         apply_change = apply_sync_change
-
+    checkpoint, _ = SyncCheckpoint.objects.get_or_create(device_id=device_id)
+    if initial:
+        checkpoint.initial_complete = False
+        checkpoint.snapshot_cursor = ''
+        checkpoint.save(update_fields=['initial_complete', 'snapshot_cursor'])
+    if since_id is not None:
+        checkpoint.last_change_id = int(since_id)
     total = 0
-    current_since = since_id
     for _ in range(MAX_CYCLES_PAR_APPEL):
-        params = {}
-        if current_since:
-            params['since_id'] = current_since
-        if initial and not current_since:
-            params['initial'] = '1'
-
+        bootstrapping = not checkpoint.initial_complete
+        params = {'since_id': checkpoint.last_change_id}
+        if bootstrapping:
+            params.update(initial='1', snapshot_version='2')
+            if checkpoint.snapshot_cursor:
+                params['snapshot_cursor'] = checkpoint.snapshot_cursor
         response = _get_json(f'{server_url}/api/v1/sync/pull/', device_id, token, params=params)
         if not response.get('ok'):
-            raise SyncTransportError(response.get('error') or 'Pull refuse.')
-
+            raise SyncTransportError(response.get('error') or 'Pull refusé.')
         items = response.get('changes', [])
-
-        if ecole is None:
-            # Amorçage d'un poste tout juste installe : SyncChange.ecole est
-            # une cle etrangere obligatoire, donc aucune ligne SyncChange ne
-            # peut exister tant que l'ecole elle-meme n'existe pas encore
-            # localement. On la materialise directement (hors file d'attente),
-            # puis la boucle normale ci-dessous traite le reste de la page,
-            # cette meme ecole incluse (upsert idempotent par sync_uuid).
-            from .engine import build_change_instance
-
-            premier = items[0] if items else None
-            if not premier or premier.get('model_label') != 'eleves.Ecole':
-                raise SyncTransportError(
-                    "École locale introuvable et absente du premier lot recu : "
-                    "amorçage impossible."
-                )
-            ecole = build_change_instance(
-                'eleves.Ecole', premier.get('object_uuid'), premier.get('payload') or {},
-            )
-            total += 1
-
-        for item in items:
-            server_change_id = item.get('id')
-            if server_change_id and SyncChange.objects.filter(
-                ecole=ecole, payload__server_change_id=server_change_id,
-            ).exists():
-                continue
-
-            payload = item.get('payload') or {}
-            if server_change_id:
-                payload = {**payload, 'server_change_id': server_change_id}
-
-            change = SyncChange.objects.create(
-                ecole=ecole,
-                model_label=item['model_label'],
-                object_uuid=item.get('object_uuid') or None,
-                operation=item['operation'],
-                payload=payload,
-            )
-            try:
-                apply_change(change)
-                total += 1
-            except Exception as exc:
-                change.statut = SyncChange.STATUT_FAILED
-                change.erreur = str(exc)
-                change.save(update_fields=['statut', 'erreur'])
-
-        latest_id = response.get('latest_change_id')
-        if latest_id:
-            current_since = latest_id
-        initial = False
-
-        if len(items) < PULL_PAGE_SIZE:
+        if not isinstance(items, list):
+            raise SyncTransportError('Lot de synchronisation invalide.')
+        applied = 0
+        try:
+            with transaction.atomic():
+                if ecole is None:
+                    premier = items[0] if items else None
+                    if not premier or premier.get('model_label') != 'eleves.Ecole':
+                        raise SyncTransportError("École absente du premier lot reçu.")
+                    ecole = build_change_instance(
+                        'eleves.Ecole', premier.get('object_uuid'), premier.get('payload') or {},
+                        trusted=True,
+                    )
+                for item in items:
+                    server_change_id = item.get('id')
+                    if server_change_id and SyncChange.objects.filter(
+                        ecole=ecole, statut=SyncChange.STATUT_APPLIED,
+                        payload__server_change_id=server_change_id,
+                    ).exists():
+                        continue
+                    payload = item.get('payload') or {}
+                    if server_change_id:
+                        payload = {**payload, 'server_change_id': server_change_id}
+                    change = SyncChange.objects.create(
+                        ecole=ecole, model_label=item['model_label'],
+                        object_uuid=item.get('object_uuid') or None,
+                        operation=item['operation'], payload=payload,
+                    )
+                    apply_change(change)
+                    applied += 1
+                if bootstrapping:
+                    next_cursor = response.get('next_snapshot_cursor') or ''
+                    if next_cursor and next_cursor == checkpoint.snapshot_cursor:
+                        raise SyncTransportError('Le curseur initial ne progresse pas.')
+                    checkpoint.snapshot_cursor = next_cursor
+                    checkpoint.initial_complete = not bool(next_cursor)
+                    if checkpoint.initial_complete:
+                        checkpoint.last_change_id = int(response.get('latest_change_id') or 0)
+                else:
+                    checkpoint.last_change_id = int(response.get('latest_change_id') or checkpoint.last_change_id)
+                checkpoint.save()
+        except Exception as exc:
+            raise SyncTransportError(f"Lot non appliqué, reprise conservée : {exc}") from exc
+        total += applied
+        if bootstrapping:
+            # Once the snapshot is complete, read changes made while it was being downloaded.
+            continue
+        if not response.get('has_more', len(items) >= PULL_PAGE_SIZE):
             break
     return total

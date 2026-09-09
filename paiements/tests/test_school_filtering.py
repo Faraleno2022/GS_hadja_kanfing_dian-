@@ -122,6 +122,7 @@ class SchoolFilteringTests(TestCase):
                 'ecole': self.ecole1,
                 'telephone': "+224620000021",
                 'peut_consulter_rapports': True,
+                'is_validated': True,
             },
         )
         Profil.objects.update_or_create(
@@ -131,6 +132,7 @@ class SchoolFilteringTests(TestCase):
                 'ecole': self.ecole2,
                 'telephone': "+224620000022",
                 'peut_consulter_rapports': True,
+                'is_validated': True,
             },
         )
 

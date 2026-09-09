@@ -167,6 +167,7 @@ MIDDLEWARE = [
     'notes.middleware_acces_enseignants.AccesEnseignantMiddleware',
     'utilisateurs.middleware.MenuPermissionMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'utilisateurs.middleware.ProfilAccessMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # Vérification licence : bloque l'accès web si essai/licence expiré
     'ecole_moderne.licence_middleware.LicenceMiddleware',
@@ -186,10 +187,8 @@ if DEBUG:
     ]
 else:
     MIDDLEWARE.append('ecole_moderne.image_optimization_middleware.ImageOptimizationMiddleware')
-    MIDDLEWARE.insert(1, 'ecole_moderne.security_middleware.SecurityMiddleware')
-    MIDDLEWARE.insert(3, 'ecole_moderne.security_middleware.SessionSecurityMiddleware')
-    MIDDLEWARE.insert(5, 'ecole_moderne.security_middleware.CSRFSecurityMiddleware')
-    MIDDLEWARE.append('ecole_moderne.security_middleware.CSPMiddleware')
+    from .middleware_config import production_middlewares
+    MIDDLEWARE = production_middlewares(MIDDLEWARE)
 
 # =================== Authentication Backends ===================
 AUTHENTICATION_BACKENDS = [

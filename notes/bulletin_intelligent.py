@@ -1495,12 +1495,13 @@ def generer_excel(bulletin_data):
 def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     """Vue pour afficher le bulletin intelligent"""
     eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id, ecole_id=eleve.classe.ecole_id)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
     
     # Détecter le niveau scolaire (primaire ou secondaire)
+    from .calculs_moyennes import detecter_niveau_scolaire
     niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau_scolaire == 'PRIMAIRE')
     base_notation = 10 if est_primaire else 20
@@ -1524,7 +1525,7 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
 def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     """Génère le bulletin en PDF avec filigrane"""
     eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id, ecole_id=eleve.classe.ecole_id)
     
     # Déterminer le système et le type de système pour l'affichage
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1659,7 +1660,7 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
         return HttpResponse("Excel export n'est pas disponible", status=500)
     
     eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id, ecole_id=eleve.classe.ecole_id)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1690,7 +1691,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     """Génère tous les bulletins d'une classe en un seul PDF - VERSION OPTIMISÉE"""
     import re
     
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id, ecole_id=eleve.classe.ecole_id)
     
     # Récupérer tous les élèves de la classe
     classe_eleve = Classe.objects.filter(
@@ -1775,6 +1776,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     from notes.calculs_moyennes import detecter_niveau_scolaire, calculer_bulletin_intelligent
     
     # Détecter le niveau scolaire
+    from .calculs_moyennes import detecter_niveau_scolaire
     niveau_scolaire = detecter_niveau_scolaire(classe_note.nom)
     est_maternelle = (niveau_scolaire == 'MATERNELLE')
     

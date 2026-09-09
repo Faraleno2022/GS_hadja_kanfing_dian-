@@ -97,7 +97,8 @@ class ImportVerrouilleTests(TestCase):
     def test_refuse_utilisateur_sans_permission(self):
         user = get_user_model().objects.create_user('sans-permission')
         user.profil.role = 'ENSEIGNANT'
-        user.profil.save(update_fields=['role'])
+        user.profil.is_validated = True
+        user.profil.save(update_fields=['role', 'is_validated'])
         self.client.force_login(user)
         self.assertEqual(self.client.get(self.url).status_code, 403)
 
@@ -153,7 +154,8 @@ class ImportVerrouilleTests(TestCase):
         ecole = Ecole.objects.create(nom='Autre ecole', adresse='Conakry', telephone='620111112', directeur='Direction')
         user = get_user_model().objects.create_user('comptable-autre')
         user.profil.ecole = ecole
-        user.profil.save(update_fields=['ecole'])
+        user.profil.is_validated = True
+        user.profil.save(update_fields=['ecole', 'is_validated'])
         self.client.force_login(user)
         self.assertEqual(self.client.get(self.url).context['page_obj'].paginator.count, 0)
         self.assertEqual(self.client.post(self.url, {'eleve_id': self.eleve.pk, 'classe_id': self.b.pk}).status_code, 404)

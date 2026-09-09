@@ -157,17 +157,14 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         ecole_user = user_school(user)
         ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
 
-    # Dépenses de la période (GLOBAL - pas de relation à Ecole)
     depenses_periode_global = Depense.objects.filter(
-        date_facture__range=[debut, fin]
-    ).exclude(statut='ANNULEE')  # Exclure seulement les annulées
-    
-    # Si pas de dépenses dans la période, essayer avec toutes les dépenses validées
-    if not depenses_periode_global.exists():
-        depenses_periode_global = Depense.objects.filter(
-            statut='VALIDEE'
+        date_facture__range=[debut, fin], statut='VALIDEE',
+    )
+    if user is not None:
+        from utilisateurs.utils import filter_by_user_school
+        depenses_periode_global = filter_by_user_school(
+            depenses_periode_global, user, 'cree_par__profil__ecole',
         )
-    
     donnees['depenses_globales']['nombre'] = depenses_periode_global.count()
     donnees['depenses_globales']['montant_total'] = depenses_periode_global.aggregate(
         total=Sum('montant_ttc')
@@ -212,18 +209,9 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
             }
         }
         
-        # Paiements de la période (liaison via Eleve -> Classe -> École)
         paiements_periode = Paiement.objects.filter(
-            eleve__classe__ecole=ecole,
-            date_paiement__range=[debut, fin]
-        ).exclude(statut='ANNULE')
-
-        # Si pas de paiements dans la période, fallback: tous les paiements validés de l'école
-        if not paiements_periode.exists():
-            paiements_periode = Paiement.objects.filter(
-                eleve__classe__ecole=ecole,
-                statut='VALIDE'
-            )
+            eleve__classe__ecole=ecole, date_paiement__range=[debut, fin], statut='VALIDE',
+        )
 
         donnees_ecole['paiements']['nombre'] = paiements_periode.count()
         montant_total_paiements = paiements_periode.aggregate(total=Sum('montant'))['total'] or Decimal('0')
@@ -235,66 +223,7 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         donnees_ecole['paiements']['remises_par_categorie'] = remises_par_categorie(paiements_periode)
 
         # Classification sans double comptage
-        frais_inscription = Decimal('0')
-        frais_reinscription = Decimal('0')
-        scolarite = Decimal('0')
-        non_categorises = Decimal('0')
-
-        for p in paiements_periode.select_related('type_paiement'):
-            montant = p.montant or Decimal('0')
-            nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
-            kind = registration_kind_for_type(p.type_paiement)
-
-            has_inscription = kind == 'inscription'
-            has_reinscription = kind == 'reinscription'
-            has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
-
-            if has_inscription and has_scolarite:
-                # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
-                part_ins = min(Decimal('30000'), montant)
-                part_sco = montant - part_ins
-                frais_inscription += part_ins
-                scolarite += part_sco
-            elif has_inscription:
-                # Pur frais d'inscription
-                frais_inscription += montant
-            elif has_reinscription:
-                # Le tarif de réinscription varie par grille tarifaire (pas de
-                # forfait unique comme pour l'inscription) : un paiement combiné
-                # réinscription + scolarité, rare, est donc compté intégralement
-                # en réinscription plutôt que deviné.
-                frais_reinscription += montant
-            elif has_scolarite:
-                scolarite += montant
-            else:
-                non_categorises += montant
-
-        # Estimation/fallback: couvrir les frais d'inscription théoriques avec non catégorisés si besoin
-        nb_nouveaux = donnees_ecole['nouveaux_eleves']
-        theorique_insc = Decimal('30000') * nb_nouveaux
-
-        if frais_inscription == 0 and nb_nouveaux > 0 and non_categorises > 0:
-            a_affecter = min(theorique_insc, non_categorises)
-            frais_inscription += a_affecter
-            non_categorises -= a_affecter
-
-        # Plafond: ne jamais dépasser 30 000 GNF par nouvel élève
-        if nb_nouveaux > 0 and frais_inscription > theorique_insc:
-            excedent = frais_inscription - theorique_insc
-            frais_inscription = theorique_insc
-            scolarite += excedent
-
-        # Cohérence: si 0 nouveaux élèves, ne pas compter des frais d'inscription → reclasser en scolarité
-        if nb_nouveaux == 0 and frais_inscription > 0:
-            scolarite += frais_inscription
-            frais_inscription = Decimal('0')
-
-        # Ajouter le reste non catégorisé à la scolarité (par défaut)
-        scolarite += non_categorises
-
-        donnees_ecole['paiements']['frais_inscription'] = frais_inscription
-        donnees_ecole['paiements']['reinscription'] = frais_reinscription
-        donnees_ecole['paiements']['scolarite'] = scolarite
+        donnees_ecole['paiements'].update(ventiler_encaissements(paiements_periode))
 
         # Élèves concernés de la période (paiements dans période + inscriptions dans période)
         eleves_concernes_ids = set(paiements_periode.values_list('eleve_id', flat=True).distinct())
@@ -566,3 +495,30 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
     doc.build(story, onFirstPage=_header_wrapper, onLaterPages=_header_wrapper)
     buffer.seek(0)
     return buffer
+
+
+def ventiler_encaissements(paiements):
+    """Ventilation des encaissements selon les échéanciers de l'année du reçu."""
+    from paiements.allocation import get_payment_allocation
+    from paiements.models import EcheancierPaiement
+    total = {'frais_inscription': Decimal('0'), 'reinscription': Decimal('0'), 'scolarite': Decimal('0')}
+    for paiement in paiements.select_related('type_paiement', 'eleve'):
+        echeancier = EcheancierPaiement.objects.filter(
+            eleve_id=paiement.eleve_id, annee_scolaire=paiement.annee_scolaire,
+        ).first()
+        allocation = get_payment_allocation(paiement, echeancier) if echeancier else None
+        montant = paiement.montant or Decimal('0')
+        if allocation is not None:
+            admission = allocation['inscription']
+            nature = 'reinscription' if echeancier.nature_frais == EcheancierPaiement.NATURE_REINSCRIPTION else 'frais_inscription'
+            total[nature] += admission
+            total['scolarite'] += montant - admission
+        else:
+            nature = registration_kind_for_type(paiement.type_paiement)
+            nom = (paiement.type_paiement.nom or '').lower()
+            # Sans échéancier, on ne peut ventiler un reçu combiné avec un forfait inventé.
+            cle = {'inscription': 'frais_inscription', 'reinscription': 'reinscription'}.get(nature, 'scolarite')
+            if 'tranche' in nom or 'scolar' in nom:
+                cle = 'scolarite'
+            total[cle] += montant
+    return total

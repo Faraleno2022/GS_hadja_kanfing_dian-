@@ -147,11 +147,8 @@ class CouleursCartesEcoleTests(TestCase):
 
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "Couleurs des cartes imprimées")
-        self.assertContains(
-            page,
-            'class="form-control form-control-color w-100"',
-            count=4,
-        )
+        for name in ('couleur_carte_scolaire', 'couleur_carte_retrait', 'couleur_carte_bus', 'couleur_carte_cantine'):
+            self.assertContains(page, f'name="{name}"', count=1)
         self.assertRedirects(response, url)
         self.ecole.refresh_from_db()
         self.assertEqual(self.ecole.couleur_carte_scolaire, "#102030")

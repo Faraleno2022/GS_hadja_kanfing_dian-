@@ -21,7 +21,7 @@ from utilisateurs.utils import filter_by_user_school, user_school
 from utilisateurs.permissions import any_permission_required
 
 @login_required
-@any_permission_required(['can_manage_payments', 'can_view_payments'])
+@any_permission_required(['peut_consulter_rapports', 'peut_ajouter_paiements', 'peut_modifier_paiements'])
 def gerer_rappels(request):
     """Vue principale pour gérer les rappels de paiement"""
     user_profil = getattr(request.user, 'profil', None)
@@ -36,8 +36,7 @@ def gerer_rappels(request):
     rappels = Relance.objects.select_related('eleve', 'eleve__classe', 'cree_par')
     
     # Filtrer par école si nécessaire
-    if ecole:
-        rappels = rappels.filter(eleve__classe__ecole=ecole)
+    rappels = filter_by_user_school(rappels, request.user, 'eleve__classe__ecole')
     
     # Appliquer les filtres
     if statut_filtre:
@@ -59,12 +58,10 @@ def gerer_rappels(request):
     page_obj = paginator.get_page(page_number)
     
     # Statistiques
-    stats = gestionnaire_rappels.obtenir_statistiques_rappels()
+    stats = gestionnaire_rappels.obtenir_statistiques_rappels(utilisateur=request.user)
     
     # Élèves en retard
-    eleves_retard = gestionnaire_rappels.detecter_eleves_en_retard()
-    if ecole:
-        eleves_retard = eleves_retard.filter(eleve__classe__ecole=ecole)
+    eleves_retard = gestionnaire_rappels.detecter_eleves_en_retard(utilisateur=request.user)
     
     context = {
         'titre_page': 'Gestion des Rappels de Paiement',
@@ -82,12 +79,15 @@ def gerer_rappels(request):
     return render(request, 'paiements/gerer_rappels.html', context)
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_ajouter_paiements', 'peut_modifier_paiements'])
 def creer_rappels_automatiques(request):
     """Crée automatiquement des rappels pour les élèves en retard"""
     if request.method == 'POST':
         canal = request.POST.get('canal', 'SMS')
-        limite = int(request.POST.get('limite', 50))
+        try:
+            limite = max(1, min(1000, int(request.POST.get('limite', 50))))
+        except (TypeError, ValueError):
+            return JsonResponse({'error': 'Limite invalide.'}, status=400)
         
         try:
             # Générer les rappels
@@ -122,15 +122,15 @@ def creer_rappels_automatiques(request):
     return redirect('paiements:gerer_rappels')
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_ajouter_paiements', 'peut_modifier_paiements'])
 def creer_rappel_individuel(request, eleve_id):
     """Crée un rappel pour un élève spécifique"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole'), id=eleve_id)
     
     # Vérifier l'accès à l'école
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    if ecole and eleve.classe.ecole != ecole:
+    if not request.user.is_superuser and (not ecole or eleve.classe.ecole != ecole):
         messages.error(request, "❌ Vous n'avez pas accès à cet élève")
         return redirect('paiements:gerer_rappels')
     
@@ -164,17 +164,15 @@ def creer_rappel_individuel(request, eleve_id):
     return redirect('paiements:gerer_rappels')
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports', 'peut_ajouter_paiements', 'peut_modifier_paiements'])
 def eleves_en_retard(request):
     """Liste des élèves en retard de paiement"""
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
     
     # Récupérer les élèves en retard
-    echeanciers_retard = gestionnaire_rappels.detecter_eleves_en_retard()
+    echeanciers_retard = gestionnaire_rappels.detecter_eleves_en_retard(utilisateur=request.user)
     
-    if ecole:
-        echeanciers_retard = echeanciers_retard.filter(eleve__classe__ecole=ecole)
     
     # Filtres
     classe_filtre = request.GET.get('classe', '')
@@ -191,7 +189,7 @@ def eleves_en_retard(request):
         )
     
     # Pagination
-    paginator = Paginator(echeanciers_retard, 25)
+    paginator = Paginator(echeanciers_retard.order_by('eleve__nom', 'eleve__prenom', 'pk'), 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
     
@@ -228,10 +226,10 @@ def eleves_en_retard(request):
     return render(request, 'paiements/eleves_en_retard.html', context)
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports', 'peut_ajouter_paiements', 'peut_modifier_paiements'])
 def apercu_message_rappel(request, eleve_id):
     """Aperçu du message de rappel pour un élève"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole'), id=eleve_id)
     canal = request.GET.get('canal', 'SMS')
     
     try:
@@ -262,9 +260,13 @@ def apercu_message_rappel(request, eleve_id):
 
 @login_required
 @require_POST
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_ajouter_paiements', 'peut_modifier_paiements'])
 def marquer_rappel_envoye(request, relance_id):
     """Marque un rappel comme envoyé"""
+    get_object_or_404(
+        filter_by_user_school(Relance.objects.all(), request.user, 'eleve__classe__ecole'),
+        pk=relance_id,
+    )
     try:
         data = json.loads(request.body)
         succes = data.get('succes', True)
@@ -284,13 +286,17 @@ def marquer_rappel_envoye(request, relance_id):
         })
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports', 'peut_ajouter_paiements', 'peut_modifier_paiements'])
 def statistiques_rappels(request):
     """Page des statistiques des rappels"""
-    periode = int(request.GET.get('periode', 30))
+    try:
+        periode = max(1, min(366, int(request.GET.get('periode', 30))))
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'Période invalide.'}, status=400)
+    rappels_ecole = filter_by_user_school(Relance.objects.all(), request.user, 'eleve__classe__ecole')
     
     # Statistiques générales
-    stats = gestionnaire_rappels.obtenir_statistiques_rappels(periode)
+    stats = gestionnaire_rappels.obtenir_statistiques_rappels(periode, utilisateur=request.user)
     
     # Évolution des rappels (par semaine)
     date_debut = timezone.now() - timedelta(days=periode)
@@ -300,7 +306,7 @@ def statistiques_rappels(request):
         debut_semaine = date_debut + timedelta(days=i)
         fin_semaine = debut_semaine + timedelta(days=6)
         
-        nb_rappels = Relance.objects.filter(
+        nb_rappels = rappels_ecole.filter(
             date_creation__gte=debut_semaine,
             date_creation__lte=fin_semaine
         ).count()
@@ -312,8 +318,7 @@ def statistiques_rappels(request):
     
     # Top 10 des élèves avec le plus de rappels
     top_eleves = (
-        Relance.objects
-        .filter(date_creation__gte=date_debut)
+        rappels_ecole.filter(date_creation__gte=date_debut)
         .values('eleve__nom', 'eleve__prenom', 'eleve__classe__nom')
         .annotate(nb_rappels=Count('id'), solde_total=Sum('solde_estime'))
         .order_by('-nb_rappels')[:10]
@@ -330,15 +335,15 @@ def statistiques_rappels(request):
     return render(request, 'paiements/statistiques_rappels.html', context)
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_ajouter_paiements', 'peut_modifier_paiements'])
 def supprimer_rappel(request, relance_id):
     """Supprime un rappel"""
-    relance = get_object_or_404(Relance, id=relance_id)
+    relance = get_object_or_404(filter_by_user_school(Relance.objects.all(), request.user, 'eleve__classe__ecole'), id=relance_id)
     
     # Vérifier l'accès
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    if ecole and relance.eleve.classe.ecole != ecole:
+    if not request.user.is_superuser and (not ecole or relance.eleve.classe.ecole != ecole):
         messages.error(request, "❌ Vous n'avez pas accès à ce rappel")
         return redirect('paiements:gerer_rappels')
     

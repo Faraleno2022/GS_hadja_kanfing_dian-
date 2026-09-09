@@ -19,6 +19,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ def secure_login(request):
             if user.is_active:
                 # Vérifier si le profil utilisateur est validé par l'administrateur
                 profil = getattr(user, 'profil', None)
-                if profil and not profil.is_validated and not user.is_superuser:
+                if not user.is_superuser and (not profil or not profil.is_validated or not profil.actif):
                     messages.error(request, 'Votre compte est en attente de validation par un administrateur. Vous serez notifié par email dès validation.')
                     logger.warning(f"Tentative de connexion sur compte non validé: {username} depuis IP: {client_ip}")
                     return render(request, 'utilisateurs/login.html')
@@ -217,7 +218,7 @@ def secure_login(request):
                 # Ignorer toute redirection vers l'admin
                 from django.conf import settings as _settings2
                 _admin_pfx = '/' + getattr(_settings2, 'ADMIN_URL', 'admin/')
-                if next_url and next_url.startswith('/') and not next_url.startswith('/admin/') and not next_url.startswith(_admin_pfx):
+                if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()) and next_url.startswith('/') and not next_url.startswith('/admin/') and not next_url.startswith(_admin_pfx):
                     return redirect(next_url)
                 return redirect('eleves:liste_eleves')
             else:
@@ -569,7 +570,7 @@ def verify_phone(request):
     # Si déjà vérifié pour la session courante, on passe
     if request.session.get('phone_verified'):
         next_url = request.GET.get('next')
-        if next_url and next_url.startswith('/'):
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
             return redirect(next_url)
         return redirect('eleves:liste_eleves')
 
@@ -581,7 +582,7 @@ def verify_phone(request):
             request.session['phone_verified_at'] = time.time()
             messages.success(request, _('Vérification du téléphone réussie.'))
             next_url = request.GET.get('next') or request.POST.get('next')
-            if next_url and next_url.startswith('/'):
+            if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
                 return redirect(next_url)
             return redirect('eleves:liste_eleves')
         else:

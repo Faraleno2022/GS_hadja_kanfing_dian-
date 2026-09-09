@@ -226,6 +226,7 @@ class SuppressionPaiementPermissionTest(TestCase):
         self.user.profil.ecole = self.ecole
         self.user.profil.telephone = '+224622410005'
         self.user.profil.peut_supprimer_paiements = False
+        self.user.profil.is_validated = True
         self.user.profil.save()
         self.client.force_login(self.user)
 

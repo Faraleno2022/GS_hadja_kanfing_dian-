@@ -13,6 +13,7 @@ import logging
 
 from .models import EcheancierPaiement, Relance, ConfigurationPaiement
 from eleves.models import Eleve
+from utilisateurs.utils import filter_by_user_school
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             }
         }
     
-    def detecter_eleves_en_retard(self, jours_grace=7):
+    def detecter_eleves_en_retard(self, jours_grace=7, utilisateur=None):
         """
         Détecte les élèves en retard de paiement
         
@@ -163,6 +164,8 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             _solde_effectif__gt=0,
         ).select_related('eleve', 'eleve__classe')
         
+        if utilisateur is not None:
+            echeanciers_retard = filter_by_user_school(echeanciers_retard, utilisateur, 'eleve__classe__ecole')
         return echeanciers_retard
     
     def calculer_niveau_rappel(self, eleve_id):
@@ -279,6 +282,11 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             logger.warning(f"Pas d'échéancier pour l'élève {eleve.id}")
             return None
         
+        if utilisateur is not None and not filter_by_user_school(
+            Eleve.objects.filter(pk=eleve.pk), utilisateur, 'classe__ecole',
+        ).exists():
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied("Élève hors de votre établissement.")
         # Générer le message si non fourni
         if not message:
             niveau_rappel = self.calculer_niveau_rappel(eleve.id)
@@ -317,7 +325,7 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         }
         
         # Détecter les élèves en retard
-        echeanciers_retard = self.detecter_eleves_en_retard()
+        echeanciers_retard = self.detecter_eleves_en_retard(utilisateur=utilisateur)
         stats['total_eleves_retard'] = echeanciers_retard.count()
         
         # Limiter le nombre de rappels
@@ -379,7 +387,7 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         except Relance.DoesNotExist:
             logger.error(f"Relance {relance_id} introuvable")
     
-    def obtenir_statistiques_rappels(self, periode_jours=30):
+    def obtenir_statistiques_rappels(self, periode_jours=30, utilisateur=None):
         """
         Obtient les statistiques des rappels sur une période
         
@@ -392,6 +400,8 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         date_debut = timezone.now() - timedelta(days=periode_jours)
         
         rappels = Relance.objects.filter(date_creation__gte=date_debut)
+        if utilisateur is not None:
+            rappels = filter_by_user_school(rappels, utilisateur, 'eleve__classe__ecole')
         
         stats = {
             'total_rappels': rappels.count(),

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def _get_user_school_or_403(request):
     """Retourne l'école de l'utilisateur ou None si admin (accès global)."""
-    if user_is_admin(request.user):
+    if request.user.is_superuser:
         return None  # Admin voit tout
     ecole = user_school(request.user)
     return ecole
@@ -27,7 +27,7 @@ def _get_user_school_or_403(request):
 
 def _filter_qs_by_school(qs, request, field_path='eleve__classe__ecole'):
     """Filtre un queryset par l'école de l'utilisateur connecté."""
-    if user_is_admin(request.user):
+    if request.user.is_superuser:
         return qs
     ecole = user_school(request.user)
     if ecole:
@@ -130,12 +130,14 @@ def creer_abonnement_bus(request):
         point_descente = request.POST.get('point_descente')
         contact_urgence = request.POST.get('contact_urgence')
         observations = request.POST.get('observations', '')
+        if duree not in dict(AbonnementCantine.DUREE_CHOICES):
+            return JsonResponse({'success': False, 'error': 'Durée invalide.'}, status=400)
         
         try:
             eleve = Eleve.objects.get(id=eleve_id)
             # ── Sécurité: vérifier que l'élève appartient à l'école de l'utilisateur ──
             ecole_user = user_school(request.user)
-            if not user_is_admin(request.user) and ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+            if not request.user.is_superuser and (not ecole_user or eleve.classe.ecole_id != ecole_user.pk):
                 messages.error(request, "Vous ne pouvez pas créer un abonnement pour un élève d'une autre école.")
                 return redirect('abonnements:liste_bus')
 
@@ -178,7 +180,7 @@ def creer_abonnement_bus(request):
 
     # GET — filtrer les élèves par école
     eleves_qs = Eleve.objects.filter(statut='ACTIF')
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         ecole_user = user_school(request.user)
         if ecole_user:
             eleves_qs = eleves_qs.filter(classe__ecole=ecole_user)
@@ -246,12 +248,14 @@ def creer_abonnement_cantine(request):
         regime_alimentaire = request.POST.get('regime_alimentaire')
         allergies = request.POST.get('allergies', '')
         observations = request.POST.get('observations', '')
+        if duree not in dict(AbonnementCantine.DUREE_CHOICES):
+            return JsonResponse({'success': False, 'error': 'Durée invalide.'}, status=400)
         
         try:
             eleve = Eleve.objects.get(id=eleve_id)
             # ── Sécurité: vérifier que l'élève appartient à l'école de l'utilisateur ──
             ecole_user = user_school(request.user)
-            if not user_is_admin(request.user) and ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
+            if not request.user.is_superuser and (not ecole_user or eleve.classe.ecole_id != ecole_user.pk):
                 messages.error(request, "Vous ne pouvez pas créer un abonnement pour un élève d'une autre école.")
                 return redirect('abonnements:liste_cantine')
 
@@ -291,7 +295,7 @@ def creer_abonnement_cantine(request):
 
     # GET — filtrer les élèves par école
     eleves_qs = Eleve.objects.filter(statut='ACTIF')
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         ecole_user = user_school(request.user)
         if ecole_user:
             eleves_qs = eleves_qs.filter(classe__ecole=ecole_user)
@@ -304,6 +308,7 @@ def creer_abonnement_cantine(request):
         'titre_page': 'Nouvel Abonnement Cantine',
         'eleves': eleves,
         'type_cantine': type_cantine,
+        'regimes': AbonnementCantine.REGIME_CHOICES,
     }
     return render(request, 'abonnements/creer_cantine.html', context)
 
@@ -333,9 +338,12 @@ def gerer_presences_cantine(request):
     
     # Présences du jour
     presences = {}
-    for presence in PresenceCantine.objects.filter(date=date_obj):
+    for presence in PresenceCantine.objects.filter(date=date_obj, abonnement__in=abonnements_actifs):
         presences[presence.abonnement_id] = presence
     
+    for abonnement in abonnements_actifs:
+        abonnement.presence_jour = presences.get(abonnement.pk)
+
     # Menu du jour
     menu_jour = MenuCantine.objects.filter(date_menu=date_obj, actif=True).first()
     
@@ -361,9 +369,9 @@ def enregistrer_presence_cantine(request):
         try:
             abonnement = AbonnementCantine.objects.get(id=abonnement_id)
             # ── Sécurité: vérifier que l'abonnement appartient à l'école de l'utilisateur ──
-            if not user_is_admin(request.user):
+            if not request.user.is_superuser:
                 ecole_user = user_school(request.user)
-                if ecole_user and abonnement.eleve.classe and abonnement.eleve.classe.ecole != ecole_user:
+                if not ecole_user or abonnement.eleve.classe.ecole_id != ecole_user.pk:
                     return JsonResponse({'success': False, 'error': 'Accès non autorisé'}, status=403)
 
             date_obj = date.fromisoformat(date_str)

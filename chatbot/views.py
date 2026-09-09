@@ -35,11 +35,13 @@ def _get_user_ecole(request):
     return None
 
 
-def _filter_documents_by_school(qs, ecole):
+def _filter_documents_by_school(qs, ecole, user=None):
     """Filtre les documents par école via uploaded_by__profil__ecole"""
+    if user is not None and user.is_superuser:
+        return qs
     if ecole:
         return qs.filter(uploaded_by__profil__ecole=ecole)
-    return qs
+    return qs.none()
 
 
 def get_or_create_session_id(request):
@@ -62,7 +64,7 @@ def chatbot_home(request):
 
     # Statistiques — filtrées par école
     docs_qs = DocumentCours.objects.filter(actif=True)
-    docs_qs = _filter_documents_by_school(docs_qs, ecole)
+    docs_qs = _filter_documents_by_school(docs_qs, ecole, request.user)
 
     stats = {
         'total_documents': docs_qs.count(),
@@ -71,7 +73,7 @@ def chatbot_home(request):
     }
 
     # Suggestions populaires
-    suggestions = obtenir_suggestions_populaires(limite=6)
+    suggestions = obtenir_suggestions_populaires(limite=6, user=request.user)
 
     context = {
         'matieres': matieres,
@@ -105,7 +107,7 @@ def chat_interface(request, matiere_id=None):
 
     # Documents disponibles pour cette matière — filtrés par école
     documents = DocumentCours.objects.filter(actif=True)
-    documents = _filter_documents_by_school(documents, ecole)
+    documents = _filter_documents_by_school(documents, ecole, request.user)
     if matiere_selectionnee:
         documents = documents.filter(matiere=matiere_selectionnee)
 
@@ -168,7 +170,8 @@ def envoyer_message(request):
         resultats = rechercher_dans_documents(
             question=question,
             matiere_id=matiere_id,
-            niveau=niveau
+            niveau=niveau,
+            user=request.user,
         )
 
         # Générer la réponse
@@ -188,7 +191,7 @@ def envoyer_message(request):
             doc.save(update_fields=['nombre_consultations'])
 
         # Enregistrer la recherche pour les statistiques
-        enregistrer_recherche(question, matiere_id)
+        enregistrer_recherche(question, matiere_id, ecole=_get_user_ecole(request))
 
         # Mettre à jour la date d'activité de la conversation
         conversation.date_derniere_activite = timezone.now()
@@ -230,7 +233,7 @@ def liste_documents(request):
 
     documents = DocumentCours.objects.filter(actif=True).select_related('matiere', 'uploaded_by')
     # Sécurité : filtrer par école
-    documents = _filter_documents_by_school(documents, ecole)
+    documents = _filter_documents_by_school(documents, ecole, request.user)
 
     if matiere_id:
         documents = documents.filter(matiere_id=matiere_id)
@@ -302,7 +305,7 @@ def gestion_documents(request):
     matieres = Matiere.objects.annotate(nb_documents=Count('documents'))
     documents = DocumentCours.objects.all().select_related('matiere', 'uploaded_by').order_by('-date_upload')
     # Sécurité : filtrer par école
-    documents = _filter_documents_by_school(documents, ecole)
+    documents = _filter_documents_by_school(documents, ecole, request.user)
     
     # Pagination
     paginator = Paginator(documents, 20)
@@ -480,5 +483,5 @@ def api_matieres(request):
 def api_suggestions(request):
     """API pour récupérer des suggestions de questions"""
     matiere_id = request.GET.get('matiere')
-    suggestions = obtenir_suggestions_populaires(matiere_id=matiere_id, limite=5)
+    suggestions = obtenir_suggestions_populaires(matiere_id=matiere_id, limite=5, user=request.user)
     return JsonResponse({'suggestions': suggestions})

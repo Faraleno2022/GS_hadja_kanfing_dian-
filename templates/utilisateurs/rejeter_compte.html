@@ -1,0 +1,3 @@
+{% extends 'base.html' %}{% block content %}
+<div class="container py-4"><h1>{{ title }}</h1><p>Cette action supprime la demande de {{ user_to_reject.username }}{% if ecole_associee %} et l’école en attente « {{ ecole_associee.nom }} »{% endif %}.</p>
+<form method="post" class="card card-body">{% csrf_token %}<label for="raison">Motif du rejet</label><textarea class="form-control my-3" id="raison" name="raison" required></textarea><div><button class="btn btn-danger">Confirmer le rejet</button> <a href="{% url 'utilisateurs:comptes_en_attente' %}" class="btn btn-outline-secondary">Annuler</a></div></form></div>{% endblock %}

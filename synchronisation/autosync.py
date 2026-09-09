@@ -101,6 +101,12 @@ def _cycle(base_dir):
         )
         return config, 0, nb_recus
 
+    from .models import SyncCheckpoint
+    checkpoint = SyncCheckpoint.objects.filter(device_id=config['device_id']).first()
+    if checkpoint is not None and not checkpoint.initial_complete:
+        nb_recus = pull_changes(config['server_url'], config['device_id'], config['token'], ecole)
+        return config, 0, nb_recus
+
     nb_pousses = push_pending(config['server_url'], config['device_id'], config['token'], ecole)
     nb_recus = pull_changes(config['server_url'], config['device_id'], config['token'], ecole)
     return config, nb_pousses, nb_recus

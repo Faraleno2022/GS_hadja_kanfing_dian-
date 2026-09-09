@@ -130,15 +130,14 @@ class Depense(SyncTrackedModel):
     
     def save(self, *args, **kwargs):
         from decimal import ROUND_HALF_UP
-        # Calcul automatique de la TVA et du TTC avec précision Decimal
-        if self.montant_ht and self.taux_tva:
-            self.montant_tva = ((self.montant_ht * self.taux_tva) / Decimal('100')).quantize(
-                Decimal('0.01'), rounding=ROUND_HALF_UP
-            )
-            self.montant_ttc = self.montant_ht + self.montant_tva
-        elif self.montant_ht:
-            self.montant_tva = Decimal('0')
-            self.montant_ttc = self.montant_ht
+        montant = Decimal(str(self.montant_ht or 0))
+        taux = Decimal(str(self.taux_tva or 0))
+        self.montant_tva = (montant * taux / Decimal('100')).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP
+        )
+        self.montant_ttc = montant + self.montant_tva
+        if kwargs.get('update_fields') is not None:
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {'montant_tva', 'montant_ttc'}
         super().save(*args, **kwargs)
     
     @property

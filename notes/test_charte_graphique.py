@@ -64,6 +64,8 @@ class CharteGraphiqueNotesTests(TestCase):
         self.assertEqual(rendered, '#654321')
 
     def test_compte_createur_peut_enregistrer_la_charte_depuis_configuration(self):
+        self.user.profil.is_validated = True
+        self.user.profil.save(update_fields=['is_validated'])
         self.client.force_login(self.user)
         data = dict(CHARTE_PAR_DEFAUT)
         data.update({

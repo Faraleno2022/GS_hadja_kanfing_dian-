@@ -2978,7 +2978,7 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     )
     
     # Vérifier les permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
@@ -3345,7 +3345,7 @@ def generer_ticket_bus_pdf(request, eleve_id):
     )
     
     # Vérifier les permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
@@ -3412,7 +3412,7 @@ def generer_ticket_cantine_pdf(request, eleve_id):
     )
 
     # Vérifier les permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
@@ -3533,7 +3533,7 @@ def generer_tickets_retrait_classe_pdf(request, classe_id):
     classe = get_object_or_404(Classe, id=classe_id)
 
     # Vérifier les permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
@@ -3572,7 +3572,7 @@ def generer_tickets_bus_classe_pdf(request, classe_id):
     classe = get_object_or_404(Classe, id=classe_id)
 
     # Vérifier les permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
@@ -3615,7 +3615,7 @@ def generer_tickets_cantine_classe_pdf(request, classe_id):
 
     classe = get_object_or_404(Classe, id=classe_id)
 
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")
@@ -4003,7 +4003,7 @@ def carte_scolaire_preview(request, eleve_id):
     )
     
     # Vérifier permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
@@ -4027,7 +4027,7 @@ def generer_carte_scolaire_pdf(request, eleve_id):
     )
     
     # Vérifier permissions
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or eleve.classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cet élève.")
@@ -4216,7 +4216,7 @@ def generer_cartes_classe_pdf(request, classe_id):
     
     classe = get_object_or_404(Classe, id=classe_id)
     
-    if not user_is_admin(request.user):
+    if not request.user.is_superuser:
         user_school_obj = user_school(request.user)
         if not user_school_obj or classe.ecole != user_school_obj:
             messages.error(request, "Vous n'avez pas accès à cette classe.")

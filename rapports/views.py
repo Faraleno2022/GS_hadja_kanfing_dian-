@@ -15,6 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
+from .utils import ventiler_encaissements
 from .models import Rapport, TypeRapport, ExportProgramme
 from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark, remises_par_categorie
 from eleves.models import Eleve, Ecole
@@ -575,6 +576,11 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         date_facture=date_rapport,
         statut='VALIDEE'
     )
+    if user is not None:
+        from utilisateurs.utils import filter_by_user_school
+        depenses_jour_global = filter_by_user_school(
+            depenses_jour_global, user, 'cree_par__profil__ecole',
+        )
     donnees['depenses_globales']['nombre'] = depenses_jour_global.count()
     donnees['depenses_globales']['montant_total'] = depenses_jour_global.aggregate(
         total=Sum('montant_ttc')
@@ -618,21 +624,10 @@ def collecter_donnees_journalieres(date_rapport, user=None):
             }
         }
         
-        # Paiements du jour - utiliser une approche plus flexible
         paiements_jour = Paiement.objects.filter(
-            eleve__classe__ecole=ecole,
-            date_paiement=date_rapport
-        ).exclude(statut='ANNULE')  # Exclure seulement les annulés
-        
-        # Si pas de paiements ce jour, essayer avec les paiements récents (30 derniers jours)
-        if not paiements_jour.exists():
-            date_limite = date_rapport - timedelta(days=30)
-            paiements_jour = Paiement.objects.filter(
-                eleve__classe__ecole=ecole,
-                date_paiement__gte=date_limite,
-                statut='VALIDE'
-            )
-        
+            eleve__classe__ecole=ecole, date_paiement=date_rapport, statut='VALIDE',
+        )
+
         donnees_ecole['paiements']['nombre'] = paiements_jour.count()
         donnees_ecole['paiements']['montant_total'] = paiements_jour.aggregate(
             total=Sum('montant')
@@ -654,64 +649,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         donnees_ecole['paiements']['montant_net'] = donnees_ecole['paiements']['montant_total']
         donnees_ecole['paiements']['remises_par_categorie'] = remises_par_categorie(paiements_jour)
 
-        # Séparation frais d'inscription et scolarité (alignée avec rapports/utils.collecter_donnees_periode)
-        frais_inscription = Decimal('0')
-        frais_reinscription = Decimal('0')
-        scolarite = Decimal('0')
-        non_categorises = Decimal('0')
-
-        for p in paiements_jour.select_related('type_paiement'):
-            montant = p.montant or Decimal('0')
-            nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
-            kind = registration_kind_for_type(p.type_paiement)
-
-            has_inscription = kind == 'inscription'
-            has_reinscription = kind == 'reinscription'
-            has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
-
-            if has_inscription and has_scolarite:
-                # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
-                part_ins = min(Decimal('30000'), montant)
-                part_sco = montant - part_ins
-                frais_inscription += part_ins
-                scolarite += part_sco
-            elif has_inscription:
-                frais_inscription += montant
-            elif has_reinscription:
-                # Cf. rapports/utils.collecter_donnees_periode: pas de forfait
-                # réinscription connu ici, montant compté intégralement.
-                frais_reinscription += montant
-            elif has_scolarite:
-                scolarite += montant
-            else:
-                non_categorises += montant
-
-        # Estimation/fallback: couvrir les frais d'inscription théoriques avec non catégorisés si besoin
-        nb_nouveaux_eleves = donnees_ecole['nouveaux_eleves']
-        theorique_insc = Decimal('30000') * nb_nouveaux_eleves
-        if frais_inscription == 0 and nb_nouveaux_eleves > 0 and non_categorises > 0:
-            a_affecter = min(theorique_insc, non_categorises)
-            frais_inscription += a_affecter
-            non_categorises -= a_affecter
-
-        # Plafond: ne jamais dépasser 30 000 GNF par nouvel élève
-        if nb_nouveaux_eleves > 0 and frais_inscription > theorique_insc:
-            excedent = frais_inscription - theorique_insc
-            frais_inscription = theorique_insc
-            scolarite += excedent
-
-        # Cohérence: si 0 nouveaux élèves, ne pas compter des frais d'inscription → reclasser comme scolarité
-        if nb_nouveaux_eleves == 0 and frais_inscription > 0:
-            scolarite += frais_inscription
-            frais_inscription = Decimal('0')
-
-        # Ajouter le reste non catégorisé à la scolarité par défaut
-        scolarite += non_categorises
-
-        # Assigner les valeurs finales
-        donnees_ecole['paiements']['frais_inscription'] = frais_inscription
-        donnees_ecole['paiements']['reinscription'] = frais_reinscription
-        donnees_ecole['paiements']['scolarite'] = scolarite
+        donnees_ecole['paiements'].update(ventiler_encaissements(paiements_jour))
         
         # (Supprimé) Frais de scolarité annuel ne figure pas dans le rapport journalier
         

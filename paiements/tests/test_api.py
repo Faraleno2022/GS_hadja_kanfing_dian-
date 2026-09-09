@@ -10,6 +10,8 @@ class PaiementsApiTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass1234")
+        self.user.profil.is_validated = True
+        self.user.profil.save(update_fields=['is_validated'])
         self.client.force_login(self.user)
 
     def test_api_paiements_list_empty_ok(self):
