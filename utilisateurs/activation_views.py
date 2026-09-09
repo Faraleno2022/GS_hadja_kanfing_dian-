@@ -120,8 +120,8 @@ def creer_compte(request):
     ecole_id   = request.POST.get('ecole', '').strip()
 
     # Validations
-    if not username or not password or not telephone or not ecole_id:
-        messages.error(request, "Nom d'utilisateur, téléphone, école et mot de passe sont obligatoires.")
+    if not username or not password or not ecole_id:
+        messages.error(request, "Nom d'utilisateur, école et mot de passe sont obligatoires.")
         return redirect('utilisateurs:activation')
 
     if password != password2:
@@ -132,7 +132,7 @@ def creer_compte(request):
         messages.error(request, "Le mot de passe doit contenir au moins 12 caractères.")
         return redirect('utilisateurs:activation')
 
-    if not re.fullmatch(r'\+224\d{8,9}', telephone):
+    if telephone and not re.fullmatch(r'\+224\d{8,9}', telephone):
         messages.error(request, "Le téléphone doit respecter le format +224XXXXXXXXX.")
         return redirect('utilisateurs:activation')
 

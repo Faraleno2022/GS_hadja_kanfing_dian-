@@ -74,7 +74,8 @@ class Profil(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profil')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, verbose_name="Rôle")
     telephone = models.CharField(
-        max_length=20, 
+        max_length=20,
+        blank=True,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
         verbose_name="Téléphone"
     )

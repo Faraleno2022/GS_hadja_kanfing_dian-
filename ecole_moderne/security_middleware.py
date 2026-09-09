@@ -387,8 +387,10 @@ class SessionSecurityMiddleware(MiddlewareMixin):
             logout(request)
             return redirect('utilisateurs:login')
 
+        profil = getattr(user, 'profil', None)
+        has_phone = bool((getattr(profil, 'telephone', '') or '').strip())
         now = time.time()
-        verified = request.session.get('phone_verified', False)
+        verified = has_phone and request.session.get('phone_verified', False)
         verified_at = request.session.get('phone_verified_at')
         if verified:
             try:
@@ -404,7 +406,8 @@ class SessionSecurityMiddleware(MiddlewareMixin):
             path in ('/utilisateurs/login/', '/utilisateurs/logout/', '/utilisateurs/verify-phone/')
             or path.startswith('/' + getattr(settings, 'ADMIN_URL', 'admin/'))
         )
-        if not exempt and not verified:
+        # Le telephone du profil est facultatif : aucune verification sans numero.
+        if not exempt and has_phone and not verified:
             from django.urls import reverse
             from urllib.parse import urlencode
             return redirect(reverse('utilisateurs:verify_phone') + '?' + urlencode({'next': path}))

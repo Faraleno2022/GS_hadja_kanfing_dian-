@@ -21,8 +21,9 @@ class ComptableCreationForm(UserCreationForm):
 
     # Champs Profil
     telephone = forms.CharField(
-        label="Téléphone",
+        label="Téléphone (facultatif)",
         max_length=20,
+        required=False,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format attendu: +224XXXXXXXXX')],
     )
     ecole = forms.ModelChoiceField(
@@ -222,8 +223,9 @@ class SousUtilisateurCreationForm(UserCreationForm):
     last_name = forms.CharField(label="Nom", max_length=150, required=False)
     email = forms.EmailField(label="Email", required=False)
     telephone = forms.CharField(
-        label="Téléphone",
+        label="Téléphone (facultatif)",
         max_length=20,
+        required=False,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format attendu: +224XXXXXXXXX')],
     )
     role = forms.ChoiceField(label="Fonction", choices=SOUS_UTILISATEUR_ROLES)
@@ -291,8 +293,9 @@ class SousUtilisateurModificationForm(forms.Form):
     last_name = forms.CharField(label="Nom", max_length=150, required=False)
     email = forms.EmailField(label="Email", required=False)
     telephone = forms.CharField(
-        label="Téléphone",
+        label="Téléphone (facultatif)",
         max_length=20,
+        required=False,
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format attendu: +224XXXXXXXXX')],
     )
     role = forms.ChoiceField(label="Fonction", choices=SOUS_UTILISATEUR_ROLES)
