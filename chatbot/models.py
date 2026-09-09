@@ -127,6 +127,7 @@ class MessageChat(models.Model):
 
 
 class RecherchePopulaire(models.Model):
+    ecole = models.ForeignKey('eleves.Ecole', on_delete=models.CASCADE, null=True, blank=True)
     """Stocke les recherches populaires pour suggestions"""
     question = models.CharField(max_length=500)
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, blank=True)

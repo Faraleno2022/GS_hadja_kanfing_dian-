@@ -1,13 +1,35 @@
 """
 Middleware pour l'isolation des données par école
 """
-from django.http import Http404, HttpResponseForbidden
+from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.contrib.auth import logout
 from django.shortcuts import redirect
 from django.contrib import messages
 from django.urls import reverse
 import logging
 
 logger = logging.getLogger(__name__)
+
+class ProfilAccessMiddleware:
+    """Recheck profile revocation, including already-open sessions."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = request.user
+        if user.is_authenticated and not user.is_superuser:
+            profil = getattr(user, 'profil', None)
+            if not profil or not profil.actif or not profil.is_validated:
+                logout(request)
+                if request.path_info in ('/', '/utilisateurs/login/', '/utilisateurs/logout/'):
+                    return self.get_response(request)
+                if (request.path_info.startswith('/api/') or
+                        request.headers.get('X-Requested-With') == 'XMLHttpRequest'):
+                    return JsonResponse({'success': False, 'error': 'Compte non autorise.'}, status=403)
+                return redirect('utilisateurs:login')
+        return self.get_response(request)
+
 
 class EcoleIsolationMiddleware:
     """
@@ -73,7 +95,6 @@ class EcoleIsolationMiddleware:
             '/static/',
             '/media/',
             '/favicon.ico',
-            '/',  # Page d'accueil
         ]
         
         # Vues d'administration des utilisateurs (pour les admins)
@@ -84,6 +105,8 @@ class EcoleIsolationMiddleware:
         ]
         
         path = request.path
+        if path == '/':
+            return True
         
         # Vérifier les chemins système
         for system_path in system_paths:

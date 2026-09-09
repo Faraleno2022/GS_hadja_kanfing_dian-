@@ -62,3 +62,9 @@ def get_commentaire(note_obj):
     if note_obj is None:
         return ''
     return note_obj.commentaire if hasattr(note_obj, 'commentaire') else ''
+
+
+@register.filter
+def split(value, separator=','):
+    """Découpe une liste littérale utilisée dans les anciens formulaires de notes."""
+    return str(value).split(separator)

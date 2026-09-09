@@ -211,7 +211,7 @@ def comptable_list_view(request):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser or (hasattr(u, 'profil') and u.profil.role == 'ADMIN'))
+@user_passes_test(lambda u: u.is_superuser)
 def comptes_en_attente_view(request):
     """Liste des comptes utilisateurs en attente de validation administrative."""
     from django.contrib.auth.models import User
@@ -250,7 +250,7 @@ def comptes_en_attente_view(request):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser or (hasattr(u, 'profil') and u.profil.role == 'ADMIN'))
+@user_passes_test(lambda u: u.is_superuser)
 def valider_compte_view(request, user_id):
     """Valide un compte utilisateur et son école associée."""
     from django.contrib.auth.models import User
@@ -343,82 +343,43 @@ L'équipe Myschool"""
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser or (hasattr(u, 'profil') and u.profil.role == 'ADMIN'))
 def rejeter_compte_view(request, user_id):
-    """Rejette un compte utilisateur et supprime son école associée."""
+    """Rejette uniquement une demande de compte encore en attente."""
     from django.contrib.auth.models import User
-    from django.shortcuts import get_object_or_404
-    from eleves.models import Ecole
+    from django.db import transaction
+    from django.http import HttpResponseForbidden
     from django.core.mail import send_mail
     from django.conf import settings
-    
-    user = get_object_or_404(User, id=user_id)
-    
-    if request.method == 'POST':
-        raison = request.POST.get('raison', '').strip()
-        
-        try:
-            # Supprimer l'école associée si elle existe
-            ecole_supprimee = None
-            try:
-                ecole = Ecole.objects.get(created_by=user, etat='EN_ATTENTE')
-                ecole_supprimee = ecole.nom
-                ecole.delete()
-            except Ecole.DoesNotExist:
-                pass
-            
-            # Envoyer un email de notification si possible
-            try:
-                if user.email:
-                    subject = "Myschool - Demande rejetée"
-                    body = f"""Bonjour {user.get_full_name() or user.username},
 
-Nous regrettons de vous informer que votre demande de création de compte Myschool a été rejetée.
+    if not request.user.is_superuser:
+        return HttpResponseForbidden("Seul le superadministrateur peut rejeter une inscription.")
 
-"""
-                    if raison:
-                        body += f"Raison : {raison}\n\n"
-                    
-                    if ecole_supprimee:
-                        body += f"L'école '{ecole_supprimee}' associée à votre demande a été supprimée.\n\n"
-                    
-                    body += """Vous pouvez soumettre une nouvelle demande en corrigeant les éléments mentionnés.
-
-Cordialement,
-L'équipe Myschool"""
-                    
-                    send_mail(
-                        subject,
-                        body,
-                        getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@myschoolgn.space'),
-                        [user.email],
-                        fail_silently=True,
-                    )
-            except Exception:
-                pass
-            
-            # Supprimer le compte utilisateur
-            username = user.username
+    with transaction.atomic():
+        user = get_object_or_404(
+            User.objects.select_for_update().filter(
+                profil__is_validated=False, is_superuser=False,
+            ),
+            pk=user_id,
+        )
+        ecoles = Ecole.objects.filter(created_by=user, etat='EN_ATTENTE')
+        if request.method == 'POST':
+            username, email = user.username, user.email
+            raison = request.POST.get('raison', '').strip()
+            ecoles.delete()
             user.delete()
-            
-            messages.success(request, f"Compte de {username} rejeté et supprimé.")
-            if ecole_supprimee:
-                messages.info(request, f"École '{ecole_supprimee}' également supprimée.")
-            
+            if email:
+                body = (
+                    f"Bonjour {username},\n\nVotre demande de compte Myschool a été rejetée.\n"
+                    + (f"Raison : {raison}\n" if raison else "")
+                    + "Vous pouvez soumettre une nouvelle demande."
+                )
+                transaction.on_commit(lambda: send_mail(
+                    "Myschool - Demande rejetée", body,
+                    settings.DEFAULT_FROM_EMAIL, [email], fail_silently=True,
+                ))
+            messages.success(request, f"Demande de {username} rejetée.")
             return redirect('utilisateurs:comptes_en_attente')
-            
-        except Exception as e:
-            messages.error(request, f"Erreur lors du rejet : {e}")
-    
-    # Récupérer l'école associée s'il y en a une
-    ecole_associee = None
-    try:
-        ecole_associee = Ecole.objects.get(created_by=user, etat='EN_ATTENTE')
-    except Ecole.DoesNotExist:
-        pass
-    
-    return render(request, 'utilisateurs/rejeter_compte.html', {
-        'user_to_reject': user,
-        'ecole_associee': ecole_associee,
-        'title': f"Rejeter le compte de {user.username}",
-    })
+        return render(request, 'utilisateurs/rejeter_compte.html', {
+            'user_to_reject': user, 'ecole_associee': ecoles.first(),
+            'title': f"Rejeter le compte de {user.username}",
+        })

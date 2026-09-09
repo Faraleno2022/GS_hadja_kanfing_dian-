@@ -51,7 +51,7 @@ class DepenseForm(forms.ModelForm):
 
     def clean_montant_ht(self):
         montant_ht = self.cleaned_data.get('montant_ht')
-        if montant_ht and montant_ht <= 0:
+        if montant_ht is not None and montant_ht <= 0:
             raise ValidationError("Le montant doit être supérieur à 0.")
         return montant_ht
 

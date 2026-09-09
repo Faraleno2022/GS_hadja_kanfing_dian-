@@ -21,7 +21,8 @@ class SynchronisationApiTests(TestCase):
         profil, _ = Profil.objects.get_or_create(user=self.user)
         profil.role = 'ADMIN'
         profil.ecole = self.ecole
-        profil.save(update_fields=['role', 'ecole'])
+        profil.is_validated = True
+        profil.save(update_fields=['role', 'ecole', 'is_validated'])
         self.client = Client()
 
     def test_health_endpoint(self):
@@ -119,4 +120,7 @@ class SynchronisationApiTests(TestCase):
             HTTP_X_SYNC_TOKEN=device_two['sync_token'],
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()['changes']), 1)
+        changes = response.json()['changes']
+        self.assertEqual(len(changes), 2)  # création web initiale et modification du poste 1
+        self.assertTrue(all(row['object_uuid'] == str(self.ecole.sync_uuid) for row in changes))
+        self.assertTrue(any(row['device_id'] == device_one['device_id'] for row in changes))

@@ -3,12 +3,13 @@ from uuid import UUID
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from eleves.models import Ecole
 from .context import mute_sync
 from .registry import SYNC_MODEL_LABELS, SYNC_MODEL_SET
+from .scope import scoped_queryset, school_for_instance, validate_scope, remember_school
 
 
 SYNC_FIELD_NAMES = {
@@ -84,8 +85,7 @@ def resolve_related(field, raw_value):
     sync_uuid = raw_value.get('sync_uuid') if isinstance(raw_value, dict) else None
     if sync_uuid and hasattr(model, 'sync_uuid'):
         obj = model.objects.filter(sync_uuid=sync_uuid).first()
-        if obj:
-            return obj
+        return obj
 
     pk = raw_value.get('pk') if isinstance(raw_value, dict) else None
     if pk:
@@ -102,28 +102,22 @@ def deserialize_field(field, raw_value):
 
 
 def ecole_for_instance(instance):
-    if isinstance(instance, Ecole):
-        return instance
-    if hasattr(instance, 'ecole_id') and getattr(instance, 'ecole_id'):
-        return instance.ecole
-    if hasattr(instance, 'classe') and getattr(instance, 'classe_id', None):
-        classe = instance.classe
-        if hasattr(classe, 'ecole_id'):
-            return classe.ecole
-    if hasattr(instance, 'eleve') and getattr(instance, 'eleve_id', None):
-        eleve = instance.eleve
-        if getattr(eleve, 'classe_id', None):
-            return eleve.classe.ecole
-    if hasattr(instance, 'paiement') and getattr(instance, 'paiement_id', None):
-        paiement = instance.paiement
-        if getattr(paiement, 'eleve_id', None) and getattr(paiement.eleve, 'classe_id', None):
-            return paiement.eleve.classe.ecole
-    if hasattr(instance, 'depense') and getattr(instance, 'depense_id', None):
-        return Ecole.objects.order_by('id').first()
-    return Ecole.objects.order_by('id').first()
+    return school_for_instance(instance)
 
 
-def build_change_instance(model_label, object_uuid, payload, *, operation='UPDATE'):
+def _financial_keys(obj):
+    if obj is None:
+        return set()
+    label = model_label_for(obj)
+    if label == 'paiements.PaiementRemise':
+        obj = obj.paiement
+    if model_label_for(obj) in {'paiements.Paiement', 'paiements.EcheancierPaiement'}:
+        return {(obj.eleve_id, obj.annee_scolaire)}
+    return set()
+
+
+@transaction.atomic
+def build_change_instance(model_label, object_uuid, payload, *, operation='UPDATE', ecole=None, trusted=False):
     """Cree/met a jour l'objet cible depuis un changement, sans toucher a une
     ligne SyncChange.
 
@@ -138,6 +132,8 @@ def build_change_instance(model_label, object_uuid, payload, *, operation='UPDAT
     if not model or model_label not in SYNC_MODEL_SET:
         raise ValueError(f'Modele non synchronisable: {model_label}')
 
+    if not isinstance(payload, dict):
+        raise ValueError('Le payload doit être un objet JSON.')
     if not object_uuid:
         raw_uuid = (payload or {}).get('sync_uuid')
         object_uuid = UUID(str(raw_uuid)) if raw_uuid else None
@@ -146,43 +142,74 @@ def build_change_instance(model_label, object_uuid, payload, *, operation='UPDAT
     if not object_uuid:
         raise ValueError('sync_uuid manquant.')
 
+    if not isinstance(payload, dict):
+        raise ValueError('Le payload doit être un objet JSON.')
+    if operation not in {'CREATE', 'UPDATE', 'DELETE'}:
+        raise ValueError('Opération invalide.')
+    if ecole is None and model_label != 'eleves.Ecole':
+        raise ValueError('École obligatoire.')
+    if model_label == 'eleves.Ecole' and ecole is not None and object_uuid != ecole.sync_uuid:
+        raise ValueError("L'appareil ne peut créer une autre école.")
+    if model_label == 'eleves.Ecole' and operation == 'DELETE':
+        raise ValueError("La suppression d'une école ne passe pas par la synchronisation.")
+
     with mute_sync():
-        obj = model.objects.filter(sync_uuid=object_uuid).first()
+        obj = model.objects.select_for_update().filter(sync_uuid=object_uuid).first()
+        if obj is not None and ecole is not None:
+            validate_scope(obj, ecole, existing=True, trusted=trusted)
+        keys = _financial_keys(obj)
+        ancienne_classe = obj.classe if obj is not None and model_label == 'eleves.Eleve' else None
         if operation == 'DELETE':
             if obj:
                 obj.delete()
-            return None
+        else:
+            if obj is None:
+                obj = model(sync_uuid=object_uuid)
+            for field in model._meta.concrete_fields:
+                if field.primary_key or field.name in SYNC_FIELD_NAMES or field.name not in payload:
+                    continue
+                # The server owns approval. A stale desktop snapshot must not
+                # change it or prevent unrelated school updates from syncing.
+                if model_label == 'eleves.Ecole' and field.name == 'etat' and not trusted:
+                    continue
+                # User IDs differ between machines. Never accept identities from a device.
+                if isinstance(field, models.ForeignKey) and field.remote_field.model == get_user_model():
+                    continue
+                raw_value = payload[field.name]
+                value = deserialize_field(field, raw_value)
+                if isinstance(field, models.ForeignKey):
+                    if raw_value and value is None:
+                        raise ValueError(f"Relation introuvable pour {field.name}.")
+                    if value is None and not field.null:
+                        raise ValueError(f"Relation obligatoire : {field.name}.")
+                else:
+                    value = field.to_python(value)
+                setattr(obj, field.name, value)
+            if ecole is not None:
+                validate_scope(obj, ecole, trusted=trusted)
+            if model_label == 'paiements.Paiement' and obj.montant < 0:
+                raise ValueError('Le montant du paiement ne peut pas être négatif.')
+            obj.is_synced = True
+            obj.sync_version = getattr(obj, 'sync_version', 1) + 1
+            obj.save()
+            if ecole is not None:
+                remember_school(obj, ecole)
+            keys |= _financial_keys(obj)
+            if ancienne_classe is not None and ancienne_classe.pk != obj.classe_id:
+                from paiements.services import reconcilier_transfert_classe
+                reconcilier_transfert_classe(obj, ancienne_classe, obj.classe)
+        from paiements.services import synchroniser_echeancier_apres_changement_paiement
+        for eleve_id, annee in sorted(keys):
+            synchroniser_echeancier_apres_changement_paiement(eleve_id, annee)
+        return None if operation == 'DELETE' else obj
 
-        if obj is None:
-            obj = model(sync_uuid=object_uuid)
 
-        for field in model._meta.concrete_fields:
-            if field.name == 'id' or field.name in SYNC_FIELD_NAMES:
-                continue
-            if field.name not in payload:
-                continue
-            value = deserialize_field(field, payload.get(field.name))
-            if value is None and not field.null and not field.blank and isinstance(field, (models.ForeignKey, models.OneToOneField)):
-                raise ValueError(f"Relation introuvable pour {field.name}.")
-            setattr(obj, field.name, value)
-
-        obj.is_synced = True
-        obj.sync_version = getattr(obj, 'sync_version', 1) + 1
-        obj.save()
-        return obj
-
-
+@transaction.atomic
 def apply_sync_change(change):
-    if change.operation == 'DELETE':
-        build_change_instance(change.model_label, change.object_uuid, change.payload, operation='DELETE')
-        change.statut = change.STATUT_APPLIED
-        change.date_application = timezone.now()
-        change.erreur = ''
-        change.save(update_fields=['statut', 'date_application', 'erreur'])
-        return None
-
-    obj = build_change_instance(change.model_label, change.object_uuid, change.payload, operation=change.operation)
-
+    obj = build_change_instance(
+        change.model_label, change.object_uuid, change.payload,
+        operation=change.operation, ecole=change.ecole, trusted=change.device_id is None,
+    )
     change.statut = change.STATUT_APPLIED
     change.date_application = timezone.now()
     change.erreur = ''
@@ -191,71 +218,7 @@ def apply_sync_change(change):
 
 
 def queryset_for_ecole(model, ecole):
-    label = model_label_for(model)
-    if label == 'eleves.Ecole':
-        return model.objects.filter(pk=ecole.pk)
-    if label in {
-        'eleves.Classe',
-        'eleves.GrilleTarifaire',
-        'notes.ClasseNote',
-        'notes.ThemeBulletin',
-        'salaires.Enseignant',
-        'salaires.PeriodeSalaire',
-    }:
-        return model.objects.filter(ecole=ecole)
-    if label == 'eleves.Eleve':
-        return model.objects.filter(classe__ecole=ecole)
-    if label == 'eleves.HistoriqueEleve':
-        return model.objects.filter(eleve__classe__ecole=ecole)
-    if label == 'eleves.Responsable':
-        return model.objects.all()
-    if label.startswith('paiements.'):
-        if label in {'paiements.TypePaiement', 'paiements.ModePaiement', 'paiements.RemiseReduction'}:
-            return model.objects.all()
-        if hasattr(model, 'eleve'):
-            return model.objects.filter(eleve__classe__ecole=ecole)
-        if label == 'paiements.PaiementRemise':
-            return model.objects.filter(paiement__eleve__classe__ecole=ecole)
-        if label == 'paiements.ConfigurationPaiement':
-            return model.objects.filter(classe__ecole=ecole)
-    if label.startswith('depenses.'):
-        return model.objects.all()
-    if label == 'bus.GrilleTarifaireBus':
-        return model.objects.filter(ecole=ecole)
-    if label.startswith('bus.'):
-        return model.objects.filter(eleve__classe__ecole=ecole)
-    if label.startswith('salaires.'):
-        if hasattr(model, 'enseignant'):
-            return model.objects.filter(enseignant__ecole=ecole)
-        if hasattr(model, 'periode'):
-            return model.objects.filter(periode__ecole=ecole)
-        if hasattr(model, 'etat_salaire'):
-            return model.objects.filter(etat_salaire__periode__ecole=ecole)
-        if hasattr(model, 'classe'):
-            return model.objects.filter(classe__ecole=ecole)
-    if label.startswith('abonnements.'):
-        if label in {'abonnements.TypeAbonnement', 'abonnements.Itineraire', 'abonnements.MenuCantine'}:
-            return model.objects.all()
-        if hasattr(model, 'eleve'):
-            return model.objects.filter(eleve__classe__ecole=ecole)
-        if hasattr(model, 'abonnement'):
-            return model.objects.filter(abonnement__eleve__classe__ecole=ecole)
-    if label.startswith('rapports.'):
-        return model.objects.all()
-    if label.startswith('notes.'):
-        if hasattr(model, 'classe'):
-            return model.objects.filter(classe__ecole=ecole)
-        if hasattr(model, 'matiere'):
-            return model.objects.filter(matiere__classe__ecole=ecole)
-        if hasattr(model, 'evaluation'):
-            if label in {'notes.AnalyseTravailMaternelle', 'notes.RecommandationMaternelle'}:
-                return model.objects.filter(evaluation__classe__ecole=ecole)
-            return model.objects.filter(evaluation__matiere__classe__ecole=ecole)
-        if hasattr(model, 'eleve'):
-            return model.objects.filter(eleve__classe__ecole=ecole)
-        if hasattr(model, 'activite'):
-            return model.objects.filter(activite__eleve__classe__ecole=ecole)
-    return model.objects.none()
+    return scoped_queryset(model, ecole)
 
 
 def snapshot_changes_for_ecole(ecole):
@@ -264,7 +227,7 @@ def snapshot_changes_for_ecole(ecole):
         model = get_model(label)
         if not model:
             continue
-        for obj in queryset_for_ecole(model, ecole).order_by('pk')[:5000]:
+        for obj in queryset_for_ecole(model, ecole).order_by('pk').iterator():
             snapshot.append({
                 'id': None,
                 'model': label,
@@ -277,3 +240,46 @@ def snapshot_changes_for_ecole(ecole):
                 'date_creation': timezone.now().isoformat(),
             })
     return snapshot
+
+
+def snapshot_page_for_ecole(ecole, cursor=None, page_size=500):
+    """Pages ordonnées par modèle puis PK ; le curseur conserve le point de reprise."""
+    from django.core import signing
+    from django.db.models import Max, Q
+    from .models import SyncChange
+    if cursor:
+        try:
+            state = signing.loads(cursor, salt='sync-snapshot-v2', max_age=86400)
+            if state['school'] != str(ecole.sync_uuid):
+                raise ValueError('École du curseur invalide.')
+            index, last_pk, watermark = state['model'], state['pk'], state['watermark']
+            if not isinstance(index, int) or not 0 <= index < len(SYNC_MODEL_LABELS) or not isinstance(last_pk, int) or last_pk < 0:
+                raise ValueError('Curseur invalide.')
+        except (signing.BadSignature, KeyError, TypeError) as exc:
+            raise ValueError('Curseur de synchronisation invalide ou expiré.') from exc
+    else:
+        index, last_pk = 0, 0
+        watermark = SyncChange.objects.filter(ecole=ecole).filter(Q(statut=SyncChange.STATUT_APPLIED) | Q(device__isnull=True, statut=SyncChange.STATUT_PENDING)).aggregate(n=Max('pk'))['n'] or 0
+    rows = []
+    while index < len(SYNC_MODEL_LABELS):
+        label = SYNC_MODEL_LABELS[index]
+        model = get_model(label)
+        objects = list(queryset_for_ecole(model, ecole).filter(pk__gt=last_pk).order_by('pk')[:page_size-len(rows)]) if model else []
+        for obj in objects:
+            rows.append({
+                'id': None, 'model': label, 'model_label': label,
+                'object_uuid': str(obj.sync_uuid), 'operation': 'UPDATE',
+                'payload': {**serialize_instance(obj), 'sync_uuid': str(obj.sync_uuid)},
+                'device_id': None, 'device_name': 'Snapshot initial',
+                'date_creation': timezone.now().isoformat(),
+            })
+            last_pk = obj.pk
+        if len(rows) == page_size:
+            next_cursor = signing.dumps({
+                'school': str(ecole.sync_uuid), 'model': index, 'pk': last_pk,
+                'watermark': watermark,
+            }, salt='sync-snapshot-v2')
+            return rows, next_cursor, watermark
+        index += 1
+        last_pk = 0
+    return rows, None, watermark

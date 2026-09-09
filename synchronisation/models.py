@@ -80,3 +80,21 @@ class SyncChange(models.Model):
 
     def __str__(self):
         return f'{self.operation} {self.model_label} ({self.statut})'
+
+
+class SyncOwnership(models.Model):
+    """École propriétaire des objets synchronisés sans relation d'école directe."""
+    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE)
+    model_label = models.CharField(max_length=120)
+    object_uuid = models.UUIDField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['model_label', 'object_uuid'], name='sync_object_school_unique')]
+
+
+class SyncCheckpoint(models.Model):
+    """Avancement local d'un poste, conservé entre deux exécutions."""
+    device_id = models.UUIDField(unique=True)
+    snapshot_cursor = models.TextField(blank=True)
+    initial_complete = models.BooleanField(default=False)
+    last_change_id = models.PositiveBigIntegerField(default=0)

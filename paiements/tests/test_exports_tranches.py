@@ -79,6 +79,7 @@ class ExportTranchesParClasseTests(TestCase):
         # Le signal utilisateurs.signals cree deja un profil (role COMPTABLE).
         profil, _ = Profil.objects.get_or_create(user=user)
         profil.role = role
+        profil.is_validated = True
         profil.ecole = self.ecole if ecole is ... else ecole
         for champ, valeur in permissions.items():
             setattr(profil, champ, valeur)

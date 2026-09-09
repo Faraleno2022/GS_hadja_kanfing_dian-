@@ -118,7 +118,7 @@ def extraire_passage_pertinent(texte, mots_cles, longueur_max=500):
     return passage
 
 
-def rechercher_dans_documents(question, matiere_id=None, niveau=None, limite=5):
+def rechercher_dans_documents(question, matiere_id=None, niveau=None, limite=5, *, user=None):
     """
     Recherche les documents les plus pertinents pour une question
     
@@ -137,7 +137,12 @@ def rechercher_dans_documents(question, matiere_id=None, niveau=None, limite=5):
         return []
     
     # Construire la requête de base
-    documents = DocumentCours.objects.filter(actif=True)
+    from utilisateurs.utils import filter_by_user_school
+    if user is None or not user.is_authenticated:
+        return []
+    documents = filter_by_user_school(
+        DocumentCours.objects.filter(actif=True), user, 'uploaded_by__profil__ecole',
+    )
     
     if matiere_id:
         documents = documents.filter(matiere_id=matiere_id)
@@ -293,11 +298,14 @@ def generer_suggestions(question, resultats):
     return suggestions[:4]
 
 
-def enregistrer_recherche(question, matiere_id=None):
+def enregistrer_recherche(question, matiere_id=None, *, ecole=None):
     """Enregistre une recherche pour les statistiques"""
     question_normalisee = normaliser_texte(question)[:500]
     
+    if ecole is None:
+        return None
     recherche, created = RecherchePopulaire.objects.get_or_create(
+        ecole=ecole,
         question=question_normalisee,
         matiere_id=matiere_id,
         defaults={'nombre_recherches': 1}
@@ -310,9 +318,12 @@ def enregistrer_recherche(question, matiere_id=None):
     return recherche
 
 
-def obtenir_suggestions_populaires(matiere_id=None, limite=5):
+def obtenir_suggestions_populaires(matiere_id=None, limite=5, *, user=None):
     """Retourne les recherches les plus populaires"""
-    recherches = RecherchePopulaire.objects.all()
+    from utilisateurs.utils import filter_by_user_school
+    if user is None or not user.is_authenticated:
+        return []
+    recherches = filter_by_user_school(RecherchePopulaire.objects.all(), user)
     
     if matiere_id:
         recherches = recherches.filter(Q(matiere_id=matiere_id) | Q(matiere__isnull=True))

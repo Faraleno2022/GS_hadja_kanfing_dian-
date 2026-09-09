@@ -149,6 +149,8 @@ class ExportModesEncaissementTests(TestCase):
             },
         )
         self.user.refresh_from_db()
+        self.user.profil.is_validated = True
+        self.user.profil.save(update_fields=['is_validated'])
         self.client.force_login(self.user)
         self.params = {
             'du': '2025-01-01',

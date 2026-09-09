@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-4"><h1>{{ titre_page }}</h1>
+<div class="row g-3 my-3">
+<div class="col-md-6"><div class="card card-body"><h2>Bus</h2><p>{{ abonnements_bus_actifs }} actifs / {{ abonnements_bus_total }} abonnements</p><a href="{% url 'abonnements:liste_bus' %}" class="btn btn-primary">Voir les abonnements bus</a></div></div>
+<div class="col-md-6"><div class="card card-body"><h2>Cantine</h2><p>{{ abonnements_cantine_actifs }} actifs / {{ abonnements_cantine_total }} abonnements</p><a href="{% url 'abonnements:liste_cantine' %}" class="btn btn-primary">Voir les abonnements cantine</a></div></div>
+</div><a href="{% url 'abonnements:presences_cantine' %}" class="btn btn-outline-primary">Présences à la cantine</a></div>
+{% endblock %}

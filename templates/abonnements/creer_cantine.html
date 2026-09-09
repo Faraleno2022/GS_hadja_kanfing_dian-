@@ -1,0 +1,13 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block content %}<div class="container py-4"><h1>{{ titre_page }}</h1>
+{% if not type_cantine %}<div class="alert alert-warning">Les tarifs cantine doivent être configurés avant de créer un abonnement.</div>{% endif %}
+<form method="post" class="card card-body">{% csrf_token %}
+<label for="eleve">Élève</label><select class="form-select mb-3" id="eleve" name="eleve" required><option value="">Choisir un élève</option>{% for e in eleves %}<option value="{{ e.pk }}">{{ e.nom_complet }} — {{ e.classe }}</option>{% endfor %}</select>
+<label for="duree">Durée et tarif</label><select class="form-select mb-3" id="duree" name="duree" required>
+<option value="MENSUEL">Mensuel — {{ type_cantine.tarif_mensuel|intcomma }} GNF</option>
+<option value="TRIMESTRIEL">Trimestriel — {{ type_cantine.tarif_trimestriel|intcomma }} GNF</option>
+<option value="ANNUEL">Annuel — {{ type_cantine.tarif_annuel|intcomma }} GNF</option></select>
+<label for="regime">Régime alimentaire</label><select class="form-select mb-3" id="regime" name="regime_alimentaire">{% for value, label in regimes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+<label for="allergies">Allergies</label><textarea class="form-control mb-3" id="allergies" name="allergies"></textarea>
+<label for="observations">Observations</label><textarea class="form-control mb-3" id="observations" name="observations"></textarea>
+<div><button class="btn btn-primary" {% if not type_cantine %}disabled{% endif %}>Créer l’abonnement</button> <a class="btn btn-outline-secondary" href="{% url 'abonnements:liste_cantine' %}">Annuler</a></div></form></div>{% endblock %}

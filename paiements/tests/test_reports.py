@@ -10,6 +10,8 @@ class PaiementsReportsTests(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(username="tester", password="pass1234")
+        self.user.profil.is_validated = True
+        self.user.profil.save(update_fields=['is_validated'])
         self.client.force_login(self.user)
 
     def test_export_periode_excel_ok(self):

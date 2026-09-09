@@ -1,0 +1,8 @@
+{% extends 'base.html' %}{% load humanize %}{% block content %}
+<div class="container py-4"><h1>{{ titre_page }}</h1><p>{{ total_eleves_retard }} élèves concernés.</p>
+<form method="get" class="d-flex gap-2 mb-3"><input class="form-control" name="search" value="{{ search }}" placeholder="Nom ou matricule" aria-label="Rechercher"><input class="form-control" name="classe" value="{{ classe_filtre }}" placeholder="Classe" aria-label="Classe"><button class="btn btn-primary">Filtrer</button></form>
+<div class="table-responsive"><table class="table"><thead><tr><th>Élève</th><th>Classe</th><th>Solde</th><th>Retard</th><th>Rappel</th></tr></thead><tbody>
+{% for row in eleves_data %}<tr><td>{{ row.eleve.nom_complet }}</td><td>{{ row.eleve.classe }}</td><td>{{ row.solde_restant|intcomma }} GNF</td><td>{{ row.jours_retard }} jours</td><td><form method="post" action="{% url 'paiements:creer_rappel_individuel' row.eleve.pk %}">{% csrf_token %}<select name="canal" aria-label="Canal de rappel">{% for value,label in canal_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-primary">Préparer le rappel</button></form></td></tr>{% empty %}<tr><td colspan="5">Aucun retard correspondant.</td></tr>{% endfor %}</tbody></table></div>
+{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}&search={{ search|urlencode }}&classe={{ classe_filtre|urlencode }}">Précédent</a>{% endif %}
+<span>Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}&search={{ search|urlencode }}&classe={{ classe_filtre|urlencode }}">Suivant</a>{% endif %}</div>{% endblock %}

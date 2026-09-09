@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block content %}<div class="container py-4">
+<h1>{{ titre_page }}</h1><div class="d-flex gap-2 my-3">
+<a class="btn btn-primary" href="{% url 'abonnements:creer_cantine' %}">Nouvel abonnement</a>
+<a class="btn btn-outline-primary" href="{% url 'abonnements:presences_cantine' %}">Présences</a></div>
+<form method="get" class="d-flex gap-2 mb-3"><input class="form-control" type="search" name="search" value="{{ search|default:'' }}" placeholder="Nom ou matricule" aria-label="Rechercher un élève"><button class="btn btn-secondary">Rechercher</button></form>
+<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Élève</th><th>Classe</th><th>Période</th><th>Régime</th><th>Montant</th><th>Statut</th></tr></thead><tbody>
+{% for a in abonnements %}<tr><td>{{ a.eleve.nom_complet }}</td><td>{{ a.eleve.classe }}</td><td>{{ a.date_debut|date:"d/m/Y" }} – {{ a.date_fin|date:"d/m/Y" }}</td><td>{{ a.get_regime_alimentaire_display }}</td><td>{{ a.montant|intcomma }} GNF</td><td>{{ a.get_statut_display }}</td></tr>
+{% empty %}<tr><td colspan="6">Aucun abonnement correspondant.</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}

@@ -368,68 +368,50 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         super().__init__(get_response)
     
     def process_request(self, request):
-        """
-        Vérifie la sécurité des sessions
-        """
-        # Vérifier que l'utilisateur est disponible (après AuthenticationMiddleware)
-        if hasattr(request, 'user') and request.user.is_authenticated:
-            # Enforcer la vérification du téléphone pour la session
-            try:
-                path = request.path or ''
-                # Routes exemptées
-                exempt = (
-                    path.startswith('/utilisateurs/login/') or
-                    path.startswith('/utilisateurs/logout/') or
-                    path.startswith('/utilisateurs/verify-phone/') or
-                    path.startswith('/' + getattr(settings, 'ADMIN_URL', 'admin/')) or
-                    path.startswith('/static/') or
-                    path.startswith('/media/')
-                )
-                # TTL de re-vérification (configurable via settings)
-                PHONE_VERIFY_TTL_SECONDS = getattr(settings, 'PHONE_VERIFY_TTL_SECONDS', 8 * 3600)
-                verified = request.session.get('phone_verified', False)
-                verified_at = request.session.get('phone_verified_at')
-                # Vérifier expiration si déjà vérifié
-                if verified and verified_at:
-                    try:
-                        age = time.time() - float(verified_at)
-                        if age > PHONE_VERIFY_TTL_SECONDS:
-                            # Expire la vérification
-                            request.session['phone_verified'] = False
-                            request.session['phone_verified_at'] = None
-                            verified = False
-                    except Exception:
-                        # En cas de valeur inattendue, forcer une nouvelle vérification
-                        request.session['phone_verified'] = False
-                        request.session['phone_verified_at'] = None
-                        verified = False
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return None
+        # Teacher links have their own verified scope, expiry and revocation.
+        # This attribute is set only after AccesEnseignantMiddleware validates it.
+        if getattr(request, 'acces_enseignant', None) is not None:
+            return None
+        path = request.path_info or ''
+        if path.startswith(('/static/', '/media/')):
+            return None
+        if self.is_session_expired(request):
+            username = user.username
+            logout(request)
+            logger.info("Session expiree pour utilisateur: %s", username)
+            return redirect('utilisateurs:login')
+        if self.detect_session_hijacking(request):
+            logout(request)
+            return redirect('utilisateurs:login')
 
-                if not exempt and not verified:
-                    # Préserver la destination initiale
-                    from django.urls import reverse
-                    verify_url = reverse('utilisateurs:verify_phone')
-                    return redirect(f"{verify_url}?next={path}")
-            except Exception:
-                # En cas d'erreur, ne pas bloquer l'utilisateur, continuer les autres contrôles
-                pass
-            # Vérifier l'inactivité de session
-            if self.is_session_expired(request):
-                logout(request)
-                logger.info(f"Session expirée pour utilisateur: {request.user.username}")
-                return redirect('utilisateurs:login')
-            
-            # Vérifier le changement d'IP (optionnel, peut causer des problèmes avec les proxies)
-            if self.detect_session_hijacking(request):
-                logout(request)
-                logger.warning(f"Tentative de détournement de session détectée pour: {request.user.username}")
-                return redirect('utilisateurs:login')
-            
-            # Mettre à jour le timestamp de dernière activité
-            request.session['last_activity'] = time.time()
-            request.session['user_ip'] = self.get_client_ip(request)
-        
+        now = time.time()
+        verified = request.session.get('phone_verified', False)
+        verified_at = request.session.get('phone_verified_at')
+        if verified:
+            try:
+                age = now - float(verified_at)
+                verified = 0 <= age <= getattr(settings, 'PHONE_VERIFY_TTL_SECONDS', 8 * 3600)
+            except (ValueError, TypeError, OverflowError):
+                verified = False
+        if not verified:
+            request.session['phone_verified'] = False
+            request.session['phone_verified_at'] = None
+
+        exempt = (
+            path in ('/utilisateurs/login/', '/utilisateurs/logout/', '/utilisateurs/verify-phone/')
+            or path.startswith('/' + getattr(settings, 'ADMIN_URL', 'admin/'))
+        )
+        if not exempt and not verified:
+            from django.urls import reverse
+            from urllib.parse import urlencode
+            return redirect(reverse('utilisateurs:verify_phone') + '?' + urlencode({'next': path}))
+        request.session['last_activity'] = now
+        request.session['user_ip'] = self.get_client_ip(request)
         return None
-    
+
     def get_client_ip(self, request):
         """Obtient l'adresse IP réelle du client (X-Real-IP en priorité,
         cf. SecurityMiddleware.get_client_ip pour le detail PythonAnywhere)."""
@@ -442,12 +424,15 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         return request.META.get('REMOTE_ADDR')
     
     def is_session_expired(self, request):
-        """Vérifie si la session a expiré (30 minutes d'inactivité)"""
         last_activity = request.session.get('last_activity')
-        if last_activity:
-            return time.time() - last_activity > 1800  # 30 minutes
-        return False
-    
+        if last_activity is None:
+            return False
+        try:
+            age = time.time() - float(last_activity)
+            return not (0 <= age <= 1800)
+        except (TypeError, ValueError, OverflowError):
+            return True
+
     def detect_session_hijacking(self, request):
         """Détecte les tentatives de détournement de session"""
         session_ip = request.session.get('user_ip')

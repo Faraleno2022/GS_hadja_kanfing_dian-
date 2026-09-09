@@ -16,6 +16,24 @@ from .utils import user_is_admin
 
 logger = logging.getLogger(__name__)
 
+# Business permissions only: never accept profile identity or account status.
+EDITABLE_PERMISSIONS = frozenset({
+    'peut_ajouter_paiements', 'peut_ajouter_depenses', 'peut_ajouter_enseignants',
+    'peut_modifier_paiements', 'peut_modifier_depenses',
+    'peut_supprimer_paiements', 'peut_supprimer_depenses', 'peut_consulter_rapports',
+})
+
+
+def _comptables_for_user(user):
+    queryset = Profil.objects.filter(role='COMPTABLE').select_related('user', 'ecole')
+    if user.is_superuser:
+        return queryset
+    profil = getattr(user, 'profil', None)
+    if not profil or not profil.ecole_id:
+        return queryset.none()
+    return queryset.filter(ecole_id=profil.ecole_id)
+
+
 @login_required
 @can_manage_users
 def gestion_permissions(request):
@@ -23,7 +41,7 @@ def gestion_permissions(request):
     Vue principale pour gérer les permissions des comptables
     """
     # Récupérer tous les comptables
-    comptables = Profil.objects.filter(role='COMPTABLE').select_related('user', 'ecole')
+    comptables = _comptables_for_user(request.user)
     
     # Filtrage par école pour non-superusers
     if not request.user.is_superuser:
@@ -72,7 +90,7 @@ def update_permissions(request, comptable_id):
     # Vérifier les droits d'accès par école
     if not request.user.is_superuser:
         profil_user = getattr(request.user, 'profil', None)
-        if not (profil_user and profil_user.ecole_id == comptable.ecole_id):
+        if not (profil_user and profil_user.ecole_id and profil_user.ecole_id == comptable.ecole_id):
             messages.error(request, "Vous ne pouvez pas modifier les permissions de ce comptable.")
             return redirect('utilisateurs:gestion_permissions')
     
@@ -147,24 +165,27 @@ def ajax_toggle_permission(request):
     try:
         comptable_id = request.POST.get('comptable_id')
         permission_name = request.POST.get('permission_name')
-        new_value = request.POST.get('value') == 'true'
+        raw_value = request.POST.get('value')
+        if raw_value not in ('true', 'false'):
+            return JsonResponse({'success': False, 'error': 'Valeur invalide'}, status=400)
+        new_value = raw_value == 'true'
         
         comptable = get_object_or_404(Profil, id=comptable_id, role='COMPTABLE')
         
         # Vérifier les droits d'accès par école
         if not request.user.is_superuser:
             profil_user = getattr(request.user, 'profil', None)
-            if not (profil_user and profil_user.ecole_id == comptable.ecole_id):
+            if not (profil_user and profil_user.ecole_id and profil_user.ecole_id == comptable.ecole_id):
                 return JsonResponse({'success': False, 'error': 'Accès refusé'})
         
         # Vérifier que la permission existe
-        if not hasattr(comptable, permission_name):
-            return JsonResponse({'success': False, 'error': 'Permission inconnue'})
+        if permission_name not in EDITABLE_PERMISSIONS:
+            return JsonResponse({'success': False, 'error': 'Permission inconnue'}, status=400)
         
         # Appliquer le changement
         old_value = getattr(comptable, permission_name)
         setattr(comptable, permission_name, new_value)
-        comptable.save()
+        comptable.save(update_fields=[permission_name, 'date_modification'])
         
         # Log du changement
         status = "activée" if new_value else "désactivée"
@@ -200,7 +221,7 @@ def bulk_update_permissions(request):
         return redirect('utilisateurs:gestion_permissions')
     
     try:
-        comptables = Profil.objects.filter(id__in=comptable_ids, role='COMPTABLE')
+        comptables = _comptables_for_user(request.user).filter(id__in=comptable_ids)
         
         # Vérifier les droits d'accès par école
         if not request.user.is_superuser:
@@ -318,7 +339,7 @@ def export_permissions_csv(request):
         'Consulter rapports'
     ])
     
-    comptables = Profil.objects.filter(role='COMPTABLE').select_related('user', 'ecole')
+    comptables = _comptables_for_user(request.user)
     
     # Filtrage par école pour non-superusers
     if not request.user.is_superuser:

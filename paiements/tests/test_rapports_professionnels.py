@@ -439,7 +439,8 @@ class ProfessionalReportsTests(TestCase):
             password='mot-de-passe-test',
         )
         simple_user.profil.peut_consulter_rapports = False
-        simple_user.profil.save(update_fields=['peut_consulter_rapports'])
+        simple_user.profil.is_validated = True
+        simple_user.profil.save(update_fields=['peut_consulter_rapports', 'is_validated'])
         self.client.force_login(simple_user)
 
         for route in ('export_recouvrement_pdf', 'rapport_comptabilite'):

@@ -4,7 +4,7 @@ from django.apps import apps as django_apps
 
 from .context import sync_is_muted
 from .engine import ecole_for_instance, is_sync_model, model_label_for, serialize_instance
-from .models import SyncChange
+from .models import SyncChange, SyncOwnership
 
 
 def _is_historical_model(sender):
@@ -20,6 +20,23 @@ def create_sync_change_on_save(sender, instance, created, **kwargs):
     ecole = ecole_for_instance(instance)
     if not ecole or not getattr(ecole, 'pk', None):
         return
+
+    SyncOwnership.objects.update_or_create(
+        model_label=model_label_for(instance), object_uuid=instance.sync_uuid,
+        defaults={'ecole': ecole},
+    )
+    if model_label_for(instance) == 'eleves.Eleve':
+        # Parents are created before their pupil, so they can only be scoped here.
+        for parent in (instance.responsable_principal, instance.responsable_secondaire):
+            if parent and ecole_for_instance(parent) == ecole:
+                SyncOwnership.objects.update_or_create(
+                    model_label=model_label_for(parent), object_uuid=parent.sync_uuid,
+                    defaults={'ecole': ecole},
+                )
+                SyncChange.objects.create(
+                    ecole=ecole, model_label=model_label_for(parent), object_uuid=parent.sync_uuid,
+                    operation=SyncChange.OPERATION_UPDATE, payload=serialize_instance(parent),
+                )
 
     SyncChange.objects.create(
         ecole_id=ecole.pk,

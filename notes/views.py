@@ -8013,7 +8013,8 @@ def saisie_notes_simple(request):
     from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
     from .calculs_moyennes import detecter_niveau_scolaire
     
-    ecole = _get_ecole(request)
+    from utilisateurs.utils import user_school
+    ecole = user_school(request.user)
     
     # Récupérer les classes disponibles
     classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom') if ecole else ClasseNote.objects.none()
@@ -8068,7 +8069,7 @@ def saisie_notes_simple(request):
             matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
     
     if eleve_id and classe_selectionnee:
-        eleve_selectionne = Eleve.pedagogiques.filter(id=eleve_id).first()
+        eleve_selectionne = Eleve.pedagogiques.filter(id=eleve_id, pk__in=[e.pk for e in eleves]).first()
     
     if matiere_id and classe_selectionnee:
         matiere_selectionnee = MatiereNote.objects.filter(id=matiere_id, classe=classe_selectionnee).first()

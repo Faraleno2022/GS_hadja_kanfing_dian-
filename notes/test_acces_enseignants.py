@@ -385,3 +385,19 @@ class AccesEnseignantsTests(TestCase):
         self.assertNotContains(accueil, f'href="{url}?mode=intelligent"')
         self.assertFalse(acces.matieres.exists())
         self.assertEqual(NoteMensuelle.objects.count(), 0)
+
+    def test_lien_enseignant_fonctionne_avec_securite_production(self):
+        import time
+        from ecole_moderne.middleware_config import production_middlewares
+        self.client.force_login(self.principal)
+        session = self.client.session
+        session['phone_verified'] = True
+        session['phone_verified_at'] = time.time()
+        session.save()
+        middleware = [m for m in settings.MIDDLEWARE
+                      if m != 'ecole_moderne.licence_middleware.LicenceMiddleware']
+        with override_settings(MIDDLEWARE=production_middlewares(middleware)):
+            teacher, acces, lien = self.entrer()
+            self.assertFalse(teacher.session.get('phone_verified'))
+            r = teacher.get(reverse('notes:enseignant_saisie', args=[self.classe.pk]))
+            self.assertEqual(r.status_code, 200)
