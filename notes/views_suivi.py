@@ -7,10 +7,16 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
+from django.db import transaction
+from django.http import HttpResponseBadRequest
+from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from eleves.models import Classe as ClasseEleve, Eleve
-from .models import ClasseNote, MatiereNote, NoteSuivi
-from .calculs_moyennes import bonus_suivi_batch
+from .models import ClasseNote, MatiereNote, NoteSuivi, NoteMensuelle
+from .calculs_moyennes import (
+    BONUS_SUIVI_MAX, details_bonus_suivi_batch, _appliquer_bonus,
+)
 from .utils_rangs import invalider_cache_rangs
 
 
@@ -32,7 +38,11 @@ def toggle_bonus_suivi(request):
     """Active/désactive le bonus de suivi pour l'école de l'utilisateur."""
     profil = getattr(request.user, 'profil', None)
     ecole = profil.ecole if profil else None
-    retour = request.POST.get('next') or request.GET.get('next') or 'notes:saisie_suivi'
+    retour = request.POST.get('next') or request.GET.get('next')
+    if not retour or not url_has_allowed_host_and_scheme(
+        retour, allowed_hosts={request.get_host()}, require_https=request.is_secure(),
+    ):
+        retour = reverse('notes:saisie_suivi')
     if not ecole:
         messages.error(request, "Aucune école associée à votre compte.")
         return redirect('notes:saisie_suivi')
@@ -58,10 +68,9 @@ def saisie_suivi(request):
     """Saisie d'une colonne de notes de suivi (classe + matière + mois + type)."""
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else None
-    if ecole:
-        classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('niveau', 'nom')
-    else:
-        classes = ClasseNote.objects.filter(actif=True).order_by('niveau', 'nom')
+    classes = ClasseNote.objects.filter(actif=True).select_related('ecole').order_by('niveau', 'nom')
+    if not request.user.is_superuser:
+        classes = classes.filter(ecole=ecole) if ecole else classes.none()
 
     classe_id = (request.GET.get('classe_id') or request.POST.get('classe_id') or '').strip()
     matiere_id = (request.GET.get('matiere_id') or request.POST.get('matiere_id') or '').strip()
@@ -79,36 +88,57 @@ def saisie_suivi(request):
     eleves = []
     notes_existantes = {}
 
+    if mois and mois not in dict(NoteSuivi.MOIS_CHOICES):
+        return HttpResponseBadRequest("Mois invalide.")
+    if type_note not in dict(NoteSuivi.TYPE_CHOICES):
+        return HttpResponseBadRequest("Type de note invalide.")
+
     if classe_id.isdigit():
-        classe = get_object_or_404(ClasseNote, pk=int(classe_id))
+        classe = get_object_or_404(classes, pk=int(classe_id))
         matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
         eleves = _eleves_de_classe_note(classe)
         if matiere_id.isdigit():
-            matiere = next((m for m in matieres if m.id == int(matiere_id)), None)
+            matiere = get_object_or_404(MatiereNote, classe=classe, actif=True, pk=int(matiere_id))
 
-    if request.method == 'POST' and classe and matiere and mois and type_note:
-        enregistres, supprimes = 0, 0
-        annee = classe.annee_scolaire
+    if request.method == 'POST':
+        if not (classe and matiere and mois):
+            return HttpResponseBadRequest("Choisissez une classe, une matière et un mois.")
+        # Valider toute la colonne avant de modifier les notes enregistrées.
+        valeurs = {}
         for eleve in eleves:
-            brut = (request.POST.get(f'note_{eleve.id}') or '').strip().replace(',', '.')
-            if brut == '':
-                # champ vide -> supprimer la note existante de ce type/mois/numero
-                supprimes += NoteSuivi.objects.filter(
-                    eleve=eleve, matiere=matiere, mois=mois,
-                    type_note=type_note, numero=numero, annee_scolaire=annee).delete()[0]
+            cle = f'note_{eleve.id}'
+            if cle not in request.POST:
+                continue
+            brut = (request.POST.get(cle) or '').strip().replace(',', '.')
+            if not brut:
+                valeurs[eleve.id] = None
                 continue
             try:
                 valeur = Decimal(brut)
+                if not valeur.is_finite() or not 0 <= valeur <= 20:
+                    raise ValueError
+                valeurs[eleve.id] = valeur
             except (InvalidOperation, ValueError):
-                continue
-            if valeur < 0 or valeur > 20:
-                continue
-            NoteSuivi.objects.update_or_create(
-                eleve=eleve, matiere=matiere, mois=mois,
-                type_note=type_note, numero=numero, annee_scolaire=annee,
-                defaults={'note': valeur, 'cree_par': request.user},
-            )
-            enregistres += 1
+                return HttpResponseBadRequest("Les notes de suivi doivent être comprises entre 0 et 20.")
+
+        enregistres, supprimes = 0, 0
+        annee = classe.annee_scolaire
+        with transaction.atomic():
+            for eleve in eleves:
+                if eleve.id not in valeurs:
+                    continue
+                valeur = valeurs[eleve.id]
+                if valeur is None:
+                    supprimes += NoteSuivi.objects.filter(
+                        eleve=eleve, matiere=matiere, mois=mois,
+                        type_note=type_note, numero=numero, annee_scolaire=annee).delete()[0]
+                else:
+                    NoteSuivi.objects.update_or_create(
+                        eleve=eleve, matiere=matiere, mois=mois,
+                        type_note=type_note, numero=numero, annee_scolaire=annee,
+                        defaults={'note': valeur, 'cree_par': request.user},
+                    )
+                    enregistres += 1
         # Invalider les moyennes/rangs (le bonus modifie la note du mois)
         invalider_cache_rangs(classe, mois)
         messages.success(
@@ -118,22 +148,46 @@ def saisie_suivi(request):
         return redirect(f"{request.path}?classe_id={classe.id}&matiere_id={matiere.id}"
                         f"&mois={mois}&type_note={type_note}&numero={numero}")
 
-    # Pré-remplissage : notes existantes de ce type + aperçu du bonus global
-    apercu_bonus = {}
+    # Une seule base de calcul pour le détail et la note corrigée du bulletin.
+    bonus_actif = bool(getattr(classe.ecole if classe else ecole, 'bonus_suivi_actif', False))
+    details, mensuelles = {}, {}
     if classe and matiere and mois:
-        for ns in NoteSuivi.objects.filter(matiere=matiere, mois=mois, type_note=type_note,
-                                           numero=numero, annee_scolaire=classe.annee_scolaire):
-            notes_existantes[ns.eleve_id] = ns.note
-        # Bonus courant (toutes composantes confondues) pour ce mois
-        bmap = bonus_suivi_batch([e.id for e in eleves], [matiere.id], [mois], classe.annee_scolaire)
-        for e in eleves:
-            apercu_bonus[e.id] = round(bmap.get((e.id, matiere.id, mois), 0.0), 2)
+        eleve_ids = [e.id for e in eleves]
+        notes_existantes = dict(NoteSuivi.objects.filter(
+            eleve_id__in=eleve_ids, matiere=matiere, mois=mois, type_note=type_note,
+            numero=numero, annee_scolaire=classe.annee_scolaire,
+        ).values_list('eleve_id', 'note'))
+        details = details_bonus_suivi_batch(
+            eleve_ids, [matiere.id], [mois], classe.annee_scolaire,
+        )
+        mensuelles = {n.eleve_id: n for n in NoteMensuelle.objects.filter(
+            eleve_id__in=eleve_ids, matiere=matiere, mois=mois,
+            annee_scolaire=classe.annee_scolaire,
+        )}
 
-    lignes = [{
-        'eleve': e,
-        'note': notes_existantes.get(e.id, ''),
-        'bonus': apercu_bonus.get(e.id, 0.0),
-    } for e in eleves]
+    lignes = []
+    for eleve in eleves:
+        detail = details.get((eleve.id, matiere.id, mois), {}) if matiere else {}
+        mensuelle = mensuelles.get(eleve.id)
+        absent = bool(mensuelle and mensuelle.absent)
+        avant = float(mensuelle.note) if mensuelle and mensuelle.note is not None and not absent else None
+        bonus = detail.get('bonus', 0.0)
+        apres = _appliquer_bonus(avant, bonus)
+        gain = max(0.0, apres - avant) if avant is not None else 0.0
+        lignes.append({
+            'eleve': eleve,
+            'note': notes_existantes.get(eleve.id, ''),
+            'detail': detail,
+            'nombre_notes': detail.get('nombre_notes', 0),
+            'moyenne_suivi': detail.get('moyenne_suivi'),
+            'bonus_calcule': detail.get('bonus_calcule', 0),
+            'bonus': bonus,
+            'note_avant': avant,
+            'note_apres': apres,
+            'gain_reel': gain,
+            'absent': absent,
+            'plafonne': avant is not None and avant + bonus > 20,
+        })
 
     context = {
         'titre_page': "Notes de suivi (bonus)",
@@ -148,9 +202,13 @@ def saisie_suivi(request):
         'type_note': type_note,
         'type_choices': NoteSuivi.TYPE_CHOICES,
         'numero': numero,
-        'numeros': range(1, 11),
+        'numeros': range(1, 21),
         'lignes': lignes,
-        'bonus_max': 2,
-        'bonus_actif': bool(getattr(ecole, 'bonus_suivi_actif', False)),
+        'bonus_max': BONUS_SUIVI_MAX,
+        'bonus_actif': bonus_actif,
+        'peut_basculer_bonus': bool(ecole and (not classe or classe.ecole_id == ecole.id)),
+        'beneficiaires': sum(l['gain_reel'] > 0 for l in lignes),
+        'sans_note_mensuelle': sum(l['note_avant'] is None for l in lignes),
+        'plafonnes': sum(l['plafonne'] for l in lignes),
     }
     return render(request, 'notes/saisie_suivi.html', context)

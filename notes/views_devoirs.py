@@ -125,6 +125,7 @@ def suivi_devoir(request, devoir_id):
 
     if request.method == 'POST':
         # Activation/désactivation du bonus depuis la page de suivi
+        ancien_compte_bonus = devoir.compte_bonus
         nouveau_compte_bonus = request.POST.get('compte_bonus') == '1'
         if nouveau_compte_bonus != devoir.compte_bonus:
             devoir.compte_bonus = nouveau_compte_bonus
@@ -152,7 +153,7 @@ def suivi_devoir(request, devoir_id):
             r.save(update_fields=['statut', 'note', 'date_modification'])
             maj += 1
         # Si le devoir compte dans le bonus, invalider les moyennes/rangs du mois
-        if devoir.compte_bonus:
+        if devoir.compte_bonus or ancien_compte_bonus:
             mois = mois_scolaire_depuis_date(devoir.date_remise)
             if mois:
                 invalider_cache_rangs(devoir.classe, mois)
@@ -174,7 +175,12 @@ def supprimer_devoir(request, devoir_id):
     if request.method == 'POST':
         classe_id = devoir.classe_id
         titre = devoir.titre
+        classe = devoir.classe
+        mois = mois_scolaire_depuis_date(devoir.date_remise)
+        compte_bonus = devoir.compte_bonus
         devoir.delete()
+        if compte_bonus and mois:
+            invalider_cache_rangs(classe, mois)
         messages.success(request, f"Devoir « {titre} » supprimé.")
         return redirect(f"{redirect('notes:liste_devoirs').url}?classe_id={classe_id}")
     return redirect('notes:liste_devoirs')
