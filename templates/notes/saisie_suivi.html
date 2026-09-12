@@ -1,11 +1,27 @@
 {% extends 'base.html' %}
+{% load l10n %}
 {% block title %}Notes de suivi (bonus){% endblock %}
+
+{% block extra_css %}
+<style>
+    .bonus-table { min-width: 1100px; }
+    .bonus-table th { white-space: nowrap; font-size: .85rem; }
+    .bonus-table .note-saisie { min-width: 95px; max-width: 115px; }
+    .bonus-table .bonus-nombre { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bonus-detail { min-width: 145px; max-width: 310px; }
+    .bonus-detail[open] { min-width: 255px; }
+    .bonus-detail summary { cursor: pointer; color: #1455a0; font-weight: 600; }
+    .bonus-detail li { border-bottom: 1px solid #e6eaf0; padding: .4rem 0; }
+    .bonus-detail .formule { padding: .6rem; background: #f1f5fa; border-radius: .4rem; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h2 class="mb-0"><i class="fas fa-star text-warning me-2"></i>Notes de suivi (bonus)</h2>
         <div class="d-flex align-items-center gap-2">
+            {% if peut_basculer_bonus %}
             <form method="post" action="{% url 'notes:toggle_bonus_suivi' %}" class="d-inline">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -15,6 +31,7 @@
                 <button type="submit" class="btn btn-outline-danger"><i class="fas fa-toggle-off me-1"></i>Bonus DÉSACTIVÉ — cliquer pour activer</button>
                 {% endif %}
             </form>
+            {% endif %}
             <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour Notes</a>
         </div>
     </div>
@@ -31,7 +48,7 @@
     <div class="alert alert-warning py-2 small">
         <i class="fas fa-exclamation-triangle me-1"></i>
         Le bonus est <strong>désactivé</strong> : vous pouvez saisir les notes de suivi, mais elles n'affecteront
-        les moyennes qu'une fois le bonus activé (bouton vert ci-dessus).
+        les moyennes qu'une fois le bonus activé. Le bonus calculé ci-dessous reste indicatif ; le gain réel est nul.
     </div>
     {% endif %}
 
@@ -86,12 +103,38 @@
     </div>
 
     {% if classe and matiere and mois %}
-    <form method="post">
+    <div class="row g-3 mb-3">
+        <div class="col-sm-4"><div class="card h-100"><div class="card-body py-3">
+            <div class="text-muted small">Élèves avec un gain</div>
+            <strong class="fs-4 text-success">{{ beneficiaires }}</strong> <span class="text-muted">/ {{ lignes|length }}</span>
+        </div></div></div>
+        <div class="col-sm-4"><div class="card h-100"><div class="card-body py-3">
+            <div class="text-muted small">Gain limité par le plafond de 20</div>
+            <strong class="fs-4">{{ plafonnes }}</strong>
+        </div></div></div>
+        <div class="col-sm-4"><div class="card h-100"><div class="card-body py-3">
+            <div class="text-muted small">Sans note mensuelle utilisable</div>
+            <strong class="fs-4">{{ sans_note_mensuelle }}</strong>
+            <span class="text-muted small">manquante ou absence</span>
+        </div></div></div>
+    </div>
+    <div class="alert alert-light border small">
+        <strong>Comprendre l'impact :</strong> chaque note de suivi a le même poids, quel que soit son type.
+        Le détail rassemble tous les types et numéros du mois, ainsi que les devoirs cochés « Compter dans le bonus »
+        (mois de la date de remise). La note mensuelle saisie est conservée ; les calculs du bulletin ajoutent le bonus sans dépasser 20/20.
+        Sans note mensuelle ou en cas d'absence, le bonus n'est pas appliqué.
+    </div>
+    <div id="bonus-non-enregistre" class="alert alert-warning d-none" role="status">
+        Modifications non enregistrées : les bonus et le détail affichés correspondent encore aux notes enregistrées.
+        Cliquez sur « Enregistrer » pour actualiser le calcul.
+    </div>
+    <form method="post" id="suivi-form">
         {% csrf_token %}
         <input type="hidden" name="classe_id" value="{{ classe.id }}">
         <input type="hidden" name="matiere_id" value="{{ matiere.id }}">
         <input type="hidden" name="mois" value="{{ mois }}">
         <input type="hidden" name="type_note" value="{{ type_note }}">
+        <input type="hidden" name="numero" value="{{ numero }}">
         <div class="card">
             <div class="card-header">
                 <strong>{{ classe.nom }} — {{ matiere.nom }} — {{ mois }}</strong> —
@@ -99,22 +142,80 @@
                 — {{ lignes|length }} élève(s)
             </div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0 bonus-table">
+                    <caption class="px-3 small">Comparaison pour {{ matiere.nom }} — {{ mois }} — {{ classe.annee_scolaire }}. Valeurs enregistrées, affichées à deux décimales.</caption>
                     <thead class="table-light">
-                        <tr><th>N°</th><th>Élève</th><th style="width:140px">Note /20</th><th style="width:160px">Bonus actuel (mois)</th></tr>
+                        <tr>
+                            <th scope="col">N°</th><th scope="col">Élève</th>
+                            <th scope="col">Note de suivi /20<br><small class="fw-normal">Saisie n°{{ numero }}</small></th>
+                            <th scope="col">Moyenne suivi<br><small class="fw-normal">Tous types /20</small></th>
+                            <th scope="col">Bonus calculé</th>
+                            <th scope="col">Avant bonus<br><small class="fw-normal">Note mensuelle /20</small></th>
+                            <th scope="col">Après bonus<br><small class="fw-normal">Note retenue /20</small></th>
+                            <th scope="col">Gain réel</th>
+                            <th scope="col">Base du calcul</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for l in lignes %}
-                        <tr>
+                        <tr data-eleve-id="{{ l.eleve.id }}">
                             <td>{{ forloop.counter }}</td>
-                            <td>{{ l.eleve.prenom }} <strong>{{ l.eleve.nom }}</strong></td>
-                            <td><input type="number" step="0.25" min="0" max="20" name="note_{{ l.eleve.id }}" value="{{ l.note }}" class="form-control form-control-sm" placeholder="—"></td>
+                            <th scope="row" class="fw-normal">{{ l.eleve.prenom }} <strong>{{ l.eleve.nom }}</strong></th>
+                            <td><input type="number" step="0.01" min="0" max="20"
+                                name="note_{{ l.eleve.id }}" value="{{ l.note|unlocalize }}"
+                                aria-label="Note de suivi de {{ l.eleve.prenom }} {{ l.eleve.nom }}"
+                                class="form-control form-control-sm note-saisie" placeholder="—"></td>
                             <td>
-                                {% if l.bonus %}<span class="badge bg-success">+{{ l.bonus }}</span>{% else %}<span class="text-muted">+0</span>{% endif %}
+                                {% if l.nombre_notes %}<span class="bonus-nombre">{{ l.moyenne_suivi|floatformat:2 }}</span>
+                                <small class="text-muted d-block">{{ l.nombre_notes }} note{{ l.nombre_notes|pluralize }}</small>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td><span class="bonus-nombre {% if bonus_actif %}text-success{% else %}text-muted{% endif %}">+{{ l.bonus_calcule|floatformat:2 }}</span>
+                                {% if not bonus_actif %}<small class="text-muted d-block">Désactivé</small>{% endif %}
+                            </td>
+                            <td class="bonus-nombre">
+                                {% if l.absent %}<span class="text-muted">Absent</span>
+                                {% elif l.note_avant != None %}{{ l.note_avant|floatformat:2 }}
+                                {% else %}<span class="text-muted">Non saisie</span>{% endif %}
+                            </td>
+                            <td class="bonus-nombre">
+                                {% if l.note_apres != None %}<strong>{{ l.note_apres|floatformat:2 }}</strong>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if l.gain_reel %}bg-success{% else %}bg-secondary{% endif %} bonus-nombre">+{{ l.gain_reel|floatformat:2 }}</span>
+                                {% if l.plafonne %}<small class="text-muted d-block">Plafond 20/20</small>
+                                {% elif l.note_avant == None %}<small class="text-muted d-block">Non appliqué</small>{% endif %}
+                            </td>
+                            <td>
+                                {% if l.nombre_notes %}
+                                <details class="bonus-detail">
+                                    <summary>Détail ({{ l.nombre_notes }})</summary>
+                                    <ul class="list-unstyled small my-2">
+                                        {% for n in l.detail.notes %}
+                                        <li>
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <span>{{ n.libelle }}</span>
+                                                <strong class="bonus-nombre">{{ n.note|floatformat:2 }}/20</strong>
+                                            </div>
+                                            {% if n.date %}<small class="text-muted">{% if n.source == 'devoir' %}Date de remise : {% endif %}{{ n.date|date:"d/m/Y" }}</small>{% endif %}
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    <div class="formule small">
+                                        <div>Somme : {{ l.detail.total_suivi|floatformat:2 }} ÷ {{ l.nombre_notes }} = <strong>{{ l.moyenne_suivi|floatformat:2 }}/20</strong></div>
+                                        <div>Bonus : {{ l.moyenne_suivi|floatformat:2 }} ÷ 20 × {{ bonus_max }} = <strong>+{{ l.bonus_calcule|floatformat:2 }}</strong></div>
+                                        {% if not bonus_actif %}<div class="mt-1">Bonus désactivé : aucun point ajouté.</div>
+                                        {% elif l.absent %}<div class="mt-1">Absence à l'évaluation mensuelle : aucun point ajouté.</div>
+                                        {% elif l.note_avant == None %}<div class="mt-1">Note mensuelle non saisie : bonus en attente.</div>
+                                        {% else %}<div class="mt-1">{{ l.note_avant|floatformat:2 }} + {{ l.bonus|floatformat:2 }} → <strong>{{ l.note_apres|floatformat:2 }}/20</strong>{% if l.plafonne %} (plafond){% endif %}.</div>{% endif %}
+                                    </div>
+                                </details>
+                                {% else %}<small class="text-muted">Aucune note de suivi.<br>Bonus : 0.</small>{% endif %}
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">Aucun élève trouvé pour cette classe.</td></tr>
+                        <tr><td colspan="9" class="text-center text-muted py-3">Aucun élève trouvé pour cette classe.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -129,4 +230,20 @@
     <div class="alert alert-secondary">Choisissez une classe, une matière et un mois pour saisir les notes de suivi.</div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.getElementById('suivi-form');
+    const message = document.getElementById('bonus-non-enregistre');
+    if (form && message) {
+        form.addEventListener('input', function (event) {
+            if (event.target.matches('input[type="number"]')) {
+                message.classList.remove('d-none');
+            }
+        });
+    }
+});
+</script>
 {% endblock %}

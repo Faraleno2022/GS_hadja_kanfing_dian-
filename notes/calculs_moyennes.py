@@ -48,56 +48,86 @@ def mois_scolaire_depuis_date(d):
     return _MOIS_SCOLAIRE_PAR_NUMERO.get(d.month)
 
 
-def bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire):
-    """Bonus de suivi par (eleve, matiere, mois).
+def details_bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire,
+                             inclure_inactifs=True):
+    """Même base pour le détail affiché et le bonus utilisé par les bulletins.
 
-    Bonus = (moyenne des notes de suivi / 20) * BONUS_SUIVI_MAX.
-    Prend en compte les notes de suivi (NoteSuivi) ET les notes des devoirs
-    marqués « compte_bonus » (mois déduit de la date de remise).
-    Retourne {(eleve_id, matiere_id, mois): bonus_float}. Vide si aucun suivi.
+    Chaque note enregistrée a le même poids, y compris les zéros.
+    Les devoirs ne comptent que si leur option compte_bonus est activée.
+    L'écran peut afficher un bonus potentiel lorsque l'école l'a désactivé.
     """
     if not eleve_ids or not matiere_ids or not mois_list:
         return {}
-    from .models import NoteSuivi, RemiseDevoir, MatiereNote
+    from .models import NoteSuivi, RemiseDevoir
 
-    # Le bonus n'est calculé que si l'école l'a explicitement activé.
-    _actif = MatiereNote.objects.filter(
-        id__in=matiere_ids, classe__ecole__bonus_suivi_actif=True
-    ).exists()
-    if not _actif:
+    matieres = MatiereNote.objects.filter(
+        id__in=matiere_ids, classe__annee_scolaire=annee_scolaire,
+    )
+    if not inclure_inactifs:
+        matieres = matieres.filter(classe__ecole__bonus_suivi_actif=True)
+    activation = dict(matieres.values_list('id', 'classe__ecole__bonus_suivi_actif'))
+    if not activation:
         return {}
 
     groupes = {}
-
-    # 1) Notes de suivi manuelles
+    types = dict(NoteSuivi.TYPE_CHOICES)
     rows = (NoteSuivi.objects
-            .filter(eleve_id__in=eleve_ids, matiere_id__in=matiere_ids,
+            .filter(eleve_id__in=eleve_ids, matiere_id__in=activation,
                     mois__in=mois_list, annee_scolaire=annee_scolaire)
-            .values('eleve_id', 'matiere_id', 'mois', 'note'))
+            .order_by('type_note', 'numero', 'pk')
+            .values('eleve_id', 'matiere_id', 'mois', 'note', 'type_note',
+                    'numero', 'date'))
     for r in rows:
         if r['note'] is None:
             continue
-        groupes.setdefault((r['eleve_id'], r['matiere_id'], r['mois']), []).append(float(r['note']))
+        groupes.setdefault((r['eleve_id'], r['matiere_id'], r['mois']), []).append({
+            'libelle': f"{types.get(r['type_note'], r['type_note'])} n°{r['numero']}",
+            'note': r['note'], 'date': r['date'], 'source': 'suivi',
+        })
 
-    # 2) Notes des devoirs activés (compte_bonus) -> mois de la date de remise
     drows = (RemiseDevoir.objects
-             .filter(eleve_id__in=eleve_ids,
-                     devoir__matiere_id__in=matiere_ids,
+             .filter(eleve_id__in=eleve_ids, devoir__matiere_id__in=activation,
                      devoir__compte_bonus=True,
                      devoir__classe__annee_scolaire=annee_scolaire,
                      note__isnull=False)
-             .values('eleve_id', 'devoir__matiere_id', 'devoir__date_remise', 'note'))
+             .order_by('devoir__date_remise', 'devoir_id', 'pk')
+             .values('eleve_id', 'devoir__matiere_id', 'devoir__date_remise',
+                     'devoir__titre', 'note'))
     for r in drows:
         mois = mois_scolaire_depuis_date(r['devoir__date_remise'])
         if mois not in mois_list:
             continue
-        groupes.setdefault((r['eleve_id'], r['devoir__matiere_id'], mois), []).append(float(r['note']))
+        groupes.setdefault((r['eleve_id'], r['devoir__matiere_id'], mois), []).append({
+            'libelle': f"Devoir : {r['devoir__titre']}",
+            'note': r['note'], 'date': r['devoir__date_remise'], 'source': 'devoir',
+        })
 
     resultat = {}
     for cle, notes in groupes.items():
-        moy = sum(notes) / len(notes)
-        resultat[cle] = float((Decimal(str(moy)) / Decimal('20')) * BONUS_SUIVI_MAX)
+        total = sum((n['note'] for n in notes), Decimal('0'))
+        moyenne = total / len(notes)
+        bonus_calcule = min(BONUS_SUIVI_MAX, max(
+            Decimal('0'), moyenne / Decimal('20') * BONUS_SUIVI_MAX,
+        ))
+        actif = bool(activation[cle[1]])
+        resultat[cle] = {
+            'notes': notes,
+            'nombre_notes': len(notes),
+            'total_suivi': total,
+            'moyenne_suivi': moyenne,
+            'bonus_calcule': bonus_calcule,
+            'actif': actif,
+            'bonus': float(bonus_calcule) if actif else 0.0,
+        }
     return resultat
+
+
+def bonus_suivi_batch(eleve_ids, matiere_ids, mois_list, annee_scolaire):
+    """Bonus actif par (élève, matière, mois), calculé depuis la base détaillée."""
+    details = details_bonus_suivi_batch(
+        eleve_ids, matiere_ids, mois_list, annee_scolaire, inclure_inactifs=False,
+    )
+    return {cle: detail['bonus'] for cle, detail in details.items()}
 
 
 def bonus_suivi(eleve_id, matiere_id, mois, annee_scolaire):
