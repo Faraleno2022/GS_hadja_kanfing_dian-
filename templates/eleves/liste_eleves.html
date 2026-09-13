@@ -8,6 +8,7 @@
 
 {% block page_actions %}
     <div>
+        <a href="{% url 'eleves:actifs_paiements' %}" class="btn btn-outline-success">Actifs avec / sans paiement</a>
         <a href="{% url 'eleves:ajouter_eleve' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Ajouter un élève
         </a>
@@ -223,6 +224,7 @@
         function buildUrl(baseHref) {
             const url = new URL(baseHref || window.location.href, window.location.origin);
             url.searchParams.set('partial', '1');
+            if (!baseHref) url.searchParams.delete('page');
             const q = (input.value || '').trim();
             if (q) url.searchParams.set('recherche', q); else url.searchParams.delete('recherche');
             // Ajouter le filtre classe si sélectionné
@@ -255,6 +257,8 @@
             btnEffacer.addEventListener('click', function(e) {
                 e.preventDefault();
                 input.value = '';
+                const classe = zone.querySelector('#export-classe-select');
+                if (classe) classe.value = '';
                 fetchResults(buildUrl(this.href));
                 history.replaceState({}, '', this.href);
             });
@@ -276,10 +280,8 @@
         function bindClasseChange() {
             const select = zone.querySelector('#export-classe-select');
             if (!select) return;
-            // Éviter les doublons
-            const newSelect = select.cloneNode(true);
-            select.parentNode.replaceChild(newSelect, select);
-            newSelect.addEventListener('change', function() {
+            // Conserver le même élément utilisé par les boutons d'export.
+            select.onchange = function() {
                 // Mettre à jour les résultats avec le filtre classe
                 fetchResults();
                 // Mettre à jour l'URL visible (sans partial)
@@ -287,8 +289,9 @@
                 if (this.value) fullUrl.searchParams.set('classe_id', this.value); else fullUrl.searchParams.delete('classe_id');
                 const q = (input.value || '').trim();
                 if (q) fullUrl.searchParams.set('recherche', q); else fullUrl.searchParams.delete('recherche');
+                fullUrl.searchParams.delete('page');
                 history.replaceState({}, '', fullUrl.toString());
-            });
+            };
         }
         bindClasseChange();
     })();

@@ -1,0 +1,89 @@
+{% load humanize %}
+<section class="card mb-4" id="suivi-classe-bus">
+  <div class="card-header"><h2 class="h5 mb-0">Suivi des abonnements bus par classe</h2></div>
+  <div class="card-body">
+    <form method="get" class="row g-3 align-items-end">
+      <div class="col-md-5">
+        <label for="classe-bus" class="form-label">Classe</label>
+        <select name="classe_id" id="classe-bus" class="form-select" onchange="document.getElementById('eleve-bus').value=''; this.form.submit();">
+          <option value="">Sélectionner une classe</option>
+          {% for c in classes_bus %}
+          <option value="{{ c.pk }}" {% if classe_bus.pk == c.pk %}selected{% endif %}>{{ c.nom }} — {{ c.ecole.nom }} ({{ c.annee_scolaire }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label for="eleve-bus" class="form-label">Élève</label>
+        <select name="eleve_id" id="eleve-bus" class="form-select" {% if not classe_bus %}disabled{% endif %}>
+          <option value="">Tous les élèves de la classe</option>
+          {% for e in eleves_bus %}
+          <option value="{{ e.pk }}" {% if eleve_bus.pk == e.pk %}selected{% endif %}>{{ e.matricule }} — {{ e.nom_complet }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">Afficher</button></div>
+    </form>
+    {% if classe_bus %}
+    <p class="text-muted mt-3 mb-0">{{ classe_bus.nom }} · {{ classe_bus.annee_scolaire }} · {{ page_bus.paginator.count }} élève(s).
+      Le reste annuel tient compte de tous les versements bus, une seule fois par grille.</p>
+    {% else %}
+    <p class="text-muted mt-3 mb-0">Choisissez une classe pour voir ses élèves, y compris ceux sans abonnement.</p>
+    {% endif %}
+  </div>
+  {% if classe_bus %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>Élève</th><th>Statut abonnement</th><th>Nombre de paiements</th><th>Total payé</th><th>Reste à payer</th><th>Reçus de paiement</th><th>Carte / paiement</th></tr></thead>
+      <tbody>
+      {% for ligne in lignes_bus %}
+        <tr>
+          <td><a href="{% url 'eleves:detail_eleve' ligne.eleve.pk %}">{{ ligne.eleve.nom_complet }}</a><br><small class="text-muted">{{ ligne.eleve.matricule }}</small></td>
+          <td><span class="badge bg-{{ ligne.couleur }}">{{ ligne.statut }}</span></td>
+          <td>{{ ligne.nombre_paiements }}</td>
+          <td class="text-nowrap">{{ ligne.montant_paye|intcomma }} GNF</td>
+          <td>
+            {% if ligne.reste is not None %}<strong class="text-nowrap">{{ ligne.reste|intcomma }} GNF</strong>
+            {% elif ligne.paiements %}<span class="text-muted">Indéterminé : versement sans grille</span>
+            {% else %}<span class="text-muted">— Aucun abonnement</span>{% endif %}
+            {% if ligne.situations|length > 1 %}
+            <details><summary class="small">Détail par grille</summary>
+              {% for situation in ligne.situations %}<div class="small">{{ situation.grille.zone }} : {{ situation.reste|intcomma }} GNF restants</div>{% endfor %}
+            </details>
+            {% endif %}
+          </td>
+          <td>
+            {% if ligne.paiements %}
+            <details><summary>{{ ligne.nombre_paiements }} reçu(s)</summary>
+              <ul class="list-unstyled mb-0 mt-2">
+              {% for versement in ligne.paiements %}
+                <li class="mb-2"><a href="{% url 'bus:recu_pdf' versement.pk %}" target="_blank" rel="noopener">{{ versement.numero_recu|default:'Reçu' }}</a><br>
+                <small>{{ versement.date_debut|date:'d/m/Y' }} · {{ versement.montant|intcomma }} GNF · {{ versement.get_periodicite_display }}</small></li>
+              {% endfor %}
+              </ul>
+            </details>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if ligne.carte_abonnement %}
+            <a class="btn btn-outline-primary btn-sm mb-1" href="{% url 'eleves:ticket_bus_pdf' ligne.eleve.pk %}?abonnement={{ ligne.carte_abonnement.pk }}" target="_blank" rel="noopener">Carte bus</a>
+            {% endif %}
+            <a class="btn btn-outline-success btn-sm" href="{% url 'bus:nouveau' %}?eleve={{ ligne.eleve.pk }}">Paiement bus</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="text-muted text-center py-4">Aucun élève dans cette classe.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if page_bus.has_other_pages %}
+  <nav class="card-footer d-flex justify-content-between align-items-center" aria-label="Élèves abonnements bus">
+    <span>Page {{ page_bus.number }} / {{ page_bus.paginator.num_pages }}</span>
+    <div>
+      {% if page_bus.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?{{ filtres_bus_url }}&page_bus={{ page_bus.previous_page_number }}#suivi-classe-bus">Précédente</a>{% endif %}
+      {% if page_bus.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?{{ filtres_bus_url }}&page_bus={{ page_bus.next_page_number }}#suivi-classe-bus">Suivante</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
+  {% endif %}
+</section>

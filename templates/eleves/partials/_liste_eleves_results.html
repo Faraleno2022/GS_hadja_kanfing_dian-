@@ -102,10 +102,11 @@
                                     {% endif %}
                                 </td>
                                 <td>
+                                    {% if eleve.accueil_concerne %}
                                     <form method="post" action="{% url 'eleves:definir_evaluation_accueil' eleve.id %}" class="d-inline-flex align-items-center gap-2">
                                         {% csrf_token %}
                                         <input type="hidden" name="est_evalue" value="{% if eleve.evaluation_accueil_effectuee %}0{% else %}1{% endif %}">
-                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <input type="hidden" name="next" value="{{ request.path }}?{{ filtres_url }}&page={{ page_obj.number }}">
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" role="switch"
                                                    id="evaluation-accueil-{{ eleve.id }}"
@@ -121,6 +122,9 @@
                                             </label>
                                         </div>
                                     </form>
+                                    {% else %}
+                                    <span class="text-muted">Non concerné{% if eleve.nature_admission == 'REINSCRIPTION' %} · réinscription{% elif eleve.import_verrouille %} · import verrouillé{% endif %}</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm" role="group">
@@ -165,12 +169,12 @@
                         <ul class="pagination justify-content-center mb-0">
                             {% if page_obj.has_previous %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?partial=1&page=1{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                    <a class="page-link" href="?{{ filtres_url }}&page=1">
                                         <i class="fas fa-angle-double-left"></i>
                                     </a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?partial=1&page={{ page_obj.previous_page_number }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                    <a class="page-link" href="?{{ filtres_url }}&page={{ page_obj.previous_page_number }}">
                                         <i class="fas fa-angle-left"></i>
                                     </a>
                                 </li>
@@ -184,12 +188,12 @@
                             
                             {% if page_obj.has_next %}
                                 <li class="page-item">
-                                    <a class="page-link" href="?partial=1&page={{ page_obj.next_page_number }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                    <a class="page-link" href="?{{ filtres_url }}&page={{ page_obj.next_page_number }}">
                                         <i class="fas fa-angle-right"></i>
                                     </a>
                                 </li>
                                 <li class="page-item">
-                                    <a class="page-link" href="?partial=1&page={{ page_obj.paginator.num_pages }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                    <a class="page-link" href="?{{ filtres_url }}&page={{ page_obj.paginator.num_pages }}">
                                         <i class="fas fa-angle-double-right"></i>
                                     </a>
                                 </li>
