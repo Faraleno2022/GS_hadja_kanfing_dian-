@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Élèves actifs et paiements{% endblock %}
+{% block breadcrumb_items %}<li class="breadcrumb-item"><a href="{% url 'eleves:liste_eleves' %}">Élèves</a></li><li class="breadcrumb-item active">Actifs et paiements</li>{% endblock %}
+{% block content %}
+<div class="alert alert-info">Paiements scolaires <strong>validés</strong> de l'année de la classe. Un versement en attente, rejeté, remboursé ou d'une autre année ne compte pas comme un paiement reçu. Seuls les élèves actifs et déverrouillés figurent dans ces listes.</div>
+<form method="get" class="card card-body mb-3">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4"><label class="form-label" for="classe-actifs">Classe</label>
+      <select class="form-select" id="classe-actifs" name="classe_id">
+        <option value="">Toutes les classes</option>
+        {% for c in classes %}<option value="{{ c.pk }}" {% if classe_selectionnee.pk == c.pk %}selected{% endif %}>{{ c.nom }} — {{ c.ecole.nom }} ({{ c.annee_scolaire }})</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3"><label class="form-label" for="paiement-actifs">Situation des paiements</label>
+      <select class="form-select" id="paiement-actifs" name="paiement">
+        <option value="sans" {% if paiement == 'sans' %}selected{% endif %}>Actifs sans paiement</option>
+        <option value="avec" {% if paiement == 'avec' %}selected{% endif %}>Actifs avec paiement</option>
+        <option value="tous" {% if paiement == 'tous' %}selected{% endif %}>Tous les actifs</option>
+      </select>
+    </div>
+    <div class="col-md-3"><label class="form-label" for="recherche-actifs">Nom ou matricule</label><input class="form-control" id="recherche-actifs" name="recherche" value="{{ recherche }}"></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Afficher</button></div>
+  </div>
+</form>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card card-body">Élèves actifs<strong class="h3">{{ stats.total }}</strong></div></div>
+  <div class="col-md-4"><div class="card card-body">Avec paiement validé<strong class="h3 text-success">{{ stats.avec }}</strong></div></div>
+  <div class="col-md-4"><div class="card card-body">Sans paiement validé<strong class="h3 text-warning">{{ stats.sans }}</strong></div></div>
+</div>
+<details class="card mb-3" open>
+  <summary class="card-header">Répartition des élèves actifs par classe</summary>
+  <div class="table-responsive"><table class="table mb-0">
+    <thead><tr><th>Classe</th><th>Année</th><th>Actifs</th><th>Avec paiement</th><th>Sans paiement</th></tr></thead>
+    <tbody>{% for ligne in repartition %}
+      <tr><td>{{ ligne.classe__nom }}<small class="text-muted d-block">{{ ligne.classe__ecole__nom }}</small></td><td>{{ ligne.classe__annee_scolaire }}</td><td>{{ ligne.total }}</td>
+      <td><a href="?classe_id={{ ligne.classe_id }}&paiement=avec&recherche={{ recherche|urlencode }}">{{ ligne.avec }} — Afficher</a></td>
+      <td><a href="?classe_id={{ ligne.classe_id }}&paiement=sans&recherche={{ recherche|urlencode }}">{{ ligne.sans }} — Afficher</a></td></tr>
+    {% empty %}<tr><td colspan="5">Aucun élève actif.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</details>
+<div class="card">
+  <div class="card-header"><h2 class="h5 mb-0">{% if paiement == 'sans' %}Actifs sans paiement{% elif paiement == 'avec' %}Actifs avec paiement{% else %}Tous les élèves actifs{% endif %} · {{ page_obj.paginator.count }} élève(s)</h2></div>
+  <div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>Matricule</th><th>Élève</th><th>Paiements validés</th><th>Montant reçu</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for eleve in page_obj %}
+      {% ifchanged eleve.classe_id %}<tr class="table-light"><th colspan="5">{{ eleve.classe.nom }} — {{ eleve.classe.ecole.nom }} · {{ eleve.classe.annee_scolaire }}</th></tr>{% endifchanged %}
+      <tr><td>{{ eleve.matricule }}</td><td><a href="{% url 'eleves:detail_eleve' eleve.pk %}">{{ eleve.nom_complet }}</a></td><td>{{ eleve.nombre_paiements }}</td><td>{{ eleve.montant_paye|intcomma }} GNF</td>
+      <td><a class="btn btn-outline-primary btn-sm" href="{% url 'eleves:detail_eleve' eleve.pk %}">Fiche et paiements</a></td></tr>
+    {% empty %}<tr><td colspan="5" class="text-center text-muted py-4">Aucun élève ne correspond à cette sélection.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if page_obj.has_other_pages %}
+  <nav class="card-footer d-flex justify-content-between align-items-center" aria-label="Pagination élèves actifs">
+    <span>Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+    <div>{% if page_obj.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?{{ filtres_url }}&page={{ page_obj.previous_page_number }}">Précédente</a>{% endif %}
+    {% if page_obj.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?{{ filtres_url }}&page={{ page_obj.next_page_number }}">Suivante</a>{% endif %}</div>
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

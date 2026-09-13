@@ -42,6 +42,7 @@ from utilisateurs.utils import (
     user_school,
 )
 from .utils_annee import get_annee_active
+from .suivi_listes import annoter_accueil, classes_visibles, eleves_visibles
 from .couleurs_cartes import palette_carte
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
@@ -71,32 +72,9 @@ except ImportError:
 
 @login_required
 def liste_eleves(request):
-    """Vue optimisée pour afficher la liste des élèves avec cache intelligent"""
-    from ecole_moderne.query_optimizer import QueryOptimizer, PaginationOptimizer
-    from ecole_moderne.decorators import cache_user_data
-    
+    """Liste par école et année avec compteurs d'accueil actualisés"""
     form_recherche = RechercheEleveForm(request.GET or None)
-    
-    # Cache de l'école utilisateur
-    user_school_cache_key = f'user_school_{request.user.id}'
-    user_school_obj = cache.get(user_school_cache_key)
-    if user_school_obj is None and not user_is_admin(request.user):
-        user_school_obj = user_school(request.user)
-        if user_school_obj:
-            cache.set(user_school_cache_key, user_school_obj, 300)
-    
-    # Queryset optimisé avec relations pré-chargées
-    eleves = QueryOptimizer.get_optimized_eleves(
-        school=user_school_obj if not user_is_admin(request.user) else None,
-        with_payments=True,
-        with_classes=True
-    )
-
-    # Filtrer par année scolaire active
-    if not user_is_admin(request.user) and user_school_obj:
-        annee_active = get_annee_active(request, user_school_obj)
-        if annee_active:
-            eleves = eleves.filter(classe__annee_scolaire=annee_active)
+    eleves = annoter_accueil(eleves_visibles(request))
 
     # Application des filtres optimisés
     if form_recherche.is_valid():
@@ -121,29 +99,19 @@ def liste_eleves(request):
         except (TypeError, ValueError):
             classe_id = None
     
-    # Statistiques optimisées avec cache
-    stats_cache_key = f'eleves_stats_{request.user.id}_{hash(str(eleves.query))}'
-    stats = cache.get(stats_cache_key)
-    
-    if stats is None:
-        stats = eleves.aggregate(
-            total_eleves=Count('id'),
-            eleves_actifs=Count(Case(When(statut='ACTIF', then=1), output_field=IntegerField())),
-            eleves_suspendus=Count(Case(When(statut='SUSPENDU', then=1), output_field=IntegerField())),
-            eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField())),
-            eleves_evalues=Count(Case(When(evaluation_accueil_effectuee=True, then=1), output_field=IntegerField())),
-            eleves_non_evalues=Count(Case(When(evaluation_accueil_effectuee=False, then=1), output_field=IntegerField())),
-        )
-        cache.set(stats_cache_key, stats, 120)  # Cache 2 minutes
-    
-    # Pagination optimisée
-    page_number = request.GET.get('page', 1)
-    page_obj, paginator = PaginationOptimizer.optimize_pagination(
-        eleves.order_by('-date_creation', '-id'),
-        page_number, 
-        per_page=15
+    # Recalcul immédiat après changement d'admission ou pointage.
+    stats = eleves.aggregate(
+        total_eleves=Count('id'),
+        eleves_actifs=Count('id', filter=Q(statut='ACTIF')),
+        eleves_suspendus=Count('id', filter=Q(statut='SUSPENDU')),
+        eleves_exclus=Count('id', filter=Q(statut='EXCLU')),
+        eleves_evalues=Count('id', filter=Q(accueil_concerne=True, evaluation_accueil_effectuee=True)),
+        eleves_non_evalues=Count('id', filter=Q(accueil_concerne=True, evaluation_accueil_effectuee=False)),
     )
-    
+    page_number = request.GET.get('page', 1)
+    paginator = Paginator(eleves.order_by('-date_creation', '-id'), 15)
+    page_obj = paginator.get_page(page_number)
+
     # Log de l'activité
     JournalActivite.objects.create(
         user=request.user,
@@ -154,39 +122,10 @@ def liste_eleves(request):
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
     
-    # Liste des classes pour export (restreinte si besoin)
-    # IMPORTANT: Seul le superuser peut voir toutes les écoles
-    if user_is_superadmin(request.user):
-        classes = (
-            Classe.objects.select_related('ecole')
-            .filter(ecole__etat='VALIDE')
-            .order_by('ecole__nom', 'niveau', 'nom')
-        )
-    else:
-        # Tous les autres utilisateurs (y compris ADMIN d'école) ne voient que leur école
-        user_ecole = user_school(request.user)
-        if user_ecole is None:
-            classes = Classe.objects.none()
-        else:
-            annee_active = get_annee_active(request, user_ecole)
-            qs_filter = {'ecole': user_ecole, 'ecole__etat': 'VALIDE'}
-            if annee_active:
-                qs_filter['annee_scolaire'] = annee_active
-            classes = (
-                Classe.objects.select_related('ecole')
-                .filter(**qs_filter)
-                .order_by('niveau', 'nom')
-            )
-            # Fallback: si l'école de l'utilisateur n'est pas encore validée, proposer quand même ses classes
-            if not classes.exists():
-                qs_fallback = {'ecole': user_ecole}
-                if annee_active:
-                    qs_fallback['annee_scolaire'] = annee_active
-                classes = (
-                    Classe.objects.select_related('ecole')
-                    .filter(**qs_fallback)
-                    .order_by('niveau', 'nom')
-                )
+    classes = classes_visibles(request)
+    filtres = request.GET.copy()
+    filtres.pop('page', None)
+    filtres.pop('partial', None)
 
     context = {
         'page_obj': page_obj,
@@ -196,6 +135,7 @@ def liste_eleves(request):
         'classes': classes,
         # Conserver la sélection actuelle de classe dans l'UI
         'selected_classe_id': str(classe_id) if classe_id else '',
+        'filtres_url': filtres.urlencode(),
     }
 
     # Rendu partiel pour la recherche dynamique
@@ -218,17 +158,24 @@ def liste_eleves(request):
 
 def _eleves_evaluation_accueil(request, est_evalue):
     """Retourne les élèves visibles par l'utilisateur pour le test d'accueil."""
-    eleves = Eleve.objects.select_related(
-        'classe', 'classe__ecole', 'responsable_principal'
-    ).filter(evaluation_accueil_effectuee=est_evalue)
-    if not user_is_superadmin(request.user):
-        ecole = user_school(request.user)
-        if ecole is None:
-            return Eleve.objects.none()
-        eleves = eleves.filter(classe__ecole=ecole)
-        annee_active = get_annee_active(request, ecole)
-        if annee_active:
-            eleves = eleves.filter(classe__annee_scolaire=annee_active)
+    eleves = annoter_accueil(eleves_visibles(request)).filter(
+        accueil_concerne=True, evaluation_accueil_effectuee=est_evalue
+    )
+    classe_id = request.GET.get('classe_id')
+    if classe_id:
+        try:
+            eleves = eleves.filter(classe_id=int(classe_id))
+        except (TypeError, ValueError):
+            return eleves.none()
+    recherche = (request.GET.get('recherche') or '').strip()
+    if recherche:
+        eleves = eleves.filter(
+            Q(matricule__icontains=recherche) | Q(nom__icontains=recherche) |
+            Q(prenom__icontains=recherche) | Q(classe__nom__icontains=recherche) |
+            Q(classe__ecole__nom__icontains=recherche) |
+            Q(responsable_principal__nom__icontains=recherche) |
+            Q(responsable_principal__prenom__icontains=recherche)
+        )
     return eleves.order_by('-date_creation', '-id')
 
 
@@ -244,7 +191,10 @@ def _statut_evaluation_depuis_url(statut):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def definir_evaluation_accueil(request, eleve_id):
     """Marque un élève comme évalué ou non évalué au test d'accueil."""
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(
+        annoter_accueil(eleves_visibles(request)).filter(accueil_concerne=True),
+        pk=eleve_id,
+    )
     est_evalue = request.POST.get('est_evalue') == '1'
     if eleve.evaluation_accueil_effectuee != est_evalue:
         eleve.evaluation_accueil_effectuee = est_evalue
@@ -3351,12 +3301,19 @@ def generer_ticket_bus_pdf(request, eleve_id):
             messages.error(request, "Vous n'avez pas accès à cet élève.")
             return redirect('eleves:liste_eleves')
     
-    # Récupérer l'abonnement bus actif
-    abonnement = AbonnementBus.objects.filter(
-        eleve=eleve,
-        statut='ACTIF'
-    ).order_by('-date_debut').first()
-    
+    abonnements = AbonnementBus.objects.filter(
+        eleve=eleve, statut='ACTIF', annee_scolaire=eleve.classe.annee_scolaire,
+        date_debut__lte=timezone.localdate(), date_expiration__gte=timezone.localdate(),
+    )
+    abonnement_id = request.GET.get('abonnement')
+    if abonnement_id:
+        try:
+            abonnement = get_object_or_404(abonnements, pk=int(abonnement_id))
+        except (TypeError, ValueError):
+            return HttpResponse("Abonnement invalide.", status=400)
+    else:
+        abonnement = abonnements.order_by('-date_debut', '-pk').first()
+
     if not abonnement:
         messages.warning(request, "Cet élève n'a pas d'abonnement bus actif.")
         return redirect('eleves:detail_eleve', eleve_id=eleve_id)

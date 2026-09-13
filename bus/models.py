@@ -125,6 +125,10 @@ class GrilleTarifaireBus(SyncTrackedModel):
             row['periodicite']: Decimal(row['total'] or 0)
             for row in versements.values('periodicite').annotate(total=models.Sum('montant'))
         }
+        return self.situation_depuis_totaux(directs)
+
+    def situation_depuis_totaux(self, directs):
+        """Même calcul pour les reçus et les versements préchargés du tableau de bord."""
         annuel_restant = directs.get('ANNUEL', Decimal('0'))
         situation = {}
         for code, montant_du in (

@@ -18,6 +18,7 @@ import csv
 from eleves.models import Eleve
 from .models import AbonnementBus, GrilleTarifaireBus
 from .forms import AbonnementBusForm, GrilleTarifaireBusForm
+from .suivi_classes import contexte_suivi_classe
 from utilisateurs.utils import user_is_superadmin, user_school, filter_by_user_school
 from utilisateurs.permissions import can_delete_subscriptions, permission_required
 from ecole_moderne.security_decorators import require_school_object
@@ -177,6 +178,7 @@ def liste_abonnements(request):
         'periodicite_rows': periodicite_rows,
         'zone_rows': zone_rows,
     }
+    context.update(contexte_suivi_classe(request))
     return render(request, 'bus/liste.html', context)
 
 
