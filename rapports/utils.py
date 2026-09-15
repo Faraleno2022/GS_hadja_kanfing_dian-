@@ -3,7 +3,7 @@ Fonctions utilitaires pour le module Rapports
 """
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, F, Exists, OuterRef
 from django.utils import timezone as django_timezone
 from io import BytesIO
 from reportlab.pdfgen import canvas
@@ -136,6 +136,68 @@ def remises_par_categorie(paiements_qs):
     }
 
 
+def soldes_actuels_par_classe(ecole, paiements, debut, fin):
+    """Soldes actuels des échéanciers concernés par les opérations de la période.
+
+    Les encaissements du rapport restent limités à la période. Ici, les cumuls
+    couvrent chaque échéancier annuel, y compris ses remises antérieures.
+    """
+    paiements_correspondants = paiements.filter(
+        eleve_id=OuterRef('eleve_id'),
+        annee_scolaire=OuterRef('annee_scolaire'),
+    )
+    echeanciers = EcheancierPaiement.objects.filter(
+        eleve__classe__ecole=ecole,
+    ).alias(
+        paiement_dans_periode=Exists(paiements_correspondants),
+    ).filter(
+        Q(paiement_dans_periode=True)
+        | Q(eleve__date_inscription__range=(debut, fin),
+            annee_scolaire=F('eleve__classe__annee_scolaire'))
+    )
+    # Une sous-requête corrélée évite d'associer un élève à l'année d'un autre.
+    remises = PaiementRemise.objects.filter(
+        paiement__statut='VALIDE',
+    ).alias(
+        echeancier_concerne=Exists(echeanciers.filter(
+            eleve_id=OuterRef('paiement__eleve_id'),
+            annee_scolaire=OuterRef('paiement__annee_scolaire'),
+        )),
+    ).filter(echeancier_concerne=True).order_by().values(
+        'paiement__eleve_id', 'paiement__annee_scolaire',
+    ).annotate(total=Sum('montant_remise'))
+    remises_par_echeancier = {
+        (r['paiement__eleve_id'], r['paiement__annee_scolaire']): r['total']
+        for r in remises
+    }
+    classes = {}
+    effectifs = {}
+    for echeancier in echeanciers.select_related('eleve__classe'):
+        classe = echeancier.eleve.classe
+        row = classes.setdefault(classe.pk, {
+            'classe': classe.nom, 'effectif': 0,
+            'total_du': Decimal('0'), 'total_paye': Decimal('0'),
+            'remises': Decimal('0'), 'reste': Decimal('0'),
+        })
+        effectifs.setdefault(classe.pk, set()).add(echeancier.eleve_id)
+        remise = remises_par_echeancier.get(
+            (echeancier.eleve_id, echeancier.annee_scolaire), Decimal('0'),
+        )
+        du, paye = echeancier.total_du, echeancier.total_paye
+        row['total_du'] += du
+        row['total_paye'] += paye
+        row['remises'] += remise
+        row['reste'] += max(Decimal('0'), du - paye - remise)
+    for classe_id, row in classes.items():
+        row['effectif'] = len(effectifs[classe_id])
+    rows = sorted(classes.values(), key=lambda row: row['classe'])
+    return {
+        'classes': rows,
+        'total_du_concernes': sum((r['total_du'] for r in rows), Decimal('0')),
+        'reste_a_payer': sum((r['reste'] for r in rows), Decimal('0')),
+    }
+
+
 def collecter_donnees_periode(debut, fin, type_periode, user=None):
     """Collecte les données pour une période donnée"""
     donnees = {
@@ -158,7 +220,7 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
 
     depenses_periode_global = Depense.objects.filter(
-        date_facture__range=[debut, fin], statut='VALIDEE',
+        date_facture__range=[debut, fin], statut__in=['VALIDEE', 'PAYEE'],
     )
     if user is not None:
         from utilisateurs.utils import filter_by_user_school
@@ -225,105 +287,19 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         # Classification sans double comptage
         donnees_ecole['paiements'].update(ventiler_encaissements(paiements_periode))
 
-        # Élèves concernés de la période (paiements dans période + inscriptions dans période)
-        eleves_concernes_ids = set(paiements_periode.values_list('eleve_id', flat=True).distinct())
-        inscrits_ids = set(
-            Eleve.objects.filter(
-                classe__ecole=ecole,
-                date_inscription__range=[debut, fin]
-            ).values_list('id', flat=True)
-        )
-        eleves_concernes_ids |= inscrits_ids
+        soldes = soldes_actuels_par_classe(ecole, paiements_periode, debut, fin)
+        donnees_ecole['classes'] = soldes.pop('classes')
+        donnees_ecole['paiements'].update(soldes)
 
-        # Déterminer la/les années scolaires couvertes par la période (pivot: août)
-        def annee_scolaire_for(d):
-            return f"{d.year}-{d.year + 1}" if d.month >= 8 else f"{d.year - 1}-{d.year}"
-        annees_couvertes = {annee_scolaire_for(debut), annee_scolaire_for(fin)}
-
-        # Calculs Total dû (Scolarité normale) et Reste à payer + répartition par classe
-        total_du_concernes = Decimal('0')
-        reste_a_payer = Decimal('0')
-        classes_map = {}
-        # Pré-calcul des remises par classe sur la période (basé sur les paiements de la période)
-        remises_par_classe_map = {}
-        try:
-            remises_group = PaiementRemise.objects.filter(
-                paiement__in=paiements_periode
-            ).values(
-                'paiement__eleve__classe_id'
-            ).annotate(
-                total=Sum('montant_remise')
-            )
-            remises_par_classe_map = {row['paiement__eleve__classe_id']: (row['total'] or Decimal('0')) for row in remises_group}
-        except Exception:
-            remises_par_classe_map = {}
-        if eleves_concernes_ids:
-            qs_ech = EcheancierPaiement.objects.filter(
-                eleve_id__in=list(eleves_concernes_ids),
-                annee_scolaire__in=list(annees_couvertes)
-            ).values(
-                'eleve__classe_id', 'eleve__classe__nom',
-                'frais_inscription_du', 'tranche_1_due', 'tranche_2_due', 'tranche_3_due',
-                'frais_inscription_paye', 'tranche_1_payee', 'tranche_2_payee', 'tranche_3_payee'
-            )
-            for row in qs_ech:
-                classe_id = row.get('eleve__classe_id')
-                classe_nom = row.get('eleve__classe__nom') or 'Classe'
-                du = (row.get('frais_inscription_du') or Decimal('0')) \
-                     + (row.get('tranche_1_due') or Decimal('0')) \
-                     + (row.get('tranche_2_due') or Decimal('0')) \
-                     + (row.get('tranche_3_due') or Decimal('0'))
-                paye = (row.get('frais_inscription_paye') or Decimal('0')) \
-                       + (row.get('tranche_1_payee') or Decimal('0')) \
-                       + (row.get('tranche_2_payee') or Decimal('0')) \
-                       + (row.get('tranche_3_payee') or Decimal('0'))
-                solde = du - paye
-
-                total_du_concernes += du
-                if solde > 0:
-                    reste_a_payer += solde
-
-                if classe_id not in classes_map:
-                    classes_map[classe_id] = {
-                        'classe': classe_nom,
-                        'effectif': 0,
-                        'total_du': Decimal('0'),
-                        'total_paye': Decimal('0'),
-                        'reste': Decimal('0'),
-                        'remises': Decimal('0'),
-                    }
-                cm = classes_map[classe_id]
-                cm['effectif'] += 1
-                cm['total_du'] += du
-                cm['total_paye'] += paye
-                if solde > 0:
-                    cm['reste'] += solde
-                # Injecter remises agrégées pour cette classe
-                try:
-                    cm['remises'] = remises_par_classe_map.get(classe_id, cm['remises'])
-                except Exception:
-                    pass
-
-        donnees_ecole['paiements']['total_du_concernes'] = total_du_concernes
-        donnees_ecole['paiements']['reste_a_payer'] = reste_a_payer
-        donnees_ecole['classes'] = sorted(classes_map.values(), key=lambda x: x['classe'])
-        
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
         
         # États de salaire de la période
         etats_periode = EtatSalaire.objects.filter(
             enseignant__ecole=ecole,
-            date_validation__range=[debut, fin],
+            date_validation__date__range=[debut, fin],
             valide=True
         )
-        
-        # Si pas d'états dans la période, essayer avec tous les états validés de l'école
-        if not etats_periode.exists():
-            etats_periode = EtatSalaire.objects.filter(
-                enseignant__ecole=ecole,
-                valide=True
-            )
         
         donnees_ecole['salaires']['etats_valides'] = etats_periode.count()
         donnees_ecole['salaires']['montant_total'] = etats_periode.aggregate(
@@ -368,7 +344,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ['Frais d\'inscription', f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
             ['Frais de réinscription', f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
-            ['Reste à payer', f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
+            ['Solde actuel restant', f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
             ['Montant net encaissé', f"{donnees_ecole['paiements']['montant_total']:,} GNF".replace(',', ' ')],
@@ -395,10 +371,10 @@ def generer_pdf_periode(donnees, debut, fin, type_periode, ecole=None):
 
         # Répartition par classe
         if donnees_ecole.get('classes'):
-            story.append(Paragraph("Répartition par classe", styles['Heading3']))
+            story.append(Paragraph("Situation actuelle des échéanciers par classe", styles['Heading3']))
             story.append(Spacer(1, 6))
             class_data = [[
-                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer'
+                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Solde actuel'
             ]]
             for c in donnees_ecole['classes']:
                 class_data.append([

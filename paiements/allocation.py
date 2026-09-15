@@ -224,10 +224,11 @@ def reste_par_tranche_avec_couverture(echeancier, couverture_totale):
 def get_payment_allocation(paiement, echeancier=None):
     """Reconstruit l'affectation exacte d'un paiement validé pour les reçus."""
     if echeancier is None:
-        try:
-            echeancier = paiement.eleve.echeancier
-        except Exception:
-            return None
+        echeancier = paiement.eleve.echeanciers.filter(
+            annee_scolaire=paiement.annee_scolaire,
+        ).first()
+    if echeancier is None:
+        return None
 
     running_paid = {key: Decimal("0") for key, _due, _paid in ALLOCATION_COMPONENTS}
     target_allocation = None

@@ -3,14 +3,14 @@ from collections import defaultdict
 from decimal import Decimal
 
 from django.core.paginator import Paginator
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Sum
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from eleves.models import Eleve
 from eleves.suivi_listes import classes_visibles
-from .models import AbonnementBus
+from .models import AbonnementBus, GrilleTarifaireBus
 
 
 def contexte_suivi_classe(request):
@@ -89,3 +89,50 @@ def contexte_suivi_classe(request):
         'eleve_bus': eleve, 'lignes_bus': lignes, 'page_bus': page,
         'filtres_bus_url': filtres.urlencode(),
     }
+
+
+
+def resume_transport_par_classe(versements):
+    """Cumule les reçus bus et compte chaque tarif une fois par élève/grille."""
+    groupes = list(versements.order_by().values(
+        'eleve_id', 'eleve__classe_id', 'eleve__classe__nom',
+        'grille_id', 'periodicite',
+    ).annotate(montant=Sum('montant')))
+    grilles = GrilleTarifaireBus.objects.in_bulk(
+        {g['grille_id'] for g in groupes if g['grille_id']},
+    )
+    classes, eleves, grilles_eleves = {}, defaultdict(set), {}
+    for groupe in groupes:
+        classe_id = groupe['eleve__classe_id']
+        row = classes.setdefault(classe_id, {
+            'classe': groupe['eleve__classe__nom'] or 'Classe',
+            'nb_abonnes': 0, 'total_du': Decimal('0'),
+            'total_paye': Decimal('0'), 'reste': Decimal('0'),
+        })
+        eleves[classe_id].add(groupe['eleve_id'])
+        row['total_paye'] += groupe['montant'] or Decimal('0')
+        grille = grilles.get(groupe['grille_id'])
+        if not grille or groupe['periodicite'] not in {'ANNUEL', 'T1', 'T2', 'T3'}:
+            row['total_du'] = row['reste'] = None
+            continue
+        key = (classe_id, groupe['eleve_id'], grille.pk)
+        grilles_eleves.setdefault(key, {})[groupe['periodicite']] = groupe['montant']
+    for (classe_id, _eleve_id, grille_id), montants in grilles_eleves.items():
+        situation = grilles[grille_id].situation_depuis_totaux(montants)['ANNUEL']
+        row = classes[classe_id]
+        if row['total_du'] is not None:
+            row['total_du'] += situation['du']
+            row['reste'] += situation['reste']
+    for classe_id, row in classes.items():
+        row['nb_abonnes'] = len(eleves[classe_id])
+    lignes = sorted(classes.values(), key=lambda row: row['classe'])
+    totals = {
+        'nb_abonnes': sum(row['nb_abonnes'] for row in lignes),
+        'total_paye': sum((row['total_paye'] for row in lignes), Decimal('0')),
+    }
+    for field in ('total_du', 'reste'):
+        totals[field] = (
+            None if any(row[field] is None for row in lignes)
+            else sum((row[field] for row in lignes), Decimal('0'))
+        )
+    return lignes, totals

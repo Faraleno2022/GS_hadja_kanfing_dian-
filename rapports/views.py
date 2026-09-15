@@ -15,7 +15,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 
-from .utils import ventiler_encaissements
+from .utils import ventiler_encaissements, soldes_actuels_par_classe
 from .models import Rapport, TypeRapport, ExportProgramme
 from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark, remises_par_categorie
 from eleves.models import Eleve, Ecole
@@ -321,96 +321,33 @@ def liste_rapports(request):
 @login_required
 @user_passes_test(can_access_rapports)
 def rapport_transport_scolaire(request):
-    """Tableau Transport scolaire par classe: Classe | Nombre d'abonnés | Total payé | Reste à payer
-
-    Logique:
-    - Nombre d'abonnés: nombre d'abonnements bus ACTIFS par classe (\n pas les élèves uniques si plusieurs abonnements).
-    - Total dû: somme des montants d'abonnements ACTIFS par classe.
-    - Total payé: si un TypePaiement dont le nom contient 'bus' ou 'transport' existe,
-      on additionne les paiements VALIDÉS de ces types par classe.
-    - Reste à payer: max(Total dû - Total payé, 0).
-    """
-    # Restreindre par école selon l'utilisateur
-    ecole_user = user_school(request.user)
-    abonnements_qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe')
-    paiements_qs = Paiement.objects.select_related('eleve', 'eleve__classe', 'type_paiement')
-
-    if ecole_user:
-        abonnements_qs = abonnements_qs.filter(eleve__classe__ecole=ecole_user)
-        paiements_qs = paiements_qs.filter(eleve__classe__ecole=ecole_user)
-
-    # Abonnements actifs uniquement
-    abonnements_qs = abonnements_qs.filter(statut=AbonnementBus.Statut.ACTIF)
-
-    # Agrégation abonnements par classe
+    """Rapport des versements bus de l'année active et de leurs tarifs."""
     from django.db.models import F
-    abonnements_par_classe = abonnements_qs.values(
-        'eleve__classe__id', 'eleve__classe__nom'
-    ).annotate(
-        nb_abonnes=Count('id'),
-        total_du=Sum('montant')
+    from bus.suivi_classes import resume_transport_par_classe
+    from utilisateurs.utils import filter_by_user_school
+
+    ecole_user = user_school(request.user)
+    annee = get_annee_active(request, ecole_user)
+    versements = filter_by_user_school(
+        AbonnementBus.objects.all(), request.user, 'eleve__classe__ecole',
     )
-
-    # Détecter TypePaiement "Transport/Bus"
-    transport_types = TypePaiement.objects.filter(
-        Q(nom__icontains='transport') | Q(nom__icontains='bus')
+    if annee:
+        versements = versements.filter(annee_scolaire=annee)
+    else:
+        versements = versements.filter(annee_scolaire=F('eleve__classe__annee_scolaire'))
+    versements = versements.filter(
+        Q(grille__isnull=True)
+        | Q(grille__ecole_id=F('eleve__classe__ecole_id'),
+            grille__annee_scolaire=F('annee_scolaire'))
     )
-
-    total_paye_par_classe = {}
-    if transport_types.exists():
-        paiements_transport = paiements_qs.filter(
-            type_paiement__in=transport_types,
-            statut='VALIDE'
-        )
-        paiements_group = paiements_transport.values(
-            'eleve__classe__id'
-        ).annotate(
-            total_paye=Sum('montant')
-        )
-        total_paye_par_classe = {row['eleve__classe__id']: row['total_paye'] or 0 for row in paiements_group}
-
-    lignes = []
-    totals = {
-        'nb_abonnes': 0,
-        'total_du': 0,
-        'total_paye': 0,
-        'reste': 0,
-    }
-
-    for row in abonnements_par_classe:
-        classe_id = row['eleve__classe__id']
-        classe_nom = row['eleve__classe__nom'] or 'Classe'
-        nb_abonnes = row['nb_abonnes'] or 0
-        total_du = row['total_du'] or 0
-        total_paye = total_paye_par_classe.get(classe_id, 0)
-        reste = total_du - total_paye
-        if reste < 0:
-            reste = 0
-
-        lignes.append({
-            'classe': classe_nom,
-            'nb_abonnes': nb_abonnes,
-            'total_paye': total_paye,
-            'reste': reste,
-            'total_du': total_du,
-        })
-
-        totals['nb_abonnes'] += nb_abonnes
-        totals['total_du'] += total_du
-        totals['total_paye'] += total_paye
-        totals['reste'] += reste
-
-    # Ordonner par nom de classe
-    lignes = sorted(lignes, key=lambda x: x['classe'])
-
-    context = {
-        'lignes': lignes,
-        'totals': totals,
-        'has_payment_types': transport_types.exists(),
+    # Une suspension ou une expiration n'annule pas les sommes encaissées.
+    lignes, totals = resume_transport_par_classe(versements)
+    return render(request, 'rapports/transport_scolaire.html', {
+        'lignes': lignes, 'totals': totals, 'annee_scolaire': annee,
         'ecole': getattr(ecole_user, 'nom', None),
-    }
+        'soldes_inconnus': totals['reste'] is None,
+    })
 
-    return render(request, 'rapports/transport_scolaire.html', context)
 
 def get_or_create_type_rapport(nom):
     """Récupère ou crée un type de rapport"""
@@ -492,7 +429,7 @@ def _build_excel_from_donnees(donnees, titre):
 
     # Feuille 2: par classe
     ws2 = wb.create_sheet('Par classe')
-    headers2 = ['École', 'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer']
+    headers2 = ['École', 'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Solde actuel']
     ws2.append(headers2)
     for col in range(1, len(headers2) + 1):
         c = ws2.cell(row=1, column=col)
@@ -574,7 +511,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
     # Dépenses du jour (GLOBAL - pas de relation à Ecole)
     depenses_jour_global = Depense.objects.filter(
         date_facture=date_rapport,
-        statut='VALIDEE'
+        statut__in=['VALIDEE', 'PAYEE']
     )
     if user is not None:
         from utilisateurs.utils import filter_by_user_school
@@ -651,97 +588,12 @@ def collecter_donnees_journalieres(date_rapport, user=None):
 
         donnees_ecole['paiements'].update(ventiler_encaissements(paiements_jour))
         
-        # (Supprimé) Frais de scolarité annuel ne figure pas dans le rapport journalier
-        
-        # Calcul: Reste à payer (élèves concernés par la journée)
-        # Inclut: élèves ayant payé ce jour + nouveaux inscrits ce jour
-        eleves_concernes_ids = set(
-            paiements_jour.values_list('eleve_id', flat=True).distinct()
+        soldes = soldes_actuels_par_classe(
+            ecole, paiements_jour, date_rapport, date_rapport,
         )
-        nouveaux_ids = set(Eleve.objects.filter(
-            classe__ecole=ecole,
-            date_inscription=date_rapport
-        ).values_list('id', flat=True))
-        eleves_concernes_ids |= nouveaux_ids
+        donnees_ecole['classes'] = soldes.pop('classes')
+        donnees_ecole['paiements'].update(soldes)
 
-        # Déterminer l'année scolaire (pivot: août)
-        if date_rapport.month >= 8:
-            annee_scolaire = f"{date_rapport.year}-{date_rapport.year + 1}"
-        else:
-            annee_scolaire = f"{date_rapport.year - 1}-{date_rapport.year}"
-
-        # Répartition des remises par classe (sur les paiements de la période du jour)
-        remises_par_classe_map = {}
-        try:
-            remises_group = PaiementRemise.objects.filter(
-                paiement__in=paiements_jour
-            ).values(
-                'paiement__eleve__classe_id'
-            ).annotate(
-                total=Sum('montant_remise')
-            )
-            remises_par_classe_map = {row['paiement__eleve__classe_id']: (row['total'] or Decimal('0')) for row in remises_group}
-        except Exception:
-            remises_par_classe_map = {}
-
-        reste_a_payer = Decimal('0')
-        total_du_concernes = Decimal('0')
-        if eleves_concernes_ids:
-            # Répartition par classe: accumuler par classe
-            par_classe = {}
-            qs_ech = EcheancierPaiement.objects.filter(
-                eleve_id__in=list(eleves_concernes_ids),
-                annee_scolaire=annee_scolaire
-            ).values(
-                'eleve__classe_id', 'eleve__classe__nom',
-                'frais_inscription_du', 'tranche_1_due', 'tranche_2_due', 'tranche_3_due',
-                'frais_inscription_paye', 'tranche_1_payee', 'tranche_2_payee', 'tranche_3_payee'
-            )
-            for row in qs_ech:
-                classe_id = row.get('eleve__classe_id')
-                classe_nom = row.get('eleve__classe__nom') or 'Classe'
-                du = (row.get('frais_inscription_du') or Decimal('0')) \
-                     + (row.get('tranche_1_due') or Decimal('0')) \
-                     + (row.get('tranche_2_due') or Decimal('0')) \
-                     + (row.get('tranche_3_due') or Decimal('0'))
-                paye = (row.get('frais_inscription_paye') or Decimal('0')) \
-                       + (row.get('tranche_1_payee') or Decimal('0')) \
-                       + (row.get('tranche_2_payee') or Decimal('0')) \
-                       + (row.get('tranche_3_payee') or Decimal('0'))
-                solde = du - paye
-
-                # Totaux généraux
-                total_du_concernes += du
-                if solde > 0:
-                    reste_a_payer += solde
-
-                # Accumulation par classe
-                if classe_id not in par_classe:
-                    par_classe[classe_id] = {
-                        'classe': classe_nom,
-                        'effectif': 0,
-                        'total_du': Decimal('0'),
-                        'total_paye': Decimal('0'),
-                        'reste': Decimal('0'),
-                        'remises': Decimal('0'),
-                    }
-                pc = par_classe[classe_id]
-                pc['effectif'] += 1
-                pc['total_du'] += du
-                pc['total_paye'] += paye
-                if solde > 0:
-                    pc['reste'] += solde
-                # Ajouter remises pour cette classe (agrégées sur les paiements du jour)
-                try:
-                    pc['remises'] = remises_par_classe_map.get(classe_id, pc['remises'])
-                except Exception:
-                    pass
-
-            # Ranger la liste ordonnée par nom de classe
-            donnees_ecole['classes'] = sorted(par_classe.values(), key=lambda x: x['classe'])
-        donnees_ecole['paiements']['reste_a_payer'] = reste_a_payer
-        donnees_ecole['paiements']['total_du_concernes'] = total_du_concernes
-        
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
 
@@ -849,7 +701,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             ['Scolarité payé', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
             ["Frais d'inscription", f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
             ["Frais de réinscription", f"{donnees_ecole['paiements'].get('reinscription', Decimal('0')):,} GNF".replace(',', ' ')],
-            ["Reste à payer", f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
+            ["Solde actuel restant", f"{donnees_ecole['paiements'].get('reste_a_payer', Decimal('0')):,} GNF".replace(',', ' ')],
             ['Montant original (avant remises)', f"{donnees_ecole['paiements']['montant_original']:,} GNF".replace(',', ' ')],
             ['Total des remises accordées', f"{donnees_ecole['paiements']['total_remises']:,} GNF".replace(',', ' ')],
             ['Montant net encaissé', f"{donnees_ecole['paiements']['montant_total']:,} GNF".replace(',', ' ')],
@@ -876,10 +728,10 @@ def generer_pdf_journalier(donnees, date_rapport):
 
         # Répartition par classe
         if donnees_ecole.get('classes'):
-            story.append(Paragraph("Répartition par classe", styles['Heading3']))
+            story.append(Paragraph("Situation actuelle des échéanciers par classe", styles['Heading3']))
             story.append(Spacer(1, 6))
             class_data = [[
-                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer'
+                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Solde actuel'
             ]]
             for c in donnees_ecole['classes']:
                 class_data.append([
@@ -995,16 +847,20 @@ def rapport_remises_detaille(request):
         aujourd_hui = date.today()
         annee_debut = aujourd_hui.year if aujourd_hui.month >= 9 else aujourd_hui.year - 1
 
-    if not date_debut:
-        date_debut = date(annee_debut, 9, 1)
-    else:
-        date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
-    
-    if not date_fin:
-        date_fin = date.today()
-    else:
-        date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
-    
+    try:
+        date_debut = (
+            datetime.strptime(date_debut, '%Y-%m-%d').date()
+            if date_debut else date(annee_debut, 9, 1)
+        )
+        date_fin = (
+            datetime.strptime(date_fin, '%Y-%m-%d').date()
+            if date_fin else date.today()
+        )
+    except (ValueError, TypeError):
+        return HttpResponse("Dates invalides : utilisez le format AAAA-MM-JJ.", status=400)
+    if date_debut > date_fin:
+        return HttpResponse("La date de début doit précéder la date de fin.", status=400)
+
     # Récupérer toutes les remises appliquées dans la période
     remises_appliquees = PaiementRemise.objects.filter(
         paiement__date_paiement__range=[date_debut, date_fin],
@@ -1029,17 +885,18 @@ def rapport_remises_detaille(request):
         total=Sum('montant_remise')
     )['total'] or Decimal('0')
     
-    total_montants_finals = remises_appliquees.aggregate(
-        total=Sum('paiement__montant')
-    )['total'] or Decimal('0')
-    
-    difference_totale = total_montants_finals - total_remises
+    # Compter chaque reçu une fois, même s'il porte plusieurs remises.
+    # Deux reçus de même montant doivent toutefois tous les deux être comptés.
+    total_montants_finals = Paiement.objects.filter(
+        pk__in=remises_appliquees.values('paiement_id'),
+    ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+    montant_avant_remises = total_montants_finals + total_remises
     
     # Statistiques des remises
     stats_remises = {
         'total_remises': total_remises,
         'total_montants_finals': total_montants_finals,
-        'difference_totale': difference_totale,
+        'montant_avant_remises': montant_avant_remises,
         'nombre_paiements_avec_remise': remises_appliquees.values('paiement').distinct().count(),
         'nombre_eleves_beneficiaires': remises_appliquees.values('paiement__eleve').distinct().count(),
     }
@@ -1060,6 +917,11 @@ def rapport_remises_detaille(request):
         nombre_applications=Count('id')
     ).order_by('-total_montant')
     
+    recus_affiches = set()
+    for remise in remises_appliquees:
+        remise.afficher_montant_recu = remise.paiement_id not in recus_affiches
+        recus_affiches.add(remise.paiement_id)
+
     context = {
         'remises_appliquees': remises_appliquees,
         'stats_remises': stats_remises,

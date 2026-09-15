@@ -527,6 +527,13 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .utils_rangs import invalider_cache_rangs
 
+@receiver(post_save, sender=MatiereNote)
+@receiver(post_delete, sender=MatiereNote)
+def invalider_cache_matiere(sender, instance, **kwargs):
+    """Un coefficient ou une matière modifiés changent tous les classements."""
+    invalider_cache_rangs(instance.classe)
+
+
 @receiver(post_save, sender=NoteMensuelle)
 @receiver(post_delete, sender=NoteMensuelle)
 def invalider_cache_note_mensuelle(sender, instance, **kwargs):

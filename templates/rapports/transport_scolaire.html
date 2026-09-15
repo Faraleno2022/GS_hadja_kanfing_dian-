@@ -10,6 +10,10 @@
     {% if ecole %}<span class="badge bg-primary">{{ ecole }}</span>{% endif %}
   </div>
 
+  <p class="text-muted">
+    {% if annee_scolaire %}Année scolaire {{ annee_scolaire }}.{% endif %}
+    Élèves ayant des versements bus, tous statuts confondus. Chaque grille annuelle est comptée une fois par élève.
+  </p>
   <div class="card shadow-sm">
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -17,7 +21,8 @@
           <thead class="table-light">
             <tr>
               <th>Classe</th>
-              <th class="text-end">Nombre d'abonnés</th>
+              <th class="text-end">Élèves avec versements</th>
+              <th class="text-end">Total dû (GNF)</th>
               <th class="text-end">Total payé (GNF)</th>
               <th class="text-end">Reste à payer (GNF)</th>
             </tr>
@@ -28,13 +33,14 @@
                 <tr>
                   <td>{{ l.classe }}</td>
                   <td class="text-end">{{ l.nb_abonnes|intcomma }}</td>
+                  <td class="text-end">{{ l.total_du|default_if_none:"Indéterminé"|intcomma }}</td>
                   <td class="text-end">{{ l.total_paye|intcomma }}</td>
-                  <td class="text-end fw-semibold text-danger">{{ l.reste|intcomma }}</td>
+                  <td class="text-end fw-semibold text-danger">{{ l.reste|default_if_none:"Indéterminé"|intcomma }}</td>
                 </tr>
               {% endfor %}
             {% else %}
               <tr>
-                <td colspan="4" class="text-center text-muted py-4">Aucune donnée disponible</td>
+                <td colspan="5" class="text-center text-muted py-4">Aucune donnée disponible</td>
               </tr>
             {% endif %}
           </tbody>
@@ -42,8 +48,9 @@
             <tr class="table-secondary">
               <th>Total</th>
               <th class="text-end">{{ totals.nb_abonnes|intcomma }}</th>
+              <th class="text-end">{{ totals.total_du|default_if_none:"Indéterminé"|intcomma }}</th>
               <th class="text-end">{{ totals.total_paye|intcomma }}</th>
-              <th class="text-end">{{ totals.reste|intcomma }}</th>
+              <th class="text-end">{{ totals.reste|default_if_none:"Indéterminé"|intcomma }}</th>
             </tr>
           </tfoot>
         </table>
@@ -51,9 +58,9 @@
     </div>
   </div>
 
-  {% if not has_payment_types %}
+  {% if soldes_inconnus %}
     <div class="alert alert-warning mt-3" role="alert">
-      Aucun type de paiement de transport/bus trouvé. Le "Total payé" pourrait être incomplet. Ajoutez un type de paiement nommé par exemple "Transport" ou "Bus" dans la gestion des types de paiements.
+      Certains versements n'ont pas de grille annuelle exploitable. Leurs encaissements sont inclus, mais le montant dû et le solde ne peuvent pas être déterminés pour les classes concernées.
     </div>
   {% endif %}
 </div>
