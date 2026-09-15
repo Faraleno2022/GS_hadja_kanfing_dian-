@@ -212,9 +212,11 @@ def repartir_heures(total_heures, lignes_prevues):
         if index == len(lignes_prevues) - 1:
             heures_realisees = reste
         else:
-            heures_realisees = arrondir_heures(
+            # Les arrondis des premières lignes ne peuvent consommer plus
+            # que le total, sinon la dernière affectation devient négative.
+            heures_realisees = min(reste, arrondir_heures(
                 total_heures * heures_prevues / total_prevu
-            )
+            ))
             reste -= heures_realisees
         repartition.append(
             (affectation, arrondir_heures(heures_prevues), heures_realisees)

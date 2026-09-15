@@ -182,7 +182,7 @@
                                                         <th>Type de remise</th>
                                                         <th>Motif</th>
                                                         <th class="text-end">Montant remise</th>
-                                                        <th class="text-end">Montant final</th>
+                                                        <th class="text-end">Net encaissé par reçu</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -212,7 +212,11 @@
                                                             </span>
                                                         </td>
                                                         <td class="text-end">
+                                                            {% if remise.afficher_montant_recu %}
                                                             <strong>{{ remise.paiement.montant|floatformat:0 }} GNF</strong>
+                                                            {% else %}
+                                                            <span class="text-muted" title="Montant déjà compté pour ce reçu">—</span>
+                                                            {% endif %}
                                                         </td>
                                                     </tr>
                                                     {% endfor %}
@@ -230,9 +234,9 @@
                                                         </th>
                                                     </tr>
                                                     <tr>
-                                                        <th colspan="6" class="text-end">Différence (Final - Remise) :</th>
+                                                        <th colspan="6" class="text-end">Montant avant remises :</th>
                                                         <th colspan="2" class="text-end">
-                                                            <strong class="text-success">{{ stats_remises.difference_totale|floatformat:0 }} GNF</strong>
+                                                            <strong class="text-success">{{ stats_remises.montant_avant_remises|floatformat:0 }} GNF</strong>
                                                         </th>
                                                     </tr>
                                                 </tfoot>

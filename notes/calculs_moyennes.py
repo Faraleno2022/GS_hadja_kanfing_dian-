@@ -13,6 +13,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, List, Tuple, Optional
 from django.core.cache import cache
 from .models import Evaluation, NoteEleve, MatiereNote, NoteMensuelle, CompositionNote
+import hashlib
+import json
 import logging
 import time
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Constantes de cache
 CACHE_TIMEOUT_MOYENNES = 600  # 10 minutes
 CACHE_TIMEOUT_CLASSEMENT = 600  # 10 minutes
-CALCUL_CACHE_SCHEMA_VERSION = 2
+CALCUL_CACHE_SCHEMA_VERSION = 3
 
 # Règles de calcul utilisées par les bulletins et les classements.
 # Secondaire guinéen: moyenne de période = 40% cours + 60% composition.
@@ -471,6 +473,7 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                 moyenne_continue = float(total_notes / count_notes)
 
         # Récupérer la note de composition (TOUJOURS chercher, même sans notes mensuelles)
+        composition_saisie = False
         try:
             compo = CompositionNote.objects.get(
                 eleve=eleve,
@@ -478,13 +481,14 @@ def calculer_moyenne_matiere(eleve, matiere, periode, system_type='mensuel'):
                 periode=periode,
                 annee_scolaire=matiere.classe.annee_scolaire
             )
+            composition_saisie = True
             if not compo.absent and compo.note is not None:
                 note_composition = float(compo.note)
         except CompositionNote.DoesNotExist:
             pass
 
         # Repli: compositions saisies en trimestres mais consultation semestrielle
-        if note_composition is None and system_type in ['semestriel', 'semestre']:
+        if not composition_saisie and system_type in ['semestriel', 'semestre']:
             fb = _compositions_semestre_depuis_trimestres(
                 [eleve.id], [matiere.id], periode, matiere.classe.annee_scolaire
             )
@@ -627,6 +631,12 @@ def calculer_moyenne_generale_eleve(eleve, matieres, periode, system_type='mensu
     }
 
 
+def _signature_selection(eleves_ids, matieres_ids):
+    """Identifie exactement les élèves et matières demandés, ordre compris."""
+    payload = json.dumps([eleves_ids, matieres_ids], separators=(',', ':'))
+    return hashlib.sha256(payload.encode('utf-8')).hexdigest()[:24]
+
+
 def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='mensuel', use_cache=True):
     """
     OPTIMISATION: Calcule les moyennes de tous les élèves d'une classe en une seule passe.
@@ -673,7 +683,8 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
     # ── Cache: évite de recalculer si déjà fait dans les 10 dernières minutes ──
     # La version est incrémentée à chaque sauvegarde de note pour invalider le cache
     _version = cache.get(f"moy_version_classe_{classe.id}", 0)
-    _cache_key = f"moy_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe.id}_{periode}_{system_type}_v{_version}"
+    selection = _signature_selection(eleves_ids, matieres_ids)
+    _cache_key = f"moy_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe.id}_{periode}_{system_type}_v{_version}_{selection}"
     if use_cache:
         _cached = cache.get(_cache_key)
         if _cached is not None:
@@ -775,7 +786,15 @@ def calculer_moyennes_classe_optimise(eleves, matieres, periode, system_type='me
 
     # RÈGLE STRICTE: matières où la classe a composé — un élève sans
     # composition y prend 0 (ne pas favoriser les absents)
-    matieres_avec_compo = {mid for (_eid, mid) in compositions_dict.keys()}
+    matieres_avec_compo = set()
+    if system_type != 'mensuel':
+        # La présence d'une composition concerne toute la classe, même
+        # lorsqu'on calcule uniquement le bulletin d'un élève absent.
+        matieres_avec_compo = set(CompositionNote.objects.filter(
+            matiere_id__in=matieres_ids,
+            annee_scolaire=annee_scolaire,
+            periode__in=_periodes_composition_equivalentes(periode, system_type),
+        ).order_by().values_list('matiere_id', flat=True).distinct())
 
     # Calculer les moyennes pour chaque élève (sans requêtes supplémentaires)
     resultats = {}
@@ -998,21 +1017,20 @@ def calculer_classement_classe(eleves, matieres, periode, system_type='mensuel',
             - rang_map: dict {eleve_id: rang}
             - details_par_eleve: dict {eleve_id: dict complet des calculs}
     """
-    # Gérer le cas où matieres est une liste au lieu d'un QuerySet
-    if isinstance(matieres, list):
-        if matieres:
-            classe_id = matieres[0].classe_id
-            cache_key = f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_id}_periode_{periode}_type_{system_type}"
-        else:
-            cache_key = None
-    else:
-        # Générer une clé de cache basée sur les paramètres
-        if matieres.exists():
-            classe_id = matieres.first().classe_id
-            cache_key = f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_id}_periode_{periode}_type_{system_type}"
-        else:
-            cache_key = None
-    
+    eleves = list(eleves)
+    matieres = list(matieres)
+    cache_key = None
+    if matieres:
+        classe_id = matieres[0].classe_id
+        version = cache.get(f"moy_version_classe_{classe_id}", 0)
+        selection = _signature_selection(
+            [eleve.id for eleve in eleves], [matiere.id for matiere in matieres],
+        )
+        cache_key = (
+            f"classement_classe_s{CALCUL_CACHE_SCHEMA_VERSION}_{classe_id}"
+            f"_periode_{periode}_type_{system_type}_v{version}_{selection}"
+        )
+
     # Vérifier le cache
     if cache_key and use_cache:
         cached_result = cache.get(cache_key)

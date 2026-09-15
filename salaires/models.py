@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -781,6 +781,16 @@ class AvanceSalaire(SyncTrackedModel):
     def clean(self):
         super().clean()
         errors = {}
+        # Valider aussi la portée enregistrée : déplacer une avance ne doit
+        # pas permettre de recalculer une paie déjà validée, payée ou clôturée.
+        ancienne = (
+            AvanceSalaire.objects.select_related('periode').filter(pk=self.pk).first()
+            if self.pk else None
+        )
+        if ancienne and not ancienne.peut_etre_modifiee:
+            errors['periode'] = (
+                "Cette avance appartient à une paie déjà validée, payée ou clôturée."
+            )
 
         if (
             self.enseignant_id
@@ -830,10 +840,11 @@ class AvanceSalaire(SyncTrackedModel):
         if errors:
             raise ValidationError(errors)
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         ancienne_portee = None
         if self.pk:
-            ancienne_portee = AvanceSalaire.objects.filter(pk=self.pk).values_list(
+            ancienne_portee = AvanceSalaire.objects.select_for_update().filter(pk=self.pk).values_list(
                 'enseignant_id', 'periode_id'
             ).first()
 
@@ -847,14 +858,18 @@ class AvanceSalaire(SyncTrackedModel):
         if ancienne_portee and ancienne_portee != nouvelle_portee:
             synchroniser_avances_etat(*ancienne_portee)
 
+    @transaction.atomic
     def delete(self, *args, **kwargs):
-        if not self.peut_etre_modifiee:
+        ancienne = AvanceSalaire.objects.select_for_update().select_related(
+            'periode',
+        ).get(pk=self.pk)
+        if not ancienne.peut_etre_modifiee:
             raise ValidationError(
                 "Cette avance ne peut plus être supprimée car la paie est "
                 "validée, payée ou clôturée."
             )
-        enseignant_id = self.enseignant_id
-        periode_id = self.periode_id
+        enseignant_id = ancienne.enseignant_id
+        periode_id = ancienne.periode_id
         resultat = super().delete(*args, **kwargs)
 
         from .services import synchroniser_avances_etat
