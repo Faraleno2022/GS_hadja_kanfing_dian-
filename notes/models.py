@@ -8,10 +8,16 @@ from synchronisation.mixins import SyncTrackedModel
 class AccesEnseignantTemporaire(models.Model):
     """Compte par lien, volontairement exclu de la synchronisation des données."""
 
+    TYPE_ACCES_CHOICES = [
+        ('NOTES', 'Notes (dont bonus de participation)'),
+        ('PRESENCE', 'Présence (appel)'),
+    ]
+
     utilisateur = models.OneToOneField(User, on_delete=models.PROTECT, related_name='acces_notes_temporaire')
     enseignant = models.ForeignKey('salaires.Enseignant', on_delete=models.PROTECT, related_name='acces_notes')
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='acces_notes_enseignants')
     cree_par = models.ForeignKey(User, on_delete=models.PROTECT, related_name='invitations_notes_creees')
+    type_acces = models.CharField(max_length=10, choices=TYPE_ACCES_CHOICES, default='NOTES')
     classes = models.ManyToManyField('ClasseNote', related_name='acces_enseignants')
     matieres = models.ManyToManyField('MatiereNote', related_name='acces_enseignants')
     empreinte_lien = models.CharField(max_length=64, unique=True, editable=False)

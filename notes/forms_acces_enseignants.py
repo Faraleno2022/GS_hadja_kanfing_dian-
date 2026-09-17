@@ -6,7 +6,7 @@ from django.utils import timezone
 from salaires.models import Enseignant
 from utilisateurs.utils import filter_by_user_school
 from .acces_enseignants import classes_affectees
-from .models import ClasseNote, MatiereNote
+from .models import AccesEnseignantTemporaire, ClasseNote, MatiereNote
 
 
 class ExpirationForm(forms.Form):
@@ -24,6 +24,10 @@ class ExpirationForm(forms.Form):
 
 class CreerAccesEnseignantForm(ExpirationForm):
     enseignant = forms.ModelChoiceField(queryset=Enseignant.objects.none(), widget=forms.HiddenInput)
+    type_acces = forms.ChoiceField(
+        label='Type de lien', choices=AccesEnseignantTemporaire.TYPE_ACCES_CHOICES,
+        widget=forms.RadioSelect, initial='NOTES', required=False,
+    )
     classes = forms.ModelMultipleChoiceField(
         label='Classes autorisées', queryset=ClasseNote.objects.none(), widget=forms.CheckboxSelectMultiple,
     )
@@ -52,9 +56,14 @@ class CreerAccesEnseignantForm(ExpirationForm):
     def clean(self):
         data = super().clean()
         classes, matieres = data.get('classes'), data.get('matieres')
+        type_acces = data['type_acces'] = data.get('type_acces') or 'NOTES'
         if data.get('enseignant') != self.enseignant:
             raise forms.ValidationError('Enseignant invalide.')
         if classes is None:
+            return data
+        if type_acces == 'PRESENCE':
+            # La présence se fait par classe : aucune matière n'est pertinente.
+            data['matieres'] = MatiereNote.objects.none()
             return data
         if self.enseignant.type_enseignant == 'SECONDAIRE':
             if not matieres:

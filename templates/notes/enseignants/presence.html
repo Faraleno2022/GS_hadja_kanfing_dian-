@@ -1,0 +1,46 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<h1 class="h3">Appel — {{ classe.nom }}</h1>
+<p class="text-muted">{{ classe.annee_scolaire }} · Votre accès expire le {{ acces.expire_le|date:"d/m/Y à H:i" }}.</p>
+
+<form method="get" class="portal-panel row g-3 align-items-end mx-0">
+    <div class="col-12 col-md-4"><label class="form-label" for="date">Date</label>
+        <input type="date" name="date" id="date" class="form-control" value="{{ jour|date:'Y-m-d' }}" onchange="this.form.submit()"></div>
+</form>
+
+{% if deja_pointe %}
+<div class="alert alert-info py-2">Un appel existe déjà pour ce jour — vous pouvez le modifier.</div>
+{% endif %}
+
+<div class="portal-panel">
+    <form method="post" id="presence-form">{% csrf_token %}
+        <input type="hidden" name="date" value="{{ jour|date:'Y-m-d' }}">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>{{ lignes|length }} élève(s)</strong>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-success" onclick="marquerTous('PRESENT')">Tous présents</button>
+                <button type="button" class="btn btn-outline-danger" onclick="marquerTous('ABSENT')">Tous absents</button>
+            </div>
+        </div>
+        <div class="table-responsive"><table class="table table-bordered table-hover">
+            <thead><tr><th>Matricule</th><th>Élève</th><th style="width:200px">Statut</th><th>Motif / observation</th></tr></thead>
+            <tbody>{% for ligne in lignes %}<tr>
+                <td>{{ ligne.eleve.matricule }}</td>
+                <td>{{ ligne.eleve.prenom }} {{ ligne.eleve.nom }}</td>
+                <td><select name="statut_{{ ligne.eleve.pk }}" class="form-select form-select-sm statut-select">
+                    {% for code, label in statut_choices %}<option value="{{ code }}" {% if ligne.statut == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></td>
+                <td><input type="text" name="motif_{{ ligne.eleve.pk }}" value="{{ ligne.motif }}" class="form-control form-control-sm" placeholder="(optionnel)"></td>
+            </tr>{% empty %}<tr><td colspan="4">Aucun élève actif dans cette classe.</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <button class="btn btn-primary mt-2" {% if not lignes %}disabled{% endif %}>Enregistrer l’appel</button>
+    </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function marquerTous(statut) {
+    document.querySelectorAll('.statut-select').forEach(s => s.value = statut);
+}
+</script>
+{% endblock %}

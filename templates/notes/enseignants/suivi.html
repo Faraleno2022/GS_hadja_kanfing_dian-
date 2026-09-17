@@ -1,0 +1,50 @@
+{% extends 'notes/enseignants/base.html' %}
+{% block content %}
+<h1 class="h3">Bonus de participation — {{ classe.nom }}</h1>
+<p class="text-muted">{{ classe.annee_scolaire }} · Notes de cours, oral, écrit, devoir maison ou participation. {% if bonus_actif %}Le bonus est activé pour votre école : ces notes ajoutent jusqu’à {{ bonus_max }} points sur la note mensuelle.{% else %}Le bonus n’est pas encore activé par votre école ; vos notes seront prises en compte dès son activation.{% endif %}</p>
+
+<form method="get" class="portal-panel row g-3 align-items-end mx-0">
+    <div class="col-12 col-md-3"><label class="form-label" for="matiere_id">Matière</label>
+        <select class="form-select" name="matiere_id" id="matiere_id" onchange="this.form.submit()">
+            {% for m in matieres %}<option value="{{ m.pk }}" {% if matiere.pk == m.pk %}selected{% endif %}>{{ m.nom }}</option>{% endfor %}
+        </select></div>
+    <div class="col-12 col-md-3"><label class="form-label" for="mois">Mois</label>
+        <select class="form-select" name="mois" id="mois" onchange="this.form.submit()">
+            <option value="">— Choisir —</option>
+            {% for code, label in mois_choices %}<option value="{{ code }}" {% if mois == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div>
+    <div class="col-12 col-md-3"><label class="form-label" for="type_note">Type</label>
+        <select class="form-select" name="type_note" id="type_note" onchange="this.form.submit()">
+            {% for code, label in type_choices %}<option value="{{ code }}" {% if type_note == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></div>
+    <div class="col-12 col-md-2"><label class="form-label" for="numero">N°</label>
+        <select class="form-select" name="numero" id="numero" onchange="this.form.submit()">
+            {% for n in numeros %}<option value="{{ n }}" {% if numero == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select></div>
+</form>
+
+{% if not mois %}
+<div class="portal-panel">Choisissez un mois pour saisir les notes de participation.</div>
+{% else %}
+<div class="portal-panel">
+    <p>Notes sur 20. Laissez une cellule vide pour ne rien enregistrer ; effacez une note existante pour la supprimer.</p>
+    <form method="post">{% csrf_token %}
+        <input type="hidden" name="matiere_id" value="{{ matiere.pk }}">
+        <input type="hidden" name="mois" value="{{ mois }}">
+        <input type="hidden" name="type_note" value="{{ type_note }}">
+        <input type="hidden" name="numero" value="{{ numero }}">
+        <div class="table-responsive"><table class="table table-bordered table-hover">
+            <thead><tr><th>Matricule</th><th>Élève</th><th>Note /20</th><th>Note du mois (avant)</th><th>Avec bonus (aperçu)</th></tr></thead>
+            <tbody>{% for ligne in lignes %}<tr>
+                <td>{{ ligne.eleve.matricule }}</td>
+                <td>{{ ligne.eleve.prenom }} {{ ligne.eleve.nom }}</td>
+                <td><input class="form-control" name="note_{{ ligne.eleve.pk }}" value="{{ ligne.note }}" autocomplete="off" maxlength="6" placeholder="0–20"></td>
+                <td>{% if ligne.absent %}Absent{% elif ligne.note_avant is not None %}{{ ligne.note_avant }}{% else %}—{% endif %}</td>
+                <td>{% if ligne.note_apres is not None %}{{ ligne.note_apres }}{% else %}—{% endif %}</td>
+            </tr>{% empty %}<tr><td colspan="5">Aucun élève actif dans cette classe.</td></tr>{% endfor %}</tbody>
+        </table></div>
+        <button class="btn btn-primary mt-2" {% if not lignes %}disabled{% endif %}>Enregistrer</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

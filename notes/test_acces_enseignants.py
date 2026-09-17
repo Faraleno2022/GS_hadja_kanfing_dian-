@@ -10,9 +10,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from eleves.models import Classe, Ecole, Eleve, Responsable
+from presence.models import PresenceJournaliere
 from salaires.models import Enseignant, AffectationClasse
 from .models import (AccesEnseignantTemporaire, ClasseNote, MatiereNote,
-                     NoteMensuelle, CompositionNote, AppreciationMaternelle)
+                     NoteMensuelle, CompositionNote, AppreciationMaternelle, NoteSuivi)
 
 
 @override_settings(
@@ -53,14 +54,17 @@ class AccesEnseignantsTests(TestCase):
         AffectationClasse.objects.create(enseignant=enseignant, classe=affectation, date_debut=timezone.localdate() - timedelta(days=30), heures_par_semaine=8)
         return enseignant
 
-    def creer_acces(self, enseignant=None, classes=None, matieres=None):
+    def creer_acces(self, enseignant=None, classes=None, matieres=None, type_acces=None):
         self.client.force_login(self.principal)
-        response = self.client.post(reverse('notes:gerer_acces_enseignants'), {
+        data = {
             'action': 'creer', 'enseignant': (enseignant or self.enseignant).pk,
             'classes': [c.pk for c in (classes or [self.classe])],
             'matieres': [m.pk for m in (matieres or [])],
             'expire_le': (timezone.now() + timedelta(days=2)).strftime('%Y-%m-%dT%H:%M'),
-        })
+        }
+        if type_acces:
+            data['type_acces'] = type_acces
+        response = self.client.post(reverse('notes:gerer_acces_enseignants'), data)
         self.assertEqual(response.status_code, 302, response.content[:1000])
         acces = AccesEnseignantTemporaire.objects.latest('pk')
         lien = self.client.session['nouveau_lien_notes'].replace('http://testserver', '')
@@ -385,6 +389,77 @@ class AccesEnseignantsTests(TestCase):
         self.assertNotContains(accueil, f'href="{url}?mode=intelligent"')
         self.assertFalse(acces.matieres.exists())
         self.assertEqual(NoteMensuelle.objects.count(), 0)
+
+    def test_lien_notes_permet_le_bonus_de_participation(self):
+        teacher, acces, _ = self.entrer()
+        NoteMensuelle.objects.create(eleve=self.eleve, matiere=self.math, mois='OCTOBRE',
+                                      annee_scolaire=self.classe.annee_scolaire, note=Decimal('10'))
+        url = reverse('notes:enseignant_suivi_bonus', args=[self.classe.pk])
+        response = teacher.get(url, {'matiere_id': self.math.pk, 'mois': 'OCTOBRE', 'type_note': 'PARTICIPATION', 'numero': 1})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['lignes'][0]['note_avant'], 10.0)  # note du mois affichée avant bonus
+        data = {'matiere_id': self.math.pk, 'mois': 'OCTOBRE', 'type_note': 'PARTICIPATION', 'numero': 1,
+                f'note_{self.eleve.pk}': '18'}
+        self.assertEqual(teacher.post(url, data).status_code, 302)
+        note = NoteSuivi.objects.get()
+        self.assertEqual(note.note, Decimal('18'))
+        self.assertEqual(note.eleve_id, self.eleve.pk)
+        self.assertEqual(note.matiere_id, self.math.pk)
+        self.assertEqual(note.type_note, 'PARTICIPATION')
+        self.assertEqual(note.cree_par, acces.utilisateur)
+        # Effacer la cellule supprime la note de suivi.
+        self.assertEqual(teacher.post(url, {**data, f'note_{self.eleve.pk}': ''}).status_code, 302)
+        self.assertEqual(NoteSuivi.objects.count(), 0)
+
+    def test_bonus_de_participation_refuse_hors_perimetre_et_maternelle(self):
+        teacher, _, _ = self.entrer()
+        # Matière hors périmètre du lien.
+        acces_fr = AccesEnseignantTemporaire.objects.get()
+        acces_fr.matieres.remove(self.fr)
+        url = reverse('notes:enseignant_suivi_bonus', args=[self.classe.pk])
+        response = teacher.get(url, {'matiere_id': self.fr.pk})
+        self.assertEqual(response.status_code, 403)
+        # Classe hors périmètre.
+        self.assertEqual(teacher.get(reverse('notes:enseignant_suivi_bonus', args=[self.exterieure.pk])).status_code, 404)
+        # Maternelle : le bonus ne s'applique jamais aux appréciations.
+        teacher_m, _, _ = self.entrer(enseignant=self.enseignant_m, classes=[self.maternelle])
+        self.assertEqual(teacher_m.get(reverse('notes:enseignant_suivi_bonus', args=[self.maternelle.pk])).status_code, 400)
+        self.assertEqual(NoteSuivi.objects.count(), 0)
+
+    def test_lien_presence_permet_lappel_et_refuse_lacces_aux_notes(self):
+        teacher, acces, lien = self.entrer(type_acces='PRESENCE')
+        self.assertEqual(acces.type_acces, 'PRESENCE')
+        url = reverse('notes:enseignant_presence', args=[self.classe.pk])
+        response = teacher.get(url)
+        self.assertEqual(response.status_code, 200)
+        jour = timezone.localdate()
+        data = {'date': jour.isoformat(), f'statut_{self.eleve.pk}': 'ABSENT', f'motif_{self.eleve.pk}': 'Fièvre'}
+        self.assertEqual(teacher.post(url, data).status_code, 302)
+        presence = PresenceJournaliere.objects.get()
+        self.assertEqual(presence.eleve_id, self.eleve.pk)
+        self.assertEqual(presence.statut, 'ABSENT')
+        self.assertEqual(presence.motif, 'Fièvre')
+        self.assertEqual(presence.date, jour)
+        self.assertEqual(presence.cree_par, acces.utilisateur)
+        # Un lien Présence ne donne accès ni aux notes ni au bonus de participation.
+        self.assertEqual(teacher.get(reverse('notes:enseignant_saisie', args=[self.classe.pk])).status_code, 403)
+        self.assertEqual(teacher.get(reverse('notes:enseignant_suivi_bonus', args=[self.classe.pk])).status_code, 403)
+        self.assertEqual(NoteMensuelle.objects.count(), 0)
+        self.assertEqual(NoteSuivi.objects.count(), 0)
+
+    def test_lien_notes_refuse_lacces_a_la_presence(self):
+        teacher, _, _ = self.entrer()  # type_acces par défaut = NOTES
+        self.assertEqual(teacher.get(reverse('notes:enseignant_presence', args=[self.classe.pk])).status_code, 403)
+        self.assertEqual(PresenceJournaliere.objects.count(), 0)
+
+    def test_creation_lien_presence_ignore_les_matieres(self):
+        # Enseignant secondaire : matières explicitement cochées, ignorées quand même côté PRESENCE.
+        acces, _ = self.creer_acces(
+            enseignant=self.enseignant_s, classes=[self.secondaire],
+            matieres=[self.math_s], type_acces='PRESENCE',
+        )
+        self.assertEqual(acces.type_acces, 'PRESENCE')
+        self.assertFalse(acces.matieres.exists())
 
     def test_lien_enseignant_fonctionne_avec_securite_production(self):
         import time

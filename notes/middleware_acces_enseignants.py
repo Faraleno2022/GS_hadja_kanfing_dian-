@@ -13,7 +13,7 @@ class AccesEnseignantMiddleware:
     allowed = {
         'notes:enseignant_accueil', 'notes:enseignant_saisie', 'notes:enseignant_import',
         'notes:enseignant_template', 'notes:enseignant_lien', 'notes:enseignant_deconnexion',
-        'notes:enseignant_connexion',
+        'notes:enseignant_connexion', 'notes:enseignant_suivi_bonus', 'notes:enseignant_presence',
     }
 
     def __init__(self, get_response):
