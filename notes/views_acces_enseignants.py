@@ -19,7 +19,8 @@ from presence.models import PresenceJournaliere
 from salaires.models import Enseignant
 from utilisateurs.utils import filter_by_user_school, user_is_account_principal
 from .acces_enseignants import (SESSION_KEY, empreinte, nouveau_lien, verifier_session,
-    classes_autorisees, matieres_autorisees, eleves_autorises, configuration, enregistrer_cellules)
+    classes_autorisees, matieres_autorisees, eleves_autorises, configuration, enregistrer_cellules,
+    diagnostic_absence_classes)
 from .calculs_moyennes import BONUS_SUIVI_MAX, details_bonus_suivi_batch, _appliquer_bonus
 from .forms_acces_enseignants import CreerAccesEnseignantForm, ExpirationForm
 from .models import AccesEnseignantTemporaire, NoteMensuelle, NoteSuivi, CompositionNote, AppreciationMaternelle
@@ -96,9 +97,12 @@ def gerer_acces(request):
                     return redirect('notes:gerer_acces_enseignants')
         elif action != 'creer' or not form:
             raise PermissionDenied('Action invalide.')
+    diagnostic = None
+    if enseignant and form and not form.fields['classes'].queryset:
+        diagnostic = diagnostic_absence_classes(enseignant)
     return render(request, 'notes/enseignants/gestion.html', {
         'enseignants': enseignants, 'enseignant': enseignant, 'form': form,
-        'renouvellement': renouvellement,
+        'renouvellement': renouvellement, 'diagnostic': diagnostic,
         'acces_liste': acces_qs.select_related('enseignant', 'ecole', 'utilisateur__profil').prefetch_related('classes', 'matieres'),
         'nouveau_lien': request.session.pop('nouveau_lien_notes', None),
     })

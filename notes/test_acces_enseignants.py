@@ -100,6 +100,46 @@ class AccesEnseignantsTests(TestCase):
         self.assertEqual(response['Cache-Control'], 'no-store, private')
         self.assertNotContains(self.client.get(reverse('notes:gerer_acces_enseignants')), lien)
 
+    def test_diagnostic_absence_classes_explique_le_blocage(self):
+        """Le bouton reste désactivé sans classes, mais l'admin doit savoir pourquoi."""
+        from notes.acces_enseignants import diagnostic_absence_classes
+
+        self.client.force_login(self.principal)
+
+        # 1) Aucune affectation active du tout.
+        isole = self.creer_enseignant(self.classe)
+        AffectationClasse.objects.filter(enseignant=isole).update(actif=False)
+        message = diagnostic_absence_classes(isole)
+        self.assertIn('aucune affectation', message.lower())
+
+        response = self.client.get(reverse('notes:gerer_acces_enseignants'), {'enseignant': isole.pk})
+        self.assertContains(response, 'Aucune classe disponible pour cet enseignant')
+        self.assertContains(response, 'aucune affectation')
+
+        # 2) Affecté à une classe, mais à un niveau incompatible avec son type.
+        mauvais_niveau = self.creer_enseignant(self.secondaire)
+        mauvais_niveau.type_enseignant = 'PRIMAIRE'
+        mauvais_niveau.save(update_fields=['type_enseignant'])
+        message = diagnostic_absence_classes(mauvais_niveau)
+        self.assertIn('incompatible', message)
+
+        # 3) Affectation compatible, mais aucune ClasseNote correspondante dans Notes.
+        orpheline = Enseignant.objects.create(
+            nom='Sans Notes', prenoms='Test', ecole=self.ecole, type_enseignant='PRIMAIRE',
+            statut='ACTIF', salaire_fixe=100000, taux_horaire=10000,
+            date_embauche=timezone.localdate() - timedelta(days=60), cree_par=self.principal,
+        )
+        classe_sans_notes = Classe.objects.create(
+            ecole=self.ecole, nom='Fantome', niveau='PRIMAIRE_2', annee_scolaire='2026-2027',
+        )
+        AffectationClasse.objects.create(
+            enseignant=orpheline, classe=classe_sans_notes,
+            date_debut=timezone.localdate() - timedelta(days=30), heures_par_semaine=8,
+        )
+        message = diagnostic_absence_classes(orpheline)
+        self.assertIn('FANTOME', message.upper())
+        self.assertIn('Notes > Gérer les classes', message)
+
     def test_page_configuration_trois_niveaux(self):
         self.client.force_login(self.principal)
         for enseignant in [self.enseignant, self.enseignant_s, self.enseignant_m]:

@@ -43,6 +43,56 @@ def classes_affectees(enseignant):
     ).order_by('annee_scolaire', 'nom')
 
 
+def diagnostic_absence_classes(enseignant):
+    """Explique pourquoi classes_affectees(enseignant) est vide.
+
+    Le bouton de création de lien reste désactivé tant qu'aucune classe
+    n'est proposée, sans indiquer pourquoi. Ce diagnostic distingue les
+    trois causes possibles pour que le compte principal sache quoi
+    corriger, sans avoir besoin d'un accès à la base de données.
+    """
+    today = timezone.localdate()
+    toutes = enseignant.affectations.filter(
+        actif=True, sync_deleted_at__isnull=True, date_debut__lte=today,
+    ).filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today)).select_related('classe')
+
+    if not toutes.exists():
+        return (
+            "Cet enseignant n'a aucune affectation de classe active actuellement. "
+            "Ajoutez-en une depuis Salaires > Enseignants > Affectations."
+        )
+
+    niveaux_attendus = niveaux_classes_pour_type_enseignant(enseignant.type_enseignant)
+    compatibles = [a for a in toutes if a.classe.ecole_id == enseignant.ecole_id
+                   and a.classe.niveau in niveaux_attendus and a.classe.sync_deleted_at is None]
+    if not compatibles:
+        niveaux_trouves = sorted({a.classe.get_niveau_display() for a in toutes})
+        return (
+            f"Cet enseignant est affecté à des classes de niveau {', '.join(niveaux_trouves)}, "
+            f"incompatible avec son type « {enseignant.get_type_enseignant_display()} ». "
+            "Corrigez le type d'enseignant ou l'affectation."
+        )
+
+    manquantes = sorted({
+        f"« {a.classe.nom} » ({a.classe.annee_scolaire})"
+        for a in compatibles
+        if not ClasseNote.objects.filter(
+            ecole_id=enseignant.ecole_id, nom=a.classe.nom, annee_scolaire=a.classe.annee_scolaire,
+            niveau_enseignement=enseignant.type_enseignant, actif=True, sync_deleted_at__isnull=True,
+        ).exists()
+    })
+    if manquantes:
+        return (
+            "Aucune classe correspondante dans Notes pour : " + ", ".join(manquantes) + ". "
+            "Créez-les dans Notes > Gérer les classes avec exactement le même nom, "
+            f"la même année scolaire et le niveau « {enseignant.get_type_enseignant_display()} »."
+        )
+    return (
+        "Les classes affectées existent dans Notes, mais sont désactivées ou "
+        "n'ont aucune matière active. Vérifiez leur statut dans Notes."
+    )
+
+
 def classes_autorisees(acces):
     return classes_affectees(acces.enseignant).filter(acces_enseignants=acces)
 
