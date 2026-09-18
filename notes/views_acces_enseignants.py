@@ -358,11 +358,14 @@ def suivi_bonus(request, classe_id):
             except (InvalidOperation, ValueError):
                 return HttpResponseBadRequest('Les notes de suivi doivent être comprises entre 0 et 20.')
 
-        # Revalidation stricte (verrou) juste avant écriture, comme enregistrer_cellules().
-        verifier_session(request, verrouiller=True)
         enregistres, supprimes = 0, 0
         annee = classe.annee_scolaire
         with transaction.atomic():
+            # Revalidation stricte (verrou) juste avant écriture, comme
+            # enregistrer_cellules() : select_for_update() exige une
+            # transaction active (SQLite l'ignore silencieusement en dev,
+            # mais MySQL/PostgreSQL lèvent TransactionManagementError sinon).
+            verifier_session(request, verrouiller=True)
             for eleve in eleves:
                 if eleve.id not in valeurs:
                     continue
@@ -446,18 +449,20 @@ def presence_classe(request, classe_id):
     presences_existantes = {p.eleve_id: p for p in PresenceJournaliere.objects.filter(classe=classe, date=jour)}
 
     if request.method == 'POST':
-        verifier_session(request, verrouiller=True)
         cree = 0
-        for eleve in eleves:
-            statut = (request.POST.get(f'statut_{eleve.id}') or 'PRESENT').strip()
-            motif = (request.POST.get(f'motif_{eleve.id}') or '').strip()
-            if statut not in dict(PresenceJournaliere.STATUT_CHOICES):
-                statut = 'PRESENT'
-            PresenceJournaliere.objects.update_or_create(
-                eleve=eleve, date=jour,
-                defaults={'classe': classe, 'statut': statut, 'motif': motif, 'cree_par': request.user},
-            )
-            cree += 1
+        with transaction.atomic():
+            # select_for_update() exige une transaction active (cf. suivi_bonus).
+            verifier_session(request, verrouiller=True)
+            for eleve in eleves:
+                statut = (request.POST.get(f'statut_{eleve.id}') or 'PRESENT').strip()
+                motif = (request.POST.get(f'motif_{eleve.id}') or '').strip()
+                if statut not in dict(PresenceJournaliere.STATUT_CHOICES):
+                    statut = 'PRESENT'
+                PresenceJournaliere.objects.update_or_create(
+                    eleve=eleve, date=jour,
+                    defaults={'classe': classe, 'statut': statut, 'motif': motif, 'cree_par': request.user},
+                )
+                cree += 1
         messages.success(request, f'Présence enregistrée pour {cree} élève(s) — {classe.nom} le {jour.strftime("%d/%m/%Y")}.')
         return redirect(f'{request.path}?date={jour.isoformat()}')
 
