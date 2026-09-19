@@ -765,6 +765,7 @@ def nouvelle_annee_creer(request):
                         nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
                         if nouvelle_meme:
                             eleve._current_user = request.user
+                            eleve._passage_nouvelle_annee = True
                             eleve.classe = nouvelle_meme
                             eleve.save()
                             moy_txt = f"{moyenne}/{sur}" if moyenne is not None else "non évaluée"
@@ -786,6 +787,7 @@ def nouvelle_annee_creer(request):
 
                     if sup_cls:
                         eleve._current_user = request.user
+                        eleve._passage_nouvelle_annee = True
                         eleve.classe = sup_cls
                         eleve.save()
                         convention_txt = " (par convention direction/parents)" if par_convention else ""
@@ -832,6 +834,7 @@ def nouvelle_annee_creer(request):
                         nouvelle_meme = map_anciennes_nouvelles.get(ancienne_classe.pk)
                         if nouvelle_meme:
                             eleve._current_user = request.user
+                            eleve._passage_nouvelle_annee = True
                             eleve.classe = nouvelle_meme
                             eleve.save()
                             HistoriqueEleve.objects.create(

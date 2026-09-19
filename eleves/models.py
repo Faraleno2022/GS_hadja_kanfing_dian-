@@ -678,6 +678,12 @@ class Eleve(SyncTrackedModel):
         
         super().save(*args, **kwargs)
         
+        # Passage à une nouvelle année scolaire : les notes et l'échéancier de
+        # l'année écoulée appartiennent à cette année-là et doivent rester
+        # intacts (bulletins, archives). Le transfert ci-dessous ne concerne
+        # qu'un changement de classe en cours d'année.
+        passage_annee = getattr(self, '_passage_nouvelle_annee', False)
+
         # Réaffectation intelligente des matricules de l'ancienne classe
         if reaffecter_ancienne_classe and ancienne_classe:
             #self._reaffecter_matricules_ancienne_classe(ancienne_classe, ancien_matricule)
@@ -688,16 +694,17 @@ class Eleve(SyncTrackedModel):
 
             # Recalculer les montants dus depuis la grille de la classe cible,
             # sans toucher aux objets Paiement ni melanger les annees scolaires.
-            from paiements.services import reconcilier_transfert_classe
-            self._financial_transfer_info = reconcilier_transfert_classe(
-                self,
-                ancienne_classe,
-                self.classe,
-                cree_par=getattr(self, '_current_user', None),
-            )
-        
+            if not passage_annee:
+                from paiements.services import reconcilier_transfert_classe
+                self._financial_transfer_info = reconcilier_transfert_classe(
+                    self,
+                    ancienne_classe,
+                    self.classe,
+                    cree_par=getattr(self, '_current_user', None),
+                )
+
         # Créer l'historique du changement de classe après la sauvegarde
-        if changement_classe_info:
+        if changement_classe_info and not passage_annee:
             # Transférer les notes vers la nouvelle classe
             transfert_result = self._transferer_notes_vers_nouvelle_classe(ancienne_classe, self.classe)
             notes_transferees = transfert_result.get('transferees', 0)
