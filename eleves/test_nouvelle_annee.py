@@ -92,3 +92,46 @@ class CreationNouvelleAnneeTest(TestCase):
 
         self.assertTrue(EcheancierPaiement.objects.filter(pk=self.ancien_echeancier.pk).exists())
         self.assertTrue(EcheancierPaiement.objects.filter(eleve=self.eleve, annee_scolaire='2026-2027').exists())
+
+    def test_grande_ecole_traitee_par_lots_enchaines(self):
+        """Chaque requête traite un lot : aucune ne doit dépasser le délai du serveur."""
+        from unittest.mock import patch
+
+        deuxieme = Eleve.objects.create(
+            matricule='PAS-002', prenom='Mamadou', nom='Diallo', sexe='M',
+            date_naissance=date(2018, 2, 2), classe=self.classe_1,
+            date_inscription=date(2025, 9, 1), responsable_principal=self.eleve.responsable_principal,
+            statut='ACTIF',
+        )
+        Classement.objects.create(
+            eleve=deuxieme, classe=self.classe_note, periode='ANNUEL_TRIM',
+            annee_scolaire='2025-2026', moyenne_generale=Decimal('7'),
+            total_points=Decimal('7'), total_coefficients=Decimal('1'),
+            rang=2, rang_formate='2e/2', effectif=2,
+        )
+        url = reverse('eleves:nouvelle_annee_creer')
+        with patch('eleves.views_nouvelle_annee.TAILLE_LOT_PASSAGE', 1):
+            premiere = self.client.post(url, {
+                'annee_courante': '2025-2026', 'annee_nouvelle': '2026-2027',
+                'dupliquer_notes_classes': '1', 'faire_passer_eleves': '1',
+            })
+            self.assertEqual(premiere.status_code, 200)
+            self.assertContains(premiere, '1 / 2')
+            self.assertEqual(Eleve.objects.filter(classe__annee_scolaire='2026-2027').count(), 1)
+
+            suite = self.client.post(url, {
+                'annee_courante': '2025-2026', 'annee_nouvelle': '2026-2027', 'continuer': '1',
+            })
+        self.assertEqual(suite.status_code, 302)
+        self.assertEqual(Eleve.objects.filter(classe__annee_scolaire='2026-2027').count(), 2)
+        self.assertEqual(Classe.objects.filter(annee_scolaire='2026-2027').count(), 2)
+        self.assertEqual(EcheancierPaiement.objects.filter(annee_scolaire='2026-2027').count(), 2)
+        messages = [str(m) for m in suite.wsgi_request._messages]
+        self.assertTrue(any('2 élève(s) passé(s)' in m for m in messages), messages)
+
+    def test_reprise_sans_etat_ne_plante_pas(self):
+        response = self.client.post(reverse('eleves:nouvelle_annee_creer'), {
+            'annee_courante': '2025-2026', 'annee_nouvelle': '2026-2027', 'continuer': '1',
+        })
+        self.assertRedirects(response, reverse('eleves:nouvelle_annee_apercu'),
+                             fetch_redirect_response=False)
