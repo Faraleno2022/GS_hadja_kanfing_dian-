@@ -124,3 +124,68 @@ class SynchronisationApiTests(TestCase):
         self.assertEqual(len(changes), 2)  # création web initiale et modification du poste 1
         self.assertTrue(all(row['object_uuid'] == str(self.ecole.sync_uuid) for row in changes))
         self.assertTrue(any(row['device_id'] == device_one['device_id'] for row in changes))
+
+
+class PushPendingFileTests(TestCase):
+    """La file locale ne doit jamais rester bloquee derriere un refus serveur."""
+
+    def setUp(self):
+        self.ecole = Ecole.objects.create(
+            nom='Ecole File', adresse='Conakry', telephone='+224600000001',
+            directeur='Direction', etat='VALIDE',
+        )
+
+    def _changements(self, nombre):
+        from synchronisation.models import SyncChange
+        SyncChange.objects.filter(ecole=self.ecole).delete()
+        return [
+            SyncChange.objects.create(
+                ecole=self.ecole, model_label='eleves.Eleve',
+                operation=SyncChange.OPERATION_UPDATE, payload={'nom': f'E{i}'},
+            )
+            for i in range(nombre)
+        ]
+
+    def test_un_refus_ne_bloque_pas_les_changements_suivants(self):
+        """Avant correction : le lot refuse etait renvoye a l'identique en boucle."""
+        from unittest.mock import patch
+        from synchronisation.client import push_pending
+        from synchronisation.models import SyncChange
+
+        changements = self._changements(3)
+        envois = []
+
+        def faux_post(url, device_id, token, payload, timeout=25):
+            envois.append([c['payload']['nom'] for c in payload['changes']])
+            # Le serveur refuse systematiquement le premier changement recu.
+            return {
+                'ok': True,
+                'accepted': [{'index': i} for i in range(1, len(payload['changes']))],
+                'rejected': [{'index': 0, 'error': 'Relation introuvable pour classe.'}],
+            }
+
+        with patch('synchronisation.client._post_json', faux_post):
+            total = push_pending('https://exemple', 'dev', 'tok', self.ecole, batch_size=2)
+
+        self.assertEqual(envois, [['E0', 'E1'], ['E2']])
+        self.assertEqual(total, 1)
+        refuse = SyncChange.objects.get(pk=changements[0].pk)
+        self.assertEqual(refuse.statut, SyncChange.STATUT_FAILED)
+        self.assertIn('Relation introuvable', refuse.erreur)
+        self.assertEqual(SyncChange.objects.get(pk=changements[2].pk).statut,
+                         SyncChange.STATUT_FAILED)
+        self.assertEqual(SyncChange.objects.get(pk=changements[1].pk).statut,
+                         SyncChange.STATUT_APPLIED)
+
+    def test_rejouer_refuses_remet_en_file(self):
+        from synchronisation.client import rejouer_refuses
+        from synchronisation.models import SyncChange
+
+        changements = self._changements(2)
+        SyncChange.objects.filter(pk=changements[0].pk).update(
+            statut=SyncChange.STATUT_FAILED, erreur='Relation introuvable.')
+
+        self.assertEqual(rejouer_refuses(self.ecole), 1)
+        rejoue = SyncChange.objects.get(pk=changements[0].pk)
+        self.assertEqual(rejoue.statut, SyncChange.STATUT_PENDING)
+        self.assertEqual(rejoue.erreur, '')

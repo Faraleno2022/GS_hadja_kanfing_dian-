@@ -7,6 +7,7 @@ page de 200 changements).
 """
 import gzip
 import json
+import logging
 import threading
 
 import requests
@@ -19,6 +20,8 @@ PUSH_BATCH_SIZE = 300
 PULL_PAGE_SIZE = 500
 MAX_CYCLES_PAR_APPEL = 25  # garde-fou anti-boucle-infinie
 GZIP_SEUIL_OCTETS = 512
+
+logger = logging.getLogger(__name__)
 
 _session = None
 _session_lock = threading.Lock()
@@ -90,14 +93,19 @@ def _parse_response(response):
 def push_pending(server_url, device_id, token, ecole, batch_size=PUSH_BATCH_SIZE):
     """Envoie tous les changements PENDING de l'ecole, par lots, jusqu'a vidage."""
     total = 0
+    dernier_id = 0
     for _ in range(MAX_CYCLES_PAR_APPEL):
+        # `id__gt` fait avancer la fenetre meme si le serveur n'accepte rien :
+        # sans lui, un lot entierement refuse est reselectionne a l'identique
+        # au cycle suivant et les changements qui le suivent ne partent jamais.
         pending = list(
             SyncChange.objects
-            .filter(ecole=ecole, statut=SyncChange.STATUT_PENDING)
+            .filter(ecole=ecole, statut=SyncChange.STATUT_PENDING, id__gt=dernier_id)
             .order_by('id')[:batch_size]
         )
         if not pending:
             break
+        dernier_id = pending[-1].id
 
         response = _post_json(
             f'{server_url}/api/v1/sync/push/',
@@ -118,6 +126,10 @@ def push_pending(server_url, device_id, token, ecole, batch_size=PUSH_BATCH_SIZE
             raise SyncTransportError(response.get('error') or 'Push refuse.')
 
         accepted_indexes = {item['index'] for item in response.get('accepted', [])}
+        motifs = {
+            item['index']: (item.get('error') or 'Refus sans motif.')
+            for item in response.get('rejected', []) if isinstance(item, dict) and 'index' in item
+        }
         from django.utils import timezone
         now = timezone.now()
         applied_ids = [c.id for i, c in enumerate(pending) if i in accepted_indexes]
@@ -125,9 +137,34 @@ def push_pending(server_url, device_id, token, ecole, batch_size=PUSH_BATCH_SIZE
             SyncChange.objects.filter(id__in=applied_ids).update(statut=SyncChange.STATUT_APPLIED, date_application=now)
             total += len(applied_ids)
 
+        # Un changement refuse sort de la file d'attente avec son motif : laisse
+        # en PENDING il serait renvoye a chaque cycle, indefiniment et en
+        # silence. Il reste consultable et rejouable (`sync_offline
+        # --rejouer-refuses`) une fois la cause corrigee.
+        for index, motif in motifs.items():
+            if index >= len(pending):
+                continue
+            change = pending[index]
+            SyncChange.objects.filter(id=change.id).update(
+                statut=SyncChange.STATUT_FAILED, erreur=motif[:2000], date_application=now,
+            )
+            logger.warning(
+                '[Sync] Changement refuse par le serveur : %s %s (%s) -> %s',
+                change.operation, change.model_label, change.object_uuid, motif,
+            )
+        if motifs:
+            print(f'[Sync] {len(motifs)} changement(s) refuse(s) par le serveur, voir myschool.log.')
+
         if len(pending) < batch_size:
             break
     return total
+
+
+def rejouer_refuses(ecole):
+    """Remet en file les changements refuses, une fois leur cause corrigee."""
+    return SyncChange.objects.filter(ecole=ecole, statut=SyncChange.STATUT_FAILED).update(
+        statut=SyncChange.STATUT_PENDING, erreur='',
+    )
 
 
 def pull_changes(server_url, device_id, token, ecole, since_id=None, initial=False, apply_change=None):

@@ -2,7 +2,8 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from eleves.models import Ecole
-from synchronisation.client import SyncTransportError, pull_changes, push_pending
+from synchronisation.client import SyncTransportError, pull_changes, push_pending, rejouer_refuses
+from synchronisation.models import SyncChange
 
 
 class Command(BaseCommand):
@@ -17,6 +18,10 @@ class Command(BaseCommand):
         parser.add_argument('--initial', action='store_true')
         parser.add_argument('--pull-only', action='store_true')
         parser.add_argument('--push-only', action='store_true')
+        parser.add_argument('--rejouer-refuses', action='store_true',
+                            help='Remet en file les changements refuses par le serveur.')
+        parser.add_argument('--etat', action='store_true',
+                            help="Affiche l'etat de la file locale et les derniers refus.")
 
     def handle(self, *args, **options):
         server_url = (options['server_url'] or '').rstrip('/')
@@ -44,6 +49,14 @@ class Command(BaseCommand):
                 "Utilisez --initial pour amorcer un poste tout juste installe."
             )
 
+        if options['etat']:
+            self._afficher_etat(ecole)
+            return
+
+        if options['rejouer_refuses'] and ecole is not None:
+            nb = rejouer_refuses(ecole)
+            self.stdout.write(self.style.SUCCESS(f'{nb} changement(s) refuse(s) remis en file.'))
+
         try:
             if not options['pull_only'] and ecole is not None:
                 pushed = push_pending(server_url, device_id, token, ecole)
@@ -58,3 +71,17 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'{pulled} changement(s) recu(s).'))
         except SyncTransportError as exc:
             raise CommandError(str(exc)) from exc
+
+    def _afficher_etat(self, ecole):
+        if ecole is None:
+            self.stdout.write("Aucune ecole locale : le poste n'a pas encore ete amorce.")
+            return
+        base = SyncChange.objects.filter(ecole=ecole)
+        for statut, _libelle in SyncChange.STATUT_CHOICES:
+            self.stdout.write(f'{statut}: {base.filter(statut=statut).count()}')
+        refuses = base.filter(statut=SyncChange.STATUT_FAILED).order_by('-id')[:10]
+        if refuses:
+            self.stdout.write('
+Derniers refus :')
+            for change in refuses:
+                self.stdout.write(f'  {change.operation} {change.model_label} -> {change.erreur[:200]}')
