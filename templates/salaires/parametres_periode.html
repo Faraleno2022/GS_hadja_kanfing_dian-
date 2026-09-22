@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}Barème de paie - {{ periode.nom_periode }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary-subtle">
+                    <h4 class="mb-1"><i class="fas fa-cog me-2"></i>Barème et signataires</h4>
+                    <div class="text-muted">{{ periode.nom_periode }} — {{ periode.ecole.nom }}</div>
+                </div>
+                <div class="card-body">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {% if form.non_field_errors %}
+                        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                        {% endif %}
+
+                        <h6 class="text-uppercase text-muted small mb-3">Jours de travail</h6>
+                        <div class="mb-4">
+                            <label class="form-label" for="{{ form.jours_ouvrables.id_for_label }}">{{ form.jours_ouvrables.label }}</label>
+                            {{ form.jours_ouvrables }}
+                            <div class="form-text">{{ form.jours_ouvrables.help_text }} Les jours chômés de chaque travailleur se saisissent dans « Primes et ajustements ».</div>
+                            {% for error in form.jours_ouvrables.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+
+                        <h6 class="text-uppercase text-muted small mb-2">Primes calculées automatiquement</h6>
+                        <p class="small text-muted">Laissez 0 pour saisir la prime à la main. Les primes de fonction, de performance et exceptionnelle se saisissent sur chaque état.</p>
+                        <div class="row">
+                            {% for field in form %}
+                            {% if field.name in 'taux_prime_anciennete taux_prime_eloignement taux_prime_craie taux_heure_revision' %}
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        <ul class="small text-muted mb-4">
+                            <li>Ancienneté = (année de la période − année d'embauche) × taux (personnel au forfait).</li>
+                            <li>Éloignement = distance domicile-école (fiche du travailleur) × taux (personnel au forfait).</li>
+                            <li>Craie = élèves inscrits dans la classe tenue × taux (maternelle et primaire).</li>
+                            <li>Révision = heures de révision saisies sur l'état × taux (secondaire).</li>
+                        </ul>
+
+                        <h6 class="text-uppercase text-muted small mb-3">Documents de paie</h6>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.lieu_edition.id_for_label }}">{{ form.lieu_edition.label }}</label>
+                            {{ form.lieu_edition }}
+                            <div class="form-text">{{ form.lieu_edition.help_text }}</div>
+                            {% for error in form.lieu_edition.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="{{ form.signataires.id_for_label }}">{{ form.signataires.label }}</label>
+                            {{ form.signataires }}
+                            <div class="form-text">{{ form.signataires.help_text }} Quatre au maximum.</div>
+                            {% for error in form.signataires.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+
+                        <div class="alert alert-info small">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Ces paramètres sont repris automatiquement par les périodes suivantes.
+                            L'enregistrement recalcule les états non encore validés de ce mois.
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'salaires:gestion_periodes' %}" class="btn btn-outline-secondary">Annuler</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-1"></i>Enregistrer et recalculer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

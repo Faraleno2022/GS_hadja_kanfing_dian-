@@ -1,0 +1,21 @@
+{% comment %}Menu des documents mensuels du classeur de paie. Attend `periode`.{% endcomment %}
+<div class="dropdown d-inline-block">
+    <button class="btn btn-outline-dark btn-action dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fas fa-file-pdf"></i> Documents de paie
+    </button>
+    <ul class="dropdown-menu">
+        <li><h6 class="dropdown-header">États de salaire à payer</h6></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'etat' %}?groupe=DIRECTION">Direction</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'etat' %}?groupe=PRIMAIRE">Maternelle et primaire</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'etat' %}?groupe=SECONDAIRE">Secondaire</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'etat' %}?groupe=APPUI">Personnel d'appui</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'masse' %}"><i class="fas fa-layer-group me-1"></i> Masse salariale</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'acomptes' %}"><i class="fas fa-hand-holding-usd me-1"></i> Acomptes (bons)</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">Fiches d'émargement</h6></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'emargement' %}?groupe=DIRECTION,PRIMAIRE,APPUI">Direction, primaire et appui</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'emargement' %}?groupe=SECONDAIRE">Secondaire</a></li>
+        <li><a class="dropdown-item" target="_blank" href="{% url 'salaires:document_paie_pdf' periode.id 'emargement' %}">Tout le personnel</a></li>
+    </ul>
+</div>

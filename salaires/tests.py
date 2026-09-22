@@ -664,7 +664,7 @@ class MoteurPaieTests(TestCase):
         response = self.client.post(
             reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
             {
-                'primes': '100000',
+                'prime_exceptionnelle': '100000',
                 'deductions': '25000',
                 'observations': 'Ajustement contrôlé',
             },
@@ -687,7 +687,7 @@ class MoteurPaieTests(TestCase):
             reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
             {
                 'salaire_base': '1150000',
-                'primes': '50000',
+                'prime_fonction': '50000',
                 'deductions': '0',
                 'observations': 'Salaire de base ajusté',
             },
@@ -829,11 +829,11 @@ class MoteurPaieTests(TestCase):
             calcule_par=self.user,
         )
         form = EtatSalaireAjustementForm(
-            data={'primes': '-1', 'deductions': '0', 'observations': ''},
+            data={'prime_performance': '-1', 'deductions': '0', 'observations': ''},
             instance=etat,
         )
         self.assertFalse(form.is_valid())
-        self.assertIn('primes', form.errors)
+        self.assertIn('prime_performance', form.errors)
 
     def donnees_creation_enseignant(self, type_enseignant, **valeurs):
         donnees = {
@@ -1066,7 +1066,9 @@ class MoteurPaieTests(TestCase):
         personne.save()
         etat, _ = calculer_etat_salaire_reel(personne, self.periode, self.user)
         response = self.client.post(reverse('salaires:ajuster_etat_salaire', args=[etat.pk]),
-                                   {'primes': '75000', 'deductions': '10000',
+                                   {'prime_fonction': '50000',
+                                    'prime_exceptionnelle': '25000',
+                                    'deductions': '10000',
                                     'observations': 'Prime mensuelle + remplacement'})
         self.assertEqual(response.status_code, 302)
         personne.prime_mensuelle = Decimal('60000')
@@ -1099,3 +1101,299 @@ class MoteurPaieTests(TestCase):
         personne.prime_mensuelle = Decimal('-1')
         with self.assertRaises(ValidationError):
             personne.save()
+
+
+@override_settings(MIDDLEWARE=TEST_MIDDLEWARE)
+class ClasseurPaieTests(TestCase):
+    """Conformité au classeur mensuel (états, masse salariale, acomptes, bulletin)."""
+
+    def setUp(self):
+        from eleves.models import Eleve
+
+        self.user = get_user_model().objects.create_superuser(
+            username='classeur-paie',
+            email='classeur-paie@example.com',
+            password='mot-de-passe-test',
+        )
+        self.ecole = Ecole.objects.create(
+            nom='Groupe scolaire test',
+            adresse='Diécké',
+            telephone='+224620009008',
+            directeur='Direction test',
+        )
+        self.classe = Classe.objects.create(
+            ecole=self.ecole, nom='CE1', niveau='PRIMAIRE_3',
+            annee_scolaire='2025-2026',
+        )
+        self.classe_college = Classe.objects.create(
+            ecole=self.ecole, nom='7e', niveau='COLLEGE_7',
+            annee_scolaire='2025-2026',
+        )
+        for numero, statut in enumerate(['ACTIF', 'ACTIF', 'ATTENTE_PAIEMENT', 'TRANSFERE']):
+            eleve = Eleve.objects.create(
+                matricule=f"CE1-{numero:03d}", prenom=f"Eleve {numero}",
+                nom='Test', sexe='F', classe=self.classe,
+                date_inscription=date(2025, 9, 1),
+            )
+            Eleve.objects.filter(pk=eleve.pk).update(statut=statut)
+        self.periode = PeriodeSalaire.objects.create(
+            mois=5, annee=2026, ecole=self.ecole,
+            taux_prime_anciennete=Decimal('10000'),
+            taux_prime_eloignement=Decimal('2000'),
+            taux_prime_craie=Decimal('500'),
+            taux_heure_revision=Decimal('10000'),
+            lieu_edition='Diécké',
+            signataires=(
+                "Le Fondateur : M. Nyan Isaac NIAMY\n"
+                "La Gestionnaire : Mme Véronique KPOMY"
+            ),
+            cree_par=self.user,
+        )
+        self.client.force_login(self.user)
+
+    def creer_maitre(self):
+        maitre = Enseignant.objects.create(
+            nom='MAHOMY', prenoms='Joseph', matricule='0949724',
+            ecole=self.ecole, type_enseignant=TypeEnseignant.PRIMAIRE,
+            salaire_fixe=Decimal('550000'), prime_mensuelle=Decimal('250000'),
+            distance_km=Decimal('13'), date_embauche=date(2024, 9, 1),
+            cree_par=self.user,
+        )
+        AffectationClasse.objects.create(
+            enseignant=maitre, classe=self.classe,
+            date_debut=date(2025, 9, 1), actif=True,
+        )
+        return maitre
+
+    def creer_professeur(self):
+        professeur = Enseignant.objects.create(
+            nom='NIAMY', prenoms='Jean Jacques', matricule='0648321',
+            ecole=self.ecole, type_enseignant=TypeEnseignant.SECONDAIRE,
+            taux_horaire=Decimal('13500'),
+            mode_calcul_horaire=ModeCalculHoraire.MENSUEL,
+            heures_mensuelles=Decimal('38'), date_embauche=date(2021, 10, 1),
+            cree_par=self.user,
+        )
+        AffectationClasse.objects.create(
+            enseignant=professeur, classe=self.classe_college,
+            heures_par_semaine=Decimal('10'), matiere='Maths/Chimie',
+            date_debut=date(2025, 9, 1), actif=True,
+        )
+        return professeur
+
+    def test_periode_calcule_les_jours_de_travail_du_mois(self):
+        # Mai 2026 compte 21 jours du lundi au vendredi.
+        self.assertEqual(self.periode.jours_ouvrables, 21)
+        self.assertEqual(self.periode.annee_scolaire, '2025 - 2026')
+        self.assertEqual(self.periode.liste_signataires[1], ('La Gestionnaire', 'Mme Véronique KPOMY'))
+
+    def test_primes_automatiques_selon_le_bareme(self):
+        maitre = self.creer_maitre()
+        etat, _ = calculer_etat_salaire_reel(maitre, self.periode, self.user)
+
+        self.assertEqual(etat.prime_fonction, Decimal('250000'))
+        self.assertEqual(etat.prime_anciennete, Decimal('20000.00'))  # (2026 - 2024) × 10 000
+        self.assertEqual(etat.prime_eloignement, Decimal('26000.00'))  # 13 km × 2 000
+        self.assertEqual(etat.effectif_classe, 3)  # transféré exclu
+        self.assertEqual(etat.prime_craie, Decimal('1500.00'))  # 3 élèves × 500
+        self.assertEqual(etat.primes, Decimal('297500.00'))
+        self.assertEqual(etat.salaire_brut, Decimal('847500.00'))
+        self.assertEqual(etat.salaire_net, Decimal('847500.00'))
+
+    def test_bareme_a_zero_ne_calcule_aucune_prime(self):
+        periode = PeriodeSalaire.objects.create(
+            mois=6, annee=2026, ecole=self.ecole, cree_par=self.user,
+        )
+        etat, _ = calculer_etat_salaire_reel(self.creer_maitre(), periode, self.user)
+        self.assertEqual(etat.primes, Decimal('250000.00'))
+        self.assertEqual(etat.prime_anciennete, 0)
+        self.assertEqual(etat.prime_craie, 0)
+
+    def test_ajustement_detaille_jours_chomes_et_sanction(self):
+        maitre = self.creer_maitre()
+        etat, _ = calculer_etat_salaire_reel(maitre, self.periode, self.user)
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.pk]),
+            {
+                'salaire_base': '550000', 'jours_chomes': '1',
+                'prime_fonction': '250000', 'prime_craie': '21500',
+                'prime_anciennete': '20000', 'prime_eloignement': '26000',
+                'prime_performance': '128000', 'prime_exceptionnelle': '50000',
+                'deductions': '30000', 'observations': 'Sanction : 1 jour',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.jours_travailles, 20)
+        self.assertEqual(etat.primes, Decimal('495500.00'))
+        self.assertEqual(etat.salaire_net, Decimal('1015500.00'))
+
+        # Un état ajusté garde sa saisie au recalcul.
+        calculer_etat_salaire_reel(maitre, self.periode, self.user)
+        etat.refresh_from_db()
+        self.assertEqual(etat.prime_craie, Decimal('21500.00'))
+
+    def test_heures_de_revision_du_secondaire(self):
+        professeur = self.creer_professeur()
+        etat, _ = calculer_etat_salaire_reel(professeur, self.periode, self.user)
+        self.assertEqual(etat.salaire_base, Decimal('513000.00'))  # 38 h × 13 500
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.pk]),
+            {
+                'taux_horaire_applique': '13500', 'total_heures': '38',
+                'heures_revision': '12', 'prime_craie': '1',
+                'prime_exceptionnelle': '25000', 'deductions': '0',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.prime_craie, Decimal('120000.00'))  # 12 h × 10 000, saisie ignorée
+        self.assertEqual(etat.salaire_brut, Decimal('658000.00'))
+
+    def test_creation_avec_total_de_primes_seul_reste_compatible(self):
+        etat = EtatSalaire.objects.create(
+            enseignant=self.creer_maitre(), periode=self.periode,
+            salaire_base=Decimal('550000'), primes=Decimal('40000'),
+            salaire_net=Decimal('0'), calcule_par=self.user,
+        )
+        self.assertEqual(etat.prime_fonction, Decimal('40000'))
+        self.assertEqual(etat.salaire_net, Decimal('590000.00'))
+
+    def test_nouvelle_periode_reprend_bareme_et_signataires(self):
+        response = self.client.post(reverse('salaires:creer_periode'), {
+            'mois': '6', 'annee': '2026', 'ecole': self.ecole.pk,
+            'nombre_semaines': '4',
+        })
+        self.assertEqual(response.status_code, 302)
+        juin = PeriodeSalaire.objects.get(ecole=self.ecole, mois=6, annee=2026)
+        self.assertEqual(juin.taux_prime_anciennete, Decimal('10000'))
+        self.assertEqual(juin.lieu_edition, 'Diécké')
+        self.assertEqual(juin.signataires, self.periode.signataires)
+        self.assertEqual(juin.jours_ouvrables, 22)
+
+    def test_parametres_de_periode_recalculent_les_etats(self):
+        maitre = self.creer_maitre()
+        calculer_etat_salaire_reel(maitre, self.periode, self.user)
+        response = self.client.post(
+            reverse('salaires:parametres_periode', args=[self.periode.pk]),
+            {
+                'jours_ouvrables': '20',
+                'taux_prime_anciennete': '15000',
+                'taux_prime_eloignement': '2000',
+                'taux_prime_craie': '500',
+                'taux_heure_revision': '10000',
+                'lieu_edition': 'Diécké',
+                'signataires': 'Le Fondateur : M. NIAMY',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        etat = EtatSalaire.objects.get(enseignant=maitre, periode=self.periode)
+        self.assertEqual(etat.prime_anciennete, Decimal('30000.00'))
+        self.assertEqual(etat.jours_travailles, 20)
+
+        invalide = self.client.post(
+            reverse('salaires:parametres_periode', args=[self.periode.pk]),
+            {'jours_ouvrables': '20', 'taux_prime_anciennete': '0',
+             'taux_prime_eloignement': '0', 'taux_prime_craie': '0',
+             'taux_heure_revision': '0', 'signataires': 'Sans deux-points'},
+        )
+        self.assertEqual(invalide.status_code, 200)
+        self.assertContains(invalide, 'Titre : Nom')
+
+    def test_documents_du_classeur_sont_generes(self):
+        maitre = self.creer_maitre()
+        professeur = self.creer_professeur()
+        directeur = Enseignant.objects.create(
+            nom='BAMBA', prenoms='Hamed', ecole=self.ecole,
+            type_enseignant=TypeEnseignant.ADMINISTRATEUR, fonction='DG',
+            salaire_fixe=Decimal('600000'), date_embauche=date(2021, 1, 1),
+            cree_par=self.user,
+        )
+        for personne in (maitre, professeur, directeur):
+            calculer_etat_salaire_reel(personne, self.periode, self.user)
+        for montant in ('100000', '50000', '25000', '25000', '10000', '5000'):
+            AvanceSalaire.objects.create(
+                enseignant=directeur, periode=self.periode,
+                montant=Decimal(montant), cree_par=self.user,
+            )
+
+        urls = [
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'etat']) + f'?groupe={groupe}'
+            for groupe in ('DIRECTION', 'PRIMAIRE', 'SECONDAIRE', 'APPUI')
+        ] + [
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'masse']),
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'acomptes']),
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'emargement'])
+            + '?groupe=DIRECTION,PRIMAIRE',
+            reverse('salaires:fiche_paie_pdf', args=[
+                EtatSalaire.objects.get(enseignant=maitre).pk
+            ]),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response['Content-Type'], 'application/pdf')
+                self.assertTrue(response.content.startswith(b'%PDF'))
+
+        self.assertEqual(self.client.get(
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'inconnu'])
+        ).status_code, 404)
+        self.assertEqual(self.client.get(
+            reverse('salaires:document_paie_pdf', args=[self.periode.pk, 'etat'])
+        ).status_code, 404)
+
+    def test_pages_affichent_primes_detaillees_et_documents(self):
+        maitre = self.creer_maitre()
+        etat, _ = calculer_etat_salaire_reel(maitre, self.periode, self.user)
+
+        ajuster = self.client.get(reverse('salaires:ajuster_etat_salaire', args=[etat.pk]))
+        self.assertContains(ajuster, 'Craie / révision')
+        self.assertContains(ajuster, 'Jours chômés')
+        self.assertContains(ajuster, 'id="total-primes"')
+
+        liste = self.client.get(reverse('salaires:etats_salaire'), {'periode': self.periode.pk})
+        self.assertContains(liste, 'Documents de paie')
+        self.assertContains(liste, 'Matricule 0949724')
+        self.assertContains(liste, 'Ancienneté 20')
+
+        periodes = self.client.get(reverse('salaires:gestion_periodes'))
+        self.assertContains(periodes, 'Barème et signataires')
+
+        parametres = self.client.get(reverse('salaires:parametres_periode', args=[self.periode.pk]))
+        self.assertContains(parametres, 'Prime de craie par élève')
+
+        fiche = self.client.get(reverse('salaires:ajouter_enseignant'))
+        self.assertContains(fiche, 'name="matricule"')
+        self.assertContains(fiche, 'name="distance_km"')
+
+    def test_acomptes_cumulent_les_bons_au_dela_du_cinquieme(self):
+        from .documents_paie import lignes_acomptes
+
+        directeur = Enseignant.objects.create(
+            nom='BARRY', prenoms='Fatoumata', ecole=self.ecole,
+            type_enseignant=TypeEnseignant.ADMINISTRATEUR, fonction='Directrice',
+            salaire_fixe=Decimal('600000'), date_embauche=date(2016, 1, 1),
+            cree_par=self.user,
+        )
+        for jour, montant in enumerate(('100', '200', '300', '400', '500', '600'), start=1):
+            AvanceSalaire.objects.create(
+                enseignant=directeur, periode=self.periode,
+                montant=Decimal(montant), date_avance=date(2026, 5, jour),
+                cree_par=self.user,
+            )
+        ligne = lignes_acomptes(self.periode)[0]
+        self.assertEqual(ligne['bons'], [Decimal('100'), Decimal('200'), Decimal('300'),
+                                         Decimal('400'), Decimal('1100')])
+        self.assertEqual(ligne['total'], Decimal('2100'))
+
+    def test_montant_en_lettres(self):
+        from .montant_lettres import formater_gnf, montant_en_lettres
+
+        self.assertEqual(
+            montant_en_lettres(Decimal('7982500')),
+            'Sept millions neuf cent quatre-vingt-deux mille cinq cents francs guinéens',
+        )
+        self.assertEqual(montant_en_lettres(280000), 'Deux cent quatre-vingt mille francs guinéens')
+        self.assertEqual(montant_en_lettres(71), 'Soixante et onze francs guinéens')
+        self.assertEqual(formater_gnf(Decimal('20867500.00')), '20 867 500')

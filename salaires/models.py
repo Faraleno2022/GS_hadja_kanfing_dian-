@@ -80,6 +80,36 @@ def niveaux_classes_pour_type_enseignant(type_enseignant):
     return NIVEAUX_CLASSE_PAR_TYPE_ENSEIGNANT.get(type_enseignant, set())
 
 
+class GroupePaie(models.TextChoices):
+    """Rubriques des états de salaire et de la masse salariale."""
+
+    DIRECTION = 'DIRECTION', 'Direction'
+    PRIMAIRE = 'PRIMAIRE', 'Maternelle et primaire'
+    SECONDAIRE = 'SECONDAIRE', 'Secondaire'
+    APPUI = 'APPUI', "Personnel d'appui"
+
+
+GROUPE_PAIE_PAR_TYPE = {
+    TypeEnseignant.ADMINISTRATEUR: GroupePaie.DIRECTION,
+    TypeEnseignant.GARDERIE: GroupePaie.PRIMAIRE,
+    TypeEnseignant.MATERNELLE: GroupePaie.PRIMAIRE,
+    TypeEnseignant.PRIMAIRE: GroupePaie.PRIMAIRE,
+    TypeEnseignant.SECONDAIRE: GroupePaie.SECONDAIRE,
+}
+
+
+def jours_ouvrables_du_mois(annee, mois):
+    """Nombre de jours du lundi au vendredi dans le mois."""
+    from calendar import monthrange
+    from datetime import date
+
+    return sum(
+        1
+        for jour in range(1, monthrange(annee, mois)[1] + 1)
+        if date(annee, mois, jour).weekday() < 5
+    )
+
+
 class Enseignant(SyncTrackedModel):
     """Modèle représentant un enseignant"""
     
@@ -91,6 +121,12 @@ class Enseignant(SyncTrackedModel):
     adresse = models.TextField(blank=True, verbose_name="Adresse")
     
     # Informations professionnelles
+    matricule = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="Matricule",
+        help_text="Matricule du travailleur repris sur les états et le bulletin de paie.",
+    )
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, verbose_name="École")
     type_enseignant = models.CharField(
         max_length=20, 
@@ -144,11 +180,17 @@ class Enseignant(SyncTrackedModel):
     )
     prime_mensuelle = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0'), blank=True,
-        verbose_name="Prime mensuelle par défaut (GNF)",
+        verbose_name="Prime de fonction mensuelle (GNF)",
         help_text=(
             "Reprise dans chaque nouvel état de salaire. Les états déjà créés "
             "gardent leur prime, ajustable séparément avant validation."
         ),
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    distance_km = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'), blank=True,
+        verbose_name="Distance domicile - école (km)",
+        help_text="Sert au calcul de la prime d'éloignement (km × taux de la période).",
         validators=[MinValueValidator(Decimal('0'))],
     )
     heures_mensuelles = models.DecimalField(
@@ -189,6 +231,17 @@ class Enseignant(SyncTrackedModel):
     def nom_complet(self):
         return f"{self.nom} {self.prenoms}"
     
+    @property
+    def groupe_paie(self):
+        """Rubrique de l'état de salaire : direction, primaire, secondaire, appui."""
+        return GROUPE_PAIE_PAR_TYPE.get(self.type_enseignant, GroupePaie.APPUI)
+
+    def anciennete_annees(self, annee_reference):
+        """Années d'ancienneté comptées comme sur l'état : année - année d'embauche."""
+        if not self.date_embauche:
+            return 0
+        return max(int(annee_reference) - self.date_embauche.year, 0)
+
     @property
     def est_taux_horaire(self):
         """Vérifie si l'enseignant est payé au taux horaire"""
@@ -441,9 +494,60 @@ class PeriodeSalaire(SyncTrackedModel):
         ],
     )
     
+    jours_ouvrables = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Nombre de jours de travail",
+        help_text=(
+            "Jours travaillés du mois. Rempli automatiquement avec les jours "
+            "du lundi au vendredi ; retirez les jours fériés si besoin."
+        ),
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+    )
+
+    # Barème des primes calculées automatiquement (0 = prime non calculée)
+    taux_prime_anciennete = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime d'ancienneté par année (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    taux_prime_eloignement = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime d'éloignement par km (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    taux_prime_craie = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime de craie par élève (GNF)",
+        help_text="Maternelle et primaire : effectif de la classe × ce montant.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    taux_heure_revision = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name="Heure de révision (GNF)",
+        help_text="Secondaire : heures de révision × ce montant.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+
+    # Mentions des documents de paie
+    lieu_edition = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Lieu d'édition",
+        help_text="Ex. : Diécké. Utilisé dans « Diécké, le 31 mai 2026 ».",
+    )
+    signataires = models.TextField(
+        blank=True,
+        verbose_name="Signataires",
+        help_text=(
+            "Un signataire par ligne, au format « Titre : Nom ». "
+            "Ex. : Le Fondateur : M. Nyan Isaac NIAMY"
+        ),
+    )
+
     # Statut
     cloturee = models.BooleanField(
-        default=False, 
+        default=False,
         verbose_name="Clôturée",
         help_text="Une fois clôturée, la période ne peut plus être modifiée"
     )
@@ -480,8 +584,30 @@ class PeriodeSalaire(SyncTrackedModel):
         return f"{mois_noms[self.mois]} {self.annee} - {self.ecole.nom}"
 
     def save(self, *args, **kwargs):
+        if not self.jours_ouvrables and self.mois and self.annee:
+            self.jours_ouvrables = jours_ouvrables_du_mois(self.annee, self.mois)
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'jours_ouvrables'}
         self.full_clean()
         super().save(*args, **kwargs)
+
+    @property
+    def annee_scolaire(self):
+        """Année scolaire de la période (rentrée en septembre)."""
+        debut = self.annee if self.mois >= 9 else self.annee - 1
+        return f"{debut} - {debut + 1}"
+
+    @property
+    def liste_signataires(self):
+        """Retourne ``[(titre, nom), ...]`` depuis le champ texte."""
+        resultat = []
+        for ligne in (self.signataires or '').splitlines():
+            ligne = ligne.strip()
+            if not ligne:
+                continue
+            titre, _, nom = ligne.partition(':')
+            resultat.append((titre.strip(), nom.strip()))
+        return resultat
     
     @property
     def nom_periode(self):
@@ -558,10 +684,57 @@ class EtatSalaire(SyncTrackedModel):
         validators=[MinValueValidator(Decimal('0'))],
     )
     primes = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
+        max_digits=10,
+        decimal_places=2,
         default=Decimal('0'),
         verbose_name="Primes",
+        help_text="Total des six primes détaillées, recalculé à l'enregistrement.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_fonction = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime de fonction",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_craie = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime de craie / révision",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_anciennete = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime d'ancienneté",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_eloignement = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime d'éloignement",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_performance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime de performance",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_exceptionnelle = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime exceptionnelle",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    jours_chomes = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Jours chômés",
+        help_text="Retirés du nombre de jours de travail de la période.",
+        validators=[MaxValueValidator(31)],
+    )
+    effectif_classe = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Effectif de la classe",
+        help_text="Élèves de la classe au moment du calcul (prime de craie).",
+    )
+    heures_revision = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name="Heures de révision",
         validators=[MinValueValidator(Decimal('0'))],
     )
     deductions = models.DecimalField(
@@ -629,13 +802,37 @@ class EtatSalaire(SyncTrackedModel):
         unique_together = ['enseignant', 'periode']
         ordering = ['-periode__annee', '-periode__mois', 'enseignant__nom']
     
+    CHAMPS_PRIMES = (
+        'prime_fonction',
+        'prime_craie',
+        'prime_anciennete',
+        'prime_eloignement',
+        'prime_performance',
+        'prime_exceptionnelle',
+    )
+
     def __str__(self):
         return f"{self.enseignant.nom_complet} - {self.periode.nom_periode}"
+
+    def total_primes_detaillees(self):
+        return sum(
+            (getattr(self, champ) or Decimal('0') for champ in self.CHAMPS_PRIMES),
+            Decimal('0'),
+        )
+
+    @property
+    def salaire_brut(self):
+        return (self.salaire_base or Decimal('0')) + (self.primes or Decimal('0'))
+
+    @property
+    def jours_travailles(self):
+        jours = self.periode.jours_ouvrables or 0
+        return max(jours - (self.jours_chomes or 0), 0)
 
     def clean(self):
         super().clean()
         salaire_base = self.salaire_base or Decimal('0')
-        primes = self.primes or Decimal('0')
+        primes = self.total_primes_detaillees()
         deductions = self.deductions or Decimal('0')
         avances = self.avances or Decimal('0')
         errors = {}
@@ -659,19 +856,29 @@ class EtatSalaire(SyncTrackedModel):
             raise ValidationError(errors)
     
     def save(self, *args, **kwargs):
-        # Calcul automatique du salaire net
+        # Compatibilité : un état créé avec un seul total (anciens postes
+        # synchronisés, scripts) le garde comme prime de fonction.
+        if (
+            self._state.adding
+            and self.primes
+            and not self.total_primes_detaillees()
+        ):
+            self.prime_fonction = self.primes
+        # Le total des primes suit toujours le détail des six colonnes.
+        self.primes = self.total_primes_detaillees()
         salaire_base = self.salaire_base or Decimal('0')
-        primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
         avances = self.avances or Decimal('0')
         self.salaire_net = (
-            salaire_base + primes - deductions - avances
+            salaire_base + self.primes - deductions - avances
         ).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP
         )
         self.full_clean()
         if kwargs.get('update_fields') is not None:
-            kwargs['update_fields'] = set(kwargs['update_fields']) | {'salaire_net'}
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {
+                'salaire_net', 'primes'
+            }
         super().save(*args, **kwargs)
     
     @property

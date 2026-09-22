@@ -65,12 +65,46 @@
                             {% for error in form.salaire_base.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                         </div>
 
-                        <div class="mb-3">
-                            <label id="primes" class="form-label" for="{{ form.primes.id_for_label }}">Total des primes du mois (GNF)</label>
-                            {{ form.primes }}
-                            <div class="form-text">Saisissez le total souhaité pour ce mois, prime récurrente et prime ponctuelle comprises. Ce montant s'ajoute au salaire de base. Indiquez le motif dans les observations.</div>
-                            {% for error in form.primes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="{{ form.jours_chomes.id_for_label }}">Jours chômés</label>
+                                {{ form.jours_chomes }}
+                                <div class="form-text">Jours travaillés = {{ etat.periode.jours_ouvrables|default:0 }} jours de la période − jours chômés.</div>
+                                {% for error in form.jours_chomes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% if etat.enseignant.est_taux_horaire %}
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label" for="{{ form.heures_revision.id_for_label }}">Heures de révision</label>
+                                {{ form.heures_revision }}
+                                {% for error in form.heures_revision.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% else %}
+                            {{ form.heures_revision }}
+                            {% endif %}
                         </div>
+
+                        <fieldset class="border rounded p-3 mb-3" id="primes">
+                            <legend class="float-none w-auto px-2 fs-6 mb-0">Primes du mois (GNF)</legend>
+                            <div class="row">
+                                {% for field in form %}
+                                {% if field.name|slice:":6" == "prime_" %}
+                                <div class="col-md-4 col-6 mb-2">
+                                    <label class="form-label small mb-1" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                    {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                            <div class="d-flex justify-content-between border-top pt-2 mt-1">
+                                <span>Total des primes</span>
+                                <strong><span id="total-primes">{{ etat.primes|floatformat:0|intcomma }}</span> GNF</strong>
+                            </div>
+                            {% if etat.effectif_classe %}
+                            <div class="form-text">Effectif de la classe au dernier calcul : {{ etat.effectif_classe }} élève{{ etat.effectif_classe|pluralize }}.</div>
+                            {% endif %}
+                        </fieldset>
 
                         <div class="mb-3">
                             <label class="form-label" for="{{ form.deductions.id_for_label }}">Retenues (GNF)</label>
@@ -119,4 +153,27 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 {% endif %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const champsPrimes = Array.from(document.querySelectorAll('#primes input[name^="prime_"]'));
+    const total = document.getElementById('total-primes');
+    const revision = document.getElementById('{{ form.heures_revision.id_for_label }}');
+    const craie = document.getElementById('{{ form.prime_craie.id_for_label }}');
+    const tauxRevision = Number.parseFloat('{{ etat.periode.taux_heure_revision|default:0|stringformat:"s" }}');
+
+    function recalculerPrimes() {
+        if ({{ form.revision_calculee|yesno:"true,false" }} && revision && craie) {
+            craie.value = (Number.parseFloat(revision.value || '0') * tauxRevision).toFixed(2);
+        }
+        const somme = champsPrimes.reduce(function (acc, champ) {
+            const valeur = Number.parseFloat(champ.value || '0');
+            return acc + (Number.isFinite(valeur) ? valeur : 0);
+        }, 0);
+        total.textContent = Math.round(somme).toLocaleString('fr-FR');
+    }
+
+    champsPrimes.forEach(function (champ) { champ.addEventListener('input', recalculerPrimes); });
+    if (revision) { revision.addEventListener('input', recalculerPrimes); }
+});
+</script>
 {% endblock %}

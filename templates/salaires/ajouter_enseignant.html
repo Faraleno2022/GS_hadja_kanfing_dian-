@@ -352,6 +352,13 @@
                 </div>
                 
                 <div class="form-group">
+                    <label for="{{ form.matricule.id_for_label }}" class="form-label">{{ form.matricule.label }}</label>
+                    {{ form.matricule }}
+                    <div class="help-text">{{ form.matricule.help_text }}</div>
+                    {% for error in form.matricule.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+                </div>
+
+                <div class="form-group">
                     <label for="{{ form.date_embauche.id_for_label }}" class="form-label">
                         {{ form.date_embauche.label }}
                         {% if form.date_embauche.field.required %}<span class="required-field">*</span>{% endif %}
@@ -597,7 +604,11 @@
                 {{ form.prime_mensuelle }}
                 <div class="help-text">{{ form.prime_mensuelle.help_text }} Laissez 0 en l'absence de prime récurrente.</div>
                 {% for error in form.prime_mensuelle.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
-                <p class="text-muted small mt-2 mb-0">Pour une prime ponctuelle, ouvrez l'état de salaire du mois et choisissez « Primes et ajustements ».</p>
+                <label for="{{ form.distance_km.id_for_label }}" class="form-label mt-3">{{ form.distance_km.label }}</label>
+                {{ form.distance_km }}
+                <div class="help-text">{{ form.distance_km.help_text }}</div>
+                {% for error in form.distance_km.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
+                <p class="text-muted small mt-2 mb-0">L'ancienneté (date d'embauche), l'éloignement et la craie sont calculés selon le barème de la période. Pour les primes de performance ou exceptionnelle, ouvrez l'état de salaire du mois et choisissez « Primes et ajustements ».</p>
             </div>
 
             <!-- Erreurs générales du formulaire -->

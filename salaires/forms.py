@@ -25,11 +25,11 @@ class EnseignantForm(forms.ModelForm):
     class Meta:
         model = Enseignant
         fields = [
-            'nom', 'prenoms', 'telephone', 'email', 'adresse',
+            'nom', 'prenoms', 'matricule', 'telephone', 'email', 'adresse',
             'ecole', 'type_enseignant', 'statut', 
             'fonction',
             'taux_horaire', 'mode_calcul_horaire', 'salaire_fixe', 'prime_mensuelle',
-            'heures_mensuelles', 'date_embauche'
+            'distance_km', 'heures_mensuelles', 'date_embauche'
         ]
         widgets = {
             'nom': forms.TextInput(attrs={
@@ -81,6 +81,13 @@ class EnseignantForm(forms.ModelForm):
             }),
             'prime_mensuelle': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': '0', 'step': '0.01',
+            }),
+            'matricule': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Ex : 0499120',
+            }),
+            'distance_km': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.5',
             }),
             'heures_mensuelles': forms.NumberInput(attrs={
                 'class': 'form-control',
@@ -152,6 +159,12 @@ class EnseignantForm(forms.ModelForm):
 
     def clean_prime_mensuelle(self):
         return self.cleaned_data.get('prime_mensuelle') or Decimal('0')
+
+    def clean_distance_km(self):
+        return self.cleaned_data.get('distance_km') or Decimal('0')
+
+    def clean_matricule(self):
+        return (self.cleaned_data.get('matricule') or '').strip()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -500,11 +513,25 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             'salaire_base',
             'taux_horaire_applique',
             'total_heures',
-            'primes',
+            'heures_revision',
+            'jours_chomes',
+            *EtatSalaire.CHAMPS_PRIMES,
             'deductions',
             'observations',
         ]
         widgets = {
+            **{
+                champ: forms.NumberInput(attrs={
+                    'class': 'form-control', 'min': '0', 'step': '1',
+                })
+                for champ in EtatSalaire.CHAMPS_PRIMES
+            },
+            'heures_revision': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.5'
+            }),
+            'jours_chomes': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'max': '31', 'step': '1'
+            }),
             'salaire_base': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': '0', 'step': '0.01'
             }),
@@ -512,9 +539,6 @@ class EtatSalaireAjustementForm(forms.ModelForm):
                 'class': 'form-control', 'min': '0.01', 'step': '0.01'
             }),
             'total_heures': forms.NumberInput(attrs={
-                'class': 'form-control', 'min': '0', 'step': '0.01'
-            }),
-            'primes': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': '0', 'step': '0.01'
             }),
             'deductions': forms.NumberInput(attrs={
@@ -525,13 +549,26 @@ class EtatSalaireAjustementForm(forms.ModelForm):
                 'placeholder': 'Motif des primes ou retenues',
             }),
         }
+        labels = {
+            'prime_fonction': 'Fonction',
+            'prime_craie': 'Craie / révision',
+            'prime_anciennete': 'Ancienneté',
+            'prime_eloignement': 'Éloignement',
+            'prime_performance': 'Performance',
+            'prime_exceptionnelle': 'Exceptionnelle',
+            'deductions': 'Retenues (sanctions, autres prélèvements)',
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.a_des_pointages = False
+        self.revision_calculee = False
         # Compatibilité avec les anciens appels qui ne transmettaient que les
         # primes et retenues : le salaire courant reste alors inchangé.
         self.fields['salaire_base'].required = False
+        # Un champ absent de la saisie garde la valeur actuelle de l'état.
+        for champ in (*EtatSalaire.CHAMPS_PRIMES, 'jours_chomes', 'heures_revision'):
+            self.fields[champ].required = False
 
         enseignant = getattr(self.instance, 'enseignant', None)
         periode = getattr(self.instance, 'periode', None)
@@ -568,9 +605,17 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             self.fields['taux_horaire_applique'].help_text = (
                 'Taux appliqué à cette période uniquement.'
             )
+            if periode.taux_heure_revision:
+                self.revision_calculee = True
+                self.fields['prime_craie'].widget.attrs['readonly'] = 'readonly'
+                self.fields['prime_craie'].help_text = (
+                    f"Heures de révision × {periode.taux_heure_revision:,.0f} GNF."
+                    .replace(',', ' ')
+                )
         else:
             self.fields['taux_horaire_applique'].widget = forms.HiddenInput()
             self.fields['total_heures'].widget = forms.HiddenInput()
+            self.fields['heures_revision'].widget = forms.HiddenInput()
 
     def clean(self):
         cleaned_data = super().clean()
@@ -600,7 +645,32 @@ class EtatSalaireAjustementForm(forms.ModelForm):
                 )
                 cleaned_data['salaire_base'] = salaire_base
 
-        primes = cleaned_data.get('primes') or Decimal('0')
+        for champ in (*EtatSalaire.CHAMPS_PRIMES, 'jours_chomes', 'heures_revision'):
+            if cleaned_data.get(champ) is None:
+                cleaned_data[champ] = getattr(self.instance, champ)
+
+        if self.revision_calculee:
+            cleaned_data['prime_craie'] = (
+                (cleaned_data.get('heures_revision') or Decimal('0'))
+                * self.instance.periode.taux_heure_revision
+            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        periode = getattr(self.instance, 'periode', None)
+        jours_chomes = cleaned_data.get('jours_chomes') or 0
+        if (
+            periode is not None
+            and periode.jours_ouvrables
+            and jours_chomes > periode.jours_ouvrables
+        ):
+            self.add_error(
+                'jours_chomes',
+                'Les jours chômés dépassent le nombre de jours de travail de la période.',
+            )
+
+        primes = sum(
+            (cleaned_data.get(champ) or Decimal('0') for champ in EtatSalaire.CHAMPS_PRIMES),
+            Decimal('0'),
+        )
         deductions = cleaned_data.get('deductions') or Decimal('0')
         avances = self.instance.avances or Decimal('0')
 
@@ -612,6 +682,65 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class ParametresPeriodeForm(forms.ModelForm):
+    """Barème des primes et mentions des documents d'une période."""
+
+    class Meta:
+        model = PeriodeSalaire
+        fields = [
+            'jours_ouvrables',
+            'taux_prime_anciennete',
+            'taux_prime_eloignement',
+            'taux_prime_craie',
+            'taux_heure_revision',
+            'lieu_edition',
+            'signataires',
+        ]
+        widgets = {
+            'jours_ouvrables': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '1', 'max': '31',
+            }),
+            'taux_prime_anciennete': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '1',
+            }),
+            'taux_prime_eloignement': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '1',
+            }),
+            'taux_prime_craie': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '1',
+            }),
+            'taux_heure_revision': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '1',
+            }),
+            'lieu_edition': forms.TextInput(attrs={
+                'class': 'form-control', 'placeholder': 'Ex : Diécké',
+            }),
+            'signataires': forms.Textarea(attrs={
+                'class': 'form-control', 'rows': 4,
+                'placeholder': (
+                    "Le Fondateur : M. Nyan Isaac NIAMY\n"
+                    "Le Directeur Général : M. Hamed BAMBA\n"
+                    "La Gestionnaire : Mme Véronique KPOMY"
+                ),
+            }),
+        }
+
+    def clean_signataires(self):
+        lignes = [
+            ligne.strip()
+            for ligne in (self.cleaned_data.get('signataires') or '').splitlines()
+            if ligne.strip()
+        ]
+        if len(lignes) > 4:
+            raise ValidationError('Indiquez au plus quatre signataires.')
+        for ligne in lignes:
+            if ':' not in ligne:
+                raise ValidationError(
+                    f"« {ligne} » : utilisez le format « Titre : Nom »."
+                )
+        return '\n'.join(lignes)
 
 
 class EnseignantAvanceChoiceField(forms.ModelChoiceField):
