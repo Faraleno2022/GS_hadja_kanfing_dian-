@@ -368,6 +368,8 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         super().__init__(get_response)
     
     def process_request(self, request):
+        if request.path_info.startswith('/collecte-eleves/'):
+            return None
         user = getattr(request, 'user', None)
         if user is None or not user.is_authenticated:
             return None

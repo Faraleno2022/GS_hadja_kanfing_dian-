@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Vérifier {{ proposition.nom_complet }} - {{ block.super }}{% endblock %}
+{% block content %}
+<a class="btn btn-outline-secondary mb-3" href="{% url 'eleves:detail_collecte' proposition.envoi.lien_id %}">Retour à la collecte</a>
+<h1 class="h3">Vérifier {{ proposition.nom_complet }}</h1>
+<p class="text-muted">{{ proposition.envoi.lien.classe }} · Envoi de {{ proposition.envoi.auteur }}</p>
+{% if proposition.statut == 'EN_ATTENTE' %}
+{% if homonymes %}<div class="alert alert-warning"><strong>Un élève de mêmes prénom et nom existe dans cette classe.</strong>
+  {% for eleve in homonymes %}<div><a href="{% url 'eleves:detail_eleve' eleve.pk %}">{{ eleve.nom_complet }} · {{ eleve.matricule }}</a></div>{% endfor %}
+  Vérifiez les identités avant de créer un autre dossier.
+</div>{% endif %}
+<form method="post" class="card"><div class="card-body">{% csrf_token %}
+  {% include 'eleves/collecte/_champs_eleve.html' %}
+  <div class="form-check mt-4"><input type="checkbox" class="form-check-input" name="verrouiller" id="verrouiller" {% if verrouiller %}checked{% endif %}><label for="verrouiller" class="form-check-label">Verrouiller jusqu'au premier paiement validé</label></div>
+  <div class="form-check mt-2"><input type="checkbox" class="form-check-input" name="confirmer_homonymes" id="confirmer-homonymes" {% if confirmer_homonymes %}checked{% endif %}><label class="form-check-label" for="confirmer-homonymes">Créer malgré un homonyme, après vérification</label></div>
+  <div class="d-flex flex-wrap gap-2 mt-4">
+    <button name="action" value="accepter" class="btn btn-success">Valider et créer l'élève</button>
+    <button name="action" value="enregistrer" class="btn btn-outline-primary">Enregistrer les corrections</button>
+    <button name="action" value="refuser" class="btn btn-outline-danger" formnovalidate>Refuser la proposition</button>
+  </div>
+</div></form>
+{% else %}
+<div class="alert alert-info">Proposition {{ proposition.get_statut_display|lower }} le {{ proposition.traite_le|date:"d/m/Y H:i" }}.
+{% if proposition.eleve_id %}<a href="{% url 'eleves:detail_eleve' proposition.eleve_id %}">Ouvrir la fiche élève</a>{% endif %}</div>
+{% endif %}
+{% endblock %}

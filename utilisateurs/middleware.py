@@ -17,6 +17,8 @@ class ProfilAccessMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        if request.path_info.startswith('/collecte-eleves/'):
+            return self.get_response(request)
         user = request.user
         if user.is_authenticated and not user.is_superuser:
             profil = getattr(user, 'profil', None)
@@ -267,6 +269,7 @@ class LectureSeuleMiddleware:
     CHEMINS_AUTORISES = (
         '/utilisateurs/logout/',
         '/utilisateurs/deconnexion/',
+        '/collecte-eleves/',
         # La sécurité du compte reste modifiable même en mode consultation.
         '/utilisateurs/password/change/',
     )

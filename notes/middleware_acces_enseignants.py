@@ -20,6 +20,9 @@ class AccesEnseignantMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        # La collecte utilise son propre lien, sans les droits de la session.
+        if request.path_info.startswith('/collecte-eleves/'):
+            return self.get_response(request)
         if request.user.is_authenticated and AccesEnseignantTemporaire.objects.filter(utilisateur=request.user).exists():
             try:
                 route = resolve(request.path_info).view_name

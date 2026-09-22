@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import views_collecte
 from .views_paiements_actifs import actifs_paiements
 from .views_repartition import repartir_importes
 from .views_import import (
@@ -18,6 +19,9 @@ from .views_nouvelle_annee import (
 app_name = 'eleves'
 
 urlpatterns = [
+    path('collecte/', views_collecte.gestion_collecte, name='gestion_collecte'),
+    path('collecte/<int:pk>/', views_collecte.detail_collecte, name='detail_collecte'),
+    path('collecte/proposition/<int:pk>/', views_collecte.verifier_proposition, name='verifier_proposition'),
     path('actifs-paiements/', actifs_paiements, name='actifs_paiements'),
     path('importes/repartir/', repartir_importes, name='repartir_importes'),
     # Liste et recherche des élèves

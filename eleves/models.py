@@ -1035,3 +1035,6 @@ class HistoriqueEleve(SyncTrackedModel):
     
     def __str__(self):
         return f"{self.eleve.nom_complet} - {self.get_action_display()} ({self.date_action.strftime('%d/%m/%Y')})"
+
+
+from .models_collecte import LienCollecteEleves, EnvoiCollecteEleves, PropositionEleve  # noqa: F401,E402

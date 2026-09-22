@@ -138,6 +138,15 @@ def liste_eleves(request):
         'filtres_url': filtres.urlencode(),
     }
 
+    from .collecte_permissions import peut_gerer_collecte
+    context['peut_gerer_collecte'] = peut_gerer_collecte(request.user)
+    if context['peut_gerer_collecte']:
+        from .models_collecte import PropositionEleve
+        context['collecte_en_attente'] = filter_by_user_school(
+            PropositionEleve.objects.filter(statut='EN_ATTENTE'),
+            request.user, 'envoi__lien__ecole',
+        ).count()
+
     # Rendu partiel pour la recherche dynamique
     if request.GET.get('partial') == '1' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         response = render(request, 'eleves/partials/_liste_eleves_zone.html', context)
