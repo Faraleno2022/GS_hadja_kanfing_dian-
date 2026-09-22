@@ -24,8 +24,8 @@ from reportlab.lib.units import cm
 
 from .models import (
     Enseignant, AffectationClasse, AvanceSalaire, PeriodeSalaire,
-    EtatSalaire, DetailHeuresClasse, ModeCalculHoraire, SourceHeuresSalaire,
-    TypeEnseignant, PresenceEnseignant,
+    EtatSalaire, DetailHeuresClasse, GroupePaie, ModeCalculHoraire,
+    SourceHeuresSalaire, TypeEnseignant, PresenceEnseignant,
     niveaux_classes_pour_type_enseignant,
 )
 from .forms import (
@@ -34,7 +34,15 @@ from .forms import (
     EnseignantAffectationFormSet,
     EnseignantForm,
     EtatSalaireAjustementForm,
+    ParametresPeriodeForm,
     PresenceForm,
+)
+from .documents_paie import (
+    acomptes_pdf,
+    bulletin_paie_pdf,
+    emargement_pdf,
+    etat_salaire_groupe_pdf,
+    masse_salariale_pdf,
 )
 from .services import (
     actualiser_details_heures,
@@ -44,6 +52,7 @@ from .services import (
     enseignants_eligibles,
     heures_reellement_travaillees,
     nombre_jours_presence,
+    parametres_herites,
     pointages_existent,
     recalculer_salaire_ouvert_pour_date,
 )
@@ -975,10 +984,15 @@ def etats_salaire(request):
         'payes': etats.filter(paye=True).count(),
     }
     
+    periode_filtre = None
+    if periode_id and str(periode_id).isdigit():
+        periode_filtre = periodes.filter(id=periode_id).first()
+
     context = {
         'page_obj': page_obj,
         'etats': page_obj,
         'periodes': periodes,
+        'periode_filtre': periode_filtre,
         'ecoles': ecoles,
         'totaux': totaux,
         'is_paginated': page_obj.has_other_pages(),
@@ -1031,8 +1045,11 @@ def export_etats_salaire_csv(request):
     response['Content-Disposition'] = 'attachment; filename="etats_salaire.csv"'
     writer = csv.writer(response)
     writer.writerow([
-        'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Primes', 'Retenues', 'Avances', 'Salaire Net',
+        'Ecole', 'Periode', 'Matricule', 'Enseignant', 'Type', 'Rubrique',
+        'Valide', 'Payé', 'Jours travaillés', 'Salaire Base',
+        'Prime Fonction', 'Prime Craie/Révision', 'Prime Ancienneté',
+        'Prime Éloignement', 'Prime Performance', 'Prime Exceptionnelle',
+        'Primes', 'Salaire Brut', 'Retenues', 'Avances', 'Salaire Net',
         'Jours Présence', 'Total Heures', 'Date Calcul'
     ])
 
@@ -1040,12 +1057,17 @@ def export_etats_salaire_csv(request):
         writer.writerow([
             getattr(e.periode.ecole, 'nom', ''),
             f"{e.periode.mois:02d}/{e.periode.annee}",
+            e.enseignant.matricule,
             getattr(e.enseignant, 'nom_complet', str(e.enseignant)),
             getattr(e.enseignant, 'type_enseignant', ''),
+            GroupePaie(e.enseignant.groupe_paie).label,
             'Oui' if e.valide else 'Non',
             'Oui' if e.paye else 'Non',
+            e.jours_travailles,
             e.salaire_base,
+            *[getattr(e, champ) for champ in EtatSalaire.CHAMPS_PRIMES],
             e.primes,
+            e.salaire_brut,
             e.deductions,
             e.avances,
             e.salaire_net,
@@ -1297,7 +1319,10 @@ def ajuster_etat_salaire(request, etat_id):
                         form.cleaned_data['salaire_base']
                     )
 
-                etat_verrouille.primes = form.cleaned_data['primes']
+                for champ in (
+                    *EtatSalaire.CHAMPS_PRIMES, 'jours_chomes', 'heures_revision'
+                ):
+                    setattr(etat_verrouille, champ, form.cleaned_data[champ])
                 etat_verrouille.deductions = form.cleaned_data['deductions']
                 etat_verrouille.observations = form.cleaned_data['observations']
                 etat_verrouille.nombre_jours_presence = nombre_jours_presence(
@@ -1385,230 +1410,105 @@ def marquer_paye(request, etat_id):
 @login_required
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def fiche_paie_pdf(request, etat_id):
-    """Génère une fiche de paie PDF pour un état de salaire"""
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-    from reportlab.lib import colors
-    from reportlab.platypus import Table, TableStyle
-    from django.http import HttpResponse
-    from datetime import datetime
-    
-    etat = get_object_or_404(EtatSalaire, id=etat_id)
-    
-    # Vérifier les permissions (double vérification en plus du décorateur)
+    """Bulletin de paie individuel au format du classeur de l'école."""
+    etat = get_object_or_404(
+        EtatSalaire.objects.select_related('enseignant', 'periode', 'periode__ecole'),
+        id=etat_id,
+    )
     ecole_user = _ecole_utilisateur(request)
     if not user_is_admin(request.user) and ecole_user and etat.periode.ecole != ecole_user:
         raise Http404("État de salaire non trouvé")
-    
-    # Créer la réponse HTTP
+
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="fiche_paie_{etat.enseignant.nom}_{etat.periode.mois}_{etat.periode.annee}.pdf"'
-    
-    # Créer le PDF
-    p = canvas.Canvas(response, pagesize=A4)
-    width, height = A4
-    
-    # Ajouter le logo en filigrane (spécifique à l'école de l'utilisateur)
-    from ecole_moderne.pdf_utils import draw_logo_watermark
-    draw_logo_watermark(p, width, height, opacity=0.06, rotate=30, scale=1.2, ecole=_ecole_utilisateur(request))
-    
-    # En-tête avec logo et coordonnées dynamiques de l'école de la période
-    ecole_fp = getattr(getattr(etat, 'periode', None), 'ecole', None)
-    try:
-        header_logo_path = None
-        # Priorité: logo de l'école si présent
-        if ecole_fp is not None and hasattr(ecole_fp, 'logo'):
-            school_logo_path = getattr(getattr(ecole_fp, 'logo', None), 'path', None)
-            if school_logo_path and os.path.exists(school_logo_path):
-                header_logo_path = school_logo_path
-        # Fallback: logo statique
-        if not header_logo_path:
-            from django.contrib.staticfiles import finders
-            header_logo_path = finders.find('logos/logo.png')
-        if header_logo_path:
-            p.drawImage(header_logo_path, 2*cm, height-4*cm, width=3*cm, height=2*cm, preserveAspectRatio=True, mask='auto')
-    except Exception:
-        pass
-
-    # En-tête: Nom de l'école et coordonnées (à droite du logo)
-    y_header = height - 2*cm
-    try:
-        if ecole_fp is not None:
-            # Nom de l'école en gras
-            p.setFont('Helvetica-Bold', 14)
-            p.drawString(6*cm, y_header, f"{getattr(ecole_fp, 'nom', '')}")
-            y_header -= 0.5*cm
-            
-            # Coordonnées en plus petit
-            p.setFont('Helvetica', 9)
-            adr = getattr(ecole_fp, 'adresse', '') or ''
-            tel = getattr(ecole_fp, 'telephone', '') or ''
-            email = getattr(ecole_fp, 'email', '') or ''
-            dirc = getattr(ecole_fp, 'directeur', '') or ''
-            
-            if adr:
-                p.drawString(6*cm, y_header, f"Adresse: {adr}")
-                y_header -= 0.4*cm
-            if tel:
-                p.drawString(6*cm, y_header, f"Tél: {tel}")
-                y_header -= 0.4*cm
-            if email:
-                p.drawString(6*cm, y_header, f"Email: {email}")
-                y_header -= 0.4*cm
-            if dirc:
-                p.drawString(6*cm, y_header, f"Directeur: {dirc}")
-    except Exception:
-        pass
-    
-    # Ligne de séparation
-    p.setStrokeColor(colors.grey)
-    p.line(2*cm, height - 4.5*cm, width - 2*cm, height - 4.5*cm)
-    
-    # Titre FICHE DE PAIE centré
-    p.setFont("Helvetica-Bold", 16)
-    fiche_text = f"FICHE DE PAIE - {etat.periode.mois:02d}/{etat.periode.annee}"
-    p.drawCentredString(width/2, height - 5.2*cm, fiche_text)
-    
-    # Informations période
-    p.setFont("Helvetica", 10)
-    p.drawString(2*cm, height - 5.8*cm, f"Date d'édition: {datetime.now().strftime('%d/%m/%Y')}")
-    
-    # Informations enseignant
-    y_pos = height - 6.5*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "INFORMATIONS ENSEIGNANT")
-    
-    y_pos -= 0.8*cm
-    p.setFont("Helvetica", 10)
-    p.drawString(2*cm, y_pos, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Téléphone: {etat.enseignant.telephone or 'Non renseigné'}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Email: {etat.enseignant.email or 'Non renseigné'}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Type: {'Salaire fixe' if etat.enseignant.est_salaire_fixe else 'Taux horaire'}")
-    
-    # Détails du salaire
-    y_pos -= 1.5*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "DÉTAILS DU SALAIRE")
-    
-    # Tableau des montants
-    data = [
-        ['Élément', 'Valeur / Montant'],
-        ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
-        [
-            'Jours de présence',
-            f"{etat.nombre_jours_presence} jour(s)",
-        ],
-    ]
-    
-    if etat.total_heures is not None:
-        data.append(['Heures travaillées', f"{etat.total_heures}h"])
-        data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
-    
-    if etat.primes:
-        data.append(['Primes', f"{etat.primes:,.0f}".replace(',', ' ')])
-    
-    if etat.deductions:
-        data.append(['Déductions', f"-{etat.deductions:,.0f}".replace(',', ' ')])
-
-    if etat.avances:
-        data.append([
-            'Avances déjà versées',
-            f"-{etat.avances:,.0f}".replace(',', ' '),
-        ])
-    
-    data.append(['SALAIRE NET', f"{etat.salaire_net:,.0f}".replace(',', ' ')])
-    
-    # Créer le tableau
-    y_pos -= 0.8*cm
-    table = Table(data, colWidths=[8*cm, 4*cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    table.wrapOn(p, width, height)
-    table.drawOn(p, 2*cm, y_pos - len(data) * 0.6*cm)
-    
-    # Statut
-    y_pos -= (len(data) + 2) * 0.6*cm
-    p.setFont("Helvetica-Bold", 10)
-    statut_text = "VALIDÉ" if etat.valide else "EN ATTENTE DE VALIDATION"
-    if etat.paye:
-        statut_text += " - PAYÉ"
-    p.drawString(2*cm, y_pos, f"Statut: {statut_text}")
-    
-    if etat.valide and etat.date_validation:
-        y_pos -= 0.5*cm
-        p.setFont("Helvetica", 9)
-        p.drawString(2*cm, y_pos, f"Validé le {etat.date_validation.strftime('%d/%m/%Y')} par {etat.valide_par}")
-    
-    if etat.paye and etat.date_paiement:
-        y_pos -= 0.5*cm
-        p.drawString(2*cm, y_pos, f"Payé le {etat.date_paiement.strftime('%d/%m/%Y')}")
-    
-    # Section signatures
-    y_pos -= 3*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "SIGNATURES")
-    
-    # Ligne de séparation
-    y_pos -= 0.5*cm
-    p.line(2*cm, y_pos, width-2*cm, y_pos)
-    
-    # Signatures côte à côte
-    y_pos -= 1*cm
-    
-    # Signature enseignant (gauche)
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(2*cm, y_pos, "L'ENSEIGNANT")
-    p.setFont("Helvetica", 9)
-    p.drawString(2*cm, y_pos-0.4*cm, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
-    
-    # Cadre pour signature enseignant
-    signature_width = 6*cm
-    signature_height = 2*cm
-    p.rect(2*cm, y_pos-3*cm, signature_width, signature_height)
-    p.setFont("Helvetica", 8)
-    p.drawString(2*cm + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
-    
-    # Signature comptable (droite)
-    comptable_x = width - 8*cm
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(comptable_x, y_pos, "LE COMPTABLE")
-    p.setFont("Helvetica", 9)
-    if etat.calcule_par:
-        p.drawString(comptable_x, y_pos-0.4*cm, f"Nom: {etat.calcule_par.get_full_name() or etat.calcule_par.username}")
-    else:
-        p.drawString(comptable_x, y_pos-0.4*cm, "Nom: _________________")
-    
-    # Cadre pour signature comptable
-    p.rect(comptable_x, y_pos-3*cm, signature_width, signature_height)
-    p.setFont("Helvetica", 8)
-    p.drawString(comptable_x + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
-    
-    # Pied de page
-    p.setFont("Helvetica", 8)
-    p.drawString(2*cm, 2*cm, f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
-    p.drawString(2*cm, 1.5*cm, "Ce document est confidentiel et ne doit pas être divulgué à des tiers.")
-    
-    p.showPage()
-    p.save()
-    
+    response['Content-Disposition'] = (
+        f'inline; filename="bulletin_paie_{etat.enseignant.nom}_'
+        f'{etat.periode.mois:02d}_{etat.periode.annee}.pdf"'
+    )
+    bulletin_paie_pdf(response, etat)
     return response
+
+
+DOCUMENTS_PAIE = {
+    'etat': "État de salaire",
+    'masse': 'Masse salariale',
+    'acomptes': 'Acomptes',
+    'emargement': "Fiche d'émargement",
+}
+
+
+@login_required
+@require_school_object(model=PeriodeSalaire, pk_kwarg='periode_id', field_path='ecole')
+def document_paie_pdf(request, periode_id, document):
+    """Documents mensuels : état par rubrique, masse salariale, acomptes, émargement."""
+    if document not in DOCUMENTS_PAIE:
+        raise Http404("Document inconnu")
+    periode = get_object_or_404(
+        PeriodeSalaire.objects.select_related('ecole'), id=periode_id
+    )
+    groupes = [
+        groupe for groupe in request.GET.get('groupe', '').split(',')
+        if groupe in GroupePaie.values
+    ]
+    if document == 'etat' and len(groupes) != 1:
+        raise Http404("Rubrique de l'état de salaire manquante")
+
+    suffixe = f"_{groupes[0].lower()}" if len(groupes) == 1 else ''
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = (
+        f'inline; filename="{document}{suffixe}_{periode.mois:02d}_{periode.annee}.pdf"'
+    )
+    if document == 'etat':
+        etat_salaire_groupe_pdf(response, periode, groupes[0])
+    elif document == 'masse':
+        masse_salariale_pdf(response, periode)
+    elif document == 'acomptes':
+        acomptes_pdf(response, periode)
+    else:
+        emargement_pdf(response, periode, groupes or None)
+    return response
+
+
+@login_required
+@require_school_object(model=PeriodeSalaire, pk_kwarg='periode_id', field_path='ecole')
+def parametres_periode(request, periode_id):
+    """Barème des primes, jours de travail et signataires d'une période."""
+    periode = get_object_or_404(
+        PeriodeSalaire.objects.select_related('ecole'), id=periode_id
+    )
+    if periode.cloturee:
+        messages.error(request, "Une période clôturée ne peut plus être modifiée.")
+        return redirect('salaires:gestion_periodes')
+
+    if request.method == 'POST':
+        form = ParametresPeriodeForm(request.POST, instance=periode)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    periode = form.save()
+                    calculs, _ = _calculer_etats_salaire_periode(
+                        periode, request.user
+                    )
+            except ValidationError as exc:
+                messages.error(
+                    request,
+                    "Paramètres non enregistrés : " + ' '.join(exc.messages),
+                )
+            else:
+                messages.success(
+                    request,
+                    f"Paramètres de {periode.nom_periode} enregistrés. "
+                    f"{calculs} état(s) non validé(s) recalculé(s).",
+                )
+                return redirect(
+                    f"{reverse('salaires:etats_salaire')}?periode={periode.id}"
+                )
+    else:
+        form = ParametresPeriodeForm(instance=periode)
+
+    return render(request, 'salaires/parametres_periode.html', {
+        'form': form,
+        'periode': periode,
+    })
 
 
 @login_required
@@ -1968,6 +1868,7 @@ def creer_periode(request):
                     ecole=ecole,
                     nombre_semaines=nombre_semaines,
                     cree_par=request.user,
+                    **parametres_herites(ecole),
                 )
                 calculs_effectues, enseignants_regroupes = (
                     _calculer_etats_salaire_periode(
@@ -2046,7 +1947,8 @@ def cloturer_periode(request, periode_id):
                     annee=annee_suivante,
                     ecole=periode.ecole,
                     nombre_semaines=periode.nombre_semaines,  # Reprendre le même nombre de semaines
-                    cree_par=request.user
+                    cree_par=request.user,
+                    **parametres_herites(periode.ecole),
                 )
                 
                 messages.success(

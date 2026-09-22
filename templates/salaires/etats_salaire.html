@@ -271,6 +271,19 @@
         </form>
     </div>
 
+    {% if periode_filtre %}
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <strong class="me-2"><i class="fas fa-folder-open me-1"></i>{{ periode_filtre.nom_periode }}</strong>
+        {% include 'salaires/_documents_paie_menu.html' with periode=periode_filtre %}
+        {% if not periode_filtre.cloturee %}
+        <a href="{% url 'salaires:parametres_periode' periode_filtre.id %}" class="btn btn-outline-primary btn-action">
+            <i class="fas fa-cog"></i> Barème et signataires
+        </a>
+        {% endif %}
+        <span class="text-muted small">{{ periode_filtre.jours_ouvrables|default:"-" }} jours de travail</span>
+    </div>
+    {% endif %}
+
     <!-- Liste des états de salaire -->
     {% if page_obj %}
     <div class="row">
@@ -293,8 +306,14 @@
                         </div>
                         <div class="teacher-meta">
                             <i class="fas fa-calendar-check me-1"></i>
-                            {{ etat.nombre_jours_presence }} jour{{ etat.nombre_jours_presence|pluralize }} de présence
+                            {{ etat.jours_travailles }} jour{{ etat.jours_travailles|pluralize }} travaillé{{ etat.jours_travailles|pluralize }}{% if etat.jours_chomes %} ({{ etat.jours_chomes }} chômé{{ etat.jours_chomes|pluralize }}){% endif %}
+                            · {{ etat.nombre_jours_presence }} pointé{{ etat.nombre_jours_presence|pluralize }}
                         </div>
+                        {% if etat.enseignant.matricule %}
+                        <div class="teacher-meta">
+                            <i class="fas fa-id-badge me-1"></i>Matricule {{ etat.enseignant.matricule }}
+                        </div>
+                        {% endif %}
                         <div class="mt-2">
                             <span class="period-badge">{{ etat.periode }}</span>
                             <span class="status-badge {% if etat.paye %}status-paid{% elif etat.valide %}status-validated{% else %}status-pending{% endif %} ms-2">
@@ -356,6 +375,18 @@
                         <span>Primes:</span>
                         <span class="text-success">+{{ etat.primes|intcomma }} GNF</span>
                     </div>
+                    <div class="small text-muted px-2 pb-1">
+                        {% if etat.prime_fonction %}Fonction {{ etat.prime_fonction|floatformat:0|intcomma }} · {% endif %}
+                        {% if etat.prime_craie %}Craie/révision {{ etat.prime_craie|floatformat:0|intcomma }} · {% endif %}
+                        {% if etat.prime_anciennete %}Ancienneté {{ etat.prime_anciennete|floatformat:0|intcomma }} · {% endif %}
+                        {% if etat.prime_eloignement %}Éloignement {{ etat.prime_eloignement|floatformat:0|intcomma }} · {% endif %}
+                        {% if etat.prime_performance %}Performance {{ etat.prime_performance|floatformat:0|intcomma }} · {% endif %}
+                        {% if etat.prime_exceptionnelle %}Exceptionnelle {{ etat.prime_exceptionnelle|floatformat:0|intcomma }}{% endif %}
+                    </div>
+                    <div class="breakdown-item">
+                        <span>Salaire brut:</span>
+                        <span>{{ etat.salaire_brut|intcomma }} GNF</span>
+                    </div>
                     {% endif %}
                     {% if etat.deductions and etat.deductions > 0 %}
                     <div class="breakdown-item">
@@ -408,7 +439,7 @@
                     
                     <button class="btn btn-outline-secondary btn-action" 
                             onclick="imprimerFichePaie({{ etat.id }})">
-                        <i class="fas fa-print"></i> Imprimer
+                        <i class="fas fa-print"></i> Bulletin de paie
                     </button>
                 </div>
             </div>

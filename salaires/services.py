@@ -21,6 +21,7 @@ from .models import (
     ModeCalculHoraire,
     PeriodeSalaire,
     SourceHeuresSalaire,
+    TypeEnseignant,
 )
 
 
@@ -59,6 +60,31 @@ def synchroniser_avances_etat(enseignant_id, periode_id):
     etat.avances = total_avances_salaire(etat.enseignant, etat.periode)
     etat.save(update_fields=['avances', 'salaire_net'])
     return etat
+
+
+CHAMPS_PARAMETRES_PERIODE = (
+    'taux_prime_anciennete',
+    'taux_prime_eloignement',
+    'taux_prime_craie',
+    'taux_heure_revision',
+    'lieu_edition',
+    'signataires',
+)
+
+
+def parametres_herites(ecole):
+    """Barème et signataires repris de la dernière période de l'école."""
+    precedente = (
+        PeriodeSalaire.objects.filter(ecole=ecole)
+        .order_by('-annee', '-mois')
+        .first()
+    )
+    if precedente is None:
+        return {}
+    return {
+        champ: getattr(precedente, champ)
+        for champ in CHAMPS_PARAMETRES_PERIODE
+    }
 
 
 def bornes_periode(periode):
@@ -248,6 +274,82 @@ def actualiser_details_heures(etat):
         )
 
 
+def classe_principale(enseignant, periode):
+    """Classe tenue sur la période par un enseignant de maternelle/primaire."""
+    if enseignant.type_enseignant not in (
+        TypeEnseignant.MATERNELLE, TypeEnseignant.PRIMAIRE
+    ):
+        return None
+    affectation = affectations_de_la_periode(enseignant, periode).first()
+    return affectation.classe if affectation else None
+
+
+def effectif_classe_principale(enseignant, periode):
+    classe = classe_principale(enseignant, periode)
+    if classe is None:
+        return 0
+    # Les élèves importés en attente de leur premier paiement sont en classe.
+    return classe.eleves.filter(statut__in=('ACTIF', 'ATTENTE_PAIEMENT')).count()
+
+
+def charge_ou_fonction(enseignant, periode):
+    """Libellé de la colonne « Charge ou fonction » des états de paie."""
+    if enseignant.type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+        return enseignant.fonction or enseignant.get_type_enseignant_display()
+    if enseignant.type_enseignant == TypeEnseignant.SECONDAIRE:
+        matieres = []
+        for affectation in affectations_de_la_periode(enseignant, periode):
+            matiere = (affectation.matiere or '').strip()
+            if matiere and matiere not in matieres:
+                matieres.append(matiere)
+        return '/'.join(matieres) or 'Professeur'
+    classe = classe_principale(enseignant, periode)
+    if classe is not None:
+        return f"Chargé de cours ({classe.nom})"
+    return enseignant.get_type_enseignant_display()
+
+
+def appliquer_primes_automatiques(etat):
+    """Calcule les primes issues du barème de la période.
+
+    - ancienneté : années d'ancienneté × taux (personnel au forfait) ;
+    - éloignement : distance en km × taux (personnel au forfait) ;
+    - craie (maternelle/primaire) : effectif de la classe × taux ;
+    - révision (secondaire) : heures de révision × taux.
+
+    Un taux à 0 laisse la prime correspondante telle qu'elle a été saisie.
+    Les primes de fonction, de performance et exceptionnelle restent manuelles.
+    """
+    enseignant = etat.enseignant
+    periode = etat.periode
+
+    if enseignant.est_taux_horaire:
+        # Comme sur l'état du secondaire : pas d'ancienneté ni d'éloignement
+        # automatiques pour les vacataires payés à l'heure.
+        etat.effectif_classe = 0
+        if periode.taux_heure_revision:
+            etat.prime_craie = arrondir_montant(
+                (etat.heures_revision or Decimal('0'))
+                * periode.taux_heure_revision
+            )
+    else:
+        if periode.taux_prime_anciennete:
+            etat.prime_anciennete = arrondir_montant(
+                enseignant.anciennete_annees(periode.annee)
+                * periode.taux_prime_anciennete
+            )
+        if periode.taux_prime_eloignement:
+            etat.prime_eloignement = arrondir_montant(
+                (enseignant.distance_km or Decimal('0'))
+                * periode.taux_prime_eloignement
+            )
+        etat.effectif_classe = effectif_classe_principale(enseignant, periode)
+        if periode.taux_prime_craie:
+            etat.prime_craie = arrondir_montant(
+                etat.effectif_classe * periode.taux_prime_craie
+            )
+
+
 def salaire_fixe_proratise(enseignant, periode):
     premier_jour, dernier_jour = bornes_periode(periode)
     if enseignant.date_embauche > dernier_jour:
@@ -272,7 +374,7 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
             'salaire_base': Decimal('0'),
             'salaire_net': Decimal('0'),
             # Copier une seule fois : un recalcul conserve les primes du mois.
-            'primes': enseignant.prime_mensuelle,
+            'prime_fonction': enseignant.prime_mensuelle,
         },
     )
 
@@ -281,6 +383,8 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
 
     etat.avances = total_avances_salaire(enseignant, periode)
     etat.nombre_jours_presence = nombre_jours_presence(enseignant, periode)
+    if not etat.ajuste_manuellement:
+        appliquer_primes_automatiques(etat)
 
     if enseignant.est_taux_horaire:
         source_heures, total_heures = source_et_heures_pour_calcul(

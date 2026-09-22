@@ -45,6 +45,12 @@ urlpatterns = [
     path('periodes/', views.gestion_periodes, name='gestion_periodes'),
     path('periodes/creer/', views.creer_periode, name='creer_periode'),
     path('periodes/cloturer/<int:periode_id>/', views.cloturer_periode, name='cloturer_periode'),
+    path('periodes/<int:periode_id>/parametres/', views.parametres_periode, name='parametres_periode'),
+    path(
+        'periodes/<int:periode_id>/documents/<str:document>/',
+        views.document_paie_pdf,
+        name='document_paie_pdf',
+    ),
 
     # Rapport paiements (totaux par mois/année)
     path('rapport/paiements/', views.rapport_paiements, name='rapport_paiements'),
