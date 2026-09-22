@@ -25,6 +25,7 @@ from .activation_views import activer_licence
 from .desktop_views import arreter_application
 from . import sauvegarde_views
 from utilisateurs.license_api import activate_license, verify_license
+from eleves.views_collecte import collecte_publique
 from notes.rapport_scolaire import (
     rapport_scolaire_classes_ajax,
     rapport_scolaire_detail,
@@ -82,6 +83,7 @@ def sitemap_xml(request):
 
 
 urlpatterns = [
+    path('collecte-eleves/<uuid:token>/', collecte_publique, name='collecte_eleves_public'),
     path(settings.ADMIN_URL, admin.site.urls),
     path('activer/', activer_licence, name='activer_licence'),
     path('desktop/arreter/', arreter_application, name='arreter_application'),

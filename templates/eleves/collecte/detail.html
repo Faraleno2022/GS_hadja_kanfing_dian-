@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}Collecte {{ lien.classe.nom }} - {{ block.super }}{% endblock %}
+{% block page_actions %}<a href="{% url 'eleves:gestion_collecte' %}" class="btn btn-outline-secondary">Toutes les collectes</a>{% endblock %}
+{% block content %}
+<h1 class="h3">Collecte · {{ lien.classe.nom }}</h1>
+<p class="text-muted">{{ lien.ecole.nom }} · {{ lien.annee_scolaire }} · Pour {{ lien.destinataire }}</p>
+<div class="card mb-4"><div class="card-body">
+  <div class="d-flex flex-wrap justify-content-between gap-2"><h2 class="h5">Lien à transmettre à l'enseignant</h2><span class="badge {% if lien.est_actif %}bg-success{% else %}bg-secondary{% endif %} align-self-start">{{ lien.statut }}</span></div>
+  {% if not lien.revoque_le %}
+  <label for="lien-collecte" class="visually-hidden">Lien de collecte</label>
+  <input id="lien-collecte" class="form-control mb-2" type="url" readonly value="{{ lien_url }}">
+  <div class="d-flex flex-wrap gap-2">
+    <button type="button" class="btn btn-primary" id="copier-lien">Copier le lien</button>
+    <button type="button" class="btn btn-outline-primary" id="partager-lien">Partager</button>
+  </div><div id="partage-message" class="form-text" role="status" aria-live="polite"></div>
+  {% else %}<p>Ce lien a été révoqué. Les propositions déjà reçues restent disponibles ci-dessous.</p>{% endif %}
+  <div class="row g-3 mt-2">
+    {% if not lien.revoque_le %}<div class="col-md-7">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="expiration">
+      <label class="form-label" for="{{ expiration.expire_le.id_for_label }}">Date et heure de fin</label>
+      {{ expiration.expire_le }}<div class="text-danger">{{ expiration.errors }}</div>
+      <button class="btn btn-outline-secondary mt-2">Mettre à jour l'échéance</button>
+    </form></div>
+    <div class="col-md-5 d-flex align-items-end">
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="revoquer">
+      <p class="form-text">La révocation coupe immédiatement les nouveaux envois.</p>
+      <button class="btn btn-outline-danger">Révoquer le lien</button>
+    </form></div>{% endif %}
+  </div>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2 class="h5">Propositions reçues</h2>
+  <form method="get" class="d-flex gap-2 mb-3 align-items-center">
+    <label for="filtre-statut">Afficher</label>
+    <select name="statut" id="filtre-statut" class="form-select w-auto">
+      {% for value,label in choix_statuts %}<option value="{{ value }}" {% if statut_selectionne == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      <option value="tous" {% if statut_selectionne == 'tous' %}selected{% endif %}>Toutes les propositions</option>
+    </select><button class="btn btn-outline-secondary">Filtrer</button>
+  </form>
+  <form method="post">{% csrf_token %}
+    <div class="text-danger">{{ decision.errors }}</div>
+    <div class="table-responsive"><table class="table align-middle">
+      <thead><tr><th><input type="checkbox" id="selection-tous" aria-label="Sélectionner toutes les propositions en attente"></th><th>Élève</th><th>Responsable</th><th>Envoi</th><th>État</th><th></th></tr></thead>
+      <tbody>{% for proposition in page_obj %}<tr>
+        <td>{% if proposition.statut == 'EN_ATTENTE' %}<input class="selection-proposition" type="checkbox" name="propositions" value="{{ proposition.pk }}" aria-label="Sélectionner {{ proposition.nom_complet }}">{% endif %}</td>
+        <td><strong>{{ proposition.nom_complet }}</strong><br><small>{{ proposition.get_sexe_display }}{% if proposition.date_naissance %} · {{ proposition.date_naissance|date:"d/m/Y" }}{% endif %}</small>
+          {% if proposition.homonymes %}<br><span class="badge bg-warning text-dark">Homonyme à vérifier</span>{% endif %}</td>
+        <td>{{ proposition.prenom_responsable }} {{ proposition.nom_responsable }}<br><small>{{ proposition.telephone_responsable|default:"Téléphone non renseigné" }}</small></td>
+        <td>{{ proposition.envoi.auteur }}<br><small>{{ proposition.envoi.recu_le|date:"d/m/Y H:i" }}</small></td>
+        <td>{{ proposition.get_statut_display }}{% if proposition.eleve_id %}<br><a href="{% url 'eleves:detail_eleve' proposition.eleve_id %}">{{ proposition.eleve.matricule }}</a>{% endif %}</td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{% url 'eleves:verifier_proposition' proposition.pk %}">Vérifier</a></td>
+      </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">Aucune proposition dans cette sélection.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if page_obj %}
+    <div class="form-check mb-2">{{ decision.verrouiller }}<label class="form-check-label" for="{{ decision.verrouiller.id_for_label }}">{{ decision.verrouiller.label }}</label></div>
+    <div class="form-check mb-3">{{ decision.confirmer_homonymes }}<label class="form-check-label" for="{{ decision.confirmer_homonymes.id_for_label }}">{{ decision.confirmer_homonymes.label }}</label></div>
+    <div class="d-flex gap-2 flex-wrap"><button name="action" value="accepter" class="btn btn-success">Accepter la sélection</button><button name="action" value="refuser" class="btn btn-outline-danger">Refuser la sélection</button></div>
+    {% endif %}
+  </form>
+  {% include 'eleves/collecte/_pagination.html' %}
+</div></div>
+<script>
+(function(){
+  const input=document.getElementById('lien-collecte'), message=document.getElementById('partage-message');
+  async function copier(){
+    try { await navigator.clipboard.writeText(input.value); message.textContent='Lien copié.'; }
+    catch(e){ input.focus(); input.select(); message.textContent='Le lien est sélectionné : copiez-le avec le menu de votre appareil.'; }
+  }
+  document.getElementById('copier-lien')?.addEventListener('click',copier);
+  document.getElementById('partager-lien')?.addEventListener('click',async function(){
+    if(!navigator.share){ await copier(); return; }
+    try { await navigator.share({title:'Liste des élèves de la classe',url:input.value}); }
+    catch(e){ if(e.name!=='AbortError') await copier(); }
+  });
+  document.getElementById('selection-tous')?.addEventListener('change',function(){
+    document.querySelectorAll('.selection-proposition').forEach(el=>el.checked=this.checked);
+  });
+})();
+</script>
+{% endblock %}

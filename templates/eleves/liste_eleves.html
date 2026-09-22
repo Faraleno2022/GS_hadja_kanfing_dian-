@@ -8,6 +8,7 @@
 
 {% block page_actions %}
     <div>
+        {% if peut_gerer_collecte %}<a href="{% url 'eleves:gestion_collecte' %}" class="btn btn-outline-primary">Collecte enseignants{% if collecte_en_attente %} <span class="badge bg-warning text-dark">{{ collecte_en_attente }}</span>{% endif %}</a>{% endif %}
         <a href="{% url 'eleves:actifs_paiements' %}" class="btn btn-outline-success">Actifs avec / sans paiement</a>
         <a href="{% url 'eleves:ajouter_eleve' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Ajouter un élève

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><meta name="referrer" content="strict-origin">
+<title>{% if indisponible %}Lien indisponible{% else %}Élèves · {{ lien.classe.nom }}{% endif %}</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1d3049;background:#f2f5fa;line-height:1.5}
+*{box-sizing:border-box}body{margin:0}main{max-width:920px;margin:36px auto;padding:0 20px 40px}
+header{margin-bottom:26px}.eyebrow{font-size:.8rem;letter-spacing:.09em;text-transform:uppercase;color:#466b99;font-weight:700}
+h1{font-size:clamp(1.6rem,4vw,2.2rem);line-height:1.2;margin:12px 0}h2{font-size:1.05rem;margin:0}
+p{margin:10px 0}.muted,.form-text{color:#576c85}.card,fieldset{border:1px solid #dce3ee;background:white;border-radius:14px;padding:22px;margin:0 0 18px;min-width:0}
+.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.g-3{gap:16px}.mt-1{margin-top:12px}.mt-3{margin-top:18px}
+.form-label{display:block;font-weight:600;font-size:.92rem;margin-bottom:6px}.form-control,.form-select{width:100%;padding:11px 12px;border:1px solid #bfcbdc;border-radius:8px;background:#fff;font:inherit;color:inherit}
+.form-control:focus,.form-select:focus{outline:3px solid #c5dbfa;border-color:#356fd0}.form-text{display:block;font-size:.82rem;margin-top:5px}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:9px;border:1px solid #aabbd1;padding:11px 16px;background:white;color:#214567}
+button:focus-visible,summary:focus-visible{outline:3px solid #94bdf6}button:disabled{opacity:.5;cursor:default}
+.primary{background:#245db1;border-color:#245db1;color:white}.actions,.card-title{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.card-title{margin-bottom:17px}.remove{font-size:.84rem;padding:6px 10px;color:#9a3540}summary{cursor:pointer;color:#345d90;font-weight:600}
+.alert{border-radius:10px;padding:16px;margin:18px 0;background:#e6f5ec;border:1px solid #a0ccb1;color:#245036}
+.text-danger,.errorlist{color:#a02938}.errorlist{padding-left:20px;margin:6px 0}.error-box{background:#fff0f0;border-color:#edb6bf;color:#912d3b}
+.footnote{font-size:.86rem;color:#576c85;margin-top:18px}.disabled-link{padding:32px;text-align:center}
+@media(max-width:600px){main{margin:22px auto;padding:0 12px 30px}.row{grid-template-columns:1fr}.card,fieldset{padding:17px}.actions{align-items:stretch}.actions>button{flex:1}}
+</style></head>
+<body><main>
+{% if indisponible %}
+<section class="card disabled-link"><h1>Ce lien n'est plus disponible</h1><p>Il a expiré ou a été désactivé. Demandez un nouveau lien à l'établissement.</p></section>
+{% else %}
+<header><div class="eyebrow">{{ lien.ecole.nom }}</div><h1>Les élèves de {{ lien.classe.nom }}</h1>
+<p class="muted">{{ lien.annee_scolaire }} · Lien valable jusqu'au {{ lien.expire_le|date:"d/m/Y à H:i" }}</p>
+<p>Ajoutez les élèves de cette classe. L'établissement vérifiera votre envoi avant de créer leurs dossiers.</p></header>
+{% if envoye %}<div class="alert" role="status"><strong>Votre envoi a bien été reçu.</strong><br>L'établissement peut maintenant le vérifier. Vous pouvez envoyer d'autres élèves si nécessaire.</div>{% endif %}
+{% if erreur %}<div class="alert error-box" role="alert">{{ erreur }}</div>{% endif %}
+{% if form.errors or formset.errors or formset.non_form_errors %}<div class="alert error-box" role="alert">Vérifiez les champs signalés avant d'envoyer la liste. Aucun élève de cet envoi n'a été enregistré.</div>{% endif %}
+<form method="post" id="collecte-form">{% csrf_token %}
+<div class="card"><label for="{{ form.auteur.id_for_label }}" class="form-label">Votre nom *</label>{{ form.auteur }}{{ form.auteur.errors }}{{ form.identifiant }}{{ form.identifiant.errors }}{{ form.non_field_errors }}</div>
+{{ formset.management_form }}{{ formset.non_form_errors }}
+<div id="eleves-formulaires">
+{% for form in formset %}
+<fieldset class="eleve-form"><div class="card-title"><h2 class="numero-eleve">Élève {{ forloop.counter }}</h2><button class="remove" type="button">Retirer</button></div>{% include 'eleves/collecte/_champs_eleve.html' %}</fieldset>
+{% endfor %}
+</div>
+<div class="actions"><button type="button" id="ajouter-eleve">+ Ajouter un élève</button><button type="submit" class="primary">Envoyer la liste à l'établissement</button></div>
+<p class="footnote">Les champs marqués * sont obligatoires. Téléphone et date de naissance facultatifs. Jusqu'à 50 élèves par envoi. Ce formulaire ne donne accès ni aux dossiers existants ni aux paiements.</p>
+</form>
+<template id="eleve-vide"><fieldset class="eleve-form"><div class="card-title"><h2 class="numero-eleve">Nouvel élève</h2><button type="button" class="remove">Retirer</button></div>{% include 'eleves/collecte/_champs_eleve.html' with form=formset.empty_form %}</fieldset></template>
+<script>
+(function(){
+  const zone=document.getElementById('eleves-formulaires'),total=document.getElementById('id_eleves-TOTAL_FORMS'),ajouter=document.getElementById('ajouter-eleve');
+  function numeroter(){
+    const lignes=zone.querySelectorAll('.eleve-form');
+    lignes.forEach((ligne,index)=>{
+      ligne.querySelector('.numero-eleve').textContent='Élève '+(index+1);
+      ligne.querySelector('.remove').disabled=lignes.length===1;
+      ligne.querySelectorAll('[name],[id],[for]').forEach(el=>{
+        ['name','id','for'].forEach(attr=>{
+          if(el.hasAttribute(attr))el.setAttribute(attr,el.getAttribute(attr).replace(/eleves-(?:\d+|__prefix__)-/g,'eleves-'+index+'-'));
+        });
+      });
+    });
+    total.value=lignes.length;ajouter.disabled=lignes.length>=50;
+  }
+  ajouter.addEventListener('click',()=>{
+    if(zone.children.length>=50)return;
+    zone.appendChild(document.getElementById('eleve-vide').content.cloneNode(true));numeroter();
+    zone.lastElementChild.querySelector('input')?.focus();
+  });
+  zone.addEventListener('click',e=>{
+    const bouton=e.target.closest('.remove');
+    if(bouton&&zone.children.length>1){bouton.closest('.eleve-form').remove();numeroter();}
+  });
+  numeroter();
+})();
+</script>
+{% endif %}
+</main></body></html>
