@@ -26,8 +26,8 @@
             padding: 8mm 12mm;
             page-break-after: always;
             position: relative;
-            background: linear-gradient(135deg, #fff5f5 0%, #fff 30%, #f0fff0 70%, #fffff0 100%);
-            border: 4px solid #ff9800;
+            background: linear-gradient(135deg, {{ school_branding.secondary_soft }} 0%, #fff 30%, {{ school_branding.primary_soft }} 70%, #fff 100%);
+            border: 4px solid {{ school_branding.secondary }};
             border-radius: 15px;
             overflow: hidden;
         }
@@ -43,7 +43,7 @@
             left: 6mm;
             right: 6mm;
             bottom: 6mm;
-            border: 3px dashed #4caf50;
+            border: 3px dashed {{ school_branding.primary }};
             border-radius: 12px;
             pointer-events: none;
         }
@@ -110,7 +110,7 @@
         .nom-ecole {
             font-size: 16pt;
             font-weight: bold;
-            color: #e91e63;
+            color: {{ school_branding.accent }};
             text-transform: uppercase;
         }
         
@@ -122,7 +122,7 @@
         
         .titre-certificat h1 {
             font-size: 30pt;
-            color: #ff5722;
+            color: {{ school_branding.secondary }};
             text-transform: uppercase;
             letter-spacing: 3px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
@@ -131,7 +131,7 @@
         
         .titre-certificat .sous-titre {
             font-size: 12pt;
-            color: #4caf50;
+            color: {{ school_branding.primary }};
             margin-top: 2mm;
             font-style: italic;
         }
@@ -173,10 +173,10 @@
         .nom-eleve {
             font-size: 24pt;
             font-weight: bold;
-            color: #2196f3;
+            color: {{ school_branding.primary }};
             margin: 3mm 0;
             text-transform: uppercase;
-            border-bottom: 3px dotted #ff9800;
+            border-bottom: 3px dotted {{ school_branding.secondary }};
             padding-bottom: 2mm;
             display: inline-block;
         }
@@ -196,8 +196,8 @@
         .taux-acquisition {
             font-size: 24pt;
             font-weight: bold;
-            color: #4caf50;
-            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            color: {{ school_branding.primary }};
+            background: {{ school_branding.primary_soft }};
             padding: 2mm 8mm;
             border-radius: 10px;
             display: inline-block;
@@ -206,7 +206,7 @@
         .rang-texte {
             font-size: 16pt;
             font-weight: bold;
-            color: #ff5722;
+            color: {{ school_branding.secondary }};
         }
         
         .periode-info {

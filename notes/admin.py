@@ -171,6 +171,10 @@ class ThemeBulletinAdmin(admin.ModelAdmin):
             'fields': ('couleur_fond_header', 'couleur_fond_tableau', 'couleur_fond_carte'),
             'classes': ('collapse',)
         }),
+        ('Couleurs des cartes', {
+            'fields': ('couleur_carte_primaire', 'couleur_carte_succes', 'couleur_carte_attention', 'couleur_carte_danger'),
+            'description': "Couleurs utilisées par les cartes des tableaux de bord de l'école",
+        }),
         ('Couleurs des bordures', {
             'fields': ('couleur_bordure',),
             'classes': ('collapse',)

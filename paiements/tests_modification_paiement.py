@@ -77,7 +77,7 @@ class ModificationMontantPaiementTest(TestCase):
         self.user = User.objects.create_superuser('caissier', 'c@c.gn', 'x')
         self.client.force_login(self.user)
         self.ecole, self.classe, self.eleve = _jeu_de_donnees('mod')
-        self.type_p = TypePaiement.objects.create(nom="Scolarité")
+        self.type_p = TypePaiement.objects.create(nom="Inscription + Annuel")
         self.mode_p = ModePaiement.objects.create(nom="Espèces")
         self.echeancier = EcheancierPaiement.objects.create(
             eleve=self.eleve, annee_scolaire="2025-2026",
@@ -152,17 +152,14 @@ class ModificationMontantPaiementTest(TestCase):
         self.assertEqual(self.paiement.annee_scolaire, '2025-2026')
 
     def test_echec_reaffiche_le_formulaire_sans_erreur_500(self):
-        """Aucune année exploitable : message clair, saisie conservée."""
-        Paiement.objects.filter(pk=self.paiement.pk).update(annee_scolaire='')
-        Classe.objects.filter(pk=self.classe.pk).update(annee_scolaire='')
-        EcheancierPaiement.objects.filter(pk=self.echeancier.pk).delete()
-
-        reponse = self._corriger('175000')
+        """Un échec du recalcul annule la correction et conserve la saisie."""
+        with patch('paiements.services.synchroniser_echeancier_apres_changement_paiement', side_effect=ValueError('Recalcul impossible')):
+            reponse = self._corriger('175000')
 
         self.assertEqual(reponse.status_code, 200)
         formulaire = reponse.context['form']
         self.assertTrue(formulaire.non_field_errors())
-        self.assertIn("n'a pas pu être enregistrée", formulaire.non_field_errors()[0])
+        self.assertIn("n'a pas été enregistrée", formulaire.non_field_errors()[0])
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.montant, Decimal('120000'))
 
@@ -178,10 +175,10 @@ class ModificationMontantPaiementTest(TestCase):
         self.paiement.refresh_from_db()
         self.echeancier.refresh_from_db()
         self.assertEqual(self.paiement.montant, Decimal('175000'))
-        # Repassé en attente : plus aucune imputation de l'ancien montant.
-        self.assertEqual(self.paiement.statut, 'EN_ATTENTE')
-        self.assertEqual(self.echeancier.frais_inscription_paye, Decimal('0'))
-        self.assertEqual(self.echeancier.tranche_1_payee, Decimal('0'))
+        # Une correction conserve la validation et remplace l'ancienne imputation.
+        self.assertEqual(self.paiement.statut, 'VALIDE')
+        self.assertEqual(self.echeancier.frais_inscription_paye, Decimal('100000'))
+        self.assertEqual(self.echeancier.tranche_1_payee, Decimal('75000'))
 
         # La revalidation impute bien le nouveau montant.
         _valider_paiement_impl(self.paiement, self.user)
@@ -252,7 +249,7 @@ class ApplicationRemisePaiementTest(TestCase):
 
         remise = RemiseReduction.objects.create(
             nom='Remise solde', type_remise='MONTANT_FIXE', valeur=Decimal('10000'),
-            motif='AUTRE', date_debut=date(2025, 9, 1), date_fin=date(2026, 6, 30),
+            motif='GESTE_COMMERCIAL', date_debut=date(2025, 9, 1), date_fin=date(2099, 6, 30),
             cree_par=self.user,
         )
 
@@ -261,8 +258,8 @@ class ApplicationRemisePaiementTest(TestCase):
             {
                 'remises': [remise.pk],
                 'tranches': ['1'],
-                'base_calcul': 'paiement_echeance',
-                'motif': 'AUTRE',
+                'base_calcul': 'TRANCHE',
+                'motif': 'GESTE_COMMERCIAL',
                 'montant_original': '90000',
             },
             follow=True,

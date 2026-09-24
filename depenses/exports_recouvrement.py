@@ -17,6 +17,7 @@ from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.platypus import (
     Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
+from ecole_moderne.branding import get_reportlab_palette
 
 BLEU = colors.HexColor('#0d6efd')
 GRIS = colors.HexColor('#f1f3f5')
@@ -77,6 +78,7 @@ def export_pdf(nom_fichier, titre, sous_titre, colonnes, lignes, ligne_total=Non
     """Tableau PDF prêt à imprimer, avec en-tête établissement et pied de page."""
     buffer = io.BytesIO()
     format_page = landscape(A4) if paysage else A4
+    palette = get_reportlab_palette(ecole)
     doc = SimpleDocTemplate(
         buffer, pagesize=format_page,
         leftMargin=15 * mm, rightMargin=15 * mm,
@@ -87,11 +89,11 @@ def export_pdf(nom_fichier, titre, sous_titre, colonnes, lignes, ligne_total=Non
     styles = getSampleStyleSheet()
     style_titre = ParagraphStyle(
         'TitreRecouvrement', parent=styles['Title'], fontSize=15, spaceAfter=2,
-        textColor=colors.HexColor('#1a1a2e'),
+        textColor=palette['primary'],
     )
     style_sous_titre = ParagraphStyle(
         'SousTitreRecouvrement', parent=styles['Normal'], fontSize=9,
-        alignment=1, textColor=colors.HexColor('#6c757d'), spaceAfter=8,
+        alignment=1, textColor=palette['muted'], spaceAfter=8,
     )
     style_cellule = ParagraphStyle(
         'CelluleRecouvrement', parent=styles['Normal'], fontSize=8, leading=10,
@@ -117,18 +119,18 @@ def export_pdf(nom_fichier, titre, sous_titre, colonnes, lignes, ligne_total=Non
     largeur_utile = format_page[0] - 30 * mm
     table = Table(donnees, repeatRows=1, colWidths=[largeur_utile / len(colonnes)] * len(colonnes))
     style_table = [
-        ('BACKGROUND', (0, 0), (-1, 0), BLEU),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#adb5bd')),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
+        ('GRID', (0, 0), (-1, -1), 0.4, palette['border']),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, GRIS]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, palette['table_alt']]),
         ('LEFTPADDING', (0, 0), (-1, -1), 5),
         ('RIGHTPADDING', (0, 0), (-1, -1), 5),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ]
     if ligne_total:
-        style_table.append(('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e7f1ff')))
+        style_table.append(('BACKGROUND', (0, -1), (-1, -1), palette['primary_soft']))
     table.setStyle(TableStyle(style_table))
     elements.append(table)
 
@@ -137,7 +139,7 @@ def export_pdf(nom_fichier, titre, sous_titre, colonnes, lignes, ligne_total=Non
     def _pied_de_page(canvas_obj, document):
         canvas_obj.saveState()
         canvas_obj.setFont('Helvetica', 7.5)
-        canvas_obj.setFillColor(colors.HexColor('#6c757d'))
+        canvas_obj.setFillColor(palette['muted'])
         canvas_obj.drawString(15 * mm, 10 * mm, f"Édité le {edite_le}")
         canvas_obj.drawRightString(
             format_page[0] - 15 * mm, 10 * mm, f"Page {document.page}"
@@ -168,6 +170,7 @@ def carte_abonnement_pdf(abonnement):
 
     eleve = abonnement.eleve
     ecole = getattr(getattr(eleve, 'classe', None), 'ecole', None)
+    palette = get_reportlab_palette(ecole)
 
     largeur_carte, hauteur_carte = 85.6 * mm, 54 * mm
     buffer = io.BytesIO()
@@ -179,7 +182,7 @@ def carte_abonnement_pdf(abonnement):
     # Fond et bandeau
     c.setFillColor(colors.white)
     c.roundRect(x0, y0, largeur_carte, hauteur_carte, 4 * mm, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor('#0d3b66'))
+    c.setFillColor(palette['header'])
     c.roundRect(x0, y0 + hauteur_carte - 14 * mm, largeur_carte, 14 * mm, 4 * mm, stroke=0, fill=1)
     c.rect(x0, y0 + hauteur_carte - 14 * mm, largeur_carte, 4 * mm, stroke=0, fill=1)
 
@@ -193,7 +196,7 @@ def carte_abonnement_pdf(abonnement):
             )
         except Exception:
             pass
-    c.setFillColor(colors.white)
+    c.setFillColor(palette['header_text'])
     c.setFont('Helvetica-Bold', 7.5)
     c.drawString(x0 + 16 * mm, y0 + hauteur_carte - 6 * mm, "CARTE D'ABONNEMENT INFORMATIQUE")
     c.setFont('Helvetica', 6)
@@ -218,14 +221,14 @@ def carte_abonnement_pdf(abonnement):
         except Exception:
             photo_dessinee = False
     if not photo_dessinee:
-        c.setStrokeColor(colors.HexColor('#adb5bd'))
-        c.setFillColor(colors.HexColor('#f1f3f5'))
+        c.setStrokeColor(palette['border'])
+        c.setFillColor(palette['table'])
         c.rect(x_photo, y_photo, 20 * mm, 24 * mm, stroke=1, fill=1)
         initiales = ''.join(
             partie[0].upper()
             for partie in f"{eleve.prenom} {eleve.nom}".split()[:2]
         ) or 'E'
-        c.setFillColor(colors.HexColor('#6c757d'))
+        c.setFillColor(palette['muted'])
         c.setFont('Helvetica-Bold', 14)
         c.drawCentredString(x_photo + 10 * mm, y_photo + 10 * mm, initiales)
 
@@ -234,10 +237,10 @@ def carte_abonnement_pdf(abonnement):
 
     def ligne(libelle, valeur):
         nonlocal y
-        c.setFillColor(colors.HexColor('#6c757d'))
+        c.setFillColor(palette['muted'])
         c.setFont('Helvetica', 5.5)
         c.drawString(x0 + 4 * mm, y, libelle.upper())
-        c.setFillColor(colors.HexColor('#1a1a2e'))
+        c.setFillColor(palette['text'])
         c.setFont('Helvetica-Bold', 7.5)
         c.drawString(x0 + 4 * mm, y - 3.6 * mm, str(valeur)[:34])
         y -= 8 * mm
@@ -251,27 +254,27 @@ def carte_abonnement_pdf(abonnement):
     )
 
     # Bandeau bas: montant et statut
-    c.setFillColor(colors.HexColor('#f1f3f5'))
+    c.setFillColor(palette['table'])
     c.rect(x0, y0, largeur_carte, 9 * mm, stroke=0, fill=1)
-    c.setFillColor(colors.HexColor('#1a1a2e'))
+    c.setFillColor(palette['text'])
     c.setFont('Helvetica-Bold', 7)
     c.drawString(x0 + 4 * mm, y0 + 3.4 * mm, f"{formater_montant(abonnement.montant)} GNF")
     couleur_statut = {
-        'ACTIF': colors.HexColor('#198754'),
-        'EXPIRE': colors.HexColor('#dc3545'),
-    }.get(abonnement.statut_effectif, colors.HexColor('#6c757d'))
+        'ACTIF': palette['card_success'],
+        'EXPIRE': palette['card_danger'],
+    }.get(abonnement.statut_effectif, palette['muted'])
     c.setFillColor(couleur_statut)
     c.drawRightString(
         x0 + largeur_carte - 4 * mm, y0 + 3.4 * mm, abonnement.libelle_statut.upper()
     )
 
     # Contour
-    c.setStrokeColor(colors.HexColor('#0d3b66'))
+    c.setStrokeColor(palette['primary'])
     c.setLineWidth(0.8)
     c.roundRect(x0, y0, largeur_carte, hauteur_carte, 4 * mm, stroke=1, fill=0)
 
     # Mention sous la carte
-    c.setFillColor(colors.HexColor('#6c757d'))
+    c.setFillColor(palette['muted'])
     c.setFont('Helvetica', 8)
     c.drawCentredString(
         largeur_page / 2, y0 - 10 * mm,

@@ -1,3 +1,4 @@
+from django.http import JsonResponse
 """
 Système d'analyse automatique des appréciations pour la maternelle
 Permet d'analyser les appréciations textuelles et de générer automatiquement

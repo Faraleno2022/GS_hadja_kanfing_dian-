@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 from django.core.cache import cache
 from django.db.models import Prefetch, Q
 from .calculs_intelligent import calculer_rang_intelligent
+from .classes_utils import trouver_classe_eleve
 import logging
 import time
 
@@ -58,34 +59,19 @@ def calculer_rangs_classe_periode(classe_note, periode: str, use_cache: bool = T
     from eleves.models import Eleve, Classe as ClasseEleve
     from .models import MatiereNote
     
-    # Récupérer la classe élève correspondante avec mapping spécial
-    mapping_classes = {
-        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
-        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
-    }
-    
-    if classe_note.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(
-            id=mapping_classes[classe_note.id]
-        ).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe_note.nom,
-            annee_scolaire=classe_note.annee_scolaire,
-            ecole=classe_note.ecole
-        ).first()
-    
+    classe_eleve = trouver_classe_eleve(classe_note)
+
     if not classe_eleve:
         return {}
     
     # Récupérer les élèves actifs
-    eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+    eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
     
     # Récupérer les matières
     matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
     
     # Détecter le niveau scolaire pour gérer les coefficients
-    from .calculs_moyennes import detecter_niveau_scolaire
+    from .calculs_moyennes import detecter_niveau_scolaire, calculer_moyenne_periode_guineenne
     niveau = detecter_niveau_scolaire(classe_note.nom)
     est_primaire = (niveau == 'PRIMAIRE')
     est_maternelle = (niveau == 'MATERNELLE')

@@ -175,7 +175,7 @@ def export_paiements_filtres_excel(request):
         valeurs = [
             i, p.eleve.matricule or '', f"{p.eleve.prenom} {p.eleve.nom}",
             p.eleve.classe.nom if p.eleve.classe else '',
-            p.type_paiement.nom if p.type_paiement else '',
+            p.libelle_document,
             p.mode_paiement.nom if p.mode_paiement else '',
             p.date_paiement.strftime('%d/%m/%Y') if p.date_paiement else '',
             p.numero_recu or '', statut_labels.get(p.statut, p.statut),
@@ -222,6 +222,8 @@ def export_paiements_filtres_pdf(request):
 
     qs, libelles = filtrer_paiements(request)
     ecole = _ecole_du_pdf(request, qs)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
@@ -229,7 +231,7 @@ def export_paiements_filtres_pdf(request):
                             leftMargin=0.8 * cm, rightMargin=0.8 * cm)
     styles = getSampleStyleSheet()
     titre = ParagraphStyle('T', parent=styles['Heading1'], fontSize=13,
-                           textColor=colors.HexColor('#007bff'), alignment=TA_CENTER, spaceAfter=2)
+                           textColor=palette['primary'], alignment=TA_CENTER, spaceAfter=2)
     sous = ParagraphStyle('S', parent=styles['Normal'], fontSize=9,
                           alignment=TA_CENTER, spaceAfter=6)
 
@@ -246,7 +248,7 @@ def export_paiements_filtres_pdf(request):
         data.append([
             str(i), p.eleve.matricule or '', f"{p.eleve.prenom} {p.eleve.nom}",
             p.eleve.classe.nom if p.eleve.classe else '',
-            p.type_paiement.nom if p.type_paiement else '',
+            p.libelle_document,
             p.mode_paiement.nom if p.mode_paiement else '',
             p.date_paiement.strftime('%d/%m/%Y') if p.date_paiement else '',
             p.numero_recu or '', statut_labels.get(p.statut, p.statut),
@@ -254,22 +256,25 @@ def export_paiements_filtres_pdf(request):
         ])
     data.append(['', '', '', '', '', '', '', '', 'TOTAL', _fmt_gnf(total)])
 
+    from xml.sax.saxutils import escape
+    cell_style = ParagraphStyle('Cellule', parent=styles['Normal'], fontSize=7.5, leading=9)
+    header_style = ParagraphStyle('EnteteCellule', parent=cell_style, textColor=palette['header_text'], fontName='Helvetica-Bold')
+    data = [[Paragraph(escape(str(value)), header_style if index == 0 else cell_style) for value in row] for index, row in enumerate(data)]
     table = Table(
         data, repeatRows=1,
-        colWidths=[1.0 * cm, 2.6 * cm, 6.0 * cm, 3.6 * cm, 3.0 * cm, 3.0 * cm,
-                   2.2 * cm, 2.8 * cm, 2.2 * cm, 3.0 * cm])
+        colWidths=[v * cm for v in [0.7, 2.1, 3.7, 2.4, 5.2, 2.1, 1.8, 2.4, 1.8, 2.6]])
     n = len(data)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7.5),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
         ('ALIGN', (-1, 1), (-1, -1), 'RIGHT'),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f4f6f7')]),
-        ('BACKGROUND', (0, n - 1), (-1, n - 1), colors.HexColor('#d6eaf8')),
+        ('GRID', (0, 0), (-1, -1), 0.4, palette['border']),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, palette['table_alt']]),
+        ('BACKGROUND', (0, n - 1), (-1, n - 1), palette['primary_soft']),
         ('FONTNAME', (0, n - 1), (-1, n - 1), 'Helvetica-Bold'),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),

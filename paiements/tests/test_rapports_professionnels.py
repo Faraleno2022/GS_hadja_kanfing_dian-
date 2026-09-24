@@ -68,7 +68,7 @@ class ProfessionalReportsTests(TestCase):
         self._schedule(self.students[1], paid=Decimal('0'))
         self._schedule(self.students[2], paid=Decimal('320000'))
 
-        self.payment_type = TypePaiement.objects.create(nom='Scolarité annuelle rapport')
+        self.payment_type = TypePaiement.objects.create(nom='Inscription + Annuel rapport')
         self.payment_mode = ModePaiement.objects.create(nom='Mobile Money rapport')
         self.valid_partial = self._payment(
             self.students[0], 'RAP-REC-001', '80000', 'VALIDE', date(2026, 1, 15),
@@ -95,6 +95,7 @@ class ProfessionalReportsTests(TestCase):
             paiement=self.valid_partial,
             remise=discount,
             montant_remise=Decimal('10000'),
+            applique_tranche_1=True, montant_tranche_1=Decimal('10000'),
         )
 
         old_reminder = Relance.objects.create(
@@ -177,21 +178,16 @@ class ProfessionalReportsTests(TestCase):
 
         self.assertEqual(data['payment_count'], 4)
         self.assertEqual(data['validated_count'], 2)
-        self.assertEqual(data['total_validated'], Decimal('400000'))
-        self.assertEqual(data['total_discounts'], Decimal('10000'))
+        self.assertEqual(data['total_cash'], Decimal('400000'))
+        self.assertEqual(data['total_discount'], Decimal('10000'))
         self.assertEqual(data['total_coverage'], Decimal('410000'))
         self.assertEqual(data['by_status']['EN_ATTENTE']['count'], 1)
         self.assertEqual(data['by_status']['REMBOURSE']['amount'], Decimal('30000'))
         self.assertEqual(data['by_mode']['Mobile Money rapport']['amount'], Decimal('400000'))
-        self.assertEqual(
-            data['by_mode']['Mobile Money rapport']['reference_missing'], 0,
-        )
-        self.assertEqual(data['discount_by_reason']['Réduction sociale'], Decimal('10000'))
-        self.assertEqual(data['by_component']['inscription']['amount'], Decimal('40000'))
-        self.assertEqual(data['by_component']['tranche_1']['amount'], Decimal('160000'))
-        self.assertEqual(data['by_component']['tranche_2']['amount'], Decimal('100000'))
-        self.assertEqual(data['by_component']['tranche_3']['amount'], Decimal('100000'))
-        self.assertEqual(data['unallocated_total'], Decimal('0'))
+        self.assertTrue(all(row['reference'] != '-' for row in data['payment_rows']))
+        self.assertEqual(sum(row['amount'] for row in data['by_reason'].values()), Decimal('10000'))
+        self.assertEqual(sum(row['amount'] for row in data['by_type'].values()), Decimal('400000'))
+        self.assertEqual(sum(row['amount'] for row in data['by_class'].values()), Decimal('400000'))
 
     def test_periode_future_est_automatiquement_arretee_aujourdhui(self):
         future = timezone.localdate().replace(year=timezone.localdate().year + 1)
@@ -220,9 +216,12 @@ class ProfessionalReportsTests(TestCase):
         data = collect_accounting_data(self._request())
 
         row = next(item for item in data['payment_rows'] if item['receipt'] == 'RAP-REC-005')
-        self.assertEqual(row['allocation']['reinscription'], Decimal('20000'))
-        self.assertEqual(row['allocation']['inscription'], Decimal('0'))
-        self.assertEqual(row['allocation']['tranche_1'], Decimal('60000'))
+        self.assertEqual(row['type'], reinscription_type.nom)
+        self.assertEqual(row['cash'], Decimal('80000'))
+        from paiements.allocation import get_payment_allocation
+        allocation = get_payment_allocation(payment, schedule)
+        self.assertEqual(allocation['inscription'], Decimal('20000'))
+        self.assertEqual(allocation['tranche_1'], Decimal('60000'))
 
     def test_recouvrement_est_reconstruit_a_la_date_arret(self):
         data = collect_recovery_data(self._request())
@@ -257,8 +256,8 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(row['cash'], Decimal('310000'))
         self.assertEqual(row['discount'], Decimal('10000'))
         self.assertEqual(row['balance'], Decimal('0'))
-        self.assertEqual(row['status'], 'Soldé (remise appliquée)')
-        self.assertEqual(row['discount_precision'], 'Soldé avec remise appliquée au paiement')
+        self.assertEqual(row['status'], 'Soldé avec remise')
+        self.assertEqual(row['precision'], 'Remise appliquée : 10 000 GNF (3.1 %)')
         self.assertAlmostEqual(float(row['discount_rate']), 3.125)
 
     def test_pdf_recouvrement_contient_le_detail_des_remises_eleves(self):
@@ -280,12 +279,12 @@ class ProfessionalReportsTests(TestCase):
         discount_table = next(
             rows for rows in tables
             if rows and all(hasattr(cell, 'getPlainText') for cell in rows[0])
-            and 'Remise %' in [cell.getPlainText() for cell in rows[0]]
+            and 'Situation / précision' in [cell.getPlainText() for cell in rows[0]]
         )
         header = [cell.getPlainText() for cell in discount_table[0]]
         detail = [[cell.getPlainText() for cell in row] for row in discount_table[1:]]
         self.assertIn('Remise', header)
-        self.assertIn('Précision', header)
+        self.assertIn('Situation / précision', header)
         self.assertTrue(any('10 000' in row and '3.1 %' in row for row in detail))
 
     def test_exports_pdf_et_excel_sont_disponibles(self):
@@ -305,21 +304,12 @@ class ProfessionalReportsTests(TestCase):
         accounting_workbook = load_workbook(
             BytesIO(accounting_excel.content), data_only=True,
         )
-        self.assertEqual(
-            accounting_workbook.sheetnames,
-            [
-                'Synthèse', 'Journal validé', 'Affectations', 'Statuts',
-                'Ventilations', 'Remises',
-            ],
-        )
-        self.assertEqual(
-            accounting_workbook['Journal validé'].cell(5, 12).value,
-            'Inscription',
-        )
-        self.assertEqual(
-            accounting_workbook['Affectations'].cell(12, 3).value,
-            400000,
-        )
+        self.assertEqual(set(accounting_workbook.sheetnames), {'Synthèse', 'Statuts', 'Rapprochements', 'Remises', 'Journal validé'})
+        journal = accounting_workbook['Journal validé']
+        valeurs = [cell.value for row in journal.iter_rows() for cell in row]
+        self.assertIn('RAP-REC-001', valeurs)
+        self.assertIn('RAP-REC-002', valeurs)
+        self.assertNotIn('RAP-REC-003', valeurs)
 
         recovery_excel = self.client.get(
             reverse('paiements:export_recouvrement_excel'), params,
@@ -329,7 +319,7 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(
             workbook.sheetnames,
             [
-                'Synthèse', 'Portefeuille élèves', 'Remises élèves', 'Classes', 'Balance âgée',
+                'Synthèse', 'Classes', 'Postes', 'Balance âgée', 'Portefeuille élèves',
                 'Priorités', 'Relances', 'Journal relances',
             ],
         )
@@ -337,46 +327,25 @@ class ProfessionalReportsTests(TestCase):
         self.assertEqual(workbook['Portefeuille élèves'].cell(5, 9).value, 'Remise (%)')
         self.assertEqual(workbook['Portefeuille élèves'].cell(6, 8).value, 10000)
         self.assertEqual(workbook['Portefeuille élèves'].cell(6, 9).value, 3.1)
-        self.assertEqual(workbook['Remises élèves'].cell(6, 6).value, 10000)
-        self.assertEqual(workbook['Remises élèves'].cell(6, 7).value, 3.1)
         self.assertEqual(workbook['Portefeuille élèves'].max_row, 8)
         self.assertEqual(workbook['Journal relances'].max_row, 6)
 
-    def test_apercu_comptable_affiche_toutes_les_sections_du_pdf(self):
-        response = self.client.get(
-            reverse('paiements:rapport_comptabilite'),
-            {'classe_id': self.classe.pk, 'au': self.cutoff.isoformat()},
-        )
-
+    def test_apercu_comptable_affiche_les_paiements_valides_et_exports(self):
+        response = self.client.get(reverse('paiements:rapport_comptable'), {
+            'classe_id': self.classe.pk, 'au': self.cutoff.isoformat(),
+        })
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(
-            response, 'paiements/apercu_rapport_comptable.html',
-        )
-        self.assertEqual(response.context['data']['validated_count'], 2)
-        self.assertEqual(
-            response.context['data']['total_validated'], Decimal('400000'),
-        )
-        self.assertEqual(
-            response.context['data']['total_discounts'], Decimal('10000'),
-        )
-        for section in (
-            'Synthèse par statut',
-            'Ventilation et contrôle des justificatifs',
-            'Synthèse par classe',
-            'Remises et réductions',
-            'Journal détaillé des encaissements validés',
-        ):
-            with self.subTest(section=section):
-                self.assertContains(response, section)
+        self.assertTemplateUsed(response, 'paiements/rapport_comptable.html')
+        self.assertEqual(response.context['nombre_paiements'], 2)
+        self.assertEqual(response.context['total_paiements'], Decimal('400000'))
+        self.assertEqual(response.context['total_retards'], Decimal('150000'))
+        for section in ('Rapprochement par mode de paiement', 'Synthèse par classe', 'Retards de paiement', 'Relances'):
+            self.assertContains(response, section)
         self.assertContains(response, 'RAP-REC-001')
         self.assertContains(response, 'RAP-REC-002')
         self.assertNotContains(response, 'RAP-REC-003')
-        self.assertContains(
-            response, reverse('paiements:export_comptabilite_pdf'),
-        )
-        self.assertContains(
-            response, reverse('paiements:export_comptabilite_excel'),
-        )
+        for kind in ('pdf', 'excel'):
+            self.assertContains(response, reverse('paiements:export_rapport_comptable_' + kind))
 
     def test_tableau_bord_ouvre_la_page_detaillee_du_rapport_comptable(self):
         response = self.client.get(reverse('paiements:tableau_bord'))
@@ -385,7 +354,7 @@ class ProfessionalReportsTests(TestCase):
         self.assertContains(response, 'Rapport comptable', count=2)
         self.assertContains(
             response,
-            reverse('paiements:rapport_comptabilite'),
+            reverse('paiements:rapport_comptable'),
             count=2,
         )
         self.assertNotContains(
@@ -428,7 +397,7 @@ class ProfessionalReportsTests(TestCase):
         self.assertIn('date de début', response.content.decode('utf-8'))
 
         preview_response = self.client.get(
-            reverse('paiements:rapport_comptabilite'),
+            reverse('paiements:rapport_comptable'),
             {'classe_id': self.classe.pk, 'du': '2026-03-01', 'au': '2026-02-01'},
         )
         self.assertEqual(preview_response.status_code, 400)
@@ -442,7 +411,7 @@ class ProfessionalReportsTests(TestCase):
         simple_user.profil.save(update_fields=['peut_consulter_rapports'])
         self.client.force_login(simple_user)
 
-        for route in ('export_recouvrement_pdf', 'rapport_comptabilite'):
+        for route in ('export_recouvrement_pdf', 'rapport_comptable'):
             with self.subTest(route=route):
                 response = self.client.get(reverse(f'paiements:{route}'))
                 self.assertEqual(response.status_code, 403)

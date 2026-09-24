@@ -194,32 +194,7 @@ def _code_classe_from_nom_ou_niveau(classe: "Classe") -> str:
         except Exception:
             return ""
 
-# --- Helper: Normalize school prefix like 'AL-FUR/' and avoid duplicates 'AL-FUR/AL-FUR/' ---
-def _normalize_code_prefixe(value: str) -> str:
-    """Normalize a school code prefix:
-    - Trim spaces
-    - Split on '/'
-    - Remove empty parts
-    - Collapse immediate duplicate segments (e.g., ['AL-FUR','AL-FUR'] -> ['AL-FUR'])
-    - Join back with one '/'
-    - Ensure trailing '/'
-    """
-    try:
-        s = (value or "").strip()
-        if not s:
-            return ""
-        parts = [p.strip() for p in s.split('/') if p.strip()]
-        # Collapse duplicates
-        normalized_parts = []
-        for p in parts:
-            if not normalized_parts or normalized_parts[-1] != p:
-                normalized_parts.append(p)
-        if not normalized_parts:
-            return ""
-        return "/".join(normalized_parts).rstrip('/') + "/"
-    except Exception:
-        return ""
-
+    mapping_nom = {_normalize_nom(nom): code for nom, code in mapping_nom.items()}
     nom_norm = _normalize_nom(getattr(classe, 'nom', ''))
     code = mapping_nom.get(nom_norm, "")
     if code:
@@ -229,6 +204,9 @@ def _normalize_code_prefixe(value: str) -> str:
     niveau = getattr(classe, "niveau", "")
     fallback_niveau = {
         "GARDERIE": "GA",
+        "PETITE_SECTION": "MPS",
+        "MOYENNE_SECTION": "MMS",
+        "GRANDE_SECTION": "MGS",
         "PRIMAIRE_1": "PN1",
         "PRIMAIRE_2": "PN2",
         "PRIMAIRE_3": "PN3",
@@ -291,6 +269,33 @@ def _normalize_code_prefixe(value: str) -> str:
 
     # Dernier recours: vide → le save() appliquera le fallback CL{id}
     return ""
+
+# --- Helper: Normalize school prefix like 'AL-FUR/' and avoid duplicates 'AL-FUR/AL-FUR/' ---
+def _normalize_code_prefixe(value: str) -> str:
+    """Normalize a school code prefix:
+    - Trim spaces
+    - Split on '/'
+    - Remove empty parts
+    - Collapse immediate duplicate segments (e.g., ['AL-FUR','AL-FUR'] -> ['AL-FUR'])
+    - Join back with one '/'
+    - Ensure trailing '/'
+    """
+    try:
+        s = (value or "").strip()
+        if not s:
+            return ""
+        parts = [p.strip() for p in s.split('/') if p.strip()]
+        # Collapse duplicates
+        normalized_parts = []
+        for p in parts:
+            if not normalized_parts or normalized_parts[-1] != p:
+                normalized_parts.append(p)
+        if not normalized_parts:
+            return ""
+        return "/".join(normalized_parts).rstrip('/') + "/"
+    except Exception:
+        return ""
+
 
 class Responsable(SyncTrackedModel):
     """Modèle pour représenter un responsable d'élève"""
@@ -390,6 +395,22 @@ class GrilleTarifaire(SyncTrackedModel):
     def __str__(self):
         return f"{self.ecole.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        valider_annee_scolaire(self.annee_scolaire)
+        for champ in ('frais_inscription', 'frais_reinscription', 'tranche_1', 'tranche_2', 'tranche_3'):
+            from decimal import InvalidOperation
+            valeur = getattr(self, champ)
+            if valeur is None:
+                continue
+            try:
+                valeur = Decimal(str(valeur))
+            except (InvalidOperation, ValueError, TypeError):
+                raise ValidationError({champ: 'Le montant doit être un nombre.'}) from None
+            if not valeur.is_finite() or valeur < 0:
+                raise ValidationError({champ: 'Le montant doit être positif ou nul.'})
+
     @property
     def total_scolarite(self):
         return self.tranche_1 + self.tranche_2 + self.tranche_3
@@ -398,8 +419,15 @@ class GrilleTarifaire(SyncTrackedModel):
     def total_avec_inscription(self):
         return self.frais_inscription + self.total_scolarite
 
+class ElevesPedagogiquesManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(import_verrouille=False)
+
+
 class Eleve(SyncTrackedModel):
     """Modèle principal pour représenter un élève"""
+    objects = models.Manager()
+    pedagogiques = ElevesPedagogiquesManager()
     SEXE_CHOICES = [
         ('M', 'Masculin'),
         ('F', 'Féminin'),
@@ -407,6 +435,7 @@ class Eleve(SyncTrackedModel):
 
     STATUT_CHOICES = [
         ('ACTIF', 'Actif'),
+        ('ATTENTE_PAIEMENT', 'Verrouillé — premier paiement attendu'),
         ('SUSPENDU', 'Suspendu'),
         ('EXCLU', 'Exclu'),
         ('TRANSFERE', 'Transféré'),
@@ -426,6 +455,16 @@ class Eleve(SyncTrackedModel):
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
     date_inscription = models.DateField(verbose_name="Date d'inscription", blank=True, null=True)
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
+    import_verrouille = models.BooleanField(
+        default=False, editable=False, db_index=True,
+        verbose_name="Import verrouillé jusqu'au premier paiement validé",
+    )
+    test_accueil_evalue = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Évalué au test d'accueil",
+        help_text="Indique si l'élève a déjà passé son test d'accueil.",
+    )
 
     # Responsables
     responsable_principal = models.ForeignKey(
@@ -447,7 +486,7 @@ class Eleve(SyncTrackedModel):
     class Meta:
         verbose_name = "Élève"
         verbose_name_plural = "Élèves"
-        ordering = ['nom', 'prenom']
+        ordering = ['-date_creation', '-id']
         indexes = [
             models.Index(fields=['classe', 'statut']),
             models.Index(fields=['nom', 'prenom']),
@@ -505,6 +544,11 @@ class Eleve(SyncTrackedModel):
         - Si la classe change, le matricule est automatiquement régénéré avec le code de la nouvelle classe.
         - NOUVEAU: Réaffectation intelligente des matricules de l'ancienne classe pour combler le "trou".
         """
+        if self.import_verrouille:
+            self.statut = 'ATTENTE_PAIEMENT'
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'statut'}
+
         # Détecter un changement de classe pour régénérer le matricule
         regenerer_matricule = False
         ancienne_classe = None

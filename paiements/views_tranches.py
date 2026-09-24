@@ -14,6 +14,7 @@ from paiements.allocation import (
 )
 from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from rapports.utils import _draw_header_and_watermark
+from ecole_moderne.branding import get_reportlab_palette, get_school_branding
 
 # ReportLab
 # ReportLab: fera l'objet d'un import différé dans la vue PDF
@@ -183,8 +184,11 @@ def _tranche_export_rows(classe, annee_scolaire):
             {'amount': Decimal('0'), 'rates': []},
         )
         detail['amount'] += Decimal(str(item.montant_remise or 0))
-        if item.remise.type_remise == 'POURCENTAGE':
-            taux = Decimal(str(item.remise.valeur or 0))
+        if item.origine_revision:
+            detail['revision'] = True
+        regle = item.regle_calcul or {}
+        if regle.get('type', item.remise.type_remise) == 'POURCENTAGE':
+            taux = Decimal(str(regle.get('valeur', item.remise.valeur) or 0))
             if taux not in detail['rates']:
                 detail['rates'].append(taux)
 
@@ -251,7 +255,10 @@ def _tranche_export_rows(classe, annee_scolaire):
         remise = max(Decimal('0'), discount_detail['amount'])
         reste = max(Decimal('0'), total_du - total_paye - remise) if total_du > 0 else Decimal('0')
         precision = _precision_remise(total_du, reste, total_paye)
+        if discount_detail.get('revision'):
+            precision += ' — Révision : -20 000 GNF'
         rows.append({
+            'student_id': eleve.pk,
             'student': getattr(eleve, 'nom_complet', f"{eleve.prenom} {eleve.nom}"),
             'inscription': insc,
             'reinscription': reinsc,
@@ -267,6 +274,20 @@ def _tranche_export_rows(classe, annee_scolaire):
             'precision': precision,
         })
     return rows
+
+
+def _donnees_tranches_eleve(eleve, annee_scolaire):
+    """Compatibilité pour les appels unitaires historiques des exports."""
+    classe = getattr(eleve, 'classe', None)
+    if classe is None:
+        return None
+    for row in _tranche_export_rows(classe, annee_scolaire):
+        if row.get('student_id') == eleve.pk:
+            donnees = dict(row)
+            donnees['remise'] = donnees['discount']
+            donnees['reste'] = donnees['balance']
+            return donnees
+    return None
 
 
 @login_required
@@ -286,6 +307,7 @@ def export_tranches_par_classe_pdf(request):
         )
 
     classes, annee_scolaire, ecole_pdf = _perimetre_export(request)
+    palette = get_reportlab_palette(ecole_pdf)
 
     # Préparer réponse PDF
     response = HttpResponse(content_type='application/pdf')
@@ -312,7 +334,10 @@ def export_tranches_par_classe_pdf(request):
     cell = ParagraphStyle('Cell', parent=styles['Normal'], fontSize=8, leading=9)
     header_cell = ParagraphStyle(
         'HeaderCell', parent=cell, fontName='Helvetica-Bold', fontSize=7, leading=8,
+        textColor=palette['header_text'],
     )
+    styles['Title'].textColor = palette['primary']
+    styles['Heading2'].textColor = palette['secondary']
 
     titre = 'Tranches par classe'
     if annee_scolaire:
@@ -392,14 +417,14 @@ def export_tranches_par_classe_pdf(request):
                       + [2.2*cm, 2.2*cm, 2.2*cm, 1.7*cm, 2.2*cm, 1.5*cm, 3.5*cm])
         table = Table(data, repeatRows=1, colWidths=col_widths)
         styles_table = [
-            ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+            ('BACKGROUND', (0,0), (-1,0), palette['header']),
+            ('TEXTCOLOR', (0,0), (-1,0), palette['header_text']),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('FONTSIZE', (0,0), (-1,0), 7),
             ('FONTSIZE', (0,1), (-1,-1), 6.5),
             ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
             ('ALIGN', (0,0), (0,-1), 'LEFT'),
-            ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
+            ('GRID', (0,0), (-1,-1), 0.25, palette['border']),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('LEFTPADDING', (0,0), (-1,-1), 2),
             ('RIGHTPADDING', (0,0), (-1,-1), 2),
@@ -408,7 +433,7 @@ def export_tranches_par_classe_pdf(request):
         ]
         if ligne_totaux is not None:
             styles_table += [
-                ('BACKGROUND', (0, ligne_totaux), (-1, ligne_totaux), colors.whitesmoke),
+                ('BACKGROUND', (0, ligne_totaux), (-1, ligne_totaux), palette['table']),
                 ('FONTNAME', (1, ligne_totaux), (-1, ligne_totaux), 'Helvetica-Bold'),
             ]
         table.setStyle(TableStyle(styles_table))
@@ -453,6 +478,11 @@ def export_tranches_par_classe_excel(request):
         return HttpResponse("OpenPyXL n'est pas installé. Veuillez exécuter: pip install openpyxl", status=500)
 
     classes, annee_scolaire, _ecole_entete = _perimetre_export(request)
+    branding = get_school_branding(_ecole_entete)
+    excel_header = branding['header'].lstrip('#').upper()
+    excel_header_text = branding['header_text'].lstrip('#').upper()
+    excel_primary = branding['primary'].lstrip('#').upper()
+    excel_border = branding['border'].lstrip('#').upper()
 
     wb = Workbook()
     ws_index = wb.active
@@ -462,12 +492,12 @@ def export_tranches_par_classe_excel(request):
         index_title += f" - Année {annee_scolaire}"
     ws_index.append([index_title])
     ws_index.merge_cells('A1:C1')
-    ws_index.cell(1, 1).font = Font(bold=True, size=14, color='174A6E')
+    ws_index.cell(1, 1).font = Font(bold=True, size=14, color=excel_primary)
     ws_index.cell(1, 1).alignment = Alignment(horizontal='center')
     ws_index.append(['École', 'Classe', 'Feuille'])
     for cell_header in ws_index[2]:
-        cell_header.fill = PatternFill('solid', fgColor='174A6E')
-        cell_header.font = Font(bold=True, color='FFFFFF')
+        cell_header.fill = PatternFill('solid', fgColor=excel_header)
+        cell_header.font = Font(bold=True, color=excel_header_text)
         cell_header.alignment = Alignment(horizontal='center')
     ws_index.column_dimensions['A'].width = 36
     ws_index.column_dimensions['B'].width = 24
@@ -488,11 +518,11 @@ def export_tranches_par_classe_excel(request):
         ws.append([f"Classe: {classe.nom} – {getattr(classe.ecole, 'nom', '')}"])
         ws.append(headers)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-        ws.cell(1, 1).font = Font(bold=True, size=13, color='174A6E')
+        ws.cell(1, 1).font = Font(bold=True, size=13, color=excel_primary)
         ws.cell(1, 1).alignment = Alignment(horizontal='center')
         for cell_header in ws[2]:
-            cell_header.fill = PatternFill('solid', fgColor='174A6E')
-            cell_header.font = Font(bold=True, color='FFFFFF')
+            cell_header.fill = PatternFill('solid', fgColor=excel_header)
+            cell_header.font = Font(bold=True, color=excel_header_text)
             cell_header.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
         rows = _tranche_export_rows(classe, annee_scolaire)
@@ -538,7 +568,7 @@ def export_tranches_par_classe_excel(request):
         for row_cells in ws.iter_rows(min_row=3, max_col=len(headers)):
             for item in row_cells:
                 item.alignment = Alignment(vertical='top', wrap_text=True)
-                item.border = Border(bottom=Side(style='thin', color='D6E0E6'))
+                item.border = Border(bottom=Side(style='thin', color=excel_border))
         for col in range(1, len(headers) + 1):
             if col == 1:
                 width = 24

@@ -1,5 +1,6 @@
 from django import forms
 from django.core.validators import MinValueValidator
+from django.db.models import Q
 from decimal import Decimal
 from datetime import date, datetime
 from django.utils import timezone
@@ -7,8 +8,58 @@ from django.utils import timezone
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from eleves.models import Eleve, Ecole
 
+
+class MontantGNFField(forms.DecimalField):
+    """Montant GNF tolérant espaces, sigle et séparateurs de milliers."""
+
+    ESPACES = ('\u00a0', '\u202f', '\u2009', ' ')
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            value = self.nettoyer(value)
+        return super().to_python(value)
+
+    @classmethod
+    def nettoyer(cls, valeur):
+        nettoye = str(valeur or '').strip()
+        for espace in cls.ESPACES:
+            nettoye = nettoye.replace(espace, '')
+        for sigle in ('GNF', 'gnf', 'Gnf', 'FG', 'fg'):
+            nettoye = nettoye.replace(sigle, '')
+        nettoye = nettoye.strip()
+        if not nettoye:
+            return nettoye
+
+        signe = ''
+        if nettoye[0] in '+-':
+            signe, nettoye = nettoye[0], nettoye[1:]
+        groupes = nettoye.replace(',', '.').split('.')
+        if len(groupes) > 1 and all(groupe.isdigit() for groupe in groupes):
+            tete, reste = groupes[0], groupes[1:]
+            if all(len(groupe) == 3 for groupe in reste):
+                nettoye = tete + ''.join(reste)
+            elif len(reste) == 1 and reste[0] and set(reste[0]) == {'0'}:
+                nettoye = tete
+        return signe + nettoye
+
+
 class PaiementForm(forms.ModelForm):
     """Formulaire pour créer/modifier un paiement"""
+
+    montant = MontantGNFField(
+        max_digits=10,
+        decimal_places=0,
+        min_value=Decimal('1'),
+        localize=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': 'Montant en GNF',
+        }),
+        label="Montant (GNF)",
+        help_text="Les espaces et le sigle GNF sont acceptés (1 130 500 GNF).",
+    )
 
     # Pourcentage de remise saisi par le comptable (optionnel)
     remise_pourcentage = forms.DecimalField(
@@ -29,9 +80,10 @@ class PaiementForm(forms.ModelForm):
         model = Paiement
         fields = [
             'eleve', 'type_paiement', 'mode_paiement', 'montant',
-            'date_paiement', 'observations', 'reference_externe'
+            'date_paiement', 'observations', 'reference_externe', 'frais_revision_inclus'
         ]
         widgets = {
+            'frais_revision_inclus': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
             'eleve': forms.Select(attrs={
                 'class': 'form-select',
                 'data-live-search': 'true'
@@ -41,14 +93,6 @@ class PaiementForm(forms.ModelForm):
             }),
             'mode_paiement': forms.Select(attrs={
                 'class': 'form-select'
-            }),
-            'montant': forms.NumberInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Montant en GNF',
-                'min': '0',
-                # Le GNF n'a pas de subdivision, mais un reçu net de remise
-                # tombe rarement sur un multiple de 1 000: pas de pas imposé.
-                'step': '1'
             }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control',
@@ -70,7 +114,7 @@ class PaiementForm(forms.ModelForm):
         # Ordonner les élèves par nom
         self.fields['eleve'].queryset = Eleve.objects.select_related(
             'classe', 'classe__ecole'
-        ).filter(statut='ACTIF').order_by('nom', 'prenom')
+        ).filter(statut__in=['ACTIF', 'ATTENTE_PAIEMENT']).order_by('nom', 'prenom')
 
         # Filtrer les types et modes actifs
         self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
@@ -81,6 +125,27 @@ class PaiementForm(forms.ModelForm):
             # Utiliser la date locale selon le fuseau horaire Django
             self.fields['date_paiement'].initial = timezone.localdate()
 
+        # Révision déjà prise sur un autre paiement : case grisée, valeur postée ignorée.
+        self.revision_existante = None
+        eleve = self._eleve_connu()
+        if eleve is not None:
+            from .revisions import annee_revision_eleve, paiement_revision_existant, message_revision_deja_payee
+            self.revision_existante = paiement_revision_existant(eleve, annee_revision_eleve(eleve, timezone.localdate()))
+            if self.revision_existante:
+                champ = self.fields['frais_revision_inclus']
+                champ.disabled = True
+                champ.initial = False
+                champ.help_text = message_revision_deja_payee(self.revision_existante)
+
+    def _eleve_connu(self):
+        valeur = self.data.get(self.add_prefix('eleve')) if self.is_bound else (self.initial.get('eleve') or self.fields['eleve'].initial)
+        if isinstance(valeur, Eleve):
+            return valeur
+        try:
+            return Eleve.objects.select_related('classe').get(pk=int(valeur)) if valeur else None
+        except (Eleve.DoesNotExist, TypeError, ValueError):
+            return None
+
     def clean_montant(self):
         montant = self.cleaned_data.get('montant')
         if montant and montant <= 0:
@@ -89,6 +154,12 @@ class PaiementForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        eleve = cleaned.get('eleve')
+        if cleaned.get('frais_revision_inclus') and eleve:
+            from .revisions import annee_revision_eleve, paiement_revision_existant, message_revision_deja_payee
+            existant = paiement_revision_existant(eleve, annee_revision_eleve(eleve, cleaned.get('date_paiement')))
+            if existant:
+                self.add_error('frais_revision_inclus', message_revision_deja_payee(existant))
         # Validation supplémentaire de la remise (déjà gérée par min/max, mais on force numérique)
         rp = cleaned.get('remise_pourcentage')
         if rp is not None:
@@ -377,6 +448,21 @@ class PaiementModificationForm(forms.ModelForm):
     remis à la famille.
     """
 
+    montant = MontantGNFField(
+        max_digits=10,
+        decimal_places=0,
+        min_value=Decimal('1'),
+        localize=False,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'inputmode': 'numeric',
+            'autocomplete': 'off',
+            'placeholder': 'Ex. : 175000',
+        }),
+        label="Montant (GNF)",
+        help_text="Les espaces et le sigle GNF sont acceptés (175 000 GNF).",
+    )
+
     motif_modification = forms.CharField(
         max_length=255,
         required=True,
@@ -392,14 +478,12 @@ class PaiementModificationForm(forms.ModelForm):
         model = Paiement
         fields = [
             'type_paiement', 'mode_paiement', 'montant',
-            'date_paiement', 'reference_externe', 'observations',
+            'date_paiement', 'reference_externe', 'observations', 'frais_revision_inclus',
         ]
         widgets = {
+            'frais_revision_inclus': forms.CheckboxInput(attrs={'class': 'form-check-input', 'role': 'switch'}),
             'type_paiement': forms.Select(attrs={'class': 'form-select'}),
             'mode_paiement': forms.Select(attrs={'class': 'form-select'}),
-            'montant': forms.NumberInput(attrs={
-                'class': 'form-control', 'min': '0', 'step': '1',
-            }),
             'date_paiement': forms.DateInput(attrs={
                 'class': 'form-control', 'type': 'date',
             }, format='%Y-%m-%d'),
@@ -412,6 +496,36 @@ class PaiementModificationForm(forms.ModelForm):
                 'placeholder': 'Observations (optionnel)',
             }),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['type_paiement'].queryset = self._choix_avec_actuel(
+            TypePaiement, 'type_paiement_id'
+        )
+        self.fields['mode_paiement'].queryset = self._choix_avec_actuel(
+            ModePaiement, 'mode_paiement_id'
+        )
+        self.fields['date_paiement'].input_formats = [
+            '%Y-%m-%d', '%d/%m/%Y'
+        ]
+        # La révision portée par un autre reçu ne peut pas être reprise ici.
+        self.revision_existante = None
+        if self.instance.pk and not self.instance.frais_revision_inclus:
+            from .revisions import paiement_revision_existant, message_revision_deja_payee
+            self.revision_existante = paiement_revision_existant(
+                self.instance.eleve, self.instance.annee_scolaire, exclude_pk=self.instance.pk,
+            )
+            if self.revision_existante:
+                champ = self.fields['frais_revision_inclus']
+                champ.disabled = True
+                champ.help_text = message_revision_deja_payee(self.revision_existante)
+
+    def _choix_avec_actuel(self, modele, champ_id):
+        filtre = Q(actif=True)
+        actuel = getattr(self.instance, champ_id, None)
+        if actuel:
+            filtre |= Q(pk=actuel)
+        return modele.objects.filter(filtre)
 
     def clean_montant(self):
         montant = self.cleaned_data.get('montant')

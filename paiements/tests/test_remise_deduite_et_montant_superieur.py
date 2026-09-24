@@ -128,14 +128,13 @@ class RemiseDeduiteDuRecuTests(BaseScolariteTests):
         self.assertEqual(lien.montant_remise, Decimal("40000"))
         self.assertTrue(lien.deduite_du_paiement)
 
-    def test_option_non_cochee_laisse_le_recu_intact(self):
+    def test_option_non_cochee_refuse_le_depassement_sans_modifier_le_recu(self):
+        # 900 000 encaissés + 40 000 de remise dépasseraient les 930 000 dus.
         resp = self.client.post(self.url, self._payload(deduire=False))
-        self.assertEqual(resp.status_code, 302)
-
+        self.assertContains(resp, "Remise refusée", status_code=200)
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.montant, Decimal("900000"))
-        lien = PaiementRemise.objects.get(paiement=self.paiement)
-        self.assertFalse(lien.deduite_du_paiement)
+        self.assertFalse(PaiementRemise.objects.filter(paiement=self.paiement).exists())
 
     def test_rejouer_le_formulaire_ne_deduit_pas_deux_fois(self):
         """Sans la trace du brut, la seconde soumission amputerait à nouveau."""
@@ -145,14 +144,19 @@ class RemiseDeduiteDuRecuTests(BaseScolariteTests):
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.montant, Decimal("860000"))
 
-    def test_decocher_restaure_le_montant_brut(self):
+    def test_decocher_est_refuse_si_le_brut_depasserait_le_du(self):
         self.client.post(self.url, self._payload(deduire=True))
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.montant, Decimal("860000"))
+        lien = PaiementRemise.objects.get(paiement=self.paiement)
 
-        self.client.post(self.url, self._payload(deduire=False))
+        resp = self.client.post(self.url, self._payload(deduire=False))
+        self.assertContains(resp, "Remise refusée", status_code=200)
         self.paiement.refresh_from_db()
-        self.assertEqual(self.paiement.montant, Decimal("900000"))
+        lien.refresh_from_db()
+        self.assertEqual(self.paiement.montant, Decimal("860000"))
+        self.assertEqual(lien.montant_remise, Decimal("40000"))
+        self.assertTrue(lien.deduite_du_paiement)
 
     def test_annuler_la_remise_rend_le_montant_au_recu(self):
         self.client.post(self.url, self._payload(deduire=True))

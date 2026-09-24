@@ -185,6 +185,33 @@ def _synchroniser_couverture(echeancier, total_manuel_initial):
 
 
 @transaction.atomic
+def synchroniser_echeancier_apres_changement_paiement(
+    eleve_id, annee_scolaire
+):
+    """Reconstruit un échéancier depuis les paiements validés encore actifs.
+
+    Cette opération est utilisée après une correction, une suppression ou une
+    restauration. Les cumuls historiques ``*_paye`` ne sont volontairement
+    pas conservés ici : le journal des paiements devient la source unique afin
+    qu'un ancien montant ne reste jamais affiché dans les soldes et rapports.
+    """
+    echeancier = (
+        EcheancierPaiement.objects.select_for_update()
+        .filter(eleve_id=eleve_id, annee_scolaire=annee_scolaire)
+        .first()
+    )
+    if echeancier is None:
+        return None
+
+    aligner_frais_admission(echeancier)
+    from .recalcul_remises import recalculer_remises_echeancier
+    recalculer_remises_echeancier(echeancier)
+    _synchroniser_couverture(echeancier, ZERO)
+    echeancier.refresh_from_db()
+    return echeancier
+
+
+@transaction.atomic
 def reconcilier_transfert_classe(
     eleve, ancienne_classe, nouvelle_classe, *, cree_par=None
 ):
@@ -262,8 +289,46 @@ def reconcilier_transfert_classe(
         _appliquer_grille(echeancier, grille, nature)
         echeancier.save()
 
+    from .recalcul_remises import recalculer_remises_echeancier
+    recalculer_remises_echeancier(echeancier)
     resultat.update(_synchroniser_couverture(echeancier, total_manuel_initial))
     resultat['echeancier_mis_a_jour'] = True
     resultat['nouveau_total_du'] = _total_du(echeancier)
     resultat['echeancier_id'] = echeancier.pk
     return resultat
+
+
+def aligner_frais_admission(echeancier, type_prefere=None):
+    """Aligne inscription/réinscription sur les paiements de l'année cible."""
+    from .allocation import registration_kind_for_type
+
+    classe = echeancier.eleve.classe
+    if classe.annee_scolaire != echeancier.annee_scolaire:
+        return
+    nature = registration_kind_for_type(type_prefere) if type_prefere else None
+    if not nature:
+        paiements = Paiement.objects.filter(
+            eleve_id=echeancier.eleve_id, annee_scolaire=echeancier.annee_scolaire,
+            statut__in=['VALIDE', 'EN_ATTENTE'],
+        ).select_related('type_paiement').order_by('date_paiement', 'date_creation', 'pk')
+        for paiement in paiements:
+            nature = registration_kind_for_type(paiement.type_paiement.nom)
+            if nature:
+                break
+    if not nature:
+        return
+    grille = GrilleTarifaire.objects.filter(
+        ecole_id=classe.ecole_id, niveau=classe.niveau,
+        annee_scolaire=echeancier.annee_scolaire,
+    ).first()
+    champs = []
+    if echeancier.nature_frais != nature.upper():
+        echeancier.nature_frais = nature.upper()
+        champs.append('nature_frais')
+    if grille:
+        frais = grille.frais_reinscription if nature == 'reinscription' else grille.frais_inscription
+        if echeancier.frais_inscription_du != frais:
+            echeancier.frais_inscription_du = frais
+            champs.append('frais_inscription_du')
+    if champs:
+        echeancier.save(update_fields=champs + ['date_modification'])

@@ -9,8 +9,8 @@ from django.urls import reverse
 from eleves.models import Classe, Ecole, Eleve
 from utilisateurs.models import Profil
 
-from .forms import BienEtablissementForm, ContributionRamePapierForm
-from .models_logistique import BienEtablissement, ContributionRamePapier
+from .forms import BienEtablissementForm, ContributionPapierRameForm
+from .models_logistique import BienEtablissement, ContributionPapierRame
 
 
 class LogistiqueSimplifieeTests(TestCase):
@@ -78,6 +78,8 @@ class LogistiqueSimplifieeTests(TestCase):
                 'role': 'COMPTABLE',
                 'telephone': '+224620100003',
                 'ecole': self.ecole,
+                'peut_ajouter_depenses': True,
+                'peut_modifier_depenses': True,
             },
         )
         self.user = User.objects.get(pk=self.user.pk)
@@ -88,11 +90,12 @@ class LogistiqueSimplifieeTests(TestCase):
             'code_bien': '',
             'nom': 'Tables élèves',
             'type_bien': 'TABLE',
+            'unite_mesure': 'PIECE',
             'marque': 'Locale',
             'quantite_achetee': '40',
             'prix_achat_unitaire': '250000',
             'quantite_utilisee': '30',
-            'quantite_endommagee': '3',
+            'quantite_gatee': '3',
             'date_acquisition': '2026-08-02',
             'localisation': 'Magasin',
             'etat': 'BON',
@@ -105,58 +108,60 @@ class LogistiqueSimplifieeTests(TestCase):
         self.assertEqual(bien.quantite_disponible, 7)
         self.assertEqual(bien.valeur_achat, Decimal('10000000'))
         self.assertEqual(bien.valeur_acquisition, Decimal('10000000'))
-        self.assertTrue(bien.code_bien.startswith('BIEN-LOG/'))
+        self.assertTrue(bien.code_bien.startswith('BIEN-'))
 
     def test_quantites_incoherentes_sont_refusees(self):
         form = BienEtablissementForm(data={
             'nom': 'Marqueurs',
             'type_bien': 'MARQUEUR',
+            'unite_mesure': 'PIECE',
+            'localisation': 'Magasin',
             'quantite_achetee': 10,
             'prix_achat_unitaire': 5000,
             'quantite_utilisee': 8,
-            'quantite_endommagee': 4,
+            'quantite_gatee': 4,
             'etat': 'BON',
         })
 
         self.assertFalse(form.is_valid())
-        self.assertIn('quantite_endommagee', form.errors)
+        self.assertIn('ne peuvent pas dépasser', str(form.non_field_errors()))
 
     def test_contribution_rames_et_recherche_eleve(self):
-        response = self.client.post(reverse('depenses:ajouter_contribution_rame'), {
+        response = self.client.post(reverse('depenses:creer_contribution_papier'), {
             'eleve': self.eleve.pk,
-            'mode_contribution': 'RAMES',
+            'type_contribution': 'PAPIER',
             'nombre_paquets': '3',
-            'montant_paye': '',
+            'montant_paye': '0',
             'date_contribution': '2026-08-02',
             'observations': 'Reçu au secrétariat',
         })
 
-        self.assertRedirects(response, reverse('depenses:liste_contributions_rames'))
-        contribution = ContributionRamePapier.objects.get(eleve=self.eleve)
-        self.assertEqual(contribution.ecole, self.ecole)
-        self.assertEqual(contribution.annee_scolaire, '2026-2027')
+        self.assertRedirects(response, reverse('depenses:liste_contributions_papier'))
+        contribution = ContributionPapierRame.objects.get(eleve=self.eleve)
+        self.assertEqual(contribution.eleve.classe.ecole, self.ecole)
+        self.assertEqual(contribution.eleve.classe.annee_scolaire, '2026-2027')
         self.assertEqual(contribution.nombre_paquets, 3)
         self.assertEqual(contribution.montant_paye, 0)
 
-        page = self.client.get(reverse('depenses:liste_contributions_rames'), {'q': 'LOG-001'})
+        page = self.client.get(reverse('depenses:liste_contributions_papier'), {'q': 'LOG-001'})
         self.assertContains(page, 'AMINATA')
-        self.assertEqual(page.context['resume']['total_paquets'], 3)
+        self.assertEqual(page.context['stats']['total_paquets'], 3)
 
     def test_contribution_en_argent_et_dashboard(self):
-        response = self.client.post(reverse('depenses:ajouter_contribution_rame'), {
+        response = self.client.post(reverse('depenses:creer_contribution_papier'), {
             'eleve': self.eleve.pk,
-            'mode_contribution': 'ARGENT',
-            'nombre_paquets': '',
+            'type_contribution': 'ARGENT',
+            'nombre_paquets': '0',
             'montant_paye': '150000',
             'date_contribution': '2026-08-02',
             'observations': '',
         })
-        self.assertRedirects(response, reverse('depenses:liste_contributions_rames'))
+        self.assertRedirects(response, reverse('depenses:liste_contributions_papier'))
 
         dashboard = self.client.get(reverse('depenses:dashboard_logistique'))
         self.assertEqual(dashboard.status_code, 200)
-        self.assertEqual(dashboard.context['resume_rames']['total_argent'], Decimal('150000'))
-        self.assertEqual(dashboard.context['resume_rames']['eleves_contributeurs'], 1)
+        self.assertEqual(dashboard.context['stats_papier']['total_argent'], Decimal('150000'))
+        self.assertEqual(dashboard.context['stats_papier']['eleves_enregistres'], 1)
 
     def test_donnees_autre_ecole_non_visibles_et_non_modifiables(self):
         autre_bien = BienEtablissement.objects.create(
@@ -166,11 +171,9 @@ class LogistiqueSimplifieeTests(TestCase):
             type_bien='TABLE',
             localisation='Autre école',
         )
-        autre_contribution = ContributionRamePapier.objects.create(
-            ecole=self.autre_ecole,
+        autre_contribution = ContributionPapierRame.objects.create(
             eleve=self.autre_eleve,
-            annee_scolaire='2026-2027',
-            mode_contribution='RAMES',
+            type_contribution='PAPIER',
             nombre_paquets=2,
             date_contribution=date(2026, 8, 2),
         )
@@ -183,12 +186,12 @@ class LogistiqueSimplifieeTests(TestCase):
         )
         self.assertEqual(
             self.client.get(
-                reverse('depenses:modifier_contribution_rame', args=[autre_contribution.pk])
+                reverse('depenses:modifier_contribution_papier', args=[autre_contribution.pk])
             ).status_code,
             404,
         )
 
     def test_formulaire_ne_propose_que_les_eleves_de_la_meme_ecole(self):
-        form = ContributionRamePapierForm(user=self.user)
+        form = ContributionPapierRameForm(user=self.user)
         self.assertIn(self.eleve, form.fields['eleve'].queryset)
         self.assertNotIn(self.autre_eleve, form.fields['eleve'].queryset)

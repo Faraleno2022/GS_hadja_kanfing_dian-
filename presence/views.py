@@ -46,7 +46,7 @@ def pointage(request):
         classe = next((c for c in classes if c.id == int(classe_id)), None)
 
     if classe:
-        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF')
+        eleves = list(Eleve.pedagogiques.filter(classe=classe, statut='ACTIF')
                       .order_by('prenom', 'nom'))
         presences_existantes = {
             p.eleve_id: p for p in PresenceJournaliere.objects.filter(classe=classe, date=jour)
@@ -125,7 +125,7 @@ def _collecter_rapport(request):
 
     lignes = []
     if classe:
-        eleves = list(Eleve.objects.filter(classe=classe, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe, statut='ACTIF').order_by('prenom', 'nom'))
         # Agrégats par élève sur la période
         agg = (PresenceJournaliere.objects
                .filter(classe=classe, date__gte=du, date__lte=au)
@@ -193,7 +193,7 @@ def alertes_absences(request):
                         .values_list('eleve_id', flat=True)
                         .distinct())
     alertes = []
-    for eleve in (Eleve.objects.filter(id__in=list(derniers_absents), statut='ACTIF')
+    for eleve in (Eleve.pedagogiques.filter(id__in=list(derniers_absents), statut='ACTIF')
                   .select_related('classe')):
         n = _calculer_absences_consecutives(eleve.id, aujourdhui)
         if n >= seuil:
@@ -290,12 +290,15 @@ def rapport_presence_pdf(request):
     sous = ParagraphStyle('S', parent=styles['Normal'], fontSize=9, alignment=TA_CENTER, spaceAfter=6)
 
     ecole = d['classe'].ecole
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole)
+    titre.textColor = palette['primary']
     elements = [Paragraph(f"<b>{(ecole.nom if ecole else '').upper()}</b>", titre)]
     elements.append(Paragraph(
         f"RAPPORT DE PRÉSENCE — {d['classe'].nom} — du {d['du'].strftime('%d/%m/%Y')} au {d['au'].strftime('%d/%m/%Y')}", sous))
     if d['nb_alertes']:
         elements.append(Paragraph(
-            f"<font color='#C0392B'><b>{d['nb_alertes']} alerte(s) d'absences consécutives (seuil {d['seuil']})</b></font>", sous))
+            f"<font color='{palette['branding']['card_danger']}'><b>{d['nb_alertes']} alerte(s) d'absences consécutives (seuil {d['seuil']})</b></font>", sous))
 
     data = [['N°', 'Matricule', 'Élève', 'Prés.', 'Abs.', 'Ret.', 'Just.', 'Taux abs.', 'Abs. conséc.']]
     for i, l in enumerate(d['lignes'], 1):
@@ -308,20 +311,20 @@ def rapport_presence_pdf(request):
     table = Table(data, repeatRows=1,
                   colWidths=[1.0*cm, 2.8*cm, 8.0*cm, 2.0*cm, 2.0*cm, 2.0*cm, 2.0*cm, 2.6*cm, 3.0*cm])
     style = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f6f7')]),
+        ('GRID', (0, 0), (-1, -1), 0.4, palette['border']),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, palette['table_alt']]),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]
     for idx, l in enumerate(d['lignes'], 1):
         if l['alerte']:
-            style.append(('TEXTCOLOR', (8, idx), (8, idx), colors.HexColor('#C0392B')))
+            style.append(('TEXTCOLOR', (8, idx), (8, idx), palette['card_danger']))
             style.append(('FONTNAME', (8, idx), (8, idx), 'Helvetica-Bold'))
     table.setStyle(TableStyle(style))
     elements.append(table)

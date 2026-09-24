@@ -284,7 +284,7 @@ def rapport_scolaire_recherche(request):
 
             # Chercher l'élève
             try:
-                eleve = Eleve.objects.select_related(
+                eleve = Eleve.pedagogiques.select_related(
                     'classe', 'classe__ecole',
                     'responsable_principal', 'responsable_secondaire'
                 ).get(matricule=matricule, statut='ACTIF')
@@ -352,7 +352,7 @@ def rapport_scolaire_classes_ajax(request):
 
     # Chercher l'élève
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(matricule=matricule, statut='ACTIF')
@@ -398,7 +398,7 @@ def rapport_scolaire_detail(request):
         })
 
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(pk=eleve_id, statut='ACTIF')
@@ -443,7 +443,7 @@ def rapport_scolaire_pdf(request):
         })
 
     try:
-        eleve = Eleve.objects.select_related(
+        eleve = Eleve.pedagogiques.select_related(
             'classe', 'classe__ecole',
             'responsable_principal', 'responsable_secondaire'
         ).get(pk=eleve_id, statut='ACTIF')
@@ -485,11 +485,13 @@ def _generer_recu_paiement_pdf(paiement):
     buf = io.BytesIO()
     width, height = A4
     c = canvas.Canvas(buf, pagesize=A4)
+    from ecole_moderne.branding import get_reportlab_palette
+    ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
+    palette = get_reportlab_palette(ecole_obj)
 
     # Filigrane
     try:
         from ecole_moderne.pdf_utils import draw_logo_watermark
-        ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
         draw_logo_watermark(c, width, height, ecole=ecole_obj)
     except Exception:
         pass
@@ -499,11 +501,12 @@ def _generer_recu_paiement_pdf(paiement):
     line_h = 18
 
     # ── En-tête ──
+    c.setFillColor(palette['primary'])
     c.setFont('Helvetica-Bold', 18)
     c.drawString(left, top, "REÇU DE PAIEMENT")
+    c.setFillColor(palette['text'])
     top -= 25
 
-    ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
     if ecole_obj:
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, ecole_obj.nom)
@@ -587,13 +590,13 @@ def _generer_recu_paiement_pdf(paiement):
         top -= line_h
         c.setFont('Helvetica-Bold', 11)
         if solde_restant > 0:
-            c.setFillColorRGB(0.8, 0, 0)
+            c.setFillColor(palette['mention_insuffisant'])
             c.drawString(left, top, f"Reste à payer: {solde_restant:,.0f} GNF".replace(",", " "))
-            c.setFillColorRGB(0, 0, 0)
+            c.setFillColor(palette['text'])
         else:
-            c.setFillColorRGB(0, 0.5, 0)
+            c.setFillColor(palette['mention_tb'])
             c.drawString(left, top, "Scolarité entièrement payée")
-            c.setFillColorRGB(0, 0, 0)
+            c.setFillColor(palette['text'])
         top -= line_h
 
     top -= 10
@@ -624,6 +627,8 @@ def _generer_rapport_pdf(eleve):
 
     ecole = eleve.classe.ecole if eleve.classe else None
     annee = eleve.classe.annee_scolaire if eleve.classe else ''
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole)
 
     # ── Filigrane ─────────────────────────────────────────────
     try:
@@ -647,7 +652,7 @@ def _generer_rapport_pdf(eleve):
 
     # ── Informations de l'élève ──
     y -= 15
-    y = _draw_section_title(c, "INFORMATIONS DE L'ÉLÈVE", y, margin, col_width)
+    y = _draw_section_title(c, "INFORMATIONS DE L'ÉLÈVE", y, margin, col_width, palette)
     y -= 5
 
     infos = [
@@ -680,7 +685,7 @@ def _generer_rapport_pdf(eleve):
     y -= 10
     if y < margin + 60:
         y = new_page()
-    y = _draw_section_title(c, "NOTES ET RÉSULTATS SCOLAIRES", y, margin, col_width)
+    y = _draw_section_title(c, "NOTES ET RÉSULTATS SCOLAIRES", y, margin, col_width, palette)
     y -= 5
 
     # Trouver la ClasseNote correspondante
@@ -710,9 +715,9 @@ def _generer_rapport_pdf(eleve):
         y -= 10
         if y < margin + 60:
             y = new_page()
-        y = _draw_section_title(c, "CLASSEMENTS", y, margin, col_width)
+        y = _draw_section_title(c, "CLASSEMENTS", y, margin, col_width, palette)
         y -= 5
-        y = _draw_classements(c, classements, y, margin, col_width, new_page)
+        y = _draw_classements(c, classements, y, margin, col_width, new_page, palette)
 
     # ══════════════════════════════════════════════════════════
     # SECTION ACTIVITÉS JOURNALIÈRES
@@ -725,9 +730,9 @@ def _generer_rapport_pdf(eleve):
         y -= 10
         if y < margin + 60:
             y = new_page()
-        y = _draw_section_title(c, "ACTIVITÉS JOURNALIÈRES", y, margin, col_width)
+        y = _draw_section_title(c, "ACTIVITÉS JOURNALIÈRES", y, margin, col_width, palette)
         y -= 5
-        y = _draw_activites(c, activites, y, margin, col_width, new_page)
+        y = _draw_activites(c, activites, y, margin, col_width, new_page, palette)
 
     # ══════════════════════════════════════════════════════════
     # PIED DE PAGE
@@ -755,6 +760,8 @@ def _generer_rapport_pdf(eleve):
 
 def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
     """En-tête officiel du rapport."""
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole)
     center = page_width / 2
 
     # Ligne République
@@ -795,7 +802,7 @@ def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
 
     # Titre du document
     y -= 10
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(palette['primary'])
     c.setFont('Helvetica-Bold', 16)
     c.drawCentredString(center, y, "RAPPORT SCOLAIRE COMPLET")
     y -= 14
@@ -805,18 +812,18 @@ def _draw_report_header(c, ecole, eleve, annee, y, margin, page_width):
     y -= 6
 
     # Ligne séparatrice
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(palette['primary'])
     c.setLineWidth(1.5)
     c.line(margin, y, page_width - margin, y)
     y -= 6
     return y
 
 
-def _draw_section_title(c, title, y, margin, col_width):
+def _draw_section_title(c, title, y, margin, col_width, palette):
     """Dessine un titre de section avec fond coloré."""
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(palette['primary'])
     c.roundRect(margin, y - 4, col_width, 18, 3, fill=1, stroke=0)
-    c.setFillColor(colors.white)
+    c.setFillColor(palette['primary_text'])
     c.setFont('Helvetica-Bold', 10)
     c.drawString(margin + 8, y, title)
     c.setFillColor(colors.black)
@@ -825,6 +832,8 @@ def _draw_section_title(c, title, y, margin, col_width):
 
 def _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new_page):
     """Dessine le tableau des notes mensuelles et compositions."""
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(classe_note.ecole)
 
     # Collecter les données
     MOIS = ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']
@@ -900,12 +909,12 @@ def _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 6.5),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [palette['card'], palette['table_alt']]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 3),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
@@ -923,7 +932,7 @@ def _draw_notes_table(c, eleve, classe_note, matieres, y, margin, col_width, new
     return y
 
 
-def _draw_classements(c, classements, y, margin, col_width, new_page):
+def _draw_classements(c, classements, y, margin, col_width, new_page, palette):
     """Dessine le tableau des classements."""
     header = ['Période', 'Moyenne', 'Rang', 'Mention', 'Appréciation']
     data = [header]
@@ -941,12 +950,12 @@ def _draw_classements(c, classements, y, margin, col_width, new_page):
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (4, 1), (4, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [palette['card'], palette['table_alt']]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 3),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
@@ -959,7 +968,7 @@ def _draw_classements(c, classements, y, margin, col_width, new_page):
     return y - th - 5
 
 
-def _draw_activites(c, activites, y, margin, col_width, new_page):
+def _draw_activites(c, activites, y, margin, col_width, new_page, palette):
     """Dessine le tableau des activités journalières."""
     TYPE_COLORS = {
         'EVALUATION': colors.HexColor('#1976d2'),
@@ -991,12 +1000,12 @@ def _draw_activites(c, activites, y, margin, col_width, new_page):
     base_style = [
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7.5),
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e91e63')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['accent']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['accent_text']),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
         ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fce4ec')]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [palette['card'], palette['accent_soft']]),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('TOPPADDING', (0, 0), (-1, -1), 2),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 2),

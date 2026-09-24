@@ -1,0 +1,27 @@
+{% load humanize %}
+<section class="card border-success shadow-sm mb-4" aria-labelledby="revision-card-title" data-revision-card>
+  <div class="card-body p-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h2 class="h5 mb-0" id="revision-card-title"><i class="fas fa-book-reader text-success me-2" aria-hidden="true"></i>Frais de révision</h2>
+      <span class="badge bg-success">Année scolaire <span data-revision-field="annee">{{ resume_revision.annee|default:'—' }}</span></span>
+    </div>
+    <div class="row g-3 align-items-center">
+      <div class="col-12 col-md-6">
+        <div class="text-muted small">Montant total des frais de révision</div>
+        <div class="display-6 fw-bold text-success"><span data-revision-field="montant">{{ resume_revision.montant|intcomma }}</span> <span class="fs-5">GNF</span></div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="fs-3 fw-bold" data-revision-field="nombre">{{ resume_revision.nombre|intcomma }}</div>
+        <div class="text-muted small">Élèves concernés</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="fs-5 fw-bold">{{ resume_revision.tarif|intcomma }} GNF</div>
+        <div class="text-muted small">Par élève et par année</div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3 pt-3 border-top">
+      <p class="small text-muted mb-0">Paiements validés uniquement. Montants déduits de la scolarité.</p>
+      {% if afficher_lien_revision %}<a class="btn btn-outline-success" data-revision-list href="{% url 'paiements:liste_revisions' %}?{{ resume_revision.filtres }}">Voir les élèves <i class="fas fa-arrow-right ms-1" aria-hidden="true"></i></a>{% endif %}
+    </div>
+  </div>
+</section>

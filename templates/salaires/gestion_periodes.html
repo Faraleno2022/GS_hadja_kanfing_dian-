@@ -83,6 +83,22 @@
         gap: 0.5rem;
         flex-wrap: wrap;
     }
+    .monthly-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #eaf7ef 0%, #d9f2e3 100%);
+        border: 1px solid #b7dfc7;
+    }
+    .monthly-total strong {
+        color: #146c43;
+        font-size: 1.35rem;
+        white-space: nowrap;
+    }
     .btn-action {
         padding: 0.5rem 1rem;
         font-size: 0.9rem;
@@ -241,22 +257,32 @@
                     </div>
                 </div>
 
+                <div class="monthly-total">
+                    <div>
+                        <div class="fw-bold text-success">État mensuel cumulé</div>
+                        <small class="text-muted">
+                            {{ periode.nombre_etats }} salaire{{ periode.nombre_etats|pluralize }} disponible{{ periode.nombre_etats|pluralize }}
+                        </small>
+                    </div>
+                    <strong>{{ periode.total_net|intcomma }} GNF</strong>
+                </div>
+
                 <div class="period-details">
                     <div class="detail-item">
-                        <div class="detail-value">{{ periode.nombre_semaines }}</div>
-                        <div class="detail-label">Semaines</div>
+                        <div class="detail-value">{{ periode.total_salaire_base|intcomma }}</div>
+                        <div class="detail-label">Salaires de base (GNF)</div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-value">{{ periode.etats_salaire.count }}</div>
-                        <div class="detail-label">États Calculés</div>
+                        <div class="detail-value">{{ periode.total_primes|intcomma }}</div>
+                        <div class="detail-label">Primes (GNF)</div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-value">{{ periode.etats_valides }}</div>
-                        <div class="detail-label">États Validés</div>
+                        <div class="detail-value">{{ periode.total_retenues|add:periode.total_avances|intcomma }}</div>
+                        <div class="detail-label">Retenues + avances (GNF)</div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-value">{{ periode.etats_payes }}</div>
-                        <div class="detail-label">États Payés</div>
+                        <div class="detail-value">{{ periode.etats_valides }} / {{ periode.etats_payes }}</div>
+                        <div class="detail-label">Validés / payés</div>
                     </div>
                 </div>
 

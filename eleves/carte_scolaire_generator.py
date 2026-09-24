@@ -8,6 +8,10 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Image as ReportlabImage
+from reportlab.lib.utils import ImageReader
+
+from ecole_moderne.branding import get_school_branding
+
 try:
     from PIL import Image, ImageDraw, ImageOps
 except Exception:
@@ -73,7 +77,6 @@ def _draw_cover_image(c, image_path, x, y, width, height, radius=0):
     temp_buffer = io.BytesIO()
     img.save(temp_buffer, format="JPEG", quality=94)
     temp_buffer.seek(0)
-    from reportlab.lib.utils import ImageReader
     c.drawImage(ImageReader(temp_buffer), x, y, width=width, height=height, mask="auto")
 
 
@@ -504,9 +507,10 @@ def generer_carte_pvc_haute_qualite(eleve, response, with_crop_marks=True):
         main_font = 'Helvetica'
         bold_font = 'Helvetica-Bold'
     
-    # Couleurs optimisées pour impression PVC (CMYK friendly)
-    primary_blue = '#004494'  # Bleu plus foncé pour meilleur contraste
-    text_black = '#000000'    # Noir pur pour texte
+    # Palette de l'école, conservée sur l'impression PVC.
+    branding = get_school_branding(getattr(getattr(eleve, 'classe', None), 'ecole', None))
+    primary_blue = branding['primary']
+    text_black = branding['text']
     
     # Zone de carte principale (avec bleed)
     card_x = bleed
@@ -630,20 +634,21 @@ def generer_cartes_classe_moderne(classe, eleves, response):
 
 def _dessiner_carte_simple(c, eleve, x, y, width, height, main_font, bold_font):
     """Draw one print-ready CR80 student card for batch PDFs."""
-    primary = "#1746a2"
-    accent = "#0f766e"
-    dark = "#0f172a"
-    muted = "#64748b"
-    line = "#dbe3ef"
+    school = eleve.classe.ecole
+    branding = get_school_branding(school)
+    primary = branding['primary']
+    accent = branding['accent']
+    dark = branding['text']
+    muted = branding['muted']
+    line = branding['border']
     paper = "#ffffff"
-    soft = "#f5f8fc"
+    soft = branding['primary_soft']
 
     margin = 2.2 * mm
     header_h = 10.5 * mm
     footer_h = 6.2 * mm
     radius = 4.5
 
-    school = eleve.classe.ecole
     school_name = _safe_text(getattr(school, "nom", "")).upper()
     student_name = _safe_text(f"{getattr(eleve, 'prenom', '')} {getattr(eleve, 'nom', '')}").upper()
     matricule = _safe_text(getattr(eleve, "matricule", ""))

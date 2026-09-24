@@ -19,7 +19,7 @@
             font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 9pt;
             line-height: 1.2;
-            color: #333;
+            color: {{ school_branding.text }};
         }
         
         .bulletin-container {
@@ -27,7 +27,7 @@
             max-height: 287mm;
             margin: 0 auto;
             padding: 4mm;
-            border: 1px solid #2c3e50;
+            border: 1px solid {{ school_branding.primary }};
             position: relative;
             overflow: hidden;
         }
@@ -38,7 +38,7 @@
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 6px;
-            border-bottom: 1px solid #3498db;
+            border-bottom: 1px solid {{ school_branding.secondary }};
             padding-bottom: 4px;
         }
         
@@ -62,7 +62,7 @@
         .republique {
             font-size: 10pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
             margin-bottom: 1px;
         }
         
@@ -77,7 +77,7 @@
         .ecole-nom {
             font-size: 10pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
             text-transform: uppercase;
             margin-bottom: 2px;
         }
@@ -85,7 +85,7 @@
         .bulletin-titre {
             font-size: 11pt;
             font-weight: bold;
-            color: #e74c3c;
+            color: {{ school_branding.accent }};
             margin-top: 2px;
         }
         
@@ -119,7 +119,7 @@
             padding: 4px 8px;
             border-radius: 4px;
             margin-bottom: 6px;
-            border-left: 3px solid #3498db;
+            border-left: 3px solid {{ school_branding.secondary }};
         }
         
         .eleve-info table {
@@ -138,7 +138,7 @@
         }
         
         .eleve-info .value {
-            color: #2c3e50;
+            color: {{ school_branding.text }};
         }
         
         /* Tableau des notes */
@@ -147,8 +147,8 @@
         }
         
         .section-title {
-            background: linear-gradient(90deg, #2c3e50, #34495e);
-            color: white;
+            background: linear-gradient(90deg, {{ school_branding.primary }}, {{ school_branding.secondary }});
+            color: {{ school_branding.primary_text }};
             padding: 4px 8px;
             font-size: 9pt;
             font-weight: bold;
@@ -163,16 +163,16 @@
         
         .notes-table th,
         .notes-table td {
-            border: 1px solid #bdc3c7;
+            border: 1px solid {{ school_branding.border }};
             padding: 2px 4px;
             text-align: center;
             font-size: 8pt;
         }
         
         .notes-table thead th {
-            background: #ecf0f1;
+            background: {{ school_branding.table }};
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.text }};
         }
         
         .notes-table tbody td:first-child {
@@ -194,10 +194,10 @@
             font-size: 8pt;
         }
         
-        .lettre-A-plus, .lettre-A { background: #27ae60; color: white; }
-        .lettre-B-plus, .lettre-B { background: #3498db; color: white; }
-        .lettre-B-minus, .lettre-C { background: #f39c12; color: white; }
-        .lettre-D { background: #e74c3c; color: white; }
+        .lettre-A-plus, .lettre-A { background: {{ school_branding.mention_tb }}; color: white; }
+        .lettre-B-plus, .lettre-B { background: {{ school_branding.mention_bien }}; color: white; }
+        .lettre-B-minus, .lettre-C { background: {{ school_branding.mention_ab }}; color: white; }
+        .lettre-D { background: {{ school_branding.mention_insuffisant }}; color: white; }
         
         /* Section analyse */
         .analyse-section, .recommandations-section {
@@ -205,7 +205,7 @@
         }
         
         .section-content {
-            border: 1px solid #bdc3c7;
+            border: 1px solid {{ school_branding.border }};
             border-top: none;
             padding: 4px 8px;
             border-radius: 0 0 3px 3px;
@@ -213,12 +213,12 @@
         }
         
         .analyse-title {
-            background: linear-gradient(90deg, #17a2b8, #138496);
+            background: linear-gradient(90deg, {{ school_branding.secondary }}, {{ school_branding.primary }});
         }
         
         .recommandations-title {
-            background: linear-gradient(90deg, #ffc107, #e0a800);
-            color: #333;
+            background: linear-gradient(90deg, {{ school_branding.card_warning }}, {{ school_branding.secondary }});
+            color: {{ school_branding.card_warning_text }};
         }
         
         .item-list {
@@ -254,13 +254,13 @@
             margin-top: 4px;
             font-style: italic;
             font-size: 9pt;
-            border-left: 2px solid #3498db;
+            border-left: 2px solid {{ school_branding.secondary }};
         }
         
         /* Résultat général */
         .resultat-general {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
+            background: linear-gradient(135deg, {{ school_branding.primary }} 0%, {{ school_branding.secondary }} 100%);
+            color: {{ school_branding.primary_text }};
             padding: 8px;
             border-radius: 5px;
             text-align: center;
@@ -275,7 +275,7 @@
         .moyenne-box {
             display: inline-block;
             background: white;
-            color: #2c3e50;
+            color: {{ school_branding.text }};
             padding: 4px 15px;
             border-radius: 5px;
             margin: 2px;
@@ -288,7 +288,7 @@
         
         .moyenne-label {
             font-size: 9pt;
-            color: #7f8c8d;
+            color: {{ school_branding.muted }};
         }
         
         .mention-badge {
@@ -300,13 +300,11 @@
             margin-top: 4px;
         }
         
-        .mention-excellent { background: #27ae60; }
-        .mention-tresbien { background: #2ecc71; }
-        .mention-bien { background: #3498db; }
-        .mention-assezbien { background: #17a2b8; }
-        .mention-moyen { background: #f39c12; }
-        .mention-passable { background: #e67e22; }
-        .mention-difficultes { background: #e74c3c; }
+        .mention-excellent, .mention-tresbien { background: {{ school_branding.mention_tb }}; }
+        .mention-bien, .mention-assezbien { background: {{ school_branding.mention_bien }}; }
+        .mention-moyen { background: {{ school_branding.mention_ab }}; }
+        .mention-passable { background: {{ school_branding.mention_passable }}; }
+        .mention-difficultes { background: {{ school_branding.mention_insuffisant }}; }
         
         /* Signatures */
         .signatures {
@@ -314,7 +312,7 @@
             justify-content: space-between;
             margin-top: 8px;
             padding-top: 6px;
-            border-top: 1px dashed #bdc3c7;
+            border-top: 1px dashed {{ school_branding.border }};
         }
         
         .signature-box {
@@ -353,8 +351,8 @@
             margin-top: 5px;
             text-align: center;
             font-size: 9pt;
-            color: #7f8c8d;
-            border-top: 1px solid #ecf0f1;
+            color: {{ school_branding.muted }};
+            border-top: 1px solid {{ school_branding.table }};
             padding-top: 3px;
         }
         

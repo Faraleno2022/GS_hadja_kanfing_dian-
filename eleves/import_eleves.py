@@ -307,11 +307,12 @@ class ImportElevesProcessor:
     Processeur pour importer les élèves
     """
 
-    def __init__(self, df, classe_id, user=None, generer_matricules=True):
+    def __init__(self, df, classe_id, user=None, generer_matricules=True, verrouiller=False):
         self.df = df
         self.classe_id = classe_id
         self.user = user
         self.generer_matricules = generer_matricules
+        self.verrouiller = verrouiller
         self.stats = {
             'total': 0,
             'crees': 0,
@@ -587,7 +588,9 @@ class ImportElevesProcessor:
             eleve_existant.sexe = _texte(row.get('Sexe')).upper()
             eleve_existant.date_naissance = date_naissance
             eleve_existant.lieu_naissance = lieu_naissance
-            eleve_existant.statut = 'ACTIF'
+            # Préserver le verrou et les statuts administratifs lors d'un réimport.
+            if eleve_existant.import_verrouille:
+                eleve_existant.statut = 'ATTENTE_PAIEMENT'
             self._lier_responsables(
                 eleve_existant, cle_resp, responsable, cle_resp2, responsable_secondaire
             )
@@ -620,7 +623,8 @@ class ImportElevesProcessor:
                 lieu_naissance=lieu_naissance,
                 classe=classe,
                 date_inscription=datetime.now().date(),
-                statut='ACTIF'
+                statut='ATTENTE_PAIEMENT' if self.verrouiller else 'ACTIF',
+                import_verrouille=self.verrouiller,
             )
 
             self._lier_responsables(eleve, cle_resp, responsable, cle_resp2, responsable_secondaire)

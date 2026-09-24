@@ -1,3 +1,4 @@
+from utilisateurs.utils import filter_by_user_school
 """
 Système de rappels de paiement automatique
 Envoie des messages aux parents pour les paiements en retard
@@ -279,6 +280,8 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
 
         # Détecter les élèves en retard
         echeanciers_retard = self.detecter_eleves_en_retard()
+        if utilisateur is not None:
+            echeanciers_retard = filter_by_user_school(echeanciers_retard, utilisateur, 'eleve__classe__ecole')
         stats['total_eleves_retard'] = echeanciers_retard.count()
 
         # Limiter le nombre de rappels
@@ -340,7 +343,7 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         except Relance.DoesNotExist:
             logger.error(f"Relance {relance_id} introuvable")
 
-    def obtenir_statistiques_rappels(self, periode_jours=30):
+    def obtenir_statistiques_rappels(self, periode_jours=30, utilisateur=None):
         """
         Obtient les statistiques des rappels sur une période
 
@@ -353,6 +356,8 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
         date_debut = timezone.now() - timedelta(days=periode_jours)
 
         rappels = Relance.objects.filter(date_creation__gte=date_debut)
+        if utilisateur is not None:
+            rappels = filter_by_user_school(rappels, utilisateur, 'eleve__classe__ecole')
 
         stats = {
             'total_rappels': rappels.count(),
@@ -369,9 +374,11 @@ Contactez-nous IMMÉDIATEMENT pour éviter toute interruption de la scolarité.
             stats['par_canal'][canal] = rappels.filter(canal=canal).count()
 
         # Montant total des impayés
-        stats['montant_total_impaye'] = sum(
-            rappel.solde_estime for rappel in rappels if rappel.solde_estime
-        )
+        # Chaque élève compte une fois, avec la dernière estimation disponible.
+        derniers_soldes = {}
+        for eleve_id, solde in rappels.order_by('-date_creation', '-pk').values_list('eleve_id', 'solde_estime'):
+            derniers_soldes.setdefault(eleve_id, solde or Decimal('0'))
+        stats['montant_total_impaye'] = sum(derniers_soldes.values(), Decimal('0'))
 
         return stats
 

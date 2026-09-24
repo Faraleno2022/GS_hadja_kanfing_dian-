@@ -20,7 +20,7 @@
             font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 10pt;
             line-height: 1.3;
-            color: #333;
+            color: {{ school_branding.text }};
         }
         
         .fiche-page {
@@ -28,7 +28,7 @@
             min-height: 277mm;
             margin: 0 auto;
             padding: 8mm;
-            border: 2px solid #2c3e50;
+            border: 2px solid {{ school_branding.primary }};
             position: relative;
             page-break-after: always;
         }
@@ -40,7 +40,7 @@
         .header {
             text-align: center;
             margin-bottom: 12px;
-            border-bottom: 2px solid #3498db;
+            border-bottom: 2px solid {{ school_branding.secondary }};
             padding-bottom: 8px;
         }
         
@@ -54,7 +54,7 @@
         .republique {
             font-size: 11pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
         }
         
         .devise {
@@ -69,14 +69,14 @@
         .ecole-nom {
             font-size: 12pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
             text-transform: uppercase;
         }
         
         .fiche-titre {
             font-size: 14pt;
             font-weight: bold;
-            color: #e74c3c;
+            color: {{ school_branding.accent }};
             margin-top: 5px;
         }
         
@@ -90,7 +90,7 @@
             padding: 10px 15px;
             border-radius: 8px;
             margin-bottom: 15px;
-            border-left: 4px solid #3498db;
+            border-left: 4px solid {{ school_branding.secondary }};
         }
         
         .eleve-info table {
@@ -115,16 +115,16 @@
         }
         
         .section-title.analyse {
-            background: linear-gradient(90deg, #17a2b8, #138496);
+            background: linear-gradient(90deg, {{ school_branding.secondary }}, {{ school_branding.primary }});
         }
         
         .section-title.recommandations {
-            background: linear-gradient(90deg, #ffc107, #e0a800);
-            color: #333;
+            background: linear-gradient(90deg, {{ school_branding.card_warning }}, {{ school_branding.secondary }});
+            color: {{ school_branding.card_warning_text }};
         }
         
         .section-title.observations {
-            background: linear-gradient(90deg, #6c757d, #5a6268);
+            background: linear-gradient(90deg, {{ school_branding.muted }}, {{ school_branding.primary }});
         }
         
         .section-content {
@@ -168,7 +168,7 @@
             justify-content: space-between;
             margin-top: 20px;
             padding-top: 10px;
-            border-top: 1px dashed #bdc3c7;
+            border-top: 1px dashed {{ school_branding.border }};
         }
         
         .signature-box {
@@ -192,7 +192,7 @@
             margin-top: 10px;
             text-align: center;
             font-size: 7pt;
-            color: #7f8c8d;
+            color: {{ school_branding.muted }};
         }
     </style>
 </head>

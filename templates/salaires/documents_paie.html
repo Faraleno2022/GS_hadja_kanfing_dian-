@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Documents de paie{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h1 class="h3 mb-0"><i class="fas fa-folder-open text-primary me-2"></i>Documents de paie</h1>
+            <p class="text-muted mb-0">Masse salariale, états détaillés, acomptes, émargement et bulletins de paie du mois</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'salaires:parametres_paie' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-sliders-h me-1"></i>Barèmes et signataires
+            </a>
+            <a href="{% url 'salaires:etats_salaire' %}{% if periode %}?periode={{ periode.id }}{% endif %}" class="btn btn-outline-primary">
+                <i class="fas fa-file-invoice-dollar me-1"></i>États de salaire
+            </a>
+        </div>
+    </div>
+
+    {% if not periode %}
+    <div class="alert alert-info">
+        Aucune période de salaire n'a encore été créée.
+        <a href="{% url 'salaires:gestion_periodes' %}" class="alert-link">Créer une période</a>.
+    </div>
+    {% else %}
+    <form method="get" class="card card-body shadow-sm border-0 mb-4">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="periode-select">Période</label>
+                <select name="periode" id="periode-select" class="form-select" onchange="this.form.submit()">
+                    {% for p in periodes %}
+                    <option value="{{ p.id }}" {% if p.id == periode.id %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-8 text-md-end">
+                {% if periode.cloturee %}<span class="badge bg-secondary">Période clôturée</span>{% else %}<span class="badge bg-success">Période ouverte</span>{% endif %}
+            </div>
+        </div>
+    </form>
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-balance-scale me-2 text-success"></i>Masse salariale — {{ periode.nom_periode }}</h5>
+                </div>
+                <div class="card-body">
+                    {% if sections %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-3">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Section</th>
+                                    <th class="text-end">Effectif</th>
+                                    <th class="text-end">Salaire de base</th>
+                                    <th class="text-end">Primes</th>
+                                    <th class="text-end">Brut</th>
+                                    <th class="text-end">Acompte</th>
+                                    <th class="text-end">Retenues</th>
+                                    <th class="text-end">Net à payer</th>
+                                    <th class="text-end">Documents</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for section in sections %}
+                                <tr>
+                                    <td class="fw-semibold">{{ section.libelle }}</td>
+                                    <td class="text-end">{{ section.effectif }}</td>
+                                    <td class="text-end">{{ section.total_base|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ section.total_primes|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ section.total_brut|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ section.total_avances|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ section.total_deductions|floatformat:0|intcomma }}</td>
+                                    <td class="text-end fw-bold">{{ section.total_net|floatformat:0|intcomma }}</td>
+                                    <td class="text-end text-nowrap">
+                                        <a class="btn btn-sm btn-outline-danger" title="État de salaire de la section"
+                                           href="{% url 'salaires:etat_salaire_detaille_pdf' periode.id %}?section={{ section.categorie }}">
+                                            <i class="fas fa-file-pdf"></i> État
+                                        </a>
+                                        <a class="btn btn-sm btn-outline-secondary" title="Fiche d'émargement de la section"
+                                           href="{% url 'salaires:emargement_pdf' periode.id %}?section={{ section.categorie }}">
+                                            <i class="fas fa-signature"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr>
+                                    <td>TOTAL</td>
+                                    <td class="text-end">{{ totaux.effectif }}</td>
+                                    <td></td><td></td>
+                                    <td class="text-end">{{ totaux.total_brut|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ totaux.total_avances|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">{{ totaux.total_deductions|floatformat:0|intcomma }}</td>
+                                    <td class="text-end text-success">{{ totaux.total_net|floatformat:0|intcomma }} GNF</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    <p class="mb-0 small">
+                        <strong>Arrêtée à la somme de :</strong> {{ total_en_lettres }} ({{ totaux.total_net|floatformat:0|intcomma }} GNF).
+                    </p>
+                    {% else %}
+                    <div class="alert alert-warning mb-0">
+                        Aucun état de salaire pour cette période.
+                        <a href="{% url 'salaires:etats_salaire' %}?periode={{ periode.id }}" class="alert-link">Calculez d'abord les salaires</a>.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-print me-2 text-danger"></i>Imprimer</h5>
+                </div>
+                <div class="list-group list-group-flush">
+                    <a class="list-group-item list-group-item-action" href="{% url 'salaires:etat_salaire_detaille_pdf' periode.id %}">
+                        <i class="fas fa-table me-2 text-primary"></i><strong>État de salaire détaillé</strong>
+                        <div class="small text-muted">Une page par section, avec toutes les primes et le montant en lettres</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'salaires:masse_salariale_pdf' periode.id %}">
+                        <i class="fas fa-balance-scale me-2 text-success"></i><strong>Masse salariale</strong>
+                        <div class="small text-muted">Direction, Primaire et Secondaire</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'salaires:acomptes_pdf' periode.id %}">
+                        <i class="fas fa-hand-holding-usd me-2 text-warning"></i><strong>État des acomptes</strong>
+                        <div class="small text-muted">Bons 1 à 5 par personne</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'salaires:emargement_pdf' periode.id %}">
+                        <i class="fas fa-signature me-2 text-secondary"></i><strong>Fiche d'émargement (acquis)</strong>
+                        <div class="small text-muted">À signer lors de la remise des salaires</div>
+                    </a>
+                    <a class="list-group-item list-group-item-action" href="{% url 'salaires:bulletins_paie_pdf' periode.id %}">
+                        <i class="fas fa-file-invoice me-2 text-info"></i><strong>Bulletins de paie</strong>
+                        <div class="small text-muted">Un bulletin par personne, rubriques détaillées</div>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-hand-holding-usd me-2 text-warning"></i>Acomptes du mois</h5>
+                    <a href="{% url 'salaires:ajouter_avance' %}" class="btn btn-sm btn-outline-warning"><i class="fas fa-plus me-1"></i>Nouveau bon</a>
+                </div>
+                <div class="card-body">
+                    {% if acomptes %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Prénoms et nom</th><th>Section</th>
+                                    <th class="text-end">Bon 1</th><th class="text-end">Bon 2</th><th class="text-end">Bon 3</th>
+                                    <th class="text-end">Bon 4</th><th class="text-end">Bon 5</th><th class="text-end">Acompte payé</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ligne in acomptes %}
+                                <tr>
+                                    <td>{{ ligne.enseignant.prenoms }} {{ ligne.enseignant.nom }}</td>
+                                    <td>{{ ligne.section }}</td>
+                                    {% for bon in ligne.bons %}
+                                    <td class="text-end">{% if bon is not None %}{{ bon|floatformat:0|intcomma }}{% endif %}</td>
+                                    {% endfor %}
+                                    <td class="text-end fw-semibold">{{ ligne.total|floatformat:0|intcomma }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light fw-bold">
+                                <tr><td colspan="7">TOTAL</td><td class="text-end">{{ total_acomptes|floatformat:0|intcomma }} GNF</td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">Aucun bon d'acompte enregistré pour cette période.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

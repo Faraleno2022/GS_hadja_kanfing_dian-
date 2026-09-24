@@ -9,6 +9,7 @@
 {% endblock %}
 
 {% block page_actions %}
+    <a href="{% url 'paiements:liste_revisions' %}" class="btn btn-outline-success mb-2"><i class="fas fa-book-reader me-1"></i>Révisions payées</a>
     <div>
         <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Nouveau Paiement
@@ -22,11 +23,17 @@
         <a href="{% url 'paiements:liste_eleves_impayes' %}" class="btn btn-outline-danger">
             <i class="fas fa-exclamation-triangle me-1"></i>Élèves impayés
         </a>
+        <a href="{% url 'paiements:liste_admissions' 'INSCRIPTION' %}" class="btn btn-outline-warning">
+            <i class="fas fa-user-plus me-1"></i>Élèves inscrits
+        </a>
+        <a href="{% url 'paiements:liste_admissions' 'REINSCRIPTION' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-user-check me-1"></i>Élèves réinscrits
+        </a>
         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
             <i class="fas fa-bell me-1"></i>Relances
         </a>
         {% if can_view_reports %}
-        <a href="{% url 'paiements:rapport_comptabilite' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
+        <a href="{% url 'paiements:rapport_comptable' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
             <i class="fas fa-book-open me-1"></i>Rapport comptable
         </a>
         {% endif %}
@@ -210,6 +217,8 @@
         </div>
     </div>
 
+    {% include 'paiements/_carte_revision.html' with afficher_lien_revision=True %}
+
     <!-- Encaissements détaillés par catégorie et période -->
     <div class="mb-4">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-3">
@@ -284,6 +293,52 @@
                             </div>
                             <div class="metric-period-count">
                                 <span data-financial-admission="{{ admission.key }}" data-period="{{ period.key }}" data-field="count">{{ period.count|intcomma }}</span>
+                                opération(s)
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Corrections et suppressions de caisse -->
+    <div class="mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3">
+            <div>
+                <h4 class="mb-1">
+                    <i class="fas fa-clock-rotate-left me-2 text-danger"></i>Corrections et suppressions
+                </h4>
+                <p class="text-muted mb-0">Opérations effectuées dans le système, selon leur date réelle de modification.</p>
+            </div>
+            <a href="{% url 'paiements:historique_mutations_paiements' %}" class="btn btn-outline-danger mt-2 mt-md-0">
+                <i class="fas fa-list me-1"></i>Voir les motifs et le détail
+            </a>
+        </div>
+        <div class="row g-3">
+            {% for mutation in financial_metrics.mutations %}
+            <div class="col-12 col-xl-6">
+                <div class="finance-metric-card metric-{{ mutation.color }}" data-mutation-card="{{ mutation.key }}">
+                    <div class="metric-header">
+                        <div>
+                            <h5 class="metric-title mb-1">
+                                <i class="fas {{ mutation.icon }} me-2"></i>{{ mutation.label }}
+                            </h5>
+                            <small class="text-muted">{{ mutation.description }}</small>
+                        </div>
+                    </div>
+                    <div class="metric-period-grid">
+                        {% for period in mutation.period_values %}
+                        <div class="metric-period">
+                            <div class="metric-period-label">{{ period.label }}</div>
+                            <div class="metric-period-value">
+                                <span data-financial-mutation="{{ mutation.key }}" data-period="{{ period.key }}" data-field="amount">{{ period.amount|floatformat:0|intcomma }}</span>
+                                <small>GNF</small>
+                            </div>
+                            <div class="metric-period-count">
+                                <span data-financial-mutation="{{ mutation.key }}" data-period="{{ period.key }}" data-field="count">{{ period.count|intcomma }}</span>
                                 opération(s)
                             </div>
                         </div>
@@ -573,7 +628,7 @@
                             <i class="fas fa-check-circle me-2"></i>Élèves soldés
                         </a>
                         {% if can_view_reports %}
-                        <a href="{% url 'paiements:rapport_comptabilite' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
+                        <a href="{% url 'paiements:rapport_comptable' %}{% if annee_active %}?annee_scolaire={{ annee_active|urlencode }}{% endif %}" class="btn btn-outline-primary">
                             <i class="fas fa-book-open me-2"></i>Rapport comptable
                         </a>
                         {% endif %}
@@ -618,6 +673,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 setMetricValue(`[data-financial-admission="${admission.key}"][data-period="${period}"][data-field="count"]`, values.count);
             });
         });
+        (metrics.mutations || []).forEach(mutation => {
+            Object.entries(mutation.values || {}).forEach(([period, values]) => {
+                setMetricValue(`[data-financial-mutation="${mutation.key}"][data-period="${period}"][data-field="amount"]`, values.amount);
+                setMetricValue(`[data-financial-mutation="${mutation.key}"][data-period="${period}"][data-field="count"]`, values.count);
+            });
+        });
     }
 
     // Animation des cartes statistiques
@@ -633,7 +694,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Fonction pour mettre à jour les statistiques
     function updateStatistics() {
-        fetch('{% url "paiements:ajax_statistiques_paiements" %}')
+        fetch('{% url "paiements:ajax_statistiques_paiements" %}' + window.location.search)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -665,6 +726,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
 
                     updateFinancialMetrics(data.financial_metrics);
+                    const revision = data.resume_revision;
+                    if (revision) {
+                        ['montant', 'nombre', 'annee'].forEach(field => {
+                            const element = document.querySelector('[data-revision-field="' + field + '"]');
+                            if (element) element.textContent = field === 'annee'
+                                ? (revision[field] || '—') : numberFormatter.format(revision[field]);
+                        });
+                        const revisionLink = document.querySelector('[data-revision-list]');
+                        if (revisionLink) revisionLink.href = '{% url "paiements:liste_revisions" %}?' + revision.filtres;
+                    }
                     
                     console.log('Statistiques paiements mises à jour:', stats);
                 }

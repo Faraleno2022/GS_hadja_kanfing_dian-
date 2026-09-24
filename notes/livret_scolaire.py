@@ -39,6 +39,7 @@ from .calculs_moyennes import (
     detecter_niveau_scolaire,
 )
 from utilisateurs.utils import filter_by_user_school, user_school
+from ecole_moderne.branding import get_reportlab_palette
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,14 @@ CYCLE_LABELS = {
     'COLLEGE':    'Cycle College',
     'LYCEE':      'Cycle Lycee / Terminale',
 }
+
+
+def _livret_primary(ecole):
+    return get_reportlab_palette(ecole)['primary']
+
+
+def _livret_primary_text(ecole):
+    return get_reportlab_palette(ecole)['primary_text']
 
 
 def _s(val):
@@ -1141,7 +1150,7 @@ def _draw_cover_half(c, x, y, w, h, ecole, eleve, parcours, logo, page_number):
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
-def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
+def _draw_fiche_sante_half(c, x, y, w, h, ecole, eleve, page_number):
     """Dessine la fiche de sante (derniere page du depliant) sur une demi-page DROITE."""
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.8)
@@ -1156,12 +1165,12 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "FICHE DE SANTE DE L'ELEVE")
 
     cy -= 5
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     # Infos generales
@@ -1178,7 +1187,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Tableau de sante
     cy -= 18
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "Etat de sante general")
 
     cy -= 5
@@ -1204,7 +1213,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Personne a contacter en cas d'urgence
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "Personne a contacter en cas d'urgence")
 
     urgence_fields = [
@@ -1225,7 +1234,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     # Tableau suivi annuel
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "Suivi medical annuel")
 
     cy -= 5
@@ -1258,7 +1267,7 @@ def _draw_fiche_sante_half(c, x, y, w, h, eleve, page_number):
     c.drawCentredString(cx, y + 5, f"-{page_number}-")
 
 
-def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
+def _draw_renseignements_parents_half(c, x, y, w, h, ecole, eleve, page_number):
     """Dessine les renseignements des parents (page 2 du depliant)."""
     c.setStrokeColor(colors.black)
     c.setLineWidth(0.8)
@@ -1273,12 +1282,12 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "RENSEIGNEMENTS SUR LES PARENTS")
 
     cy -= 5
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     # Infos eleve recap
@@ -1291,7 +1300,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # ------- PERE / Responsable principal -------
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "RESPONSABLE PRINCIPAL")
     cy -= 3
     c.setLineWidth(0.3)
@@ -1328,11 +1337,11 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     cy -= 22
     if cy > y + 15:
         c.setFont('Helvetica-Bold', 9)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(_livret_primary(ecole))
         c.drawString(lx, cy, "RESPONSABLE SECONDAIRE")
         cy -= 3
         c.setLineWidth(0.3)
-        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.setStrokeColor(_livret_primary(ecole))
         c.line(lx, cy, rx, cy)
 
     resp2 = getattr(eleve, 'responsable_secondaire', None)
@@ -1360,7 +1369,7 @@ def _draw_renseignements_parents_half(c, x, y, w, h, eleve, page_number):
     # ------- SITUATION FAMILIALE -------
     cy -= 22
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "ADRESSE ET SITUATION FAMILIALE")
     cy -= 3
     c.setLineWidth(0.3)
@@ -1618,7 +1627,7 @@ def _collecter_parcours_eleve(eleve, ecole):
                             ecole=classe_note.ecole,
                             annee_scolaire=annee_scolaire,
                         ).first()
-                        eleves_classe = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF') if classe_eleve else Eleve.objects.none()
+                        eleves_classe = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF') if classe_eleve else Eleve.pedagogiques.none()
                         periode_annuelle = 'ANNUEL_SEM' if is_semestre else 'ANNUEL_TRIM'
                         classement_calc = calculer_classement_classe(
                             eleves_classe, matieres, periode_annuelle, system_type_annuel, use_cache=False
@@ -1848,7 +1857,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     # Titre
     cy = top - 15
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "SYNTHESE DU PARCOURS SCOLAIRE")
 
     cy -= 12
@@ -1872,7 +1881,7 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             break
         cycle_label = CYCLE_LABELS.get(cycle_key, cycle_key)
         c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(_livret_primary(ecole))
         c.drawString(lx, cy, cycle_label)
         cy -= 10
 
@@ -1908,8 +1917,8 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#555555')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('BACKGROUND', (0, 0), (-1, 0), _livret_primary(ecole)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), _livret_primary_text(ecole)),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e8eef5')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -1928,10 +1937,10 @@ def _draw_synthese_half(c, x, y_base, w, h, ecole, eleve, parcours, page_number)
     if moyennes_all and cy > y_base + 100:
         cy -= 8
         c.setFont('Helvetica-Bold', 8)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(_livret_primary(ecole))
         c.drawString(lx, cy, "EVOLUTION DES MOYENNES")
         cy -= 3
-        c.setStrokeColor(colors.HexColor('#003d82'))
+        c.setStrokeColor(_livret_primary(ecole))
         c.setLineWidth(0.4)
         c.line(lx, cy, rx, cy)
 
@@ -2010,11 +2019,11 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
 
     # Titre
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "ANALYSE ET ORIENTATION")
     cy -= 4
     c.setLineWidth(0.6)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx + 40, cy, rx - 40, cy)
 
     cy -= 12
@@ -2043,10 +2052,10 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
                 or line.startswith('POINTS A') or line.startswith('ORIENTATION'):
             cy -= 3
             c.setFont('Helvetica-Bold', 8)
-            c.setFillColor(colors.HexColor('#003d82'))
+            c.setFillColor(_livret_primary(ecole))
             c.drawString(lx, cy, line)
             cy -= 2
-            c.setStrokeColor(colors.HexColor('#003d82'))
+            c.setStrokeColor(_livret_primary(ecole))
             c.setLineWidth(0.3)
             c.line(lx, cy, lx + 180, cy)
         elif line.startswith('  >>'):
@@ -2072,7 +2081,7 @@ def _draw_orientation_half(c, x, y_base, w, h, ecole, eleve, parcours, page_numb
             c.drawString(lx + 18, cy, line.strip())
         elif line.startswith('  Niveau'):
             c.setFont('Helvetica-Bold', 7.5)
-            c.setFillColor(colors.HexColor('#003d82'))
+            c.setFillColor(_livret_primary(ecole))
             c.drawString(lx + 8, cy, line.strip())
         elif line.startswith('  Note') or line.startswith('  Attention') or line.startswith('  L\''):
             c.setFont('Helvetica-Oblique', 7)
@@ -2142,11 +2151,11 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
 
     # --- Titre ---
     c.setFont('Helvetica-Bold', 11)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "LETTRE DE REMERCIEMENT AUX PARENTS")
     cy -= 4
     c.setLineWidth(0.8)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx + 30, cy, rx - 30, cy)
 
     # --- Entete ecole ---
@@ -2218,11 +2227,11 @@ def _draw_lettre_remerciement_half(c, x, y, w, h, ecole, eleve, parcours, page_n
     # --- Section Recommandations ---
     cy -= 6
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "RECOMMANDATIONS POUR LE PROGR\u00c8S SCOLAIRE :")
     cy -= 3
     c.setLineWidth(0.4)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, lx + 200, cy)
 
     cy -= 12
@@ -2446,11 +2455,11 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
 
     # === TITRE ===
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "FICHE D'ORIENTATION - FIN DE CYCLE COLLEGE")
     cy -= 4
     c.setLineWidth(0.6)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx + 20, cy, rx - 20, cy)
 
     cy -= 11
@@ -2466,7 +2475,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === IDENTIFICATION ===
     cy -= 14
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "IDENTIFICATION DE L'ELEVE")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2527,7 +2536,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === TABLEAU COMPARATIF DES 3 SERIES ===
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "ANALYSE COMPARATIVE DES TROIS SERIES")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2590,7 +2599,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === DETAIL DES MATIERES PAR SERIE ===
     cy -= 8
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "DETAIL PAR SERIE (moyennes ponderees sur tout le parcours)")
     cy -= 3
     c.setLineWidth(0.3)
@@ -2636,13 +2645,13 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # Cadre recommandation
     rec_h = 55
     c.setFillColor(colors.HexColor('#f5f9ff'))
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.setLineWidth(1)
     c.rect(lx, cy - rec_h, usable_w, rec_h, fill=1, stroke=1)
 
     rec_y = cy - 10
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, rec_y, "SERIE RECOMMANDEE")
     rec_y -= 13
 
@@ -2674,7 +2683,7 @@ def _draw_fiche_orientation_lycee_half(c, x, y, w, h, ecole, eleve, parcours, pa
     # === DEBOUCHES DE LA SERIE RECOMMANDEE ===
     if serie_recommandee and cy > y + 80:
         c.setFont('Helvetica-Bold', 7.5)
-        c.setFillColor(colors.HexColor('#003d82'))
+        c.setFillColor(_livret_primary(ecole))
         c.drawString(lx, cy, f"DEBOUCHES - {_SERIES_LYCEE[serie_recommandee]['label'].upper()}")
         cy -= 3
         c.setLineWidth(0.3)
@@ -2771,7 +2780,7 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === TITRE ===
     cy = top - 14
     c.setFont('Helvetica-Bold', 10)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawCentredString(cx, cy, "ANALYSE DU NIVEAU DE L'ELEVE")
     cy -= 10
     c.setFont('Helvetica', 7)
@@ -2783,11 +2792,11 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 1 : STATISTIQUES GENERALES ===
     cy -= 14
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "STATISTIQUES GENERALES")
     cy -= 3
     c.setLineWidth(0.5)
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     cy -= 12
@@ -2853,10 +2862,10 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 2 : MATIERES FORTES ET FAIBLES ===
     cy -= 12
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "ANALYSE PAR MATIERE")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     # Calculer la moyenne par matiere
@@ -2921,8 +2930,8 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor('#999999')),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#003d82')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('BACKGROUND', (0, 0), (-1, 0), _livret_primary(ecole)),
+            ('TEXTCOLOR', (0, 0), (-1, 0), _livret_primary_text(ecole)),
             ('LEFTPADDING', (0, 0), (-1, -1), 3),
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
             ('TOPPADDING', (0, 0), (-1, -1), 1),
@@ -2965,10 +2974,10 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 3 : EVOLUTION PAR PERIODE (graphique barres) ===
     cy -= 16
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "EVOLUTION PAR PERIODE")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     cy -= 5
@@ -3056,10 +3065,10 @@ def _draw_analyse_annuelle_half(c, x, y, w, h, ecole, eleve, entry, page_number)
     # === SECTION 4 : DECISION ET ACCOMPAGNEMENT ===
     cy -= 6
     c.setFont('Helvetica-Bold', 8)
-    c.setFillColor(colors.HexColor('#003d82'))
+    c.setFillColor(_livret_primary(ecole))
     c.drawString(lx, cy, "DECISION ET ACCOMPAGNEMENT")
     cy -= 3
-    c.setStrokeColor(colors.HexColor('#003d82'))
+    c.setStrokeColor(_livret_primary(ecole))
     c.line(lx, cy, rx, cy)
 
     cy -= 11
@@ -3162,7 +3171,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     # Page 2 : Renseignements parents
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_renseignements_parents_half(
-            c, x, y, w, h, eleve, pn))
+            c, x, y, w, h, ecole, eleve, pn))
 
     # Pages 3+ : Niveaux scolaires du parcours (maternelle -> terminale)
     for entry in parcours:
@@ -3189,7 +3198,7 @@ def _generer_livret_pdf(eleve, ecole, parcours):
     # Fiche de sante
     logical_pages.append(
         lambda c, x, y, w, h, pn: _draw_fiche_sante_half(
-            c, x, y, w, h, eleve, pn))
+            c, x, y, w, h, ecole, eleve, pn))
 
     # Derniere page : Lettre de remerciement aux parents
     logical_pages.append(
@@ -3625,7 +3634,7 @@ def livret_scolaire_selection(request):
         if classe_id:
             try:
                 classe_selected = classes.get(pk=classe_id)
-                eleves = Eleve.objects.filter(
+                eleves = Eleve.pedagogiques.filter(
                     classe=classe_selected, statut='ACTIF'
                 ).order_by('nom', 'prenom')
             except Classe.DoesNotExist:
@@ -3654,10 +3663,10 @@ def livret_scolaire_pdf(request, eleve_id):
         messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
 
     if not filter_by_user_school(
-        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+        Eleve.pedagogiques.filter(pk=eleve_id), request.user, 'classe__ecole'
     ).exists():
         messages.error(request, "Acces non autorise a cet eleve.")
         return redirect('notes:livret_scolaire')
@@ -3688,10 +3697,10 @@ def livret_scolaire_annuel_pdf(request, eleve_id):
         messages.error(request, "Aucune ecole associee a votre compte.")
         return redirect('notes:tableau_bord')
 
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
 
     if not filter_by_user_school(
-        Eleve.objects.filter(pk=eleve_id), request.user, 'classe__ecole'
+        Eleve.pedagogiques.filter(pk=eleve_id), request.user, 'classe__ecole'
     ).exists():
         messages.error(request, "Acces non autorise a cet eleve.")
         return redirect('notes:livret_scolaire')
@@ -3733,7 +3742,7 @@ def livret_scolaire_classe_pdf(request, classe_id):
         return redirect('notes:tableau_bord')
 
     classe = get_object_or_404(Classe, pk=classe_id, ecole=ecole)
-    eleves_qs = Eleve.objects.filter(
+    eleves_qs = Eleve.pedagogiques.filter(
         classe=classe, statut='ACTIF'
     ).order_by('nom', 'prenom')
 
@@ -3768,7 +3777,7 @@ def livret_scolaire_classe_pdf(request, classe_id):
                     c, x, y, w, h, ecole, el, pa, logo, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve: _draw_renseignements_parents_half(
-                    c, x, y, w, h, el, pn))
+                    c, x, y, w, h, ecole, el, pn))
             for entry in parcours:
                 pages.append(
                     lambda c, x, y, w, h, pn, e=entry, el=eleve: _draw_half_page(
@@ -3785,7 +3794,7 @@ def livret_scolaire_classe_pdf(request, classe_id):
                     c, x, y, w, h, ecole, el, pa, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve: _draw_fiche_sante_half(
-                    c, x, y, w, h, el, pn))
+                    c, x, y, w, h, ecole, el, pn))
             pages.append(
                 lambda c, x, y, w, h, pn, el=eleve, pa=parcours: _draw_lettre_remerciement_half(
                     c, x, y, w, h, ecole, el, pa, pn))

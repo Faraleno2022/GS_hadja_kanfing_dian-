@@ -26,6 +26,7 @@ from django.utils.dateparse import parse_date
 from eleves.models import Classe
 from eleves.utils_annee import get_annee_active
 from rapports.utils import _draw_logo_watermark, _get_logo_path
+from ecole_moderne.branding import get_reportlab_palette
 from utilisateurs.permissions import can_view_reports
 from utilisateurs.utils import filter_by_user_school, user_school
 
@@ -155,6 +156,11 @@ def _parse_filters(request):
     # Une situation ne se projette pas dans l'avenir : la date d'arrêt est
     # bornée à aujourd'hui même si l'utilisateur demande une date postérieure.
     cutoff = min(end or today, today)
+    period_adjusted = bool(end and end > today)
+    if period_adjusted:
+        end = cutoff
+    if start and start > cutoff:
+        raise ValueError("La date de début dépasse la date d'arrêt du rapport.")
     generated_at = timezone.localtime()
     return {
         'classes': classes,
@@ -169,6 +175,7 @@ def _parse_filters(request):
         'end': end,
         'cutoff': cutoff,
         'historical_cutoff': cutoff < today,
+        'period_adjusted': period_adjusted,
         'generated_at': generated_at,
         'generated_by': _display_user(request.user),
     }
@@ -274,7 +281,7 @@ def collect_accounting_data(request):
             'student': payment.eleve.nom_complet,
             'matricule': payment.eleve.matricule,
             'class': class_name,
-            'type': payment_type,
+            'type': payment.libelle_document,
             'mode': mode,
             'gross': cash + deducted,
             'cash': cash,
@@ -374,6 +381,10 @@ def collect_recovery_data(request):
     total_due = total_cash = total_discount = ZERO
     total_balance = total_overdue = total_upcoming = ZERO
 
+    revision_ids = set(Paiement.objects.filter(
+        statut='VALIDE', frais_revision_inclus=True, date_paiement__lte=cutoff,
+        eleve_id__in=[item.eleve_id for item in schedules],
+    ).values_list('eleve_id', 'annee_scolaire'))
     for schedule in schedules:
         situation = situation_echeancier(
             schedule, date_reference=cutoff, utiliser_cumuls_legacy=use_legacy,
@@ -462,7 +473,7 @@ def collect_recovery_data(request):
             'overdue': overdue,
             'upcoming': upcoming,
             'status': recovery_status,
-            'precision': _discount_precision(discount, due),
+            'precision': _discount_precision(discount, due) + (' — Révision : -20 000 GNF' if (schedule.eleve_id, schedule.annee_scolaire) in revision_ids else ''),
             'reminder_count': len(reminders),
             'last_reminder': latest.date_creation if latest else None,
             'last_status': latest.get_statut_display() if latest else 'Jamais relancé',
@@ -603,37 +614,38 @@ def _pdf_primitives(data, title):
     from reportlab.platypus import Paragraph, Table, TableStyle
 
     styles = getSampleStyleSheet()
+    palette = get_reportlab_palette(data.get('school'))
     styles.add(ParagraphStyle(
         name='ReportTitle', parent=styles['Title'], fontName='Helvetica-Bold',
-        fontSize=18, leading=21, textColor=colors.HexColor(BLUE), alignment=TA_LEFT,
+        fontSize=18, leading=21, textColor=palette['primary'], alignment=TA_LEFT,
         spaceAfter=5,
     ))
     styles.add(ParagraphStyle(
         name='ReportSubTitle', parent=styles['Normal'], fontSize=9, leading=12,
-        textColor=colors.HexColor(GREY), spaceAfter=8,
+        textColor=palette['muted'], spaceAfter=8,
     ))
     styles.add(ParagraphStyle(
         name='SectionTitle', parent=styles['Heading2'], fontName='Helvetica-Bold',
-        fontSize=12, leading=15, textColor=colors.HexColor(BLUE),
+        fontSize=12, leading=15, textColor=palette['secondary'],
         spaceBefore=9, spaceAfter=5,
     ))
     styles.add(ParagraphStyle(
         name='SmallCell', parent=styles['Normal'], fontSize=6.8, leading=8.2,
-        textColor=colors.HexColor('#202B33'),
+        textColor=palette['text'],
     ))
     styles.add(ParagraphStyle(
         name='SmallCellCenter', parent=styles['SmallCell'], alignment=TA_CENTER,
     ))
     styles.add(ParagraphStyle(
         name='HeaderCell', parent=styles['SmallCellCenter'],
-        textColor=colors.white, fontName='Helvetica-Bold',
+        textColor=palette['header_text'], fontName='Helvetica-Bold',
     ))
     styles.add(ParagraphStyle(
         name='SmallCellRight', parent=styles['SmallCell'], alignment=TA_RIGHT,
     ))
     styles.add(ParagraphStyle(
         name='Note', parent=styles['Normal'], fontSize=7.2, leading=9,
-        textColor=colors.HexColor(GREY),
+        textColor=palette['muted'],
     ))
 
     def paragraph(value, style='SmallCell'):
@@ -649,12 +661,12 @@ def _pdf_primitives(data, title):
             for row_index, row in enumerate(rows)
         ]
         commands = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(BLUE)),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('GRID', (0, 0), (-1, -1), 0.35, colors.HexColor('#AEBBC4')),
+            ('GRID', (0, 0), (-1, -1), 0.35, palette['border']),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F7FA')]),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, palette['table_alt']]),
             ('LEFTPADDING', (0, 0), (-1, -1), 3),
             ('RIGHTPADDING', (0, 0), (-1, -1), 3),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
@@ -666,7 +678,7 @@ def _pdf_primitives(data, title):
             commands.append(('ALIGN', (column, 1), (column, -1), 'RIGHT'))
         if total_row and len(rows) > 1:
             commands.extend([
-                ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor(BLUE_LIGHT)),
+                ('BACKGROUND', (0, -1), (-1, -1), palette['primary_soft']),
                 ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ])
         return Table(rendered, colWidths=widths, repeatRows=1, style=TableStyle(commands))
@@ -683,8 +695,8 @@ def _pdf_primitives(data, title):
             ])
         return Table(
             [[Table(cell, colWidths=[4.15 * cm], style=TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F7FAFC')),
-                ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#C7D4DD')),
+                ('BACKGROUND', (0, 0), (-1, -1), palette['table_alt']),
+                ('BOX', (0, 0), (-1, -1), 0.6, palette['border']),
                 ('TOPPADDING', (0, 0), (-1, -1), 4),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ])) for cell in cells]],
@@ -712,16 +724,16 @@ def _pdf_primitives(data, title):
                 )
             except Exception:
                 pass
-        canvas.setFillColor(colors.HexColor(BLUE))
+        canvas.setFillColor(palette['primary'])
         canvas.setFont('Helvetica-Bold', 9)
         canvas.drawString(2.4 * cm, page_height - 0.9 * cm, data['school_name'])
         canvas.setFont('Helvetica', 7)
-        canvas.setFillColor(colors.HexColor(GREY))
+        canvas.setFillColor(palette['muted'])
         canvas.drawRightString(
             page_width - 0.8 * cm, page_height - 0.9 * cm,
             f"{title} — réf. {data['reference']}",
         )
-        canvas.setStrokeColor(colors.HexColor('#9DB4C5'))
+        canvas.setStrokeColor(palette['border'])
         canvas.line(0.8 * cm, page_height - 1.35 * cm, page_width - 0.8 * cm, page_height - 1.35 * cm)
         canvas.line(0.8 * cm, 0.8 * cm, page_width - 0.8 * cm, 0.8 * cm)
         canvas.restoreState()

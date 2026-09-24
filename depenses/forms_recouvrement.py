@@ -76,12 +76,11 @@ class AbonnementInformatiqueForm(forms.ModelForm):
     class Meta:
         model = AbonnementInformatique
         fields = [
-            'eleve', 'date', 'montant', 'date_debut', 'date_fin',
+            'eleve', 'montant', 'date_debut', 'date_fin',
             'alerte_avant_jours', 'statut', 'observation',
         ]
         widgets = {
             'eleve': forms.Select(attrs={'class': 'form-select', 'id': 'id_eleve'}),
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'montant': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': 0, 'step': 1, 'placeholder': '0',
             }),
@@ -99,15 +98,13 @@ class AbonnementInformatiqueForm(forms.ModelForm):
 
     def __init__(self, *args, eleves=None, **kwargs):
         super().__init__(*args, **kwargs)
-        if eleves is not None:
-            self.fields['eleve'].queryset = eleves
+        self.fields['eleve'].queryset = eleves if eleves is not None else self.fields['eleve'].queryset.none()
         self.fields['eleve'].label_from_instance = (
             lambda eleve: f"{eleve.matricule} — {eleve.prenom} {eleve.nom}"
             + (f" ({eleve.classe.nom})" if eleve.classe_id else '')
         )
         if not self.instance.pk:
             aujourdhui = timezone.localdate()
-            self.initial.setdefault('date', aujourdhui)
             self.initial.setdefault('date_debut', aujourdhui)
 
     def clean_montant(self):

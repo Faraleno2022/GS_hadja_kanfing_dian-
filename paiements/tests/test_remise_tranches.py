@@ -259,6 +259,9 @@ class MotifRemiseObligatoireTests(AppliquerRemiseParTrancheTests):
         self.assertEqual(lien.libelle_motif, "Client fidèle")
 
     def test_motif_ne_paie_rien_applique_cent_pour_cent(self):
+        # Seule l'inscription est encaissée, la bourse couvre la scolarité.
+        self.paiement.montant = Decimal("30000")
+        self.paiement.save()
         resp = self.client.post(
             self.url,
             {
@@ -273,6 +276,9 @@ class MotifRemiseObligatoireTests(AppliquerRemiseParTrancheTests):
         # 100% de 400 000 + 300 000 + 200 000, l'inscription restant due
         self.assertEqual(lien.montant_remise, Decimal("900000"))
         self.assertEqual(lien.motif, "NE_PAIE_RIEN")
+        self.assertFalse(lien.deduite_du_paiement)
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.montant, Decimal("30000"))
 
     def test_motif_la_moitie_applique_cinquante_pour_cent(self):
         resp = self.client.post(

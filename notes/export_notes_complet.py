@@ -1,3 +1,5 @@
+from django.http import Http404
+from utilisateurs.utils import filter_by_user_school
 """
 Export complet des notes par matière en PDF et Excel
 Inclut toutes les notes de chaque élève pour chaque matière
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
 from eleves.models import Eleve, Classe as ClasseEleve
+from ecole_moderne.branding import get_reportlab_palette
 
 
 def get_notes_eleves_par_matiere(classe, periode, eleves, matieres, est_maternelle=False):
@@ -161,7 +164,7 @@ def exporter_notes_complet_excel(request):
         return HttpResponse("Paramètre classe_id manquant", status=400)
     
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
         
         # Récupérer les élèves
@@ -172,7 +175,7 @@ def exporter_notes_complet_excel(request):
         if not classe_eleve:
             return HttpResponse("Classe élèves non trouvée", status=404)
         
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
@@ -202,6 +205,7 @@ def exporter_notes_complet_excel(request):
         
         # Récupérer les informations de l'école
         ecole = classe.ecole
+        palette = get_reportlab_palette(ecole)
         
         # En-tête école
         ws.merge_cells('A1:' + get_column_letter(5 + len(matieres)) + '1')
@@ -357,6 +361,8 @@ def exporter_notes_complet_excel(request):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
+    except Http404:
+        raise
     except Exception as e:
         logger.exception("Erreur export Excel")
         return HttpResponse("Une erreur est survenue lors de l'export Excel.", status=500)
@@ -379,7 +385,7 @@ def exporter_notes_complet_pdf(request):
         return HttpResponse("Paramètre classe_id manquant", status=400)
     
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
         
         # Récupérer les élèves
@@ -390,7 +396,7 @@ def exporter_notes_complet_pdf(request):
         if not classe_eleve:
             return HttpResponse("Classe élèves non trouvée", status=404)
         
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
         
         # Détecter le niveau scolaire
         from .calculs_moyennes import detecter_niveau_scolaire
@@ -419,13 +425,14 @@ def exporter_notes_complet_pdf(request):
         
         # Récupérer les informations de l'école
         ecole = classe.ecole
+        palette = get_reportlab_palette(ecole)
         
         # Styles personnalisés
         title_style = ParagraphStyle(
             'Title',
             parent=styles['Heading1'],
             fontSize=14,
-            textColor=colors.HexColor('#007bff'),
+            textColor=palette['primary'],
             alignment=TA_CENTER,
             spaceAfter=4
         )
@@ -534,8 +541,8 @@ def exporter_notes_complet_pdf(request):
         
         # Styles du tableau
         style_commands = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 7.4),
@@ -544,7 +551,7 @@ def exporter_notes_complet_pdf(request):
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [palette['card'], palette['table_alt']]),
             ('ALIGN', (2, 1), (2, -1), 'LEFT'),  # Nom complet aligné à gauche
         ]
         
@@ -588,6 +595,8 @@ def exporter_notes_complet_pdf(request):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
         
+    except Http404:
+        raise
     except Exception as e:
         logger.exception("Erreur export PDF")
         return HttpResponse("Une erreur est survenue lors de l'export PDF.", status=500)

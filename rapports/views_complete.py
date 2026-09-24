@@ -20,6 +20,7 @@ from eleves.models import Eleve, Ecole
 from paiements.models import Paiement
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
+from ecole_moderne.branding import get_reportlab_palette
 
 @login_required
 def tableau_bord(request):
@@ -283,13 +284,16 @@ def generer_pdf_journalier(donnees, date_rapport):
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     story = []
+    school_ids = list((donnees.get('ecoles') or {}).keys())
+    school = Ecole.objects.filter(pk=school_ids[0]).first() if len(school_ids) == 1 else None
+    palette = get_reportlab_palette(school)
     
     # Titre
     titre_style = ParagraphStyle(
         'TitreRapport',
         parent=styles['Heading1'],
         fontSize=18,
-        textColor=colors.darkblue,
+        textColor=palette['primary'],
         alignment=1  # Centré
     )
     
@@ -318,14 +322,14 @@ def generer_pdf_journalier(donnees, date_rapport):
         
         table = Table(data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ('BACKGROUND', (0, 1), (-1, -1), palette['table_alt']),
+            ('GRID', (0, 0), (-1, -1), 1, palette['border'])
         ]))
         
         story.append(table)
@@ -348,10 +352,10 @@ def generer_pdf_journalier(donnees, date_rapport):
     
     resume_table = Table(resume_data, colWidths=[3*inch, 2*inch])
     resume_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
+        ('BACKGROUND', (0, 0), (-1, -1), palette['primary_soft']),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('GRID', (0, 0), (-1, -1), 1, palette['border'])
     ]))
     
     story.append(resume_table)

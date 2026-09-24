@@ -16,6 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
+from ecole_moderne.branding import get_reportlab_palette
 
 from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
 from eleves.models import Eleve, Classe as ClasseEleve
@@ -168,7 +169,7 @@ def exporter_classement_classe(request):
             )
         
         # Récupérer les élèves actifs
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         
         if not eleves.exists():
             return HttpResponse(
@@ -594,6 +595,7 @@ def _calculer_rangs(classement_data):
 
 def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     """Dessine un en-tête officiel pour le classement"""
+    palette = get_reportlab_palette(ecole)
     y = y_start
     center_x = page_width / 2
     
@@ -661,6 +663,7 @@ def _draw_school_header_classement(c, ecole, *, y_start, margin, page_width):
     # Nom de l'école
     school_name = (getattr(ecole, 'nom', '') or 'ÉCOLE').upper()
     c.setFont('Helvetica-Bold', 14)
+    c.setFillColor(palette['primary'])
     c.drawCentredString(center_x, y - 8, school_name)
     
     # Contacts (sans l'adresse)
@@ -800,7 +803,7 @@ def exporter_classement_classe_pdf(request):
             )
         
         # Récupérer les élèves actifs
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom')
         
         if not eleves.exists():
             return HttpResponse(
@@ -829,6 +832,7 @@ def exporter_classement_classe_pdf(request):
     c = canvas.Canvas(buffer, pagesize=A4)
     page_width, page_height = A4
     margin = 2*cm
+    palette = get_reportlab_palette(classe_note.ecole)
     
     # Filigrane
     _draw_watermark(c, classe_note.ecole, page_width, page_height)
@@ -840,12 +844,13 @@ def exporter_classement_classe_pdf(request):
     # Titre du document
     y -= 15
     c.setFont('Helvetica-Bold', 16)
+    c.setFillColor(palette['primary'])
     c.drawCentredString(page_width/2, y, titre_export)
     y -= 15
     
     # Type de période (composition, mensuelle, etc.)
     c.setFont('Helvetica', 11)
-    c.setFillColorRGB(0.2, 0.2, 0.2)
+    c.setFillColor(palette['muted'])
     type_periode_text = ""
     if type_note == 'mensuelle':
         type_periode_text = f"{periode} - Notes Mensuelles" if periode else "Notes Mensuelles"
@@ -879,11 +884,11 @@ def exporter_classement_classe_pdf(request):
         col_x.append(col_x[-1] + w)
 
     # Fond gris pour les en-têtes
-    c.setFillColorRGB(0.2, 0.3, 0.4)
+    c.setFillColor(palette['header'])
     c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
 
     # Texte des en-têtes (adapter selon le niveau)
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColor(palette['header_text'])
     c.setFont('Helvetica-Bold', 10)
     moyenne_header = 'Moy /10' if est_primaire else 'Moy /20'
     headers = ['Rang', 'Matricule', 'Nom Complet', 'Sexe', moyenne_header]
@@ -911,9 +916,9 @@ def exporter_classement_classe_pdf(request):
             y -= 20
             
             # Redessiner les en-têtes
-            c.setFillColorRGB(0.2, 0.3, 0.4)
+            c.setFillColor(palette['header'])
             c.rect(margin, y-15, sum(col_widths), 15, fill=1, stroke=0)
-            c.setFillColorRGB(1, 1, 1)
+            c.setFillColor(palette['header_text'])
             c.setFont('Helvetica-Bold', 10)
             for i, header in enumerate(headers):
                 c.drawString(col_x[i] + 0.2*cm, y - 10, header)
@@ -1079,7 +1084,7 @@ def exporter_classement_classe_pdf(request):
 
         y -= 8
         c.setFont('Helvetica-Bold', 9)
-        c.setFillColorRGB(0.2, 0.3, 0.4)
+        c.setFillColor(palette['primary'])
         for stat in [
             f"Moyenne de classe : {moyenne_classe:.2f}{base_note}",
             f"Note maximale : {note_max:.2f}{base_note}   |   Note minimale : {note_min:.2f}{base_note}",
@@ -1091,7 +1096,7 @@ def exporter_classement_classe_pdf(request):
     # Avertissement si élèves sans notes
     if eleves_sans_notes:
         y -= 8
-        c.setFillColorRGB(0.8, 0, 0)
+        c.setFillColor(palette['mention_insuffisant'])
         c.setFont('Helvetica-Bold', 10)
         c.drawString(margin, y, f"ATTENTION: {len(eleves_sans_notes)} eleve(s) sans notes pour cette periode")
         c.setFillColorRGB(0, 0, 0)
@@ -1114,13 +1119,13 @@ def exporter_classement_classe_pdf(request):
         sig_y = 4 * cm
 
     # Ligne de séparation fine
-    c.setStrokeColorRGB(0.7, 0.7, 0.7)
+    c.setStrokeColor(palette['border'])
     c.setLineWidth(0.5)
     c.line(margin, sig_y + 35, page_width - margin, sig_y + 35)
 
     # Titre de section
     c.setFont('Helvetica-Bold', 9)
-    c.setFillColorRGB(0.2, 0.3, 0.4)
+    c.setFillColor(palette['primary'])
     c.drawString(margin, sig_y + 22, "VISA ET SIGNATURE :")
     c.setFillColorRGB(0, 0, 0)
 

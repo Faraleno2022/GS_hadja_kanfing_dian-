@@ -6,48 +6,155 @@
 {% block content %}
 <div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-lg-7">
-            <div class="card shadow-sm">
-                <div class="card-header bg-warning-subtle">
-                    <h4 class="mb-1"><i class="fas fa-sliders-h me-2"></i>Primes et retenues</h4>
+        <div class="col-xl-8 col-lg-9">
+            <div class="card border-0 shadow-sm overflow-hidden">
+                <div class="card-header bg-warning-subtle border-0 p-4">
+                    <h4 class="mb-1">
+                        <i class="fas fa-sliders-h me-2"></i>Ajuster le salaire avant validation
+                    </h4>
                     <div class="text-muted">
                         {{ etat.enseignant.nom_complet }} — {{ etat.periode.nom_periode }}
                     </div>
                 </div>
-                <div class="card-body">
-                    <div class="alert alert-light border d-flex justify-content-between">
-                        <span>Salaire de base</span>
-                        <strong>{{ etat.salaire_base|intcomma }} GNF</strong>
+                <div class="card-body p-4">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="p-3 rounded border bg-light h-100">
+                                <div class="small text-muted">Source actuelle</div>
+                                <strong>{{ etat.get_mode_calcul_heures_display|default:"Salaire fixe" }}</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 rounded border bg-light h-100">
+                                <div class="small text-muted">Jours de présence</div>
+                                <strong>{{ etat.jours_presence }} jour{{ etat.jours_presence|pluralize }}</strong>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 rounded border bg-light h-100">
+                                <div class="small text-muted">Salaire net actuel</div>
+                                <strong>{{ etat.salaire_net|intcomma }} GNF</strong>
+                            </div>
+                        </div>
                     </div>
 
-                    <form method="post" novalidate>
+                    {% if etat.enseignant.est_taux_horaire and not etat.total_heures %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Aucun total d'heures n'a été trouvé pour ce mois. Saisissez les heures
+                        réellement travaillées ci-dessous avant de valider le salaire.
+                    </div>
+                    {% elif etat.enseignant.est_taux_horaire %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-clock me-2"></i>
+                        Les heures issues du pointage sont préremplies. Toute modification du total
+                        ou du taux sera enregistrée comme une saisie manuelle pour cette période.
+                    </div>
+                    {% endif %}
+
+                    <form method="post" novalidate id="salary-adjustment-form">
                         {% csrf_token %}
                         {% if form.non_field_errors %}
                         <div class="alert alert-danger">{{ form.non_field_errors }}</div>
                         {% endif %}
 
-                        <div class="mb-3">
-                            <label class="form-label" for="{{ form.primes.id_for_label }}">Primes (GNF)</label>
-                            {{ form.primes }}
-                            {% for error in form.primes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        <h5 class="mb-3">Éléments du salaire</h5>
+                        <div class="row g-3">
+                            {% if etat.enseignant.est_taux_horaire %}
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.total_heures.id_for_label }}">
+                                    Nombre d'heures travaillées
+                                </label>
+                                {{ form.total_heures }}
+                                {% if form.total_heures.help_text %}<div class="form-text">{{ form.total_heures.help_text }}</div>{% endif %}
+                                {% for error in form.total_heures.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.taux_horaire_applique.id_for_label }}">
+                                    Taux horaire (GNF)
+                                </label>
+                                {{ form.taux_horaire_applique }}
+                                {% for error in form.taux_horaire_applique.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.salaire_base.id_for_label }}">
+                                    Salaire de base calculé
+                                </label>
+                                {{ form.salaire_base }}
+                                <div class="form-text">Heures × taux horaire</div>
+                                {% for error in form.salaire_base.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ form.salaire_base.id_for_label }}">
+                                    Salaire de base (GNF)
+                                </label>
+                                {{ form.salaire_base }}
+                                {% for error in form.salaire_base.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label" for="{{ form.deductions.id_for_label }}">Retenues (GNF)</label>
-                            {{ form.deductions }}
-                            {% for error in form.deductions.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        <h5 class="mt-4 mb-2">Primes</h5>
+                        <p class="text-muted small mb-3">
+                            Barème de l'école : ancienneté {{ parametre.taux_anciennete_par_an|floatformat:0|intcomma }} GNF/an,
+                            éloignement {{ parametre.taux_eloignement_par_km|floatformat:0|intcomma }} GNF/km,
+                            {% if etat.enseignant.est_taux_horaire %}
+                            révision {{ parametre.prime_par_heure_revision|floatformat:0|intcomma }} GNF/heure.
+                            {% else %}
+                            craie {{ parametre.prime_craie_par_eleve|floatformat:0|intcomma }} GNF/élève (effectif retenu : {{ etat.effectif_classe }}).
+                            {% endif %}
+                            {% if etat.primes_ajustees %}<span class="badge bg-warning text-dark ms-1">Primes saisies manuellement</span>{% endif %}
+                        </p>
+                        <div class="row g-3">
+                            {% if etat.enseignant.est_taux_horaire %}
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.heures_revision.id_for_label }}">Heures de révision</label>
+                                {{ form.heures_revision }}
+                                {% for error in form.heures_revision.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
+                            {% for field in champs_primes %}
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }} (GNF)</label>
+                                {{ field }}
+                                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endfor %}
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="reappliquer_bareme" value="1" id="reappliquer-bareme">
+                                    <label class="form-check-label" for="reappliquer-bareme">
+                                        Recalculer les primes selon le barème de l'école et le dossier de l'enseignant
+                                    </label>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="mb-3">
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ form.deductions.id_for_label }}">Retenues / sanctions (GNF)</label>
+                                {{ form.deductions }}
+                                {% for error in form.deductions.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="alert alert-success mt-4 mb-3 d-flex justify-content-between align-items-center">
+                            <span>Net estimé avant déduction des avances</span>
+                            <strong id="estimated-net">{{ etat.salaire_net|add:etat.avances_deduites|intcomma }} GNF</strong>
+                        </div>
+
+                        <div class="mb-4">
                             <label class="form-label" for="{{ form.observations.id_for_label }}">Observations</label>
                             {{ form.observations }}
                             {% for error in form.observations.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                         </div>
 
                         <div class="d-flex justify-content-end gap-2">
-                            <a href="{% url 'salaires:etats_salaire' %}" class="btn btn-outline-secondary">Annuler</a>
+                            <a href="{% url 'salaires:etats_salaire' %}?periode={{ etat.periode_id }}" class="btn btn-outline-secondary">Annuler</a>
                             <button type="submit" class="btn btn-warning">
-                                <i class="fas fa-save me-1"></i>Enregistrer l'ajustement
+                                <i class="fas fa-save me-1"></i>Recalculer et enregistrer
                             </button>
                         </div>
                     </form>
@@ -56,4 +163,48 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const salary = document.getElementById('{{ form.salaire_base.id_for_label }}');
+    const hours = document.getElementById('{{ form.total_heures.id_for_label }}');
+    const rate = document.getElementById('{{ form.taux_horaire_applique.id_for_label }}');
+    const bonusInputs = Array.from(document.querySelectorAll('.prime-input'));
+    const revisionHours = document.getElementById('{{ form.heures_revision.id_for_label }}');
+    const chalkBonus = document.getElementById('{{ form.prime_craie.id_for_label }}');
+    const revisionRate = {{ parametre.prime_par_heure_revision|stringformat:"s" }};
+    const deductions = document.getElementById('{{ form.deductions.id_for_label }}');
+    const estimatedNet = document.getElementById('estimated-net');
+
+    const valueOf = (element) => Number.parseFloat(element?.value || '0') || 0;
+    const formatGnf = (value) => Math.max(value, 0).toLocaleString('fr-FR', {
+        maximumFractionDigits: 0
+    }) + ' GNF';
+
+    function refreshTotals() {
+        if (hours && rate && salary) {
+            salary.value = (valueOf(hours) * valueOf(rate)).toFixed(2);
+        }
+        const bonuses = bonusInputs.reduce((total, input) => total + valueOf(input), 0);
+        if (estimatedNet) {
+            estimatedNet.textContent = formatGnf(
+                valueOf(salary) + bonuses - valueOf(deductions)
+            );
+        }
+    }
+
+    revisionHours?.addEventListener('input', function () {
+        if (chalkBonus) {
+            chalkBonus.value = (valueOf(revisionHours) * revisionRate).toFixed(2);
+        }
+        refreshTotals();
+    });
+    [salary, hours, rate, deductions, ...bonusInputs].forEach(function (element) {
+        element?.addEventListener('input', refreshTotals);
+    });
+    refreshTotals();
+});
+</script>
 {% endblock %}

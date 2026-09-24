@@ -48,11 +48,14 @@ from .views_edt import (
     emploi_du_temps, supprimer_creneau, emploi_du_temps_pdf, emploi_du_temps_excel,
     calendrier_professeurs, pointage_professeurs,
 )
+from .views_branding import charte_graphique, charte_graphique_apercu_pdf
 
 app_name = 'notes'
 
 urlpatterns = [
     path('', views.tableau_bord, name='tableau_bord'),
+    path('charte-graphique/', charte_graphique, name='charte_graphique'),
+    path('charte-graphique/apercu.pdf', charte_graphique_apercu_pdf, name='charte_graphique_apercu_pdf'),
     path('classes/', views.gerer_classes, name='gerer_classes'),
     path('classes/modifier/<int:classe_id>/', views.modifier_classe, name='modifier_classe'),
     path('classes/supprimer/<int:classe_id>/', views.supprimer_classe, name='supprimer_classe'),

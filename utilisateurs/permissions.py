@@ -42,19 +42,8 @@ def has_any_permission(user, permission_names):
     """
     Vérifie si l'utilisateur possède AU MOINS une des permissions listées
     """
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    profil = getattr(user, 'profil', None)
-    if not profil:
-        return False
-    if getattr(profil, 'role', None) == 'ADMIN' or profil.est_compte_principal:
-        return True
-    for perm in permission_names:
-        if getattr(profil, perm, False):
-            return True
-    return False
+    return any(has_permission(user, permission) for permission in permission_names)
+
 
 def permission_required(permission_name, message=None):
     """

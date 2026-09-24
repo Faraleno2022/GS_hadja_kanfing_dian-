@@ -25,7 +25,7 @@
     .notes-card:hover {
         transform: translateY(-5px);
         box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        border-color: #007bff;
+        border-color: var(--school-primary);
     }
     
     .notes-card-icon {
@@ -47,44 +47,44 @@
         margin: 0;
     }
     
-    .notes-card.primary { border-left: 5px solid #007bff; }
-    .notes-card.primary:hover { background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%); }
-    .notes-card.primary .notes-card-icon { color: #007bff; }
+    .notes-card.primary { border-left: 5px solid var(--school-card-primary); }
+    .notes-card.primary:hover { background: linear-gradient(135deg, {{ school_branding.card_primary_soft }} 0%, #ffffff 100%); }
+    .notes-card.primary .notes-card-icon { color: var(--school-card-primary); }
     
-    .notes-card.success { border-left: 5px solid #28a745; }
-    .notes-card.success:hover { background: linear-gradient(135deg, #e3eaf2 0%, #ffffff 100%); }
-    .notes-card.success .notes-card-icon { color: #28a745; }
+    .notes-card.success { border-left: 5px solid var(--school-card-success); }
+    .notes-card.success:hover { background: linear-gradient(135deg, {{ school_branding.card_success_soft }} 0%, #ffffff 100%); }
+    .notes-card.success .notes-card-icon { color: var(--school-card-success); }
     
-    .notes-card.info { border-left: 5px solid #17a2b8; }
+    .notes-card.info { border-left: 5px solid var(--school-secondary); }
     .notes-card.info:hover { background: linear-gradient(135deg, #e8edf3 0%, #ffffff 100%); }
-    .notes-card.info .notes-card-icon { color: #17a2b8; }
+    .notes-card.info .notes-card-icon { color: var(--school-secondary); }
     
-    .notes-card.warning { border-left: 5px solid #ffc107; }
+    .notes-card.warning { border-left: 5px solid var(--school-card-warning); }
     .notes-card.warning:hover { background: linear-gradient(135deg, #e7f1ff 0%, #ffffff 100%); }
-    .notes-card.warning .notes-card-icon { color: #ffc107; }
+    .notes-card.warning .notes-card-icon { color: var(--school-card-warning); }
     
-    .notes-card.danger { border-left: 5px solid #003d82; }
+    .notes-card.danger { border-left: 5px solid var(--school-card-danger); }
     .notes-card.danger:hover { background: linear-gradient(135deg, #e6eef7 0%, #ffffff 100%); }
-    .notes-card.danger .notes-card-icon { color: #003d82; }
+    .notes-card.danger .notes-card-icon { color: var(--school-card-danger); }
     
-    .notes-card.purple { border-left: 5px solid #1a1a2e; }
+    .notes-card.purple { border-left: 5px solid var(--school-secondary); }
     .notes-card.purple:hover { background: linear-gradient(135deg, #e8e8ec 0%, #ffffff 100%); }
-    .notes-card.purple .notes-card-icon { color: #1a1a2e; }
+    .notes-card.purple .notes-card-icon { color: var(--school-secondary); }
     
-    .notes-card.orange { border-left: 5px solid #ff9800; }
+    .notes-card.orange { border-left: 5px solid var(--school-card-warning); }
     .notes-card.orange:hover { background: linear-gradient(135deg, #fff3e0 0%, #ffffff 100%); }
-    .notes-card.orange .notes-card-icon { color: #ff9800; }
+    .notes-card.orange .notes-card-icon { color: var(--school-card-warning); }
     
-    .notes-card.magic { border-left: 5px solid #9b59b6; }
+    .notes-card.magic { border-left: 5px solid var(--school-accent); }
     .notes-card.magic:hover { background: linear-gradient(135deg, #f5eef8 0%, #ffffff 100%); }
-    .notes-card.magic .notes-card-icon { color: #9b59b6; }
+    .notes-card.magic .notes-card-icon { color: var(--school-accent); }
     
-    .notes-card.rose { border-left: 5px solid #e91e63; }
+    .notes-card.rose { border-left: 5px solid var(--school-accent); }
     .notes-card.rose:hover { background: linear-gradient(135deg, #fce4ec 0%, #ffffff 100%); }
-    .notes-card.rose .notes-card-icon { color: #e91e63; }
+    .notes-card.rose .notes-card-icon { color: var(--school-accent); }
     
     .page-header {
-        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        background: linear-gradient(135deg, var(--school-primary) 0%, var(--school-secondary) 100%);
         color: white;
         padding: 2rem;
         border-radius: 15px;
@@ -115,6 +115,15 @@
 
     <!-- Grille de boutons -->
     <div class="row g-4">
+        {% if is_account_principal or is_admin %}
+        <div class="col-md-6 col-lg-4">
+            <a href="{% url 'notes:charte_graphique' %}" class="notes-card magic">
+                <i class="fas fa-palette notes-card-icon"></i>
+                <h3 class="notes-card-title">Charte graphique</h3>
+                <p class="notes-card-description">Personnaliser les cartes, bulletins et documents de l’école</p>
+            </a>
+        </div>
+        {% endif %}
         <!-- Gérer les Classes -->
         <div class="col-md-6 col-lg-4">
             <a href="{% url 'notes:gerer_classes' %}" class="notes-card primary">

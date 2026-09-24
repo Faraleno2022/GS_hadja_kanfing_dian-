@@ -134,6 +134,7 @@
 <div class="container-fluid">
     <!-- En-tête Enseignant -->
     <div class="teacher-header">
+        {% if enseignant.photo %}<img src="{{ enseignant.photo.url }}" alt="Photo de {{ enseignant.nom_complet }}" style="width:100px;height:120px;object-fit:cover;border-radius:8px;float:right">{% endif %}
         <div class="row align-items-center">
             <div class="col-md-8">
                 <h1 class="mb-2">
@@ -156,6 +157,44 @@
         </div>
     </div>
 
+    <!-- Avances sur salaire -->
+    <div class="row">
+        <div class="col-12">
+            <div class="teacher-info-card">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-hand-holding-usd me-2 text-warning"></i>
+                        Avances sur salaire
+                    </h5>
+                    <a href="{% url 'salaires:ajouter_avance' %}?enseignant={{ enseignant.id }}" class="btn btn-warning btn-sm">
+                        <i class="fas fa-plus me-1"></i> Nouvelle avance
+                    </a>
+                </div>
+                {% if avances_salaire %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead><tr><th>Date</th><th>Période</th><th>Référence</th><th class="text-end">Montant</th><th class="text-end">Reste</th></tr></thead>
+                        <tbody>
+                        {% for avance in avances_salaire %}
+                        <tr>
+                            <td>{{ avance.date_avance|date:'d/m/Y' }}</td>
+                            <td>{{ avance.periode_prevue.nom_periode }}</td>
+                            <td>{{ avance.reference_externe|default:'—' }}</td>
+                            <td class="text-end">{{ avance.montant|floatformat:0|intcomma }} GNF</td>
+                            <td class="text-end fw-bold {% if avance.solde_restant > 0 %}text-warning{% else %}text-success{% endif %}">{{ avance.solde_restant|floatformat:0|intcomma }} GNF</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <a href="{% url 'salaires:liste_avances' %}?enseignant={{ enseignant.id }}" class="btn btn-link px-0 mt-2">Voir tout l'historique</a>
+                {% else %}
+                <p class="text-muted mb-0">Aucune avance enregistrée pour cet enseignant.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <!-- Informations Personnelles -->
         <div class="col-md-6">
@@ -167,7 +206,7 @@
                 
                 <div class="info-row">
                     <span class="info-label">Nom complet :</span>
-                    <span class="info-value">{{ enseignant.nom }} {{ enseignant.prenom }}</span>
+                    <span class="info-value">{{ enseignant.nom }} {{ enseignant.prenoms }}</span>
                 </div>
                 
                 <div class="info-row">
@@ -214,6 +253,21 @@
                     <span class="info-label">Statut :</span>
                     <span class="info-value">{{ enseignant.get_statut_display }}</span>
                 </div>
+
+                {% if enseignant.classe_principale %}
+                <div class="info-row">
+                    <span class="info-label">Classe principale :</span>
+                    <span class="info-value">
+                        {{ enseignant.classe_principale.nom }}
+                        <small class="text-muted">({{ enseignant.classe_principale.get_niveau_display }})</small>
+                    </span>
+                </div>
+                {% elif enseignant.type_enseignant == 'ADMINISTRATEUR' %}
+                <div class="info-row">
+                    <span class="info-label">Fonction :</span>
+                    <span class="info-value">{{ enseignant.fonction|default:"Non renseignée" }}</span>
+                </div>
+                {% endif %}
                 
                 <div class="info-row">
                     <span class="info-label">Rémunération :</span>
@@ -256,13 +310,13 @@
     </div>
 
     <!-- Affectations de Classes -->
-    {% if affectations %}
+    {% if enseignant.est_taux_horaire %}
     <div class="row">
         <div class="col-12">
             <div class="teacher-info-card">
                 <h5 class="card-title mb-3">
                     <i class="fas fa-chalkboard-teacher me-2 text-warning"></i>
-                    Affectations de Classes ({{ affectations.count }})
+                    Affectations de classes du secondaire ({{ affectations_actuelles.count }})
                 </h5>
                 <div class="mb-3">
                     <a class="btn btn-primary" href="{% url 'salaires:ajouter_affectation' enseignant.id %}">
@@ -270,12 +324,15 @@
                     </a>
                 </div>
                 
-                {% for affectation in affectations %}
+                {% for affectation in affectations_actuelles %}
                 <div class="assignment-card">
                     <div class="row align-items-center">
                         <div class="col-md-6">
                             <strong>{{ affectation.classe.nom }}</strong>
                             <small class="text-muted d-block">{{ affectation.classe.niveau }}</small>
+                            {% if affectation.matiere %}
+                            <small class="text-primary d-block">{{ affectation.matiere }}</small>
+                            {% endif %}
                         </div>
                         <div class="col-md-3">
                             <span class="badge bg-info">{{ affectation.heures_par_semaine }}h/semaine</span>
@@ -308,6 +365,11 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                {% empty %}
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Aucune affectation active. Ajoutez une classe, la matière et les heures hebdomadaires.
                 </div>
                 {% endfor %}
             </div>
@@ -377,13 +439,16 @@
                         <i class="fas fa-money-bill-wave me-2"></i>Voir tous les salaires
                     </a>
                     
+                    <a href="{% url 'salaires:carte_enseignant_pdf' enseignant.id %}" class="btn btn-outline-primary btn-action" target="_blank" rel="noopener"><i class="fas fa-id-card me-1"></i>Carte enseignant</a>
                     <a href="{% url 'salaires:modifier_enseignant' enseignant.id %}" class="btn btn-warning btn-action">
                         <i class="fas fa-edit me-2"></i>Modifier
                     </a>
                     
-                    <a href="{% url 'salaires:ajouter_affectation' enseignant.id %}" class="btn btn-primary btn-action">
-                        <i class="fas fa-plus me-2"></i>Affecter une classe
-                    </a>
+                    {% if enseignant.est_taux_horaire %}
+                        <a href="{% url 'salaires:ajouter_affectation' enseignant.id %}" class="btn btn-primary btn-action">
+                            <i class="fas fa-plus me-2"></i>Affecter une classe
+                        </a>
+                    {% endif %}
                     
                     {% if enseignant.statut == 'ACTIF' %}
                     <button class="btn btn-outline-warning btn-action" onclick="changerStatut('CONGE')">

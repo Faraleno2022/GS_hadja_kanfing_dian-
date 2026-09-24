@@ -52,6 +52,10 @@ def valeur_json(valeur):
     """Convertit une valeur de champ en quelque chose de stockable en JSON."""
     if valeur is None or isinstance(valeur, (bool, int, float, str)):
         return valeur
+    if isinstance(valeur, dict):
+        return {cle: valeur_json(element) for cle, element in valeur.items()}
+    if isinstance(valeur, (list, tuple)):
+        return [valeur_json(element) for element in valeur]
     if isinstance(valeur, Decimal):
         return str(valeur)
     if isinstance(valeur, (datetime, date)):

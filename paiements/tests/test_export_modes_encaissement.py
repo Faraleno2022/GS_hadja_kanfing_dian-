@@ -14,7 +14,8 @@ from paiements.models import (
     Paiement,
     TypePaiement,
 )
-from paiements.rapports_professionnels import collect_payment_modes_data
+from paiements.export_modes_encaissement import collect_modes_encaissement_data
+from paiements.views_modes_encaissement import collect_modes_students_data
 from paiements.tests.support import MIDDLEWARE_SANS_LICENCE
 from utilisateurs.models import Profil
 
@@ -159,119 +160,70 @@ class ExportModesEncaissementTests(TestCase):
     def test_collecte_uniquement_les_encaissements_valides_de_lecole(self):
         request = RequestFactory().get('/', self.params)
         request.user = self.user
-
-        data = collect_payment_modes_data(request)
-
-        self.assertEqual(data['validated_count'], 2)
-        self.assertEqual(data['total_validated'], Decimal('100000'))
-        self.assertEqual(data['by_mode']['Espèces']['amount'], Decimal('30000'))
-        self.assertEqual(
-            data['by_mode']['Orange Money']['amount'], Decimal('70000')
-        )
-        self.assertEqual(len(data['daily_modes']), 2)
-        self.assertEqual(data['student_count'], 1)
-        self.assertEqual(data['student_total_due'], Decimal('200000'))
-        self.assertEqual(data['student_total_paid'], Decimal('100000'))
-        self.assertEqual(data['student_total_balance'], Decimal('100000'))
-        self.assertEqual(len(data['student_mode_rows']), 2)
+        data = collect_modes_encaissement_data(request)
+        self.assertEqual(data['payment_count'], 2)
+        self.assertEqual(data['total_amount'], Decimal('100000'))
+        montants = {row['mode']: row['amount'] for row in data['rows']}
+        self.assertEqual(montants, {'Espèces': Decimal('30000'), 'Orange Money': Decimal('70000')})
+        students = collect_modes_students_data(request)
+        self.assertEqual(students['summary']['student_count'], 1)
+        self.assertEqual(students['summary']['balance'], Decimal('100000'))
+        self.assertEqual(len(students['rows']), 2)
 
     def test_tableau_affiche_les_eleves_et_soldes_avec_filtres(self):
-        self.assertEqual(
-            reverse('paiements:modes_encaissement_tableau'),
-            '/paiements/rapport/modes-encaissement/',
-        )
-        response = self.client.get(
-            reverse('paiements:modes_encaissement_tableau'), self.params
-        )
-
+        url = reverse('paiements:modes_encaissement_tableau')
+        response = self.client.get(url, self.params)
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'paiements/modes_encaissement.html')
+        self.assertTemplateUsed(response, 'paiements/modes_encaissement_soldes.html')
         self.assertContains(response, 'AMINATA CAMARA')
-        self.assertEqual(response.context['filtered_student_count'], 1)
-        self.assertEqual(
-            response.context['filtered_total_balance'], Decimal('100000')
-        )
+        self.assertEqual(response.context['summary']['student_count'], 1)
+        self.assertEqual(response.context['summary']['balance'], Decimal('100000'))
         self.assertEqual(response.context['page_obj'].paginator.count, 2)
-
-        filtered = self.client.get(
-            reverse('paiements:modes_encaissement_tableau'),
-            {**self.params, 'mode_id': str(self.orange.pk)},
-        )
-        self.assertEqual(filtered.status_code, 200)
+        filtered = self.client.get(url, {**self.params, 'mode_id': self.orange.pk})
         self.assertEqual(filtered.context['page_obj'].paginator.count, 1)
-        row = filtered.context['page_obj'].object_list[0]
+        row = filtered.context['rows'][0]
         self.assertEqual(row['mode'], 'Orange Money')
-        self.assertEqual(row['collected'], Decimal('70000'))
-        self.assertEqual(row['balance'], Decimal('100000'))
-
-        settled = self.client.get(
-            reverse('paiements:modes_encaissement_tableau'),
-            {**self.params, 'situation': 'solde'},
-        )
-        self.assertEqual(settled.status_code, 200)
+        self.assertEqual(row['period_amount'], Decimal('70000'))
+        self.assertEqual(row['situation']['balance'], Decimal('100000'))
+        settled = self.client.get(url, {**self.params, 'situation': 'solde'})
         self.assertEqual(settled.context['page_obj'].paginator.count, 0)
-        self.assertEqual(settled.context['filtered_total_collected'], Decimal('0'))
-
-        legacy = self.client.get(
-            reverse('paiements:modes_encaissement_tableau_legacy'), self.params
-        )
-        self.assertEqual(legacy.status_code, 200)
-        self.assertTemplateUsed(legacy, 'paiements/modes_encaissement.html')
+        self.assertEqual(settled.context['summary']['period_amount'], 0)
 
     def test_tableau_ajax_retourne_uniquement_les_resultats(self):
-        response = self.client.get(
-            reverse('paiements:modes_encaissement_tableau'),
-            {**self.params, 'q': 'ENC-001'},
-            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
-        )
-
+        response = self.client.get(reverse('paiements:modes_encaissement_tableau'),
+                                   {**self.params, 'q': 'ENC-001'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(
-            response, 'paiements/_modes_encaissement_resultats.html'
-        )
+        self.assertTemplateUsed(response, 'paiements/_modes_encaissement_soldes_resultats.html')
         self.assertContains(response, 'AMINATA CAMARA')
-        self.assertNotContains(response, 'id="modesFilters"')
+        self.assertNotContains(response, '<html')
 
-    def test_export_excel_contient_synthese_formules_et_detail(self):
-        response = self.client.get(
-            reverse('paiements:export_modes_encaissement_excel'), self.params
-        )
-
+    def test_export_excel_contient_les_montants_et_parts_valides(self):
+        response = self.client.get(reverse('paiements:export_modes_encaissement_excel'), self.params)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            response['Content-Type'],
-        )
-        workbook = load_workbook(BytesIO(response.content), data_only=False)
-        self.assertEqual(
-            workbook.sheetnames,
-            [
-                'Synthèse par mode',
-                'Rapprochement journalier',
-                'Détail encaissements',
-            ],
-        )
-        summary = workbook['Synthèse par mode']
-        amounts = {
-            summary.cell(row, 1).value: summary.cell(row, 3).value
-            for row in range(6, summary.max_row)
-        }
-        self.assertEqual(amounts['Espèces'], 30000)
-        self.assertEqual(amounts['Orange Money'], 70000)
-        self.assertTrue(str(summary.cell(6, 4).value).startswith('=IFERROR'))
-        self.assertTrue(str(summary.cell(summary.max_row, 3).value).startswith('=SUM'))
-        self.assertEqual(len(summary._charts), 1)
+        self.assertIn('spreadsheetml', response['Content-Type'])
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        summary = workbook["Modes d'encaissement"]
+        values = {summary.cell(row, 1).value: (summary.cell(row, 2).value, summary.cell(row, 3).value, summary.cell(row, 4).value)
+                  for row in range(6, summary.max_row + 1)}
+        self.assertEqual(values['Espèces'], (1, 30000, 0.3))
+        self.assertEqual(values['Orange Money'], (1, 70000, 0.7))
+        self.assertEqual(values['TOTAL'], (2, 100000, 1))
 
-        detail = workbook['Détail encaissements']
-        receipts = {
-            detail.cell(row, 3).value for row in range(6, detail.max_row + 1)
-        }
-        self.assertEqual(
-            receipts,
-            {self.paiement_especes.numero_recu, self.paiement_orange.numero_recu},
-        )
-        self.assertNotIn(self.paiement_en_attente.numero_recu, receipts)
-        self.assertNotIn(self.paiement_autre_ecole.numero_recu, receipts)
+    def test_ajouter_une_autre_annee_ne_change_pas_le_solde_historique(self):
+        EcheancierPaiement.objects.create(
+            eleve=self.eleve, annee_scolaire='2025-2026', frais_inscription_du=999999,
+            date_echeance_inscription=date(2025, 9, 1), date_echeance_tranche_1=date(2025, 12, 1),
+            date_echeance_tranche_2=date(2026, 3, 1), date_echeance_tranche_3=date(2026, 6, 1))
+        response = self.client.get(reverse('paiements:modes_encaissement_tableau'), self.params)
+        self.assertEqual(response.context['summary']['balance'], Decimal('100000'))
+        for row in response.context['rows']:
+            self.assertEqual(row['school_year'], '2024-2025')
+
+    def test_filtre_annee_applique_aux_tableaux_et_aux_exports(self):
+        request = RequestFactory().get('/', {**self.params, 'annee_scolaire': '2025-2026'})
+        request.user = self.user
+        self.assertEqual(collect_modes_encaissement_data(request)['total_amount'], 0)
+        self.assertEqual(collect_modes_students_data(request)['summary']['period_amount'], 0)
 
     def test_export_pdf_est_genere_avec_le_bon_nom(self):
         response = self.client.get(
@@ -282,7 +234,7 @@ class ExportModesEncaissementTests(TestCase):
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
         self.assertIn(
-            'encaissements_par_mode_',
+            'modes_encaissement_',
             response['Content-Disposition'],
         )
 

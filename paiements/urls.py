@@ -14,6 +14,11 @@ from .rapports_professionnels import (
 )
 from .export_paiements_filtres import export_paiements_filtres_pdf, export_paiements_filtres_excel
 from . import views_rappels
+from .views_admissions import (
+    export_admissions_excel,
+    export_admissions_pdf,
+    liste_admissions,
+)
 from .whatsapp_recu import apercu_message_whatsapp_recu, apercu_message_whatsapp_note_rappel
 from .recu_public import recu_public_pdf, note_rappel_public_pdf
 from .views_rapport_comptable import (
@@ -24,16 +29,28 @@ from .views_rapport_comptable import (
 
 app_name = 'paiements'
 
+from . import views_revision
+
 urlpatterns = [
+    path('revisions/', views_revision.liste_revisions, name='liste_revisions'),
+    path('revisions/excel/', views_revision.export_revisions_excel, name='export_revisions_excel'),
+    path('revisions/pdf/', views_revision.export_revisions_pdf, name='export_revisions_pdf'),
+    path('ticket/<int:paiement_id>/pdf/', views_revision.ticket_paiement_pdf, name='ticket_paiement_pdf'),
     # Tableau de bord
     path('', views.tableau_bord_paiements, name='tableau_bord'),
 
     # Gestion des paiements
     path('liste/', views.liste_paiements, name='liste_paiements'),
+    path(
+        'historique-modifications-suppressions/',
+        views.historique_mutations_paiements,
+        name='historique_mutations_paiements',
+    ),
     path('detail/<int:paiement_id>/', views.detail_paiement, name='detail_paiement'),
     path('ajouter/', views.ajouter_paiement, name='ajouter_paiement'),
     path('ajouter/<int:eleve_id>/', views.ajouter_paiement, name='ajouter_paiement_eleve'),
     path('modifier/<int:paiement_id>/', views.modifier_paiement, name='modifier_paiement'),
+    path('supprimer/<int:paiement_id>/', views.supprimer_paiement, name='supprimer_paiement'),
     path('valider/<int:paiement_id>/', views.valider_paiement, name='valider_paiement'),
     path('relancer/<int:eleve_id>/', views.relancer_eleve, name='relancer_eleve'),
     path('relances/', views.liste_relances, name='liste_relances'),
@@ -47,9 +64,13 @@ urlpatterns = [
 
     # Génération de documents
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
+    path('carnet/<int:paiement_id>/pdf/', views.generer_carnet_paiement_pdf, name='generer_carnet_paiement_pdf'),
     path('note-rappel/<int:eleve_id>/pdf/', views.generer_note_rappel_pdf, name='generer_note_rappel_pdf'),
     path('notes-rappel/classe/<int:classe_id>/pdf/', views.generer_notes_rappel_classe_pdf, name='generer_notes_rappel_classe_pdf'),
     path('eleves-impayes/', views.liste_eleves_impayes, name='liste_eleves_impayes'),
+    path('admissions/<str:nature>/', liste_admissions, name='liste_admissions'),
+    path('admissions/<str:nature>/export/excel/', export_admissions_excel, name='export_admissions_excel'),
+    path('admissions/<str:nature>/export/pdf/', export_admissions_pdf, name='export_admissions_pdf'),
     path('notes-rappel/tous/pdf/', views.generer_toutes_notes_rappel_pdf, name='generer_toutes_notes_rappel_pdf'),
     path('export/paiements-filtres/pdf/', export_paiements_filtres_pdf, name='export_paiements_filtres_pdf'),
     path('export/paiements-filtres/excel/', export_paiements_filtres_excel, name='export_paiements_filtres_excel'),
@@ -59,6 +80,7 @@ urlpatterns = [
     path('export/recouvrement/excel/', export_recouvrement_excel, name='export_recouvrement_excel'),
     path('export/modes-encaissement/pdf/', export_modes_encaissement_pdf, name='export_modes_encaissement_pdf'),
     path('export/modes-encaissement/excel/', export_modes_encaissement_excel, name='export_modes_encaissement_excel'),
+    path('modes-encaissement/', modes_encaissement_soldes, name='modes_encaissement_tableau'),
     path('modes-encaissement/soldes/', modes_encaissement_soldes, name='modes_encaissement_soldes'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),

@@ -62,3 +62,9 @@ def get_commentaire(note_obj):
     if note_obj is None:
         return ''
     return note_obj.commentaire if hasattr(note_obj, 'commentaire') else ''
+
+
+@register.filter
+def split(value, separator=","):
+    """Découper une liste de libellés dans les modèles de saisie."""
+    return str(value).split(separator) if value is not None and separator else []

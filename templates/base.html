@@ -10,7 +10,7 @@
     {# SEO : description par défaut, écrasable par les pages via le bloc meta_description #}
     <meta name="description" content="{% block meta_description %}Myschool — système de gestion scolaire moderne : élèves, paiements, salaires, transport, notes et statistiques pour les établissements en Guinée.{% endblock %}">
     <meta name="robots" content="{% block meta_robots %}index,follow{% endblock %}">
-    <meta name="theme-color" content="#075b3a">
+    <meta name="theme-color" content="{{ school_branding.primary|default:'#075b3a' }}">
     <link rel="canonical" href="{% block canonical_url %}{{ request.build_absolute_uri }}{% endblock %}">
 
     {# Open Graph (Facebook, WhatsApp, LinkedIn, etc.) #}
@@ -66,6 +66,26 @@
     {% endif %}
 
     <style>
+        :root {
+            --school-primary: {{ school_branding.primary|default:'#2c3e50' }};
+            --school-secondary: {{ school_branding.secondary|default:'#3498db' }};
+            --school-accent: {{ school_branding.accent|default:'#e74c3c' }};
+            --school-primary-text: {{ school_branding.primary_text|default:'#ffffff' }};
+            --school-secondary-text: {{ school_branding.secondary_text|default:'#ffffff' }};
+            --school-text: {{ school_branding.text|default:'#2c3e50' }};
+            --school-muted: {{ school_branding.muted|default:'#7f8c8d' }};
+            --school-card: {{ school_branding.card|default:'#ffffff' }};
+            --school-table: {{ school_branding.table|default:'#ecf0f1' }};
+            --school-border: {{ school_branding.border|default:'#bdc3c7' }};
+            --school-card-primary: {{ school_branding.card_primary|default:'#0d6efd' }};
+            --school-card-success: {{ school_branding.card_success|default:'#198754' }};
+            --school-card-warning: {{ school_branding.card_warning|default:'#f59e0b' }};
+            --school-card-danger: {{ school_branding.card_danger|default:'#dc3545' }};
+            --school-card-primary-text: {{ school_branding.card_primary_text|default:'#ffffff' }};
+            --school-card-success-text: {{ school_branding.card_success_text|default:'#ffffff' }};
+            --school-card-warning-text: {{ school_branding.card_warning_text|default:'#111827' }};
+            --school-card-danger-text: {{ school_branding.card_danger_text|default:'#ffffff' }};
+        }
         body { padding-top: 70px; }
         .navbar-brand {
             font-weight: bold;
@@ -82,7 +102,7 @@
             box-shadow: 0 5px 18px rgba(0,0,0,.16);
         }
         .school-navbar {
-            background: linear-gradient(90deg, #071f3d 0%, #075b3a 100%);
+            background: linear-gradient(90deg, var(--school-primary) 0%, var(--school-secondary) 100%);
             box-shadow: 0 8px 30px rgba(7,31,61,.16);
         }
         .brand-copy {
@@ -142,17 +162,24 @@
             min-height: calc(100vh - 56px);
         }
         .card-stats {
-            border-left: 4px solid #007bff;
+            border-left: 4px solid var(--school-card-primary);
         }
         .card-stats.success {
-            border-left-color: #28a745;
+            border-left-color: var(--school-card-success);
         }
         .card-stats.warning {
-            border-left-color: #ffc107;
+            border-left-color: var(--school-card-warning);
         }
         .card-stats.danger {
-            border-left-color: #dc3545;
+            border-left-color: var(--school-card-danger);
         }
+        .btn-primary { --bs-btn-bg: var(--school-primary); --bs-btn-border-color: var(--school-primary); --bs-btn-hover-bg: var(--school-secondary); --bs-btn-hover-border-color: var(--school-secondary); }
+        .text-primary { color: var(--school-primary) !important; }
+        .border-primary { border-color: var(--school-primary) !important; }
+        .bg-primary, .text-bg-primary { background-color: var(--school-card-primary) !important; color: var(--school-card-primary-text) !important; }
+        .bg-success, .text-bg-success { background-color: var(--school-card-success) !important; color: var(--school-card-success-text) !important; }
+        .bg-warning, .text-bg-warning { background-color: var(--school-card-warning) !important; color: var(--school-card-warning-text) !important; }
+        .bg-danger, .text-bg-danger { background-color: var(--school-card-danger) !important; color: var(--school-card-danger-text) !important; }
 
         /* Tables avec défilement vertical limité à 15 éléments */
         .table-container-scrollable {
@@ -486,6 +513,9 @@
                                 {% if user_ecole %}
                                 <li><a class="dropdown-item" href="{% url 'eleves:configurer_ecole' user_ecole.id %}">
                                     <i class="fas fa-school me-1"></i>Classes et grilles tarifaires
+                                </a></li>
+                                <li><a class="dropdown-item" href="{% url 'notes:charte_graphique' %}">
+                                    <i class="fas fa-palette me-1"></i>Charte graphique et documents
                                 </a></li>
                                 {% endif %}
                                 {% endif %}

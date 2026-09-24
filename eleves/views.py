@@ -24,7 +24,7 @@ from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve, GrilleTa
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm, EcoleForm
 from utilisateurs.forms import SignupInlineForm
 from utilisateurs.models import JournalActivite
-from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school, user_school
+from utilisateurs.utils import user_can_manage_school_structure, user_is_admin, user_is_superadmin, filter_by_user_school, user_school
 from .utils_annee import get_annee_active
 from .cartes_layout import (
     dessiner_carte_eleve,
@@ -57,28 +57,23 @@ except ImportError:
 @login_required
 def liste_eleves(request):
     """Vue optimisée pour afficher la liste des élèves avec cache intelligent"""
-    from ecole_moderne.query_optimizer import QueryOptimizer, PaginationOptimizer
+    from ecole_moderne.query_optimizer import QueryOptimizer, PaginationOptimizer, query_cache_token
     from ecole_moderne.decorators import cache_user_data
 
     form_recherche = RechercheEleveForm(request.GET or None)
 
-    # Cache de l'école utilisateur
-    user_school_cache_key = f'user_school_{request.user.id}'
-    user_school_obj = cache.get(user_school_cache_key)
-    if user_school_obj is None and not user_is_admin(request.user):
-        user_school_obj = user_school(request.user)
-        if user_school_obj:
-            cache.set(user_school_cache_key, user_school_obj, 300)
+    user_school_obj = user_school(request.user)
 
     # Queryset optimisé avec relations pré-chargées
     eleves = QueryOptimizer.get_optimized_eleves(
-        school=user_school_obj if not user_is_admin(request.user) else None,
+        school=user_school_obj if not user_is_superadmin(request.user) else None,
         with_payments=True,
         with_classes=True
-    )
+    ).prefetch_related('abonnements_cantine')
+    eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
 
     # Filtrer par année scolaire active
-    if not user_is_admin(request.user) and user_school_obj:
+    if not user_is_superadmin(request.user) and user_school_obj:
         annee_active = get_annee_active(request, user_school_obj)
         if annee_active:
             eleves = eleves.filter(classe__annee_scolaire=annee_active)
@@ -107,7 +102,7 @@ def liste_eleves(request):
             classe_id = None
 
     # Statistiques optimisées avec cache
-    stats_cache_key = f'eleves_stats_{request.user.id}_{hash(str(eleves.query))}'
+    stats_cache_key = f'eleves_stats_{request.user.id}_{query_cache_token(eleves)}'
     stats = cache.get(stats_cache_key)
 
     if stats is None:
@@ -115,14 +110,16 @@ def liste_eleves(request):
             total_eleves=Count('id'),
             eleves_actifs=Count(Case(When(statut='ACTIF', then=1), output_field=IntegerField())),
             eleves_suspendus=Count(Case(When(statut='SUSPENDU', then=1), output_field=IntegerField())),
-            eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField()))
+            eleves_exclus=Count(Case(When(statut='EXCLU', then=1), output_field=IntegerField())),
+            eleves_evalues=Count(Case(When(test_accueil_evalue=True, then=1), output_field=IntegerField())),
+            eleves_non_evalues=Count(Case(When(test_accueil_evalue=False, then=1), output_field=IntegerField())),
         )
         cache.set(stats_cache_key, stats, 120)  # Cache 2 minutes
 
     # Pagination optimisée
     page_number = request.GET.get('page', 1)
     page_obj, paginator = PaginationOptimizer.optimize_pagination(
-        eleves.order_by('nom', 'prenom'),
+        eleves.order_by('-date_creation', '-pk'),
         page_number,
         per_page=15
     )
@@ -418,6 +415,7 @@ def _user_can_edit_school(request, ecole: Ecole) -> bool:
     return False
 
 
+@login_required
 def configurer_ecole(request, ecole_id: int):
     """Assistant de configuration d'une école (brouillon):
     - Ajouter des classes
@@ -427,12 +425,27 @@ def configurer_ecole(request, ecole_id: int):
     """
     ecole = get_object_or_404(Ecole, pk=ecole_id)
 
-    # Droit d'accès: admin ou créateur. Après validation, vue en lecture seule.
-    can_edit = _user_can_edit_school(request, ecole) and ecole.etat in ("BROUILLON", "EN_ATTENTE")
+    est_superadmin = user_is_superadmin(request.user)
+    propre_ecole = getattr(user_school(request.user), 'pk', None) == ecole.pk
+    est_createur = ecole.created_by_id == request.user.pk
+    if not (est_superadmin or propre_ecole or est_createur):
+        return HttpResponse('Accès interdit à cette école.', status=403)
+    brouillon_createur = est_createur and ecole.etat in ('BROUILLON', 'EN_ATTENTE')
+    can_manage_classes = est_superadmin or brouillon_createur or (
+        propre_ecole and user_can_manage_school_structure(request.user, 'peut_gerer_classes'))
+    can_manage_grilles = est_superadmin or brouillon_createur or (
+        propre_ecole and user_can_manage_school_structure(request.user, 'peut_gerer_grilles_tarifaires'))
+    can_submit_validation = (est_superadmin or est_createur) and ecole.etat in ('BROUILLON', 'EN_ATTENTE')
+    can_edit = can_manage_classes or can_manage_grilles
 
     message_info = None
-    if request.method == 'POST' and can_edit:
+    if request.method == 'POST':
         action = request.POST.get('action')
+        autorisations = {'add_classe': can_manage_classes, 'add_grille': can_manage_grilles,
+                         'duplicate_grille': can_manage_grilles, 'apply_grille_dates': can_manage_grilles,
+                         'submit_validation': can_submit_validation}
+        if not autorisations.get(action, False):
+            return HttpResponse('Action non autorisée.', status=403)
         try:
             if action == 'add_classe':
                 nom = (request.POST.get('classe_nom') or '').strip()
@@ -442,7 +455,9 @@ def configurer_ecole(request, ecole_id: int):
                 if not nom or not niveau or not annee:
                     messages.error(request, "Veuillez renseigner nom, niveau et année scolaire pour la classe.")
                 else:
-                    Classe.objects.create(ecole=ecole, nom=nom, niveau=niveau, annee_scolaire=annee, capacite_max=capacite)
+                    classe = Classe(ecole=ecole, nom=nom, niveau=niveau, annee_scolaire=annee, capacite_max=capacite)
+                    classe.full_clean()
+                    classe.save()
                     messages.success(request, f"Classe '{nom}' ajoutée.")
                 return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
 
@@ -481,6 +496,11 @@ def configurer_ecole(request, ecole_id: int):
                     if len(seq) > 1 and seq != sorted(seq):
                         messages.error(request, "Échéances invalides: l'ordre doit être Inscription ≤ T1 ≤ T2 ≤ T3.")
                         return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+                    grille_validation = GrilleTarifaire(
+                        ecole=ecole, niveau=niveau, annee_scolaire=annee,
+                        frais_inscription=Decimal(frais_insp), frais_reinscription=Decimal(frais_reinsp),
+                        tranche_1=Decimal(t1), tranche_2=Decimal(t2), tranche_3=Decimal(t3))
+                    grille_validation.full_clean(validate_unique=False)
                     GrilleTarifaire.objects.update_or_create(
                         ecole=ecole, niveau=niveau, annee_scolaire=annee,
                         defaults={
@@ -500,6 +520,18 @@ def configurer_ecole(request, ecole_id: int):
                     )
                     messages.success(request, f"Grille tarifaire {annee} pour le niveau sélectionné enregistrée.")
                 return redirect('eleves:configurer_ecole', ecole_id=ecole.id)
+
+            if action == 'duplicate_grille':
+                from .services_configuration import dupliquer_grille
+                dupliquer_grille(ecole, request.POST.get('source_grille_id'), (request.POST.get('target_annee') or '').strip())
+                messages.success(request, "Grille dupliquée. Les dates ont été décalées vers l'année cible.")
+                return redirect('eleves:configurer_ecole', ecole_id=ecole.pk)
+
+            if action == 'apply_grille_dates':
+                from .services_configuration import completer_dates_grille
+                nombre = completer_dates_grille(ecole, request.POST.get('grille_id'))
+                messages.success(request, f"Dates complétées pour {nombre} échéancier(s). Les dates déjà renseignées sont conservées.")
+                return redirect('eleves:configurer_ecole', ecole_id=ecole.pk)
 
             if action == 'submit_validation':
                 ecole.etat = 'EN_ATTENTE'
@@ -530,6 +562,9 @@ def configurer_ecole(request, ecole_id: int):
     return render(request, 'eleves/configurer_ecole.html', {
         'ecole': ecole,
         'can_edit': can_edit,
+        'can_manage_classes': can_manage_classes,
+        'can_manage_grilles': can_manage_grilles,
+        'can_submit_validation': can_submit_validation,
         'classes': classes,
         'grilles': grilles,
         'niveaux': niveaux,
@@ -542,7 +577,7 @@ def detail_eleve(request, eleve_id):
     qs = Eleve.objects.select_related(
         'classe', 'classe__ecole', 'responsable_principal', 'responsable_secondaire'
     ).prefetch_related('paiements', 'historique')
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
     eleve = get_object_or_404(qs, id=eleve_id)
 
@@ -580,17 +615,12 @@ def detail_eleve(request, eleve_id):
 @never_cache
 def ajouter_eleve(request):
     """Vue optimisée pour ajouter un nouvel élève avec enregistrement ultra-rapide"""
-    # Cache de l'école utilisateur pour éviter les requêtes répétées
-    user_school_cache_key = f'user_school_{request.user.id}'
-    user_school_obj = cache.get(user_school_cache_key)
-
-    if user_school_obj is None and not user_is_admin(request.user):
-        user_school_obj = user_school(request.user)
-        if user_school_obj:
-            cache.set(user_school_cache_key, user_school_obj, 300)  # Cache 5 minutes
+    if request.GET.get("continuer") == "1":
+        request.session.pop("nouvel_eleve_paiement_id", None)
+    user_school_obj = user_school(request.user)
 
     # Vérification d'accès rapide
-    if not user_is_admin(request.user) and user_school_obj is None:
+    if not user_is_superadmin(request.user) and user_school_obj is None:
         return render(request, 'utilisateurs/acces_refuse_ecole.html', status=403)
 
     if request.method == 'POST':
@@ -598,7 +628,7 @@ def ajouter_eleve(request):
         form = EleveForm(request.POST, request.FILES, user=request.user)
 
         # Cache des classes pour éviter les requêtes répétées (filtrées par année active)
-        if not user_is_admin(request.user):
+        if not user_is_superadmin(request.user):
             annee_active = get_annee_active(request, user_school_obj)
             classes_cache_key = f'classes_ecole_{user_school_obj.id}_{annee_active}'
             classes_qs = cache.get(classes_cache_key)
@@ -712,7 +742,7 @@ def ajouter_eleve(request):
         form = EleveForm(user=request.user)
 
         # Cache des classes pour le formulaire GET (filtrées par année active)
-        if not user_is_admin(request.user) and user_school_obj:
+        if not user_is_superadmin(request.user) and user_school_obj:
             annee_active = get_annee_active(request, user_school_obj)
             classes_cache_key = f'classes_ecole_{user_school_obj.id}_{annee_active}'
             classes_qs = cache.get(classes_cache_key)
@@ -744,7 +774,7 @@ def ajouter_eleve(request):
         from django.db.models import Count, Case, When, IntegerField
 
         eleves_qs = Eleve.objects.all()
-        if not user_is_admin(request.user) and user_school_obj:
+        if not user_is_superadmin(request.user) and user_school_obj:
             eleves_qs = eleves_qs.filter(classe__ecole=user_school_obj)
 
         # Agrégation en une seule requête
@@ -787,16 +817,16 @@ def ajout_eleve_succes(request, eleve_id):
     )
     eleve = get_object_or_404(eleve_qs, pk=eleve_id)
 
-    continuer_url = reverse('eleves:ajouter_eleve')
+    continuer_url = reverse('eleves:ajouter_eleve') + '?continuer=1'
     if eleve.classe_id:
-        continuer_url += f'?classe_id={eleve.classe_id}'
+        continuer_url += f'&classe_id={eleve.classe_id}'
 
     context = {
         'eleve': eleve,
         'paiement_url': reverse(
             'paiements:ajouter_paiement_eleve',
             kwargs={'eleve_id': eleve.id},
-        ),
+        ) + '?origine=ajout_eleve',
         'continuer_url': continuer_url,
         'titre_page': 'Élève ajouté avec succès',
     }
@@ -807,7 +837,7 @@ def ajout_eleve_succes(request, eleve_id):
 def modifier_eleve(request, eleve_id):
     """Vue pour modifier un élève existant"""
     qs = Eleve.objects.all()
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
 
     try:
@@ -817,8 +847,8 @@ def modifier_eleve(request, eleve_id):
         return redirect('eleves:liste_eleves')
 
     if request.method == 'POST':
-        form = EleveForm(request.POST, request.FILES, instance=eleve)
-        if not user_is_admin(request.user):
+        form = EleveForm(request.POST, request.FILES, instance=eleve, user=request.user)
+        if not user_is_superadmin(request.user):
             try:
                 ecole_u = user_school(request.user)
                 qs = Classe.objects.filter(ecole=ecole_u)
@@ -1010,8 +1040,8 @@ def modifier_eleve(request, eleve_id):
             else:
                 messages.error(request, "Le formulaire est invalide. Veuillez corriger les erreurs et reessayer.")
     else:
-        form = EleveForm(instance=eleve)
-        if not user_is_admin(request.user):
+        form = EleveForm(instance=eleve, user=request.user)
+        if not user_is_superadmin(request.user):
             try:
                 ecole_u = user_school(request.user)
                 qs = Classe.objects.filter(ecole=ecole_u)
@@ -1507,7 +1537,7 @@ def supprimer_eleve(request, eleve_id):
     from administration.corbeille import enregistrer_suppression
 
     qs = Eleve.objects.select_related('classe', 'classe__ecole')
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
 
     try:
@@ -1578,7 +1608,7 @@ def supprimer_eleve(request, eleve_id):
                     return redirect('eleves:liste_eleves')
 
                 # Mise à la corbeille : archivage complet puis suppression
-                element = enregistrer_suppression(eleve, request=request)
+                element = enregistrer_suppression(eleve, request=request, motif=request.POST.get('motif', ''))
                 nb_archives = len(element.objets_lies or [])
 
                 JournalActivite.objects.create(
@@ -1650,12 +1680,12 @@ def supprimer_eleves_masse(request):
 
     # Récupérer les élèves
     qs = Eleve.objects.filter(id__in=eleve_ids)
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
 
     eleves = list(qs)
-    if not eleves:
-        messages.error(request, "Aucun élève trouvé avec les IDs fournis.")
+    if len(eleves) != len(set(eleve_ids)):
+        messages.error(request, "La sélection contient un élève introuvable ou non autorisé. Suppression annulée.")
         return redirect('eleves:liste_eleves')
 
     import logging
@@ -1705,7 +1735,7 @@ def supprimer_eleves_masse(request):
 
                 # Copie complète dans la corbeille avant suppression
                 from administration.corbeille import enregistrer_suppression
-                enregistrer_suppression(eleve, request=request)
+                enregistrer_suppression(eleve, request=request, motif=request.POST.get('motif', ''))
 
                 # Supprimer les éléments associés
                 eleve.paiements.all().delete()
@@ -1763,7 +1793,7 @@ def gestion_classes(request):
         eleves_count=Count('eleves', filter=Q(eleves__statut='ACTIF'))
     ).order_by('ecole__nom', 'niveau', 'nom')
 
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         classes = classes.filter(ecole=ecole_user)
 
     # Filtrer par année active
@@ -1778,8 +1808,8 @@ def gestion_classes(request):
     }
 
     ecoles_iter = Ecole.objects.all()
-    if not user_is_admin(request.user) and ecole_user:
-        ecoles_iter = ecoles_iter.filter(id=ecole_user.id)
+    if not user_is_superadmin(request.user):
+        ecoles_iter = ecoles_iter.filter(id=getattr(ecole_user, 'pk', None))
     for ecole in ecoles_iter:
         classes_ecole = classes.filter(ecole=ecole)
         stats['classes_par_ecole'][ecole.nom] = {
@@ -2103,7 +2133,7 @@ def fiche_inscription_pdf(request, eleve_id):
     qs = Eleve.objects.select_related(
         'classe', 'classe__ecole', 'responsable_principal', 'responsable_secondaire'
     )
-    if not user_is_admin(request.user):
+    if not user_is_superadmin(request.user):
         qs = filter_by_user_school(qs, request.user, 'classe__ecole')
     eleve = get_object_or_404(qs, id=eleve_id)
 

@@ -16,6 +16,7 @@ from utilisateurs.utils import filter_by_user_school
 
 from .models import EcheancierPaiement, ModePaiement, Paiement
 from .payment_engine import situation_echeancier
+from .export_modes_encaissement import _school_year_param
 
 
 ZERO = Decimal('0')
@@ -53,6 +54,7 @@ def collect_modes_students_data(request):
     if start > end:
         raise ValueError("La date de début doit précéder la date de fin.")
 
+    school_year = _school_year_param(request)
     mode_id = _read_id(request, 'mode_id')
     class_id = _read_id(request, 'classe_id')
     query = (request.GET.get('q') or '').strip()[:100]
@@ -78,6 +80,8 @@ def collect_modes_students_data(request):
     payments = filter_by_user_school(
         payments, request.user, 'eleve__classe__ecole'
     )
+    if school_year:
+        payments = payments.filter(annee_scolaire=school_year)
     if mode_id:
         payments = payments.filter(mode_paiement_id=mode_id)
     if class_id:
@@ -97,6 +101,7 @@ def collect_modes_students_data(request):
         payments
         .values(
             'eleve_id',
+            'annee_scolaire',
             'eleve__matricule',
             'eleve__prenom',
             'eleve__nom',
@@ -130,7 +135,7 @@ def collect_modes_students_data(request):
     schedules = filter_by_user_school(
         schedules, request.user, 'eleve__classe__ecole'
     )
-    schedules_by_student = {item.eleve_id: item for item in schedules}
+    schedules_by_student = {(item.eleve_id, item.annee_scolaire): item for item in schedules}
     balance_date = min(end, today)
     situations_by_student = {}
     for student_id, schedule in schedules_by_student.items():
@@ -158,12 +163,13 @@ def collect_modes_students_data(request):
 
     rows = []
     for item in grouped:
-        student_situation = situations_by_student.get(item['eleve_id'])
+        student_situation = situations_by_student.get((item['eleve_id'], item['annee_scolaire']))
         status = student_situation['status'] if student_situation else 'sans_echeancier'
         if payment_situation and status != payment_situation:
             continue
         rows.append({
             'student_id': item['eleve_id'],
+            'school_year': item['annee_scolaire'],
             'matricule': item['eleve__matricule'],
             'student': f"{item['eleve__prenom']} {item['eleve__nom']}",
             'class_id': item['eleve__classe_id'],
@@ -184,9 +190,9 @@ def collect_modes_students_data(request):
         })
 
     visible_student_ids = {item['student_id'] for item in rows}
+    visible_accounts = {(item['student_id'], item['school_year']) for item in rows}
     unique_situations = {
-        student_id: situations_by_student.get(student_id)
-        for student_id in visible_student_ids
+        account: situations_by_student.get(account) for account in visible_accounts
     }
     total_balance = sum(
         (
@@ -235,6 +241,7 @@ def collect_modes_students_data(request):
             'mode_id': str(mode_id or ''),
             'classe_id': str(class_id or ''),
             'situation': payment_situation,
+            'annee_scolaire': school_year,
         },
         'balance_date': balance_date,
         'querystring': query_params.urlencode(),

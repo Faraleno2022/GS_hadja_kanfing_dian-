@@ -31,7 +31,8 @@ from paiements.models import (
     EcheancierPaiement, ModePaiement, Paiement, TypePaiement,
 )
 
-from .models import CorbeilleElement, CorbeilleEleve, JournalModification
+from .models import CorbeilleElement, CorbeilleEleve, JournalModification, ElementCorbeille
+from .corbeille import restaurer
 
 
 class _RequeteAdmin:
@@ -160,15 +161,14 @@ class CorbeilleEleveTest(TestCase):
         model_admin.delete_model(requete, eleve)
 
         self.assertFalse(Eleve.objects.filter(pk=eleve.pk).exists())
-        entree = CorbeilleEleve.objects.get(matricule="MAT-el-001")
-        self.assertEqual(entree.nb_paiements, 1)
-        self.assertEqual(entree.supprime_par, self.admin)
+        entree = ElementCorbeille.objects.get(model_label='eleves.Eleve')
+        self.assertEqual(sum(x['model_label'] == 'paiements.Paiement' for x in entree.objets_lies), 1)
+        self.assertEqual(entree.utilisateur, self.admin)
         self.assertFalse(entree.restaure)
 
-        from .audit import restaurer_eleve
 
-        restaure, message = restaurer_eleve(entree, utilisateur=self.admin)
-        self.assertIn('restauré', message)
+        restaure, message = restaurer(entree, user=self.admin)
+        self.assertEqual(message, [])
         self.assertEqual(restaure.matricule, "MAT-el-001")
         self.assertEqual(restaure.classe_id, classe.pk)
         self.assertEqual(restaure.paiements.count(), 1)
@@ -274,16 +274,15 @@ class CorbeillePaiementAdminTest(TestCase):
         model_admin.delete_model(self.requetes.post(), paiement)
 
         self.assertFalse(Paiement.objects.filter(numero_recu=numero).exists())
-        entree = CorbeilleElement.objects.get(model_name='Paiement')
-        self.assertEqual(entree.supprime_par, self.admin)
-        self.assertIn(self.eleve.matricule, entree.contexte)
+        entree = ElementCorbeille.objects.get(model_label='paiements.Paiement')
+        self.assertEqual(entree.utilisateur, self.admin)
+        self.assertEqual(entree.ecole_id, self.ecole.pk)
 
-        from .audit import restaurer_element
 
-        objet, message = restaurer_element(entree, utilisateur=self.admin)
+        objet, message = restaurer(entree, user=self.admin)
         self.assertEqual(objet.numero_recu, numero)
         self.assertEqual(objet.montant, Decimal('150000'))
-        self.assertIn('restauré', message)
+        self.assertEqual(message, [])
 
     def test_echeancier_supprime_va_en_corbeille(self):
         from paiements.admin import EcheancierPaiementAdmin
@@ -303,7 +302,7 @@ class CorbeillePaiementAdminTest(TestCase):
         )
 
         self.assertFalse(EcheancierPaiement.objects.filter(pk=echeancier.pk).exists())
-        self.assertTrue(CorbeilleElement.objects.filter(model_name='EcheancierPaiement').exists())
+        self.assertTrue(ElementCorbeille.objects.filter(model_label='paiements.EcheancierPaiement').exists())
 
 
 class JournalModificationTest(TestCase):
@@ -351,10 +350,10 @@ class ExportElevesTest(TestCase):
     ]
 
     def test_colonnes_et_contenu(self):
-        from eleves.import_eleves import exporter_tous_les_eleves
+        from eleves.import_eleves import exporter_eleves_modele_import
 
         ecole, classe, eleve = _creer_jeu_de_donnees('ex')
-        df = exporter_tous_les_eleves()
+        df = exporter_eleves_modele_import(Eleve.objects.all())
 
         self.assertEqual(list(df.columns), self.COLONNES_ATTENDUES)
         ligne = df[df['Matricule'] == eleve.matricule].iloc[0]
@@ -389,7 +388,7 @@ class ExportElevesTest(TestCase):
         reponse = self.client.get(reverse('eleves:exporter_tous_eleves_template'))
         self.assertEqual(reponse.status_code, 200)
         self.assertIn('spreadsheetml', reponse['Content-Type'])
-        self.assertIn('attachment; filename="export_eleves_', reponse['Content-Disposition'])
+        self.assertIn('attachment; filename="eleves_import_', reponse['Content-Disposition'])
 
         df = pd.read_excel(io.BytesIO(reponse.content))
         self.assertEqual(list(df.columns), self.COLONNES_ATTENDUES)
@@ -403,20 +402,18 @@ class ExportElevesTest(TestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
         from django.urls import reverse
 
-        from eleves.import_eleves import exporter_tous_les_eleves
+        from eleves.import_eleves import exporter_eleves_modele_import
 
         ecole, classe, eleve = _creer_jeu_de_donnees('ri')
         nom_classe, nom_ecole = classe.nom, ecole.nom
-        df = exporter_tous_les_eleves()
+        df = exporter_eleves_modele_import(Eleve.objects.all())
 
         tampon = io.BytesIO()
         df.to_excel(tampon, index=False)
         contenu = tampon.getvalue()
 
-        # On efface l'élève et sa classe : l'import doit tout recréer à partir
-        # des seules colonnes École / Classe / Année scolaire du fichier.
+        # L'import retrouve la classe configurée à partir des colonnes du fichier.
         Eleve.objects.filter(pk=eleve.pk).delete()
-        Classe.objects.filter(pk=classe.pk).delete()
         self.assertFalse(Eleve.objects.filter(matricule='MAT-ri-001').exists())
 
         # force_login : django-axes exige une requête pour authenticate()
@@ -468,43 +465,31 @@ class SuppressionEleveInterfaceTest(TestCase):
 
         reponse = self.client.post(
             reverse('eleves:supprimer_eleve', args=[self.eleve.pk]),
-            {'type_suppression': 'corbeille', 'mise_en_corbeille': 'on',
-             'suppression_definitive': ''},
+            {'action': 'CORBEILLE', 'confirmation': 'SUPPRIMER'},
             follow=True,
         )
         self.assertEqual(reponse.status_code, 200)
 
         self.assertFalse(Eleve.objects.filter(pk=self.eleve.pk).exists())
-        entree = CorbeilleEleve.objects.get(matricule=self.eleve.matricule)
-        self.assertEqual(entree.supprime_par, self.user)
+        entree = ElementCorbeille.objects.get(model_label='eleves.Eleve', objet_id=self.eleve.pk)
+        self.assertEqual(entree.utilisateur, self.user)
         self.assertFalse(entree.restaure)
 
         # Restauration depuis la page corbeille de l'application
         reponse = self.client.post(
-            reverse('administration:restaurer_eleve_corbeille', args=[entree.pk]),
+            reverse('administration:restaurer_element', args=[entree.pk]),
             follow=True,
         )
         self.assertEqual(reponse.status_code, 200)
         self.assertTrue(Eleve.objects.filter(matricule=self.eleve.matricule).exists())
 
-    def test_suppression_sans_option_utilise_la_corbeille_par_defaut(self):
-        """Le formulaire historique de la fiche élève doit aussi rester sûr."""
+    def test_suppression_sans_confirmation_conserve_eleve(self):
         from django.urls import reverse
-
-        reponse = self.client.post(
-            reverse('eleves:supprimer_eleve', args=[self.eleve.pk]),
-            {},
-            follow=True,
-        )
-
-        self.assertEqual(reponse.status_code, 200)
-        self.assertFalse(Eleve.objects.filter(pk=self.eleve.pk).exists())
-        self.assertTrue(
-            CorbeilleEleve.objects.filter(
-                matricule=self.eleve.matricule,
-                restaure=False,
-            ).exists()
-        )
+        response = self.client.post(reverse('eleves:supprimer_eleve', args=[self.eleve.pk]), {})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Confirmation incorrecte')
+        self.assertTrue(Eleve.objects.filter(pk=self.eleve.pk).exists())
+        self.assertFalse(ElementCorbeille.objects.exists())
 
     def test_desactivation_explicitement_choisie_reste_disponible(self):
         from django.urls import reverse
@@ -512,7 +497,7 @@ class SuppressionEleveInterfaceTest(TestCase):
         reponse = self.client.post(
             reverse('eleves:supprimer_eleve', args=[self.eleve.pk]),
             {
-                'type_suppression': 'soft',
+                'action': 'EXCLURE', 'confirmation': 'SUPPRIMER',
                 'mise_en_corbeille': '',
                 'suppression_definitive': '',
             },
@@ -526,6 +511,7 @@ class SuppressionEleveInterfaceTest(TestCase):
             CorbeilleEleve.objects.filter(matricule=self.eleve.matricule).exists()
         )
 
+    @override_settings(SECURITY_VERIFICATION_CODE='code-test-corbeille')
     def test_suppression_groupee_utilise_la_corbeille(self):
         from django.urls import reverse
 
@@ -540,7 +526,7 @@ class SuppressionEleveInterfaceTest(TestCase):
             reverse('eleves:supprimer_eleves_masse'),
             {
                 'eleve_ids': f'{self.eleve.pk},{autre.pk}',
-                'motif': 'Départ groupé',
+                'motif': 'Départ groupé', 'code_verification': 'code-test-corbeille',
             },
             follow=True,
         )
@@ -550,8 +536,8 @@ class SuppressionEleveInterfaceTest(TestCase):
             Eleve.objects.filter(pk__in=[self.eleve.pk, autre.pk]).exists()
         )
         self.assertEqual(
-            CorbeilleEleve.objects.filter(
-                matricule__in=[self.eleve.matricule, autre.matricule],
+            ElementCorbeille.objects.filter(
+                model_label='eleves.Eleve', objet_id__in=[self.eleve.pk, autre.pk],
                 motif='Départ groupé',
                 restaure=False,
             ).count(),
@@ -589,7 +575,7 @@ class SuppressionElevePerimetreEcoleTest(TestCase):
 
         reponse = self.client.post(
             reverse('eleves:supprimer_eleve', args=[self.eleve_autre_ecole.pk]),
-            {'mise_en_corbeille': 'on'},
+            {'confirmation': 'SUPPRIMER', 'action': 'CORBEILLE'},
             follow=True,
         )
 
@@ -603,12 +589,13 @@ class SuppressionElevePerimetreEcoleTest(TestCase):
             ).exists()
         )
 
+    @override_settings(SECURITY_VERIFICATION_CODE='code-test-corbeille')
     def test_suppression_groupee_inter_ecoles_est_entierement_annulee(self):
         from django.urls import reverse
 
         reponse = self.client.post(
             reverse('eleves:supprimer_eleves_masse'),
-            {'eleve_ids': f'{self.eleve.pk},{self.eleve_autre_ecole.pk}'},
+            {'eleve_ids': f'{self.eleve.pk},{self.eleve_autre_ecole.pk}', 'code_verification': 'code-test-corbeille'},
             follow=True,
         )
 
@@ -633,6 +620,15 @@ class ModificationPaiementViewTest(TestCase):
             montant=Decimal('120000'), date_paiement=date(2025, 10, 20),
         )
 
+        EcheancierPaiement.objects.create(
+            eleve=self.eleve, annee_scolaire='2025-2026', frais_inscription_du=0,
+            tranche_1_due=300000, tranche_2_due=0, tranche_3_due=0,
+            date_echeance_inscription=date(2025, 9, 1),
+            date_echeance_tranche_1=date(2025, 10, 1),
+            date_echeance_tranche_2=date(2026, 1, 1),
+            date_echeance_tranche_3=date(2026, 4, 1),
+        )
+
     def test_correction_montant_et_journal(self):
         from django.urls import reverse
 
@@ -655,12 +651,12 @@ class ModificationPaiementViewTest(TestCase):
         self.assertEqual(self.paiement.montant, Decimal('175000'))
         self.assertEqual(self.paiement.date_paiement, date(2025, 10, 21))
 
-        entree = JournalModification.objects.filter(model_name='Paiement').first()
+        entree = ElementCorbeille.objects.filter(model_label='paiements.Paiement', type_operation=ElementCorbeille.MODIFICATION).first()
         self.assertIsNotNone(entree, "Aucune trace dans la corbeille mémoire")
-        self.assertEqual(entree.commentaire, 'Montant saisi incomplet le jour même')
+        self.assertEqual(entree.motif, 'Montant saisi incomplet le jour même')
         self.assertEqual(entree.utilisateur, self.user)
-        self.assertEqual(entree.changements['montant']['avant'], '120000')
-        self.assertEqual(entree.changements['montant']['apres'], '175000')
+        self.assertEqual(entree.donnees_avant['montant'], '120000')
+        self.assertEqual(entree.donnees_apres['montant'], '175000')
 
     def test_motif_obligatoire(self):
         from django.urls import reverse

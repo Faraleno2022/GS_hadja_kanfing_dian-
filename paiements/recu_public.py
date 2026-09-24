@@ -148,6 +148,7 @@ def recu_public_pdf(request, paiement_id):
         from reportlab.lib.utils import ImageReader
         from django.db.models import Sum
         from ecole_moderne.pdf_utils import draw_logo_watermark
+        from ecole_moderne.branding import get_reportlab_palette
         import os
         
         paiement = get_object_or_404(
@@ -198,10 +199,11 @@ def recu_public_pdf(request, paiement_id):
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
+        ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
+        palette = get_reportlab_palette(ecole_obj)
 
         # Filigrane
         try:
-            ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
             draw_logo_watermark(c, width, height, ecole=ecole_obj)
         except Exception:
             pass
@@ -212,12 +214,13 @@ def recu_public_pdf(request, paiement_id):
         line_h = 18
 
         # En-tête
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 18)
         c.drawString(left, top, "REÇU DE PAIEMENT")
         top -= 25
 
-        ecole_obj = paiement.eleve.classe.ecole if paiement.eleve.classe else None
         if ecole_obj:
+            c.setFillColor(palette['secondary'])
             c.setFont('Helvetica-Bold', 12)
             c.drawString(left, top, ecole_obj.nom)
             top -= 15
@@ -232,6 +235,7 @@ def recu_public_pdf(request, paiement_id):
         top -= 20
 
         # Informations du reçu
+        c.setFillColor(palette['text'])
         c.setFont('Helvetica-Bold', 11)
         c.drawString(left, top, f"Numéro de reçu: {paiement.numero_recu or 'N/A'}")
         top -= line_h
@@ -239,10 +243,12 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h * 2
 
         # Informations élève
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "ÉLÈVE")
         top -= line_h
         c.setFont('Helvetica', 11)
+        c.setFillColor(palette['text'])
         c.drawString(left, top, f"Nom: {paiement.eleve.prenom or ''} {paiement.eleve.nom or ''}")
         top -= line_h
         c.drawString(left, top, f"Matricule: {paiement.eleve.matricule or 'N/A'}")
@@ -263,6 +269,11 @@ def recu_public_pdf(request, paiement_id):
         top -= line_h
         c.drawString(left, top, f"Montant encaissé: {paiement.montant:,.0f} GNF".replace(",", " "))
         top -= line_h
+
+        if paiement.frais_revision_inclus:
+            c.setFont('Helvetica', 10)
+            c.drawString(left, top, paiement.precision_revision)
+            top -= line_h
 
         # Répartition de ce paiement selon l'ordre inscription -> T1 -> T2 -> T3.
         allocation = get_payment_allocation(paiement, ech) if ech else None
@@ -369,6 +380,7 @@ def note_rappel_public_pdf(request, eleve_id):
         from django.db.models import Sum
         from decimal import Decimal
         from ecole_moderne.pdf_utils import draw_logo_watermark
+        from ecole_moderne.branding import get_reportlab_palette
         
         eleve = get_object_or_404(
             Eleve.objects.select_related('classe', 'classe__ecole'),
@@ -411,10 +423,11 @@ def note_rappel_public_pdf(request, eleve_id):
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
+        ecole_obj = eleve.classe.ecole if eleve.classe else None
+        palette = get_reportlab_palette(ecole_obj)
         
         # Filigrane
         try:
-            ecole_obj = eleve.classe.ecole if eleve.classe else None
             draw_logo_watermark(c, width, height, ecole=ecole_obj)
         except Exception:
             pass
@@ -425,12 +438,13 @@ def note_rappel_public_pdf(request, eleve_id):
         line_h = 18
         
         # En-tête
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 18)
         c.drawString(left, top, "NOTE DE RAPPEL DE PAIEMENT")
         top -= 25
         
-        ecole_obj = eleve.classe.ecole if eleve.classe else None
         if ecole_obj:
+            c.setFillColor(palette['secondary'])
             c.setFont('Helvetica-Bold', 12)
             c.drawString(left, top, ecole_obj.nom)
             top -= 15
@@ -445,10 +459,12 @@ def note_rappel_public_pdf(request, eleve_id):
         top -= 20
         
         # Informations élève
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "ÉLÈVE")
         top -= line_h
         c.setFont('Helvetica', 11)
+        c.setFillColor(palette['text'])
         c.drawString(left, top, f"Nom: {eleve.prenom} {eleve.nom}")
         top -= line_h
         c.drawString(left, top, f"Matricule: {eleve.matricule}")

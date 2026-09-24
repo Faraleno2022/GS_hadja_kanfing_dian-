@@ -45,6 +45,18 @@ def _display_user(user):
     return full_name or user.get_username() or 'Système'
 
 
+def _school_year_param(request):
+    from django.core.exceptions import ValidationError
+    from ecole_moderne.validators import valider_annee_scolaire
+    school_year = (request.GET.get('annee_scolaire') or '').strip()
+    if school_year:
+        try:
+            valider_annee_scolaire(school_year)
+        except ValidationError:
+            raise ValueError("Année scolaire invalide : utilisez AAAA-AAAA.") from None
+    return school_year
+
+
 def collect_modes_encaissement_data(request):
     """Retourne les paiements valides, regroupes par mode, sur une periode."""
     today = timezone.localdate()
@@ -61,6 +73,10 @@ def collect_modes_encaissement_data(request):
     payments = filter_by_user_school(
         payments, request.user, 'eleve__classe__ecole'
     )
+
+    school_year = _school_year_param(request)
+    if school_year:
+        payments = payments.filter(annee_scolaire=school_year)
 
     school = user_school(request.user)
     if user_is_superadmin(request.user):
@@ -105,7 +121,7 @@ def collect_modes_encaissement_data(request):
     return {
         'school': school,
         'school_name': school.nom if school else 'ÉTABLISSEMENTS AUTORISÉS',
-        'school_year': '',
+        'school_year': school_year,
         'scope_label': f"École : {school.nom}" if school else 'Tous les établissements autorisés',
         'start': start,
         'end': end,
@@ -118,6 +134,7 @@ def collect_modes_encaissement_data(request):
         'mode_count': len(rows),
         'payment_count': sum(item['count'] for item in rows),
         'total_amount': total_amount,
+        'revision_count': payments.filter(frais_revision_inclus=True).count(),
     }
 
 
@@ -165,6 +182,9 @@ def build_modes_encaissement_pdf(data):
         )
     else:
         note = "Aucun paiement validé n'a été trouvé dans la période sélectionnée."
+    if data.get('revision_count'):
+        count = data['revision_count']
+        note += f" Révision : {count} élève(s), {_money(count * 20000)} GNF déduits de la scolarité. Les encaissements restent inchangés."
     elements.append(Paragraph(note, styles['Note']))
     return _build(document, buffer, elements, data, title, on_page)
 
@@ -261,6 +281,12 @@ def build_modes_encaissement_workbook(data):
     sheet.cell(total_row, 3).number_format = '#,##0 "GNF"'
     sheet.cell(total_row, 4).number_format = '0.0%'
 
+    if data.get('revision_count'):
+        ligne_revision = total_row + 2
+        sheet.merge_cells(start_row=ligne_revision, start_column=1, end_row=ligne_revision, end_column=4)
+        sheet.cell(ligne_revision, 1, f"Révision : {data['revision_count']} élève(s), {_money(data['revision_count'] * 20000)} GNF déduits de la scolarité. Encaissements inchangés.")
+        sheet.cell(ligne_revision, 1).alignment = Alignment(wrap_text=True)
+        sheet.row_dimensions[ligne_revision].height = 32
     sheet.freeze_panes = 'A6'
     last_data_row = max(first_data_row, total_row - 1)
     sheet.auto_filter.ref = f'A{header_row}:D{last_data_row}'

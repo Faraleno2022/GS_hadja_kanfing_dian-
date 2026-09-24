@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db.models import Sum
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -142,6 +143,49 @@ class MoteurPaieTests(TestCase):
         self.assertEqual(etat.mode_calcul_heures, ModeCalculHoraire.POINTAGE)
         self.assertEqual(etat.taux_horaire_applique, Decimal('10000.00'))
         self.assertEqual(etat.salaire_base, Decimal('400000.00'))
+        self.assertEqual(etat.jours_presence, 5)
+
+    def test_ajustement_manuel_des_heures_sans_pointage(self):
+        enseignant = self.creer_secondaire()
+        self.affecter(enseignant, self.classe_a, '10')
+        self.calculer()
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
+            {
+                'total_heures': '72.5',
+                'taux_horaire_applique': '12500',
+                'prime_exceptionnelle': '10000',
+                'deductions': '5000',
+                'observations': 'Heures validées manuellement',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.total_heures, Decimal('72.50'))
+        self.assertEqual(etat.taux_horaire_applique, Decimal('12500.00'))
+        self.assertEqual(etat.salaire_base, Decimal('906250.00'))
+        self.assertEqual(etat.salaire_net, Decimal('911250.00'))
+        self.assertEqual(etat.mode_calcul_heures, ModeCalculHoraire.MANUEL)
+        self.assertEqual(
+            etat.details_heures.aggregate(total=Sum('heures_realisees'))['total'],
+            Decimal('72.50'),
+        )
+
+    def test_jours_presence_sont_calcules_pour_un_salaire_fixe(self):
+        enseignant = self.creer_fixe()
+        self.pointer(enseignant, [1, 2, 3])
+
+        self.calculer()
+
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+        self.assertEqual(etat.jours_presence, 3)
 
     def test_total_mensuel_global_calcule_le_salaire_sans_pointage(self):
         enseignant = self.creer_secondaire()
@@ -210,6 +254,15 @@ class MoteurPaieTests(TestCase):
         etat = EtatSalaire.objects.get(enseignant=enseignant, periode=self.periode)
         self.assertEqual(etat.total_heures, Decimal('8.50'))
         self.assertEqual(etat.salaire_base, Decimal('85000.00'))
+
+    def test_pointage_affiche_les_enseignants_au_superadmin_sans_ecole(self):
+        enseignant = self.creer_fixe(nom='Visible au pointage')
+
+        response = self.client.get(reverse('salaires:pointer_presence'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(enseignant, list(response.context['enseignants']))
+        self.assertContains(response, 'Visible au pointage')
 
     def test_repartition_respecte_les_heures_hebdomadaires(self):
         enseignant = self.creer_secondaire()
@@ -449,7 +502,7 @@ class MoteurPaieTests(TestCase):
         response = self.client.post(
             reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
             {
-                'primes': '100000',
+                'prime_exceptionnelle': '100000',
                 'deductions': '25000',
                 'observations': 'Ajustement contrôlé',
             },
@@ -460,7 +513,29 @@ class MoteurPaieTests(TestCase):
         self.assertEqual(etat.salaire_net, Decimal('1075000.00'))
         self.assertEqual(etat.observations, 'Ajustement contrôlé')
 
-    def test_formulaire_presence_sans_heures_ne_plante_plus(self):
+    def test_ajustement_permet_de_modifier_un_salaire_fixe(self):
+        enseignant = self.creer_fixe()
+        self.calculer()
+        etat = EtatSalaire.objects.get(
+            enseignant=enseignant, periode=self.periode
+        )
+
+        response = self.client.post(
+            reverse('salaires:ajuster_etat_salaire', args=[etat.id]),
+            {
+                'salaire_base': '1200000',
+                'prime_exceptionnelle': '50000',
+                'deductions': '10000',
+                'observations': 'Révision avant validation',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        etat.refresh_from_db()
+        self.assertEqual(etat.salaire_base, Decimal('1200000.00'))
+        self.assertEqual(etat.salaire_net, Decimal('1240000.00'))
+
+    def test_formulaire_presence_sans_heures_compte_le_jour_sans_imposer_un_horaire(self):
         enseignant = self.creer_secondaire()
         form = PresenceForm(
             data={
@@ -471,8 +546,7 @@ class MoteurPaieTests(TestCase):
             },
             ecole=self.ecole,
         )
-        self.assertFalse(form.is_valid())
-        self.assertIn('__all__', form.errors)
+        self.assertTrue(form.is_valid(), form.errors)
 
     def test_presence_calcule_les_heures_et_limite_les_statuts_absents(self):
         enseignant = self.creer_secondaire()
@@ -507,6 +581,92 @@ class MoteurPaieTests(TestCase):
             ).exists()
         )
 
+    def test_creation_periode_regroupe_les_salaires_des_enseignants_actifs(self):
+        enseignant_a = self.creer_fixe(nom='Actif A', salaire='1000000')
+        enseignant_b = self.creer_fixe(nom='Actif B', salaire='1250000')
+        enseignant_inactif = self.creer_fixe(
+            nom='En congé', salaire='900000'
+        )
+        enseignant_inactif.statut = 'CONGE'
+        enseignant_inactif.save()
+
+        response = self.client.post(
+            reverse('salaires:creer_periode'),
+            {
+                'mois': '8',
+                'annee': '2026',
+                'ecole': str(self.ecole.id),
+                'nombre_semaines': '4.33',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        periode = PeriodeSalaire.objects.get(
+            ecole=self.ecole, mois=8, annee=2026
+        )
+        etats = EtatSalaire.objects.filter(periode=periode)
+        self.assertEqual(etats.count(), 2)
+        self.assertSetEqual(
+            set(etats.values_list('enseignant_id', flat=True)),
+            {enseignant_a.id, enseignant_b.id},
+        )
+        self.assertEqual(
+            etats.get(enseignant=enseignant_a).salaire_net,
+            Decimal('1000000.00'),
+        )
+        self.assertEqual(
+            sum(etats.values_list('salaire_net', flat=True)),
+            Decimal('2250000.00'),
+        )
+        self.assertEqual(
+            response.url,
+            f"{reverse('salaires:etats_salaire')}?periode={periode.id}",
+        )
+
+    def test_etat_mensuel_recupere_recalcule_et_cumule_les_salaires(self):
+        enseignant_a = self.creer_fixe(nom='Mensuel A', salaire='1000000')
+        self.creer_fixe(nom='Mensuel B', salaire='1250000')
+
+        response = self.calculer()
+        self.assertEqual(
+            response.url,
+            f"{reverse('salaires:etats_salaire')}?periode={self.periode.id}",
+        )
+
+        liste = self.client.get(
+            reverse('salaires:etats_salaire'),
+            {'periode': self.periode.id},
+        )
+        self.assertEqual(liste.context['totaux']['total_etats'], 2)
+        self.assertEqual(
+            liste.context['totaux']['total_net'], Decimal('2250000.00')
+        )
+
+        enseignant_a.salaire_fixe = Decimal('1100000')
+        enseignant_a.save()
+        self.calculer()
+
+        liste = self.client.get(
+            reverse('salaires:etats_salaire'),
+            {'periode': self.periode.id},
+        )
+        self.assertEqual(
+            liste.context['totaux']['total_net'], Decimal('2350000.00')
+        )
+
+    def test_export_csv_contient_le_total_mensuel_cumule(self):
+        self.creer_fixe(nom='Export A', salaire='1000000')
+        self.creer_fixe(nom='Export B', salaire='1250000')
+        self.calculer()
+
+        response = self.client.get(
+            reverse('salaires:export_etats_salaire_csv'),
+            {'periode': self.periode.id},
+        )
+        contenu = response.content.decode('utf-8')
+        self.assertIn('TOTAL CUMULÉ', contenu)
+        self.assertIn('2250000.00', contenu)
+
     def test_formulaire_ajustement_refuse_les_valeurs_negatives(self):
         enseignant = self.creer_fixe()
         etat = EtatSalaire.objects.create(
@@ -517,8 +677,8 @@ class MoteurPaieTests(TestCase):
             calcule_par=self.user,
         )
         form = EtatSalaireAjustementForm(
-            data={'primes': '-1', 'deductions': '0', 'observations': ''},
+            data={'prime_exceptionnelle': '-1', 'deductions': '0', 'observations': ''},
             instance=etat,
         )
         self.assertFalse(form.is_valid())
-        self.assertIn('primes', form.errors)
+        self.assertIn('prime_exceptionnelle', form.errors)

@@ -1,5 +1,6 @@
 from django.urls import path
-from . import views
+from . import documents_paie, views
+from .cartes_enseignants import carte_enseignant_pdf, cartes_enseignants_pdf
 
 app_name = 'salaires'
 
@@ -7,6 +8,8 @@ urlpatterns = [
     # Tableau de bord
     path('', views.tableau_bord, name='tableau_bord'),
     
+    path('enseignants/cartes/pdf/', cartes_enseignants_pdf, name='cartes_enseignants_pdf'),
+    path('enseignants/<int:enseignant_id>/carte/pdf/', carte_enseignant_pdf, name='carte_enseignant_pdf'),
     # Gestion des enseignants
     path('enseignants/', views.liste_enseignants, name='liste_enseignants'),
     path('enseignants/export/csv/', views.export_enseignants_csv, name='export_enseignants_csv'),
@@ -24,11 +27,26 @@ urlpatterns = [
     path('etats/', views.etats_salaire, name='etats_salaire'),
     path('etats/export/csv/', views.export_etats_salaire_csv, name='export_etats_salaire_csv'),
     path('etats/export/pdf/', views.export_etats_salaire_pdf, name='export_etats_salaire_pdf'),
-    path('etats/<int:etat_id>/fiche-paie/', views.fiche_paie_pdf, name='fiche_paie_pdf'),
+    path('etats/<int:etat_id>/fiche-paie/', documents_paie.bulletin_paie_pdf, name='fiche_paie_pdf'),
     path('calculer/<int:periode_id>/', views.calculer_salaires, name='calculer_salaires'),
     path('etats/<int:etat_id>/ajuster/', views.ajuster_etat_salaire, name='ajuster_etat_salaire'),
     path('valider/<int:etat_id>/', views.valider_etat_salaire, name='valider_etat_salaire'),
     path('marquer-paye/<int:etat_id>/', views.marquer_paye, name='marquer_paye'),
+
+    # Documents de paie (classeur mensuel : état détaillé, masse salariale, acomptes, émargement, bulletins)
+    path('documents/', documents_paie.documents_paie, name='documents_paie'),
+    path('parametres/', documents_paie.parametres_paie, name='parametres_paie'),
+    path('periodes/<int:periode_id>/etat-detaille/pdf/', documents_paie.etat_salaire_detaille_pdf, name='etat_salaire_detaille_pdf'),
+    path('periodes/<int:periode_id>/masse-salariale/pdf/', documents_paie.masse_salariale_pdf, name='masse_salariale_pdf'),
+    path('periodes/<int:periode_id>/acomptes/pdf/', documents_paie.acomptes_pdf, name='acomptes_pdf'),
+    path('periodes/<int:periode_id>/emargement/pdf/', documents_paie.emargement_pdf, name='emargement_pdf'),
+    path('periodes/<int:periode_id>/bulletins/pdf/', documents_paie.bulletins_paie_periode_pdf, name='bulletins_paie_pdf'),
+
+    # Avances sur salaire
+    path('avances/', views.liste_avances, name='liste_avances'),
+    path('avances/ajouter/', views.ajouter_avance, name='ajouter_avance'),
+    path('avances/<int:avance_id>/modifier/', views.modifier_avance, name='modifier_avance'),
+    path('avances/<int:avance_id>/supprimer/', views.supprimer_avance, name='supprimer_avance'),
     
     # Gestion des périodes
     path('periodes/', views.gestion_periodes, name='gestion_periodes'),

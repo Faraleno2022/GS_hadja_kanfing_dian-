@@ -133,12 +133,22 @@ class AbonnementInformatique(SyncTrackedModel):
         return f"Informatique: {self.eleve} ({self.date_debut} → {self.date_fin})"
 
     @property
+    def statut_effectif(self):
+        if self.statut == self.Statut.ACTIF and self.est_expire:
+            return self.Statut.EXPIRE
+        return self.statut
+
+    @property
+    def libelle_statut(self):
+        return dict(self.Statut.choices).get(self.statut_effectif, self.statut_effectif)
+
+    @property
     def est_proche_expiration(self) -> bool:
-        if not self.date_fin:
+        if not self.date_fin or self.statut != self.Statut.ACTIF:
             return False
         today = timezone.localdate()
         delta = (self.date_fin - today).days
-        return 0 <= delta <= (self.alerte_avant_jours or 7)
+        return 0 <= delta <= (self.alerte_avant_jours if self.alerte_avant_jours is not None else 7)
 
     @property
     def est_expire(self) -> bool:

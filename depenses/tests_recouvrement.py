@@ -48,6 +48,8 @@ class RecouvrementTestsBase(TestCase):
             user=self.user,
             defaults={'role': 'ADMIN', 'telephone': '+224620300003', 'ecole': self.ecole},
         )
+        self.autre_user = User.objects.create_user('gestionnaire-autre')
+        Profil.objects.filter(user=self.autre_user).update(ecole=self.autre_ecole, role='ADMIN')
         self.user = User.objects.get(pk=self.user.pk)
         self.client.force_login(self.user)
 
@@ -57,7 +59,7 @@ class ModulesSimplesTests(RecouvrementTestsBase):
 
     def test_creation_depense_cuisine_rattachee_a_lecole(self):
         response = self.client.post(
-            reverse('depenses:module_recouvrement_nouveau', kwargs={'module': 'cuisine'}),
+            reverse('depenses:ajouter_module_simple', kwargs={'cle': 'cuisine'}),
             {
                 'date': timezone.localdate().isoformat(),
                 'designation': 'Achat de riz',
@@ -67,14 +69,14 @@ class ModulesSimplesTests(RecouvrementTestsBase):
         )
         self.assertEqual(response.status_code, 302)
         depense = DepenseCuisine.objects.get()
-        self.assertEqual(depense.ecole, self.ecole)
+        self.assertEqual(depense.cree_par.profil.ecole, self.ecole)
         self.assertEqual(depense.cree_par, self.user)
         self.assertEqual(depense.montant, Decimal('450000'))
-        self.assertEqual(depense.libelle, 'Achat de riz')
+        self.assertEqual(depense.designation, 'Achat de riz')
 
     def test_montant_nul_refuse(self):
         response = self.client.post(
-            reverse('depenses:module_recouvrement_nouveau', kwargs={'module': 'documents'}),
+            reverse('depenses:ajouter_module_simple', kwargs={'cle': 'document'}),
             {
                 'date': timezone.localdate().isoformat(),
                 'designation': 'Impression bulletins',
@@ -87,7 +89,7 @@ class ModulesSimplesTests(RecouvrementTestsBase):
 
     def test_date_future_refusee(self):
         response = self.client.post(
-            reverse('depenses:module_recouvrement_nouveau', kwargs={'module': 'versements'}),
+            reverse('depenses:ajouter_module_simple', kwargs={'cle': 'versement'}),
             {
                 'date': (timezone.localdate() + timedelta(days=3)).isoformat(),
                 'lieu_versement': 'Ecobank Matam',
@@ -99,57 +101,57 @@ class ModulesSimplesTests(RecouvrementTestsBase):
 
     def test_tableau_de_bord_ne_montre_que_son_ecole(self):
         DepenseCuisine.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             designation='Gaz', montant=Decimal('200000'),
         )
         DepenseCuisine.objects.create(
-            ecole=self.autre_ecole, date=timezone.localdate(),
+            cree_par=self.autre_user, date=timezone.localdate(),
             designation='Charbon école voisine', montant=Decimal('900000'),
         )
         response = self.client.get(
-            reverse('depenses:module_recouvrement', kwargs={'module': 'cuisine'})
+            reverse('depenses:liste_module_simple', kwargs={'cle': 'cuisine'})
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Gaz')
         self.assertNotContains(response, 'Charbon école voisine')
-        self.assertEqual(response.context['total_filtre'], Decimal('200000'))
+        self.assertEqual(response.context['total_montant'], Decimal('200000'))
 
     def test_filtre_par_periode(self):
         DepenseCuisine.objects.create(
-            ecole=self.ecole, date=date(2026, 1, 15),
+            cree_par=self.user, date=date(2026, 1, 15),
             designation='Ancien achat', montant=Decimal('100000'),
         )
         DepenseCuisine.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             designation='Achat récent', montant=Decimal('300000'),
         )
         response = self.client.get(
-            reverse('depenses:module_recouvrement', kwargs={'module': 'cuisine'}),
-            {'du': timezone.localdate().isoformat()},
+            reverse('depenses:liste_module_simple', kwargs={'cle': 'cuisine'}),
+            {'date_debut': timezone.localdate().isoformat()},
         )
-        self.assertEqual(response.context['total_filtre'], Decimal('300000'))
-        self.assertEqual(response.context['nombre'], 1)
+        self.assertEqual(response.context['total_montant'], Decimal('300000'))
+        self.assertEqual(response.context['page_obj'].paginator.count, 1)
 
     def test_module_inconnu_renvoie_404(self):
         response = self.client.get(
-            reverse('depenses:module_recouvrement', kwargs={'module': 'inexistant'})
+            reverse('depenses:liste_module_simple', kwargs={'cle': 'inexistant'})
         )
         self.assertEqual(response.status_code, 404)
 
     def test_exports_excel_et_pdf(self):
         Versement.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             lieu_versement='Ecobank Matam', montant=Decimal('2500000'),
         )
         excel = self.client.get(
-            reverse('depenses:module_recouvrement_export_excel', kwargs={'module': 'versements'})
+            reverse('depenses:export_module_simple_excel', kwargs={'cle': 'versement'})
         )
         self.assertEqual(excel.status_code, 200)
         self.assertIn('spreadsheetml', excel['Content-Type'])
         self.assertTrue(excel.content[:2] == b'PK')
 
         pdf = self.client.get(
-            reverse('depenses:module_recouvrement_export_pdf', kwargs={'module': 'versements'})
+            reverse('depenses:export_module_simple_pdf', kwargs={'cle': 'versement'})
         )
         self.assertEqual(pdf.status_code, 200)
         self.assertEqual(pdf['Content-Type'], 'application/pdf')
@@ -157,19 +159,19 @@ class ModulesSimplesTests(RecouvrementTestsBase):
 
     def test_suppression(self):
         depense = DepenseDocument.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             designation='Certificats', montant=Decimal('75000'),
         )
         confirmation = self.client.get(
-            reverse('depenses:module_recouvrement_supprimer',
-                    kwargs={'module': 'documents', 'pk': depense.pk})
+            reverse('depenses:supprimer_module_simple',
+                    kwargs={'cle': 'document', 'pk': depense.pk})
         )
         self.assertEqual(confirmation.status_code, 200)
         self.assertContains(confirmation, 'Certificats')
 
         response = self.client.post(
-            reverse('depenses:module_recouvrement_supprimer',
-                    kwargs={'module': 'documents', 'pk': depense.pk})
+            reverse('depenses:supprimer_module_simple',
+                    kwargs={'cle': 'document', 'pk': depense.pk})
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(DepenseDocument.objects.exists())
@@ -198,7 +200,6 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
     def _creer(self, **kwargs):
         params = {
             'eleve': self.eleve,
-            'date': timezone.localdate(),
             'montant': Decimal('150000'),
             'date_debut': timezone.localdate(),
             'date_fin': timezone.localdate() + timedelta(days=30),
@@ -207,7 +208,7 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
         return AbonnementInformatique.objects.create(**params)
 
     def test_creation_abonnement(self):
-        response = self.client.post(reverse('depenses:creer_abonnement_informatique'), {
+        response = self.client.post(reverse('depenses:ajouter_abonnement_informatique'), {
             'eleve': self.eleve.pk,
             'date': timezone.localdate().isoformat(),
             'montant': '150000',
@@ -222,7 +223,7 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
         self.assertEqual(abonnement.cree_par, self.user)
 
     def test_fin_avant_debut_refusee(self):
-        response = self.client.post(reverse('depenses:creer_abonnement_informatique'), {
+        response = self.client.post(reverse('depenses:ajouter_abonnement_informatique'), {
             'eleve': self.eleve.pk,
             'date': timezone.localdate().isoformat(),
             'montant': '150000',
@@ -233,7 +234,7 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
         })
         self.assertEqual(response.status_code, 200)
         self.assertFalse(AbonnementInformatique.objects.exists())
-        self.assertContains(response, "La fin doit être postérieure au début")
+        self.assertContains(response, "La date de fin ne peut pas être antérieure")
 
     def test_statut_effectif_et_alertes(self):
         expire = self._creer(date_fin=timezone.localdate() - timedelta(days=2))
@@ -247,24 +248,24 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
         response = self.client.get(reverse('depenses:dashboard_informatique'))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['nb_expires'], 1)
-        self.assertEqual(response.context['nb_bientot'], 1)
+        self.assertEqual(response.context['nb_proche_expiration'], 1)
 
     def test_recherche_par_matricule(self):
         self._creer()
         response = self.client.get(
-            reverse('depenses:dashboard_informatique'), {'q': 'REC-001'}
+            reverse('depenses:liste_abonnements_informatique'), {'q': 'REC-001'}
         )
         self.assertEqual(response.context['page_obj'].paginator.count, 1)
 
         response = self.client.get(
-            reverse('depenses:dashboard_informatique'), {'q': 'INTROUVABLE'}
+            reverse('depenses:liste_abonnements_informatique'), {'q': 'INTROUVABLE'}
         )
         self.assertEqual(response.context['page_obj'].paginator.count, 0)
 
     def test_pages_de_saisie_et_de_suppression(self):
         abonnement = self._creer()
         for url in (
-            reverse('depenses:creer_abonnement_informatique'),
+            reverse('depenses:ajouter_abonnement_informatique'),
             reverse('depenses:modifier_abonnement_informatique', kwargs={'pk': abonnement.pk}),
             reverse('depenses:supprimer_abonnement_informatique', kwargs={'pk': abonnement.pk}),
         ):
@@ -276,7 +277,7 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
     def test_carte_abonnement_pdf(self):
         abonnement = self._creer()
         response = self.client.get(
-            reverse('depenses:carte_abonnement_informatique', kwargs={'pk': abonnement.pk})
+            reverse('depenses:carte_abonnement_informatique_pdf', kwargs={'pk': abonnement.pk})
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
@@ -293,32 +294,30 @@ class AbonnementInformatiqueTests(RecouvrementTestsBase):
         self.assertTrue(pdf.content.startswith(b'%PDF'))
 
     def test_api_eleve(self):
-        self._creer()
-        response = self.client.get(
-            reverse('depenses:api_eleve_informatique', kwargs={'eleve_id': self.eleve.pk})
-        )
+        response = self.client.get(reverse('depenses:recherche_eleve_informatique'), {'q': 'REC-001'})
         self.assertEqual(response.status_code, 200)
         donnees = response.json()
-        self.assertEqual(donnees['matricule'], 'REC-001')
-        self.assertEqual(donnees['classe'], self.classe.nom)
-        self.assertIsNotNone(donnees['dernier_abonnement'])
+        self.assertEqual(len(donnees), 1)
+        self.assertEqual(donnees[0]['matricule'], 'REC-001')
+        self.assertEqual(donnees[0]['classe'], self.classe.nom)
 
 
 class HubRecouvrementTests(RecouvrementTestsBase):
     def test_hub_affiche_les_cartes_et_les_totaux(self):
         DepenseCuisine.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             designation='Gaz', montant=Decimal('200000'),
         )
         Versement.objects.create(
-            ecole=self.ecole, date=timezone.localdate(),
+            cree_par=self.user, date=timezone.localdate(),
             lieu_versement='Ecobank', montant=Decimal('1000000'),
         )
         response = self.client.get(reverse('depenses:tableau_bord'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Recouvrement')
-        self.assertContains(response, 'Dépenses de la cuisine')
+        self.assertContains(response, 'Cuisine')
         self.assertContains(response, 'Informatique')
-        self.assertEqual(response.context['sorties_mois'], Decimal('200000'))
-        self.assertEqual(response.context['versements_mois'], Decimal('1000000'))
-        self.assertEqual(len(response.context['cartes']), 10)
+        self.assertEqual(response.context['montant_total_general'], Decimal('1200000'))
+        cartes = {carte['titre']: carte for carte in response.context['cartes']}
+        self.assertEqual(cartes['Cuisine']['montant'], Decimal('200000'))
+        self.assertEqual(cartes['Versement']['montant'], Decimal('1000000'))

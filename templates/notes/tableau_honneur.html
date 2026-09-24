@@ -6,7 +6,7 @@
 {% block extra_css %}
 <style>
     .honneur-header {
-        background: linear-gradient(135deg, #1a6fc4 0%, #0d3b8c 100%);
+        background: linear-gradient(135deg, {{ school_branding.primary }} 0%, {{ school_branding.secondary }} 100%);
         color: #fff;
         padding: 2rem;
         border-radius: 15px;
@@ -52,7 +52,7 @@
         position: relative;
         display: flex;
         flex-direction: row;
-        border: 2px solid #1a6fc4;
+        border: 2px solid {{ school_branding.primary }};
         min-height: 200px;
     }
     .honneur-card:hover {
@@ -70,7 +70,7 @@
         width: 180px;
         min-width: 180px;
         overflow: hidden;
-        background: linear-gradient(135deg, #4a90d9 0%, #1a6fc4 50%, #0d3b8c 100%);
+        background: linear-gradient(135deg, {{ school_branding.secondary }} 0%, {{ school_branding.primary }} 100%);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -115,7 +115,7 @@
     .card-rang-1 { background: linear-gradient(135deg, #ffd700, #d4a017); color: #333; }
     .card-rang-2 { background: linear-gradient(135deg, #d4d4d4, #8a8a8a); color: #333; }
     .card-rang-3 { background: linear-gradient(135deg, #cd7f32, #b87333); }
-    .card-rang-other { background: #1a6fc4; }
+    .card-rang-other { background: {{ school_branding.primary }}; }
 
     /* Ruban décoratif top 3 */
     .card-ribbon {
@@ -151,7 +151,7 @@
     }
     .card-info .card-classe {
         font-size: 0.9rem;
-        color: #1a6fc4;
+        color: {{ school_branding.primary }};
         font-weight: 600;
         margin-bottom: 0.8rem;
     }
@@ -168,8 +168,8 @@
         min-width: 90px;
     }
     .card-stat-moyenne {
-        background: #eef4ff;
-        border: 1px solid #c7deff;
+        background: {{ school_branding.primary_soft }};
+        border: 1px solid {{ school_branding.primary }};
     }
     .card-stat-rang {
         background: #eefbf0;
@@ -186,8 +186,8 @@
         font-size: 1.1rem;
         font-weight: 800;
     }
-    .card-stat .stat-value.moyenne-val { color: #1a6fc4; }
-    .card-stat .stat-value.rang-val { color: #28a745; }
+    .card-stat .stat-value.moyenne-val { color: {{ school_branding.primary }}; }
+    .card-stat .stat-value.rang-val { color: {{ school_branding.card_success }}; }
 
     .empty-state {
         text-align: center;

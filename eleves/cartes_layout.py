@@ -11,6 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from ecole_moderne.branding import get_school_branding
 
 # Format PVC standard CR80
 CARTE_LARGEUR = 85.6 * mm
@@ -104,13 +105,14 @@ def dessiner_carte_eleve(c, eleve, x, y, width, height, main_font, main_font_bol
     c.saveState()
 
     ecole = eleve.classe.ecole if getattr(eleve, 'classe', None) else None
-    primary = '#1746a2'
-    accent = accent_color or '#0f766e'
-    dark = '#0f172a'
-    muted = '#64748b'
-    line = '#dbe3ef'
-    soft = '#f5f8fc'
-    footer_soft = '#eef4fb'
+    branding = get_school_branding(ecole)
+    primary = branding['primary']
+    accent = branding['accent'] if branding.get('theme_id') else (accent_color or branding['accent'])
+    dark = branding['text']
+    muted = branding['muted']
+    line = branding['border']
+    soft = branding['primary_soft']
+    footer_soft = branding['table_alt']
 
     margin = 2.2 * mm
     header_h = 10.5 * mm
@@ -154,8 +156,8 @@ def dessiner_carte_eleve(c, eleve, x, y, width, height, main_font, main_font_bol
 
     title_x = logo_x + logo_size + 2 * mm
     title_w = width - (title_x - x) - margin
-    texte_ajuste(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, '#ffffff')
-    texte_ajuste(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, '#dbeafe')
+    texte_ajuste(c, school_name, title_x, y + height - 5.1 * mm, title_w, main_font_bold, 7.6, 4.8, branding['primary_text'])
+    texte_ajuste(c, title, title_x, y + height - 8.2 * mm, title_w, main_font, 5.2, 4.2, branding['primary_text'])
 
     try:
         c.saveState()
@@ -173,6 +175,7 @@ def dessiner_carte_eleve(c, eleve, x, y, width, height, main_font, main_font_bol
             )
         else:
             c.setFillColor(colors.HexColor(primary))
+            c.setFillAlpha(0.06)
             c.setFont(main_font_bold, 28)
             c.drawCentredString(x + width * 0.70, y + height * 0.46, school_name[:3])
         c.restoreState()
@@ -223,7 +226,7 @@ def dessiner_carte_eleve(c, eleve, x, y, width, height, main_font, main_font_bol
     for label, value in rows[:5]:
         c.setFillColor(colors.HexColor(muted))
         c.setFont(main_font_bold, 5.6)
-        c.drawString(info_x, row_y, texte_sur(label).upper())
+        texte_ajuste(c, texte_sur(label).upper(), info_x, row_y, label_w - 1 * mm, main_font_bold, 5.6, 4.5, muted)
         texte_ajuste(c, value, info_x + label_w, row_y, value_w, main_font, 6.6, 4.7, dark)
         row_y -= 4.2 * mm
 

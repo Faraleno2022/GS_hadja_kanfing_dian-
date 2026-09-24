@@ -94,6 +94,7 @@ def abonnement_public_pdf(request, abonnement_id):
         from reportlab.pdfgen import canvas
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
+        from ecole_moderne.branding import get_reportlab_palette
         
         abonnement = get_object_or_404(
             AbonnementBus.objects.select_related(
@@ -107,11 +108,12 @@ def abonnement_public_pdf(request, abonnement_id):
         buffer = BytesIO()
         c = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
+        ecole_obj = eleve.classe.ecole if eleve.classe else None
+        palette = get_reportlab_palette(ecole_obj)
         
         # Filigrane (optionnel)
         try:
             from ecole_moderne.pdf_utils import draw_logo_watermark
-            ecole_obj = eleve.classe.ecole if eleve.classe else None
             draw_logo_watermark(c, width, height, ecole=ecole_obj)
         except Exception:
             pass
@@ -122,12 +124,13 @@ def abonnement_public_pdf(request, abonnement_id):
         line_h = 18
         
         # En-tête
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 18)
         c.drawString(left, top, "REÇU D'ABONNEMENT BUS SCOLAIRE")
         top -= 25
         
-        ecole_obj = eleve.classe.ecole if eleve.classe else None
         if ecole_obj:
+            c.setFillColor(palette['secondary'])
             c.setFont('Helvetica-Bold', 12)
             c.drawString(left, top, ecole_obj.nom)
             top -= 15
@@ -142,10 +145,12 @@ def abonnement_public_pdf(request, abonnement_id):
         top -= 20
         
         # Informations élève
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "ÉLÈVE")
         top -= line_h
         c.setFont('Helvetica', 11)
+        c.setFillColor(palette['text'])
         c.drawString(left, top, f"Nom: {eleve.prenom} {eleve.nom}")
         top -= line_h
         c.drawString(left, top, f"Matricule: {eleve.matricule}")
@@ -156,10 +161,12 @@ def abonnement_public_pdf(request, abonnement_id):
         top -= line_h
         
         # Détails de l'abonnement
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         c.drawString(left, top, "DÉTAILS DE L'ABONNEMENT")
         top -= line_h
         c.setFont('Helvetica', 11)
+        c.setFillColor(palette['text'])
         c.drawString(left, top, f"Numéro de reçu: {abonnement.numero_recu or f'BUS-{abonnement.id}'}")
         top -= line_h
         c.drawString(left, top, f"Type / tranche: {abonnement.get_periodicite_display()}")
@@ -170,6 +177,9 @@ def abonnement_public_pdf(request, abonnement_id):
         top -= line_h
         c.drawString(left, top, f"Mode de paiement: {getattr(abonnement.mode_paiement, 'nom', '') or 'Non renseigné'}")
         top -= line_h
+        if abonnement.reference_externe:
+            c.drawString(left, top, f"Référence externe: {abonnement.reference_externe}")
+            top -= line_h
         if abonnement.grille_id:
             c.drawString(left, top, f"Grille: {abonnement.grille.zone} - {abonnement.grille.annee_scolaire}")
             top -= line_h
@@ -190,9 +200,9 @@ def abonnement_public_pdf(request, abonnement_id):
             c.setFont('Helvetica-Bold', 11)
             c.drawString(left, top, "SITUATION DES TRANCHES DE L'ANNÉE")
             top -= 20
-            c.setFillColor(colors.HexColor('#1f4e78'))
+            c.setFillColor(palette['header'])
             c.rect(left - 2, top - 4, 515, 20, fill=1, stroke=0)
-            c.setFillColor(colors.white)
+            c.setFillColor(palette['header_text'])
             c.setFont('Helvetica-Bold', 8)
             for titre, x_value in [('TRANCHE', left), ('DÛ', 280), ('PAYÉ', 385), ('RESTE', 490)]:
                 c.drawString(x_value, top + 2, titre)
@@ -212,7 +222,7 @@ def abonnement_public_pdf(request, abonnement_id):
                 reste = max(montant_du - montant_paye, 0)
                 total_du += montant_du
                 total_paye += montant_paye
-                c.setFillColor(colors.black)
+                c.setFillColor(palette['text'])
                 c.setFont('Helvetica-Bold' if code == abonnement.periodicite else 'Helvetica', 8)
                 c.drawString(left, top, libelle + (' (ce reçu)' if code == abonnement.periodicite else ''))
                 c.drawRightString(350, top, f"{int(montant_du):,}".replace(',', ' '))

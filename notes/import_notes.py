@@ -110,7 +110,7 @@ class ImportNotesValidator:
         
         # Vérifier que l'élève existe
         try:
-            eleve = Eleve.objects.get(matricule=matricule)
+            eleve = Eleve.pedagogiques.get(matricule=matricule)
         except Eleve.DoesNotExist:
             self.erreurs.append(f"Ligne {numero_ligne}: Élève avec matricule '{matricule}' introuvable")
             return
@@ -182,7 +182,7 @@ class ImportNotesProcessor:
     def _importer_notes_mensuelles(self, matiere):
         """Importe des notes mensuelles - VERSION OPTIMISÉE"""
         # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
-        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        eleves_dict = {e.matricule: e for e in Eleve.pedagogiques.all()}
         
         # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
         notes_existantes = {}
@@ -268,7 +268,7 @@ class ImportNotesProcessor:
     def _importer_notes_composition(self, matiere):
         """Importe des notes de composition - VERSION OPTIMISÉE"""
         # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
-        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        eleves_dict = {e.matricule: e for e in Eleve.pedagogiques.all()}
         
         # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
         notes_existantes = {}
@@ -354,7 +354,7 @@ class ImportNotesProcessor:
             raise ImportNotesError("Évaluation introuvable")
         
         # ⚡ OPTIMISATION: Charger tous les élèves en mémoire (1 seule requête)
-        eleves_dict = {e.matricule: e for e in Eleve.objects.all()}
+        eleves_dict = {e.matricule: e for e in Eleve.pedagogiques.all()}
         
         # ⚡ OPTIMISATION: Charger les notes existantes (1 seule requête)
         notes_existantes = {}
@@ -614,7 +614,7 @@ def generer_template_excel(classe_id, matiere_id, type_import='MENSUELLE'):
         # Récupérer les élèves triés par ordre alphabétique (prénom puis nom)
         eleves = []
         if classe_eleve:
-            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+            eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
         
         if eleves:
             # Créer le template avec les élèves

@@ -10,6 +10,7 @@
 {% endblock %}
 
 {% block page_actions %}
+    <a href="{% url 'paiements:liste_revisions' %}" class="btn btn-outline-success mb-2"><i class="fas fa-book-reader me-1"></i>Révisions payées</a>
     <div class="d-flex flex-wrap gap-2 align-items-center">
         <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
             <i class="fas fa-plus me-1"></i>Nouveau Paiement
@@ -19,6 +20,9 @@
             <i class="fas fa-trash-restore me-1"></i>Corbeille des paiements
         </a>
         {% endif %}
+        <a href="{% url 'paiements:historique_mutations_paiements' %}" class="btn btn-outline-warning">
+            <i class="fas fa-clock-rotate-left me-1"></i>Modifications / suppressions
+        </a>
         <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
             <i class="fas fa-filter me-1"></i>Filtres
         </button>
@@ -424,6 +428,9 @@
 {% endblock %}
 
 {% block content %}
+    {% if paiements_hors_annee %}
+    <div class="alert alert-info" role="status">{{ paiements_hors_annee }} paiement(s) masqué(s) : leur année scolaire diffère de l'année sélectionnée. Modifiez le filtre d'année pour les consulter.</div>
+    {% endif %}
 
     <!-- Recherche (une seule zone multi-critères) -->
     <div class="search-card">
@@ -673,7 +680,7 @@ function _urlRapportComptable(base) {
 }
 
 function ouvrirApercuRapportComptable() {
-    window.location.href = _urlRapportComptable('{% url "paiements:rapport_comptabilite" %}');
+    window.location.href = _urlRapportComptable('{% url "paiements:rapport_comptable" %}');
 }
 
 function ouvrirRapportComptable(format) {

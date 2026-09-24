@@ -35,14 +35,14 @@ class ExportElevesTransfertTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.ecole = Ecole.objects.create(
-            nom='Groupe Scolaire Exemple',
+            nom='GROUPE SCOLAIRE EXEMPLE',
             adresse='Conakry',
             telephone='+224622000001',
             directeur='Direction',
         )
         cls.classe = Classe.objects.create(
             ecole=cls.ecole,
-            nom='6ème A',
+            nom='6ÈME A',
             niveau='PRIMAIRE_6',
             annee_scolaire='2025-2026',
         )
@@ -63,7 +63,7 @@ class ExportElevesTransfertTests(TestCase):
         )
         cls.eleve = Eleve.objects.create(
             matricule='GS-2025-001',
-            prenom='Aïssatou',
+            prenom='AÏSSATOU',
             nom='DIALLO',
             sexe='F',
             date_naissance=date(2013, 5, 12),
@@ -84,21 +84,21 @@ class ExportElevesTransfertTests(TestCase):
         self.assertEqual(
             list(dataframe.iloc[0]),
             [
-                'Groupe Scolaire Exemple',
-                '6ème A',
+                'GROUPE SCOLAIRE EXEMPLE',
+                '6ÈME A',
                 '2025-2026',
                 'GS-2025-001',
-                'Aïssatou',
+                'AÏSSATOU',
                 'DIALLO',
                 'F',
                 '12/05/2013',
-                'Conakry',
+                'CONAKRY',
                 'DIALLO',
-                'Mamadou',
+                'MAMADOU',
                 '+224622000002',
-                'Ratoma',
+                'RATOMA',
                 'BAH',
-                'Fatoumata',
+                'FATOUMATA',
                 '+224622000003',
                 'parent@example.com',
             ],
@@ -119,7 +119,7 @@ class ExportElevesTransfertTests(TestCase):
         feuille = workbook['Élèves']
         entetes = [cell.value for cell in next(feuille.iter_rows(min_row=1, max_row=1))]
         self.assertEqual(entetes, ENTETES_TRANSFERT)
-        self.assertEqual(feuille.cell(row=2, column=1).value, 'Groupe Scolaire Exemple')
-        self.assertEqual(feuille.cell(row=2, column=2).value, '6ème A')
+        self.assertEqual(feuille.cell(row=2, column=1).value, 'GROUPE SCOLAIRE EXEMPLE')
+        self.assertEqual(feuille.cell(row=2, column=2).value, '6ÈME A')
         self.assertEqual(feuille.cell(row=2, column=3).value, '2025-2026')
 

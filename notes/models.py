@@ -433,7 +433,7 @@ class BulletinMaternelle(SyncTrackedModel):
 
 
 class ThemeBulletin(SyncTrackedModel):
-    """Personnalisation des couleurs du bulletin"""
+    """Charte graphique commune à l'interface et aux documents d'une école."""
     
     nom = models.CharField(max_length=100, verbose_name="Nom du thème")
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='themes_bulletin', null=True, blank=True)
@@ -451,6 +451,12 @@ class ThemeBulletin(SyncTrackedModel):
     couleur_fond_header = models.CharField(max_length=7, default='#2c3e50', verbose_name="Fond en-tête")
     couleur_fond_tableau = models.CharField(max_length=7, default='#ecf0f1', verbose_name="Fond tableau")
     couleur_fond_carte = models.CharField(max_length=7, default='#ffffff', verbose_name="Fond cartes")
+
+    # Couleurs des cartes de l'interface
+    couleur_carte_primaire = models.CharField(max_length=7, default='#0d6efd', verbose_name="Carte principale")
+    couleur_carte_succes = models.CharField(max_length=7, default='#198754', verbose_name="Carte positive")
+    couleur_carte_attention = models.CharField(max_length=7, default='#f59e0b', verbose_name="Carte d'attention")
+    couleur_carte_danger = models.CharField(max_length=7, default='#dc3545', verbose_name="Carte d'alerte")
     
     # Couleurs des bordures
     couleur_bordure = models.CharField(max_length=7, default='#bdc3c7', verbose_name="Bordures")
@@ -471,17 +477,20 @@ class ThemeBulletin(SyncTrackedModel):
     date_modification = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name = "Thème de bulletin"
-        verbose_name_plural = "Thèmes de bulletin"
+        verbose_name = "Charte graphique"
+        verbose_name_plural = "Chartes graphiques"
         ordering = ['-par_defaut', '-actif', 'nom']
     
     def __str__(self):
         return f"{self.nom}" + (" (Actif)" if self.actif else "") + (" (Par défaut)" if self.par_defaut else "")
     
     def save(self, *args, **kwargs):
-        # Si ce thème est marqué comme par défaut, désactiver les autres
+        # Une seule charte peut piloter les documents et l'interface d'une école.
         if self.par_defaut:
+            self.actif = True
             ThemeBulletin.objects.filter(ecole=self.ecole, par_defaut=True).exclude(id=self.id).update(par_defaut=False)
+        if self.actif:
+            ThemeBulletin.objects.filter(ecole=self.ecole, actif=True).exclude(id=self.id).update(actif=False)
         super().save(*args, **kwargs)
 
 

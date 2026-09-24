@@ -16,7 +16,22 @@ from .services import (
     STATUTS_HEURES_PAYEES,
     recalculer_salaire_ouvert_pour_date,
 )
-from utilisateurs.utils import user_school, user_is_admin
+from utilisateurs.utils import filter_by_user_school, user_school, user_is_admin
+
+
+def _enseignants_accessibles(user, *, actifs_uniquement=False):
+    """Enseignants visibles, avec accès global réservé au super-administrateur."""
+    enseignants = filter_by_user_school(Enseignant.objects.all(), user)
+    if actifs_uniquement:
+        enseignants = enseignants.filter(statut='ACTIF')
+    return enseignants
+
+
+def _presences_accessibles(user):
+    """Présences visibles selon l'école de l'utilisateur."""
+    return filter_by_user_school(
+        PresenceEnseignant.objects.all(), user, 'enseignant__ecole'
+    )
 
 
 @login_required
@@ -37,9 +52,9 @@ def liste_presences(request):
         date_fin = date.today().strftime('%Y-%m-%d')
     
     # Requête de base
-    presences = PresenceEnseignant.objects.filter(
-        enseignant__ecole=user_school_obj
-    ).select_related('enseignant', 'pointe_par')
+    presences = _presences_accessibles(request.user).select_related(
+        'enseignant', 'pointe_par'
+    )
     
     # Appliquer les filtres
     if date_debut:
@@ -64,9 +79,8 @@ def liste_presences(request):
     )
     
     # Liste des enseignants pour le filtre
-    enseignants = Enseignant.objects.filter(
-        ecole=user_school_obj,
-        statut='ACTIF'
+    enseignants = _enseignants_accessibles(
+        request.user, actifs_uniquement=True
     ).order_by('nom', 'prenoms')
     
     context = {
@@ -111,9 +125,9 @@ def pointer_presence(request):
 
         enseignants_valides = {
             enseignant.id: enseignant
-            for enseignant in Enseignant.objects.filter(
-                id__in=ids, ecole=user_school_obj, statut='ACTIF'
-            )
+            for enseignant in _enseignants_accessibles(
+                request.user, actifs_uniquement=True
+            ).filter(id__in=ids)
         }
         if set(ids) != set(enseignants_valides):
             messages.error(request, "Un enseignant sélectionné n'est pas autorisé.")
@@ -197,15 +211,18 @@ def pointer_presence(request):
         date_pointage_str = date_pointage_obj.strftime('%Y-%m-%d')
     
     # Récupérer les enseignants actifs
-    enseignants = Enseignant.objects.filter(
-        ecole=user_school_obj,
-        statut='ACTIF'
+    enseignants = _enseignants_accessibles(
+        request.user, actifs_uniquement=True
     ).order_by('nom', 'prenoms')
     
     # Récupérer les présences existantes pour cette date
     presences_existantes = {}
     total_heures_jour = Decimal('0')
-    for presence in PresenceEnseignant.objects.filter(date=date_pointage_obj, enseignant__ecole=user_school_obj):
+    presences_du_jour = _presences_accessibles(request.user).filter(
+        date=date_pointage_obj,
+        enseignant__in=enseignants,
+    )
+    for presence in presences_du_jour:
         presences_existantes[presence.enseignant_id] = presence
         if (
             presence.statut in STATUTS_HEURES_PAYEES
@@ -218,8 +235,8 @@ def pointer_presence(request):
     fin_mois = date_pointage_obj
     
     heures_mois_par_enseignant = {}
-    presences_mois = PresenceEnseignant.objects.filter(
-        enseignant__ecole=user_school_obj,
+    presences_mois = _presences_accessibles(request.user).filter(
+        enseignant__in=enseignants,
         date__gte=debut_mois,
         date__lte=fin_mois
     ).values('enseignant_id').annotate(

@@ -514,7 +514,7 @@ def saisie_intelligente(request):
             ).first()
         
         if classe_eleve:
-            eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+            eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
         
         # Récupérer les notes existantes si période sélectionnée
         if periode and eleves and matieres:
@@ -632,7 +632,7 @@ def saisie_intelligente_save(request):
                 continue
             
             try:
-                eleve = Eleve.objects.get(id=eleve_id)
+                eleve = Eleve.pedagogiques.get(id=eleve_id)
                 matiere = MatiereNote.objects.get(id=matiere_id)
 
                 # Sécurité: vérifier que la matière appartient à l'école de l'utilisateur

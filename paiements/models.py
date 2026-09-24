@@ -70,6 +70,11 @@ class Paiement(SyncTrackedModel):
     )
     statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut", db_index=True)
 
+    frais_revision_inclus = models.BooleanField(
+        default=False, verbose_name="Frais de révision inclus",
+        help_text="Réduction de 20 000 GNF sur la scolarité, une fois par année. Le versement reste inchangé.",
+    )
+
     # Informations complémentaires
     reference_externe = models.CharField(
         max_length=100, blank=True, null=True,
@@ -104,6 +109,11 @@ class Paiement(SyncTrackedModel):
             models.Index(fields=['date_creation']),         # Tri par date de création
         ]
         constraints = [
+            models.UniqueConstraint(
+                fields=['eleve', 'annee_scolaire'],
+                condition=models.Q(frais_revision_inclus=True, statut__in=['EN_ATTENTE', 'VALIDE']),
+                name='revision_unique_eleve_annee_active',
+            ),
             models.CheckConstraint(
                 condition=models.Q(montant__gt=0),
                 name='paiement_montant_strictement_positif',
@@ -115,6 +125,15 @@ class Paiement(SyncTrackedModel):
 
     def save(self, *args, **kwargs):
         """Génère automatiquement un numéro de reçu si non défini"""
+        from django.core.exceptions import ValidationError
+        from decimal import InvalidOperation
+        try:
+            montant = Decimal(str(self.montant))
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValidationError({'montant': 'Le montant doit être un nombre positif.'}) from None
+        if not montant.is_finite() or montant <= 0:
+            raise ValidationError({'montant': 'Le montant doit être strictement positif.'})
+        self.montant = montant
         # Figer l'année sur le paiement. La classe de l'élève peut changer au
         # passage à l'année suivante ; un paiement historique ne doit jamais
         # être rejoué dans le nouvel échéancier.
@@ -131,6 +150,9 @@ class Paiement(SyncTrackedModel):
         if annee_ajoutee and kwargs.get('update_fields') is not None:
             kwargs['update_fields'] = set(kwargs['update_fields']) | {'annee_scolaire'}
 
+        from .revisions import verifier_unicite_revision
+        verifier_unicite_revision(self)
+
         if not self.numero_recu:
             from django.utils import timezone
             from django.db import transaction, IntegrityError
@@ -140,32 +162,38 @@ class Paiement(SyncTrackedModel):
 
             # Réessayer quelques fois en cas de collision concurrente
             for _ in range(10):
-                dernier = (
-                    Paiement.objects
-                    .filter(numero_recu__startswith=prefix)
-                    .order_by('-numero_recu')
-                    .first()
-                )
-                if dernier and isinstance(dernier.numero_recu, str) and len(dernier.numero_recu) >= 4:
-                    try:
-                        seq = int(dernier.numero_recu[-4:]) + 1
-                    except ValueError:
-                        seq = 1
-                else:
-                    seq = 1
+                from django.db.models import BigIntegerField, Max
+                from django.db.models.functions import Cast, Substr
+                dernier_numero = Paiement.objects.filter(
+                    numero_recu__regex=rf'^{prefix}[0-9]+$'
+                ).aggregate(maximum=Max(Cast(Substr('numero_recu', len(prefix) + 1), BigIntegerField())))['maximum']
+                seq = (dernier_numero or 0) + 1
 
                 self.numero_recu = f"{prefix}{seq:04d}"
                 try:
-                    super().save(*args, **kwargs)
+                    with transaction.atomic():
+                        super().save(*args, **kwargs)
                     return
                 except IntegrityError:
-                    # Une collision est survenue, on retente avec le numéro suivant
+                    # Le savepoint garde la transaction utilisable après une collision.
+                    if not Paiement.objects.filter(numero_recu=self.numero_recu).exists():
+                        raise
+                    self.numero_recu = ''
                     continue
             else:
                 # Si on n'arrive pas à générer un numéro unique après 10 tentatives
                 raise ValueError("Impossible de générer un numéro de reçu unique après 10 tentatives")
         else:
             super().save(*args, **kwargs)
+
+    @property
+    def precision_revision(self):
+        from .revisions import PRECISION_REVISION
+        return PRECISION_REVISION if self.frais_revision_inclus else ''
+
+    @property
+    def libelle_document(self):
+        return self.type_paiement.nom + (' — ' + self.precision_revision if self.frais_revision_inclus else '')
 
     @property
     def montant_avec_frais(self):
@@ -298,6 +326,10 @@ class EcheancierPaiement(SyncTrackedModel):
 
     def __str__(self):
         return f"Échéancier {self.eleve.nom_complet} - {self.annee_scolaire}"
+
+    @property
+    def libelle_frais_admission(self):
+        return "Frais de réinscription" if self.est_reinscription else "Frais d’inscription"
 
     @property
     def est_reinscription(self):
@@ -449,6 +481,11 @@ class PaiementRemise(SyncTrackedModel):
         verbose_name="Montant de la remise (GNF)"
     )
 
+    origine_revision = models.BooleanField(default=False, editable=False)
+
+    # Le taux accordé est figé; les anciennes lignes sans règle restent fixes.
+    regle_calcul = models.JSONField(default=dict, blank=True, editable=False)
+
     # Portée de la remise (jamais sur l'inscription / réinscription)
     applique_tranche_1 = models.BooleanField(default=False, verbose_name="Appliquée sur la 1ère tranche")
     applique_tranche_2 = models.BooleanField(default=False, verbose_name="Appliquée sur la 2ème tranche")
@@ -493,6 +530,9 @@ class PaiementRemise(SyncTrackedModel):
         verbose_name = "Remise appliquée"
         verbose_name_plural = "Remises appliquées"
         unique_together = ['paiement', 'remise']
+        constraints = [
+            models.UniqueConstraint(fields=['paiement'], condition=models.Q(origine_revision=True), name='revision_unique_lien_paiement'),
+        ]
 
     def __str__(self):
         return f"{self.paiement.numero_recu} - {self.remise.nom} - {self.montant_remise:,.0f} GNF"
@@ -521,6 +561,8 @@ class PaiementRemise(SyncTrackedModel):
     @property
     def libelle_motif(self):
         """Motif lisible, ou mention explicite pour les remises antérieures."""
+        if self.origine_revision:
+            return 'Frais de révision : réduction de 20 000 GNF'
         return self.get_motif_display() if self.motif else "Motif non précisé"
 
 

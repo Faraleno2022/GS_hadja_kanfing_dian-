@@ -258,7 +258,7 @@ def detecter_notes_mensuelles_classe(classe_note, periode=None):
     if not classe_eleve:
         return {'has_notes_mensuelles': False, 'has_compositions': False, 'mode_saisie': 'aucun'}
     
-    eleves_ids = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').values_list('id', flat=True))
+    eleves_ids = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').values_list('id', flat=True))
     matieres_ids = list(MatiereNote.objects.filter(classe=classe_note, actif=True).values_list('id', flat=True))
     
     if not eleves_ids or not matieres_ids:

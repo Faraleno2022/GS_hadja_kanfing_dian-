@@ -216,6 +216,7 @@
             <a href="{% url 'salaires:export_enseignants_csv' %}{% if qs %}?{{ qs }}{% endif %}" class="btn btn-outline-success">
                 <i class="fas fa-file-csv me-1"></i> Exporter CSV
             </a>
+            <a href="{% url 'salaires:cartes_enseignants_pdf' %}{% if qs %}?{{ qs }}{% endif %}" class="btn btn-outline-primary" target="_blank" rel="noopener"><i class="fas fa-id-card me-1"></i>Cartes enseignants</a>
             <a href="{% url 'salaires:export_enseignants_pdf' %}{% if qs %}?{{ qs }}{% endif %}" class="btn btn-outline-danger">
                 <i class="fas fa-file-pdf me-1"></i> Exporter PDF
             </a>
@@ -347,10 +348,20 @@
                     </div>
                     {% endif %}
                     
-                    <!-- Affectations de classes -->
-                    {% if enseignant.affectations.exists %}
+                    <!-- Classe principale, fonction ou affectations secondaires -->
+                    {% if enseignant.classe_principale %}
                     <div class="detail-row">
-                        <span><strong>Classes assignées:</strong></span>
+                        <span><strong>Classe principale :</strong></span>
+                        <span class="badge bg-primary">{{ enseignant.classe_principale.nom }}</span>
+                    </div>
+                    {% elif enseignant.type_enseignant == 'ADMINISTRATEUR' %}
+                    <div class="detail-row">
+                        <span><strong>Fonction :</strong></span>
+                        <span>{{ enseignant.fonction|default:"Non renseignée" }}</span>
+                    </div>
+                    {% elif enseignant.type_enseignant == 'SECONDAIRE' and enseignant.affectations.exists %}
+                    <div class="detail-row">
+                        <span><strong>Affectations :</strong></span>
                         <div class="assignments-list">
                             {% for affectation in enseignant.affectations.all %}
                             {% if affectation.actif %}
@@ -397,10 +408,18 @@
                         <i class="fas fa-eye"></i> Détail
                     </a>
                     
+                    <a href="{% url 'salaires:carte_enseignant_pdf' enseignant.id %}" class="btn btn-outline-primary btn-action" target="_blank" rel="noopener"><i class="fas fa-id-card me-1"></i>Carte enseignant</a>
                     <a href="{% url 'salaires:modifier_enseignant' enseignant.id %}" 
                        class="btn btn-warning btn-action" title="Modifier l'enseignant">
                         <i class="fas fa-edit"></i> Modifier
                     </a>
+
+                    {% if enseignant.type_enseignant == 'SECONDAIRE' %}
+                    <a href="{% url 'salaires:ajouter_affectation' enseignant.id %}"
+                       class="btn btn-outline-primary btn-action" title="Affecter une classe">
+                        <i class="fas fa-chalkboard-teacher"></i> Affecter
+                    </a>
+                    {% endif %}
                     
                     <a href="{% url 'salaires:etats_salaire' %}?enseignant={{ enseignant.id }}" 
                        class="btn btn-info btn-action" title="Voir les salaires">

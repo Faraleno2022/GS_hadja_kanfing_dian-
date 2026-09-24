@@ -133,7 +133,7 @@
                     <i class="fas fa-check me-1"></i>Rétabli le {{ element.date_restauration|date:"d/m/Y" }}
                   </span>
                 {% else %}
-                  <form method="post" action="{% url 'administration:corbeille_restaurer' element.id %}" class="d-inline">
+                  <form method="post" action="{% url 'administration:restaurer_element' element.id %}" class="d-inline">
                     {% csrf_token %}
                     <button type="submit"
                             class="btn btn-sm {% if onglet == 'modifications' %}btn-warning{% else %}btn-primary{% endif %}"

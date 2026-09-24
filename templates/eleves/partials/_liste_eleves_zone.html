@@ -50,6 +50,26 @@
     </div>
     <div class="row g-3 mt-2">
       <div class="col-12">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="fw-semibold"><i class="fas fa-clipboard-check me-1"></i>Test d'accueil :</span>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'eleves:export_test_accueil_excel' 'evalues' %}{% if selected_classe_id %}?classe_id={{ selected_classe_id }}{% endif %}">
+            <i class="fas fa-file-excel me-1"></i>Évalués Excel ({{ stats.eleves_evalues }})
+          </a>
+          <a class="btn btn-sm btn-outline-danger" href="{% url 'eleves:export_test_accueil_pdf' 'evalues' %}{% if selected_classe_id %}?classe_id={{ selected_classe_id }}{% endif %}">
+            <i class="fas fa-file-pdf me-1"></i>Évalués PDF
+          </a>
+          <a class="btn btn-sm btn-outline-success" href="{% url 'eleves:export_test_accueil_excel' 'non-evalues' %}{% if selected_classe_id %}?classe_id={{ selected_classe_id }}{% endif %}">
+            <i class="fas fa-file-excel me-1"></i>Non évalués Excel ({{ stats.eleves_non_evalues }})
+          </a>
+          <a class="btn btn-sm btn-outline-danger" href="{% url 'eleves:export_test_accueil_pdf' 'non-evalues' %}{% if selected_classe_id %}?classe_id={{ selected_classe_id }}{% endif %}">
+            <i class="fas fa-file-pdf me-1"></i>Non évalués PDF
+          </a>
+        </div>
+        <div class="form-text">Ces listes servent au pointage du test d'accueil.</div>
+      </div>
+    </div>
+    <div class="row g-3 mt-2">
+      <div class="col-12">
         <a href="{% url 'eleves:exporter_tous_eleves_template' %}" class="btn btn-outline-secondary">
           <i class="fas fa-file-export me-1"></i>Exporter tous les élèves (pour un autre poste)
         </a>

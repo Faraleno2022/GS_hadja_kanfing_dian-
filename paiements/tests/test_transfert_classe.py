@@ -77,7 +77,7 @@ class TransfertClassePaiementTests(TestCase):
             classe=self.ancienne_classe,
             date_inscription=date(2025, 9, 1),
         )
-        self.type_paiement = TypePaiement.objects.create(nom="Scolarite annuelle")
+        self.type_paiement = TypePaiement.objects.create(nom="Inscription + Annuel")
         self.mode_paiement = ModePaiement.objects.create(nom="Especes transfert")
         self.echeancier = EcheancierPaiement.objects.create(
             eleve=self.eleve,

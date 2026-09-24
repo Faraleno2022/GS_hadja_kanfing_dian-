@@ -76,7 +76,7 @@ class NouvelElevePaiementWorkflowTests(TestCase):
         eleve = Eleve.objects.get(prenom="MARIAMA", nom="DIALLO")
         self.assertEqual(
             response.url,
-            f"{reverse('eleves:ajouter_eleve')}?eleve_ajoute={eleve.pk}&classe_id={self.classe.pk}",
+            reverse('eleves:ajout_eleve_succes', args=[eleve.pk]),
         )
         self.assertNotIn("nouvel_eleve_paiement_id", self.client.session)
 

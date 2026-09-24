@@ -16,7 +16,11 @@
 ;   - Mise à jour (préserve base de données, licences, médias, config)
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.3.3"
+#define MyAppVersion "1.3.18"
+#endif
+
+#ifndef MyBuildDir
+#define MyBuildDir "dist\MySchoolGN"
 #endif
 
 [Setup]
@@ -105,7 +109,7 @@ Type: files; Name: "{app}\_internal\eleves\migrations\__pycache__\0017_alter_cla
 
 [Files]
 ; Application compilée (tout le dossier dist\MySchoolGN)
-Source: "dist\MySchoolGN\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Script de désinstallation
 Source: "desinstaller.bat"; DestDir: "{app}"; Flags: ignoreversion

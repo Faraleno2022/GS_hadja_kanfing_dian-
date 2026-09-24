@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Barèmes de paie{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-xl-8 col-lg-10">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h1 class="h4 mb-0"><i class="fas fa-sliders-h text-primary me-2"></i>Barèmes et signataires de paie</h1>
+                    <p class="text-muted mb-0">{{ ecole.nom }}</p>
+                </div>
+                <a href="{% url 'salaires:documents_paie' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Documents de paie
+                </a>
+            </div>
+
+            <form method="post" class="card shadow-sm border-0" novalidate>
+                {% csrf_token %}
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+                    <h5 class="mb-1">Calcul automatique des primes</h5>
+                    <p class="text-muted small">
+                        Appliqué à chaque calcul de salaire, sauf sur les états dont les primes ont été saisies à la main.
+                    </p>
+                    <div class="row g-3 mb-4">
+                        {% for field in form %}
+                        {% if forloop.counter <= 6 %}
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+
+                    <h5 class="mb-1">Signataires des documents</h5>
+                    <p class="text-muted small">Affichés au bas des états de salaire, de la masse salariale, des acomptes et des fiches d'émargement.</p>
+                    <div class="row g-3">
+                        {% for field in form %}
+                        {% if forloop.counter > 6 %}
+                        <div class="col-md-6">
+                            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card-footer bg-white text-end">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

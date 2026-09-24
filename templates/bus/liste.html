@@ -188,6 +188,7 @@
   <thead>
     <tr>
       <th>Reçu</th>
+      <th>Réf. externe</th>
       <th>Élève</th>
       <th>Classe</th>
       <th>Zone / année</th>
@@ -203,6 +204,7 @@
     {% for a in abonnements %}
     <tr class="{% if a.est_expire %}table-danger{% elif a.est_proche_expiration %}table-warning{% endif %}">
       <td><span class="badge bg-light text-dark">{{ a.numero_recu|default:"—" }}</span></td>
+      <td>{{ a.reference_externe|default:"—" }}</td>
       <td>{{ a.eleve.prenom }} {{ a.eleve.nom }} ({{ a.eleve.matricule }})</td>
       <td>{{ a.eleve.classe.nom }}</td>
       <td>{{ a.grille.zone|default:a.zone }}<br><small class="text-muted">{{ a.annee_scolaire|default:"—" }}</small></td>
@@ -220,7 +222,7 @@
       </td>
     </tr>
     {% empty %}
-    <tr><td colspan="10" class="text-center text-muted py-4">Aucun abonnement trouvé</td></tr>
+    <tr><td colspan="11" class="text-center text-muted py-4">Aucun abonnement trouvé</td></tr>
     {% endfor %}
   </tbody>
 </table>

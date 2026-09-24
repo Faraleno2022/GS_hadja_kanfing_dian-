@@ -178,6 +178,9 @@
             <a href="{% url 'salaires:tableau_bord' %}" class="btn btn-primary me-2">
                 <i class="fas fa-tachometer-alt"></i> Tableau de Bord
             </a>
+            <a href="{% url 'salaires:documents_paie' %}{% if request.GET.periode %}?periode={{ request.GET.periode }}{% endif %}" class="btn btn-outline-primary">
+                <i class="fas fa-folder-open"></i> Documents de paie
+            </a>
             {% with qs=request.GET.urlencode %}
             <a href="{% url 'salaires:export_etats_salaire_csv' %}{% if qs %}?{{ qs }}{% endif %}" class="btn btn-outline-success">
                 <i class="fas fa-file-csv me-1"></i> Exporter CSV
@@ -192,28 +195,40 @@
     <!-- Statistiques -->
     <div class="stats-row">
         <div class="row">
-            <div class="col-md-3">
+            <div class="col-md-2 col-6">
                 <div class="stat-item">
                     <div class="stat-number">{{ totaux.total_etats }}</div>
-                    <div class="stat-label">Total États</div>
+                    <div class="stat-label">Salaires disponibles</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2 col-6">
                 <div class="stat-item">
-                    <div class="stat-number">{{ totaux.montant_total|intcomma }}</div>
-                    <div class="stat-label">Montant Total (GNF)</div>
+                    <div class="stat-number">{{ totaux.total_salaire_base|intcomma }}</div>
+                    <div class="stat-label">Salaire de base</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2 col-6">
+                <div class="stat-item">
+                    <div class="stat-number">{{ totaux.total_primes|intcomma }}</div>
+                    <div class="stat-label">Primes</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-6">
+                <div class="stat-item">
+                    <div class="stat-number">{{ totaux.total_deductions|add:totaux.total_avances|intcomma }}</div>
+                    <div class="stat-label">Retenues + avances</div>
+                </div>
+            </div>
+            <div class="col-md-2 col-6">
                 <div class="stat-item">
                     <div class="stat-number">{{ totaux.en_attente }}</div>
-                    <div class="stat-label">En Attente</div>
+                    <div class="stat-label">En attente</div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2 col-6">
                 <div class="stat-item">
-                    <div class="stat-number">{{ totaux.payes }}</div>
-                    <div class="stat-label">Payés</div>
+                    <div class="stat-number">{{ totaux.total_net|intcomma }}</div>
+                    <div class="stat-label">Total net (GNF)</div>
                 </div>
             </div>
         </div>
@@ -282,6 +297,9 @@
                         </div>
                         <div class="teacher-meta">
                             <i class="fas fa-user-tag me-1"></i>{{ etat.enseignant.get_type_enseignant_display }}
+                            <span class="ms-2">
+                                <i class="fas fa-calendar-check me-1"></i>{{ etat.jours_presence }} j présent{{ etat.jours_presence|pluralize }}
+                            </span>
                             {% if etat.enseignant.type_enseignant == 'SECONDAIRE' %}
                             <span class="ms-2">
                                 <i class="fas fa-clock me-1"></i>{{ etat.total_heures }}h
@@ -356,6 +374,12 @@
                         <span class="text-danger">-{{ etat.deductions|intcomma }} GNF</span>
                     </div>
                     {% endif %}
+                    {% if etat.avances_deduites and etat.avances_deduites > 0 %}
+                    <div class="breakdown-item">
+                        <span><i class="fas fa-hand-holding-usd me-1"></i>Avances récupérées:</span>
+                        <span class="text-warning">-{{ etat.avances_deduites|intcomma }} GNF</span>
+                    </div>
+                    {% endif %}
                     <div class="breakdown-item">
                         <span><strong>Salaire net:</strong></span>
                         <span><strong>{{ etat.salaire_net|intcomma }} GNF</strong></span>
@@ -364,10 +388,14 @@
 
                 <!-- Actions -->
                 <div class="action-buttons">
+                    <a href="{% url 'salaires:ajouter_avance' %}?enseignant={{ etat.enseignant.id }}"
+                       class="btn btn-outline-warning btn-action">
+                        <i class="fas fa-hand-holding-usd"></i> Avance
+                    </a>
                     {% if not etat.valide and not etat.paye %}
                     <a href="{% url 'salaires:ajuster_etat_salaire' etat.id %}"
                        class="btn btn-warning btn-action">
-                        <i class="fas fa-sliders-h"></i> Primes / retenues
+                        <i class="fas fa-sliders-h"></i> Ajuster le salaire
                     </a>
                     <form method="post" action="{% url 'salaires:valider_etat_salaire' etat.id %}" class="d-inline">
                         {% csrf_token %}

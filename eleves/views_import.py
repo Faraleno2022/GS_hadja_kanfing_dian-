@@ -14,6 +14,16 @@ from django.db import transaction
 from eleves.models import Classe, Eleve
 
 
+def peut_importer_eleves(user):
+    return (
+        user.is_staff or
+        user.is_superuser or
+        user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
+        (hasattr(user, 'profil') and user.profil.peut_importer_eleves) or
+        (hasattr(user, 'profil') and user.profil.role == 'COMPTABLE')
+    )
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def importer_eleves(request):
@@ -21,31 +31,18 @@ def importer_eleves(request):
     Vue principale pour importer des élèves
     """
     # Vérifier les permissions
-    peut_importer = (
-        request.user.is_staff or
-        request.user.is_superuser or
-        request.user.groups.filter(name__in=['Administrateurs', 'Directeurs', 'Comptables']).exists() or
-        (hasattr(request.user, 'profil') and request.user.profil.peut_importer_eleves) or
-        (hasattr(request.user, 'profil') and request.user.profil.role == 'COMPTABLE')
-    )
+    peut_importer = peut_importer_eleves(request.user)
 
     if not peut_importer:
         messages.error(request, "Vous n'avez pas la permission d'importer des élèves.")
         return redirect('eleves:liste_eleves')
 
-    # Déterminer l'année scolaire à utiliser : on prend la plus récente existante
-    annee_courante = Classe.objects.order_by('-annee_scolaire').values_list('annee_scolaire', flat=True).first()
-
-    # Récupérer les classes pour cette année scolaire
-    classes = Classe.objects.all()
+    from utilisateurs.utils import filter_by_user_school
+    classes = filter_by_user_school(Classe.objects.all(), request.user)
+    annee_courante = classes.order_by('-annee_scolaire').values_list('annee_scolaire', flat=True).first()
     if annee_courante:
         classes = classes.filter(annee_scolaire=annee_courante)
     classes = classes.order_by('nom')
-
-    # Filtrage par école. Un utilisateur sans école rattachée ne se voit
-    # proposer aucune classe : sans cela il aurait accès à toutes les écoles.
-    from utilisateurs.utils import filter_by_user_school
-    classes = filter_by_user_school(classes, request.user)
 
     context = {
         'classes': classes,
@@ -74,6 +71,7 @@ def _traiter_import_eleves(request):
         classe_id = request.POST.get('classe_id')
         repartition_auto = request.POST.get('repartition_auto') == 'on'
         generer_matricules = request.POST.get('generer_matricules') == 'on'
+        verrouiller = request.POST.get('verrouiller') == 'on'
         fichier = request.FILES.get('fichier')
 
         # Un export global contient déjà École / Classe / Année scolaire. Dans
@@ -144,7 +142,8 @@ def _traiter_import_eleves(request):
                 df=df,
                 classe_id=classe_id,
                 user=request.user,
-                generer_matricules=generer_matricules
+                generer_matricules=generer_matricules,
+                verrouiller=verrouiller,
             )
 
             stats = processor.importer()
@@ -216,6 +215,9 @@ def _traiter_import_eleves(request):
                 request,
                 f"📊 Total traité: {stats['total']} élève(s)"
             )
+
+            if verrouiller:
+                return redirect('eleves:repartir_importes')
 
             # Rediriger vers la liste des élèves de la classe
             return redirect('eleves:gestion_classes')

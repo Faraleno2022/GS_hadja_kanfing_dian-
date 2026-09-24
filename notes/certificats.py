@@ -12,6 +12,7 @@ import logging
 
 from .models import ClasseNote, MatiereNote
 from eleves.models import Eleve, Classe as ClasseEleve
+from ecole_moderne.branding import get_school_branding
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def certificats_appreciation_pdf(request):
             return HttpResponse(f"Classe élèves non trouvée pour {classe_note.nom}", status=404)
         
         # Récupérer les élèves actifs de la classe
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
         
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_note, actif=True)
@@ -104,7 +105,7 @@ def certificats_appreciation_pdf(request):
             eleve_data['rang_formate'] = formater_rang(eleve_data['rang'], sexe)
         
         # Total élèves dans la classe
-        total_eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').count()
+        total_eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').count()
         
         # Encoder le logo en base64 si disponible
         logo_base64 = None
@@ -153,6 +154,7 @@ def certificats_appreciation_pdf(request):
             'est_maternelle': est_maternelle,
             'est_primaire': est_primaire,
             'note_max': 10 if est_primaire else 20,
+            'school_branding': get_school_branding(ecole),
         }
         
         # Générer le HTML - utiliser un template différent pour la maternelle

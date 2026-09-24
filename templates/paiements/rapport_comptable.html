@@ -20,12 +20,18 @@
 <div class="card shadow-sm mb-4 d-print-none">
   <div class="card-body">
     <form method="get" class="row g-3 align-items-end" id="rapportFiltres">
+      <div class="col-md-2">
+        <label class="form-label">Année scolaire</label>
+        <select name="annee_scolaire" class="form-select" onchange="this.form.elements.classe.value = ''">
+          {% for annee in annees_disponibles %}<option value="{{ annee }}" {% if annee == annee_scolaire %}selected{% endif %}>{{ annee }}</option>{% endfor %}
+        </select>
+      </div>
       <div class="col-md-3">
         <label class="form-label">Classe</label>
-        <select name="classe" class="form-select">
+        <select name="classe" class="form-select" onchange="if (this.value) this.form.elements.annee_scolaire.value = this.selectedOptions[0].dataset.year">
           <option value="">Tout l'établissement</option>
           {% for classe in classes %}
-          <option value="{{ classe.id }}" {% if classe_id == classe.id|stringformat:'s' %}selected{% endif %}>{{ classe.nom }} — {{ classe.annee_scolaire }}</option>
+          <option data-year="{{ classe.annee_scolaire }}" value="{{ classe.id }}" {% if classe_id == classe.id|stringformat:'s' %}selected{% endif %}>{{ classe.nom }} — {{ classe.annee_scolaire }}</option>
           {% endfor %}
         </select>
       </div>
@@ -103,7 +109,11 @@ function exportUrl(name) {
   const params = new URLSearchParams(new FormData(document.getElementById('rapportFiltres')));
   return name + '?' + params.toString();
 }
+function updateExports() {
 document.getElementById('exportPdf').href = exportUrl('{% url "paiements:export_rapport_comptable_pdf" %}');
 document.getElementById('exportExcel').href = exportUrl('{% url "paiements:export_rapport_comptable_excel" %}');
+}
+updateExports();
+document.getElementById('rapportFiltres').addEventListener('change', updateExports);
 </script>
 {% endblock %}

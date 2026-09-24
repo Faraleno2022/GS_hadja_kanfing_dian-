@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
@@ -50,7 +51,7 @@ class SchoolFilteringTests(TestCase):
             sexe='M',
             date_naissance=date(2015, 1, 1),
             lieu_naissance="Conakry",
-            date_inscription=date(2024, 9, 1),
+            date_inscription=date(2024, 7, 1),
             responsable_principal=self.resp1,
         )
         self.eleve2 = Eleve.objects.create(
@@ -61,7 +62,7 @@ class SchoolFilteringTests(TestCase):
             sexe='F',
             date_naissance=date(2015, 2, 2),
             lieu_naissance="Conakry",
-            date_inscription=date(2024, 9, 1),
+            date_inscription=date(2024, 7, 1),
             responsable_principal=self.resp2,
         )
         # Payment metadata
@@ -92,7 +93,7 @@ class SchoolFilteringTests(TestCase):
             tranche_2_due=0,
             tranche_3_due=0,
             frais_inscription_paye=30000,
-            date_echeance_inscription=date(2024, 9, 1),
+            date_echeance_inscription=date(2024, 7, 1),
             date_echeance_tranche_1=date(2024, 10, 1),
             date_echeance_tranche_2=date(2025, 1, 1),
             date_echeance_tranche_3=date(2025, 4, 1),
@@ -105,7 +106,7 @@ class SchoolFilteringTests(TestCase):
             tranche_2_due=0,
             tranche_3_due=0,
             frais_inscription_paye=30000,
-            date_echeance_inscription=date(2024, 9, 1),
+            date_echeance_inscription=date(2024, 7, 1),
             date_echeance_tranche_1=date(2024, 10, 1),
             date_echeance_tranche_2=date(2025, 1, 1),
             date_echeance_tranche_3=date(2025, 4, 1),
@@ -224,10 +225,10 @@ class SchoolFilteringTests(TestCase):
         self.assertEqual(eleves_affiches, [self.eleve1.pk])
 
     def test_eleves_soldes_restent_limites_a_ecole(self):
-        self.echeancier1.tranche_1_payee = 100000
-        self.echeancier1.save(update_fields=["tranche_1_payee"])
-        self.echeancier2.tranche_1_payee = 100000
-        self.echeancier2.save(update_fields=["tranche_1_payee"])
+        for paiement in (self.paiement1, self.paiement2):
+            paiement.montant = Decimal('130000')
+            paiement.statut = 'VALIDE'
+            paiement.save()
         self.login1()
 
         response = self.client.get(
@@ -288,7 +289,7 @@ class SchoolFilteringTests(TestCase):
             type_remise="MONTANT_FIXE",
             valeur=5000,
             motif="AUTRE",
-            date_debut=date(2024, 9, 1),
+            date_debut=date(2024, 7, 1),
             date_fin=date(2025, 8, 31),
             actif=True,
         )
@@ -307,7 +308,7 @@ class SchoolFilteringTests(TestCase):
         response = self.client.get(reverse("rapports:rapport_remises"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["date_debut"], date(2024, 9, 1))
+        self.assertEqual(response.context["date_debut"], date(2024, 7, 1))
         self.assertEqual(
             [item.pk for item in response.context["remises_appliquees"]],
             [remise_ecole1.pk],

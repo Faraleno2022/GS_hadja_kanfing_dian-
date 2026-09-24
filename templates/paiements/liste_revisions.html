@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}{{ titre_page }}{% endblock %}
+{% block page_actions %}
+<a class="btn btn-outline-secondary" href="{% url 'paiements:liste_paiements' %}">Retour aux paiements</a>
+<a class="btn btn-outline-success" href="{% url 'paiements:export_revisions_excel' %}?{{ filtres }}">Excel</a>
+<a class="btn btn-outline-primary" href="{% url 'paiements:export_revisions_pdf' %}?{{ filtres }}" target="_blank" rel="noopener">PDF</a>
+{% endblock %}
+{% block content %}
+<div class="card mb-3"><div class="card-body">
+  <h2 class="h4">Élèves ayant payé les frais de révision</h2>
+  <p>Les paiements validés figurent ici. Chaque option déduit <strong>20 000 GNF</strong> de la scolarité, une fois par année.</p>
+  <form method="get" class="row g-3 align-items-end">
+    <div class="col-md-3"><label for="annee" class="form-label">Année scolaire</label><select class="form-select" name="annee_scolaire" id="annee">{% for valeur in annees %}<option value="{{ valeur }}" {% if valeur == annee %}selected{% endif %}>{{ valeur }}</option>{% endfor %}</select></div>
+    <div class="col-md-3"><label for="classe" class="form-label">Classe</label><select class="form-select" name="classe" id="classe"><option value="">Toutes les classes</option>{% for item in classes %}<option value="{{ item.pk }}" {% if item.pk|stringformat:'s' == classe %}selected{% endif %}>{{ item.nom }}</option>{% endfor %}</select></div>
+    <div class="col-md-4"><label for="q" class="form-label">Nom ou matricule</label><input class="form-control" name="q" id="q" value="{{ q }}"></div>
+    <div class="col-md-2"><button class="btn btn-primary" type="submit">Afficher</button></div>
+  </form>
+</div></div>
+{% include 'paiements/_carte_revision.html' %}
+<div class="card"><div class="table-responsive"><table class="table table-striped mb-0">
+<thead><tr><th>Élève</th><th>Matricule</th><th>Classe</th><th>Date</th><th>Versement encaissé</th><th>Révision déduite</th><th>Reçu</th></tr></thead>
+<tbody>{% for paiement in page_obj %}<tr><td>{{ paiement.eleve.nom_complet }}</td><td>{{ paiement.eleve.matricule }}</td><td>{{ paiement.eleve.classe.nom }}</td><td>{{ paiement.date_paiement|date:'d/m/Y' }}</td><td>{{ paiement.montant|intcomma }} GNF</td><td>20 000 GNF</td><td><a href="{% url 'paiements:detail_paiement' paiement.pk %}">{{ paiement.numero_recu }}</a></td></tr>{% empty %}<tr><td colspan="7" class="text-center py-4">Aucun paiement de révision validé pour ces filtres.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% if page_obj.has_other_pages %}<nav class="mt-3" aria-label="Pages">{% if page_obj.has_previous %}<a class="btn btn-outline-primary" href="?{{ filtres }}&page={{ page_obj.previous_page_number }}">Précédent</a>{% endif %} <span class="mx-2">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span> {% if page_obj.has_next %}<a class="btn btn-outline-primary" href="?{{ filtres }}&page={{ page_obj.next_page_number }}">Suivant</a>{% endif %}</nav>{% endif %}
+{% endblock %}

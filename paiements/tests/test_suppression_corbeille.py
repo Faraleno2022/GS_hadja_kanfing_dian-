@@ -56,7 +56,11 @@ class SuppressionPaiementCorbeilleTest(TestCase):
             date_inscription=date(2025, 9, 1),
             responsable_principal=responsable,
         )
-        self.type_paiement = TypePaiement.objects.create(nom='Scolarité Corbeille')
+        # Le scénario attend une affectation séquentielle commençant par
+        # l'inscription : le libellé doit donc inclure explicitement ce poste.
+        self.type_paiement = TypePaiement.objects.create(
+            nom='Inscription + Scolarité Corbeille'
+        )
         self.mode_paiement = ModePaiement.objects.create(nom='Espèces Corbeille')
         self.echeancier = EcheancierPaiement.objects.create(
             eleve=self.eleve,

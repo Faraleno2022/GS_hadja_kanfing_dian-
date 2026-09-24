@@ -32,7 +32,7 @@
             <td><strong>{{ bien.nom }}</strong><br><small class="text-muted">{{ bien.code_bien }} — {{ bien.get_unite_mesure_display }}</small></td>
             <td><span class="badge bg-light text-dark">{{ bien.get_type_bien_display }}</span><br><small>{{ bien.get_etat_display }}</small></td>
             <td>{{ bien.localisation }}</td>
-            <td class="text-center">{{ bien.quantite_achetee }}</td><td class="text-center">{{ bien.quantite_utilisee }}</td><td class="text-center text-danger">{{ bien.quantite_gatee }}</td><td class="text-center fw-bold text-success">{{ bien.quantite_disponible }}</td>
+            <td class="text-center">{{ bien.quantite_achetee }}</td><td class="text-center">{{ bien.quantite_utilisee }}</td><td class="text-center text-danger">{{ bien.quantite_gatee_effective }}</td><td class="text-center fw-bold text-success">{{ bien.quantite_disponible }}</td>
             <td class="text-end">{{ bien.prix_achat_unitaire|intcomma }}</td><td class="text-end fw-bold">{{ bien.valeur_totale_achat|intcomma }} GNF</td>
             <td><a href="{% url 'depenses:modifier_bien' bien.id %}" class="btn btn-sm btn-outline-primary" title="Modifier"><i class="fas fa-edit"></i></a></td>
         </tr>{% empty %}<tr><td colspan="10" class="text-center text-muted py-5"><i class="fas fa-inbox fa-3x mb-3 d-block"></i>Aucun bien trouvé.</td></tr>{% endfor %}

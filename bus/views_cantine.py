@@ -101,7 +101,8 @@ def _abonnements_cantine_filtres(request):
             Q(eleve__nom__icontains=q) |
             Q(eleve__prenom__icontains=q) |
             Q(eleve__matricule__icontains=q) |
-            Q(contact_parent__icontains=q)
+            Q(contact_parent__icontains=q) |
+            Q(reference_externe__icontains=q)
         )
     
     # Filtres
@@ -299,7 +300,7 @@ def export_cantine_excel(request):
     headers = [
         'Matricule', 'Nom', 'Prénom', 'Classe', 'Type Repas', 'Périodicité', 
         'Montant (GNF)', 'Date Début', 'Date Expiration', 'Jours Restants', 
-        'Statut', 'Régime Alimentaire', 'Allergies', 'Contact Parent'
+        'Statut', 'Référence externe', 'Régime Alimentaire', 'Allergies', 'Contact Parent'
     ]
     ws.append(headers)
     
@@ -317,6 +318,7 @@ def export_cantine_excel(request):
             abo.date_expiration.strftime('%d/%m/%Y'),
             abo.jours_restants,
             abo.get_statut_display(),
+            abo.reference_externe or '',
             abo.regime_alimentaire or '',
             abo.allergies or '',
             abo.contact_parent or '',
@@ -472,11 +474,13 @@ def generer_recu_cantine_pdf(request, abo_id):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+    ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole_obj)
     
     # Filigrane
     try:
         from ecole_moderne.pdf_utils import draw_logo_watermark
-        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
         draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=ecole_obj)
     except Exception:
         pass
@@ -484,8 +488,6 @@ def generer_recu_cantine_pdf(request, abo_id):
     # Logo de l'école en haut à gauche
     try:
         logo_path = None
-        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
-        
         if ecole_obj and hasattr(ecole_obj, 'logo'):
             school_logo_path = getattr(getattr(ecole_obj, 'logo', None), 'path', None)
             if school_logo_path and os.path.exists(school_logo_path):
@@ -505,6 +507,7 @@ def generer_recu_cantine_pdf(request, abo_id):
         pass
     
     # Titre
+    c.setFillColor(palette['primary'])
     c.setFont('Helvetica-Bold', 18)
     title = 'REÇU ABONNEMENT CANTINE SCOLAIRE'
     tw = c.stringWidth(title, 'Helvetica-Bold', 18)
@@ -514,6 +517,7 @@ def generer_recu_cantine_pdf(request, abo_id):
     try:
         ecole_nom = getattr(ecole_obj, 'nom', '')
         if ecole_nom:
+            c.setFillColor(palette['secondary'])
             c.setFont('Helvetica-Bold', 12)
             tw_ecole = c.stringWidth(ecole_nom, 'Helvetica-Bold', 12)
             c.drawString((width - tw_ecole)/2, height - 70, ecole_nom)
@@ -569,8 +573,10 @@ def generer_recu_cantine_pdf(request, abo_id):
     
     def line(lbl, val):
         nonlocal y
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         c.drawString(40, y, f"{lbl} :")
+        c.setFillColor(palette['text'])
         c.setFont('Helvetica', 12)
         c.drawString(200, y, str(val))
         y -= 20
@@ -582,6 +588,8 @@ def generer_recu_cantine_pdf(request, abo_id):
     line('Type de repas', abo.get_type_repas_display())
     line('Périodicité', abo.get_periodicite_display())
     line('Montant', f"{int(abo.montant):,}".replace(',', ' ') + ' GNF')
+    if abo.reference_externe:
+        line('Référence externe', abo.reference_externe)
     line('Début', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
     line('Expiration', abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else '')
     

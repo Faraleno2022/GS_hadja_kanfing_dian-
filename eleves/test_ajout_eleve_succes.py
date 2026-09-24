@@ -43,9 +43,9 @@ class AjoutEleveSuccesTests(SimpleTestCase):
         self.assertEqual(template_name, 'eleves/ajout_eleve_succes.html')
         self.assertEqual(
             context['paiement_url'],
-            reverse('paiements:ajouter_paiement_eleve', kwargs={'eleve_id': 42}),
+            reverse('paiements:ajouter_paiement_eleve', kwargs={'eleve_id': 42}) + '?origine=ajout_eleve',
         )
         self.assertEqual(
             context['continuer_url'],
-            f"{reverse('eleves:ajouter_eleve')}?classe_id=8",
+            f"{reverse('eleves:ajouter_eleve')}?continuer=1&classe_id=8",
         )

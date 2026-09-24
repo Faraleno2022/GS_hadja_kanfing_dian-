@@ -1,42 +1,64 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse, Http404
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q, Sum, Count, Avg
+from django.db.models import Q, Sum, Count, Avg, DecimalField, F, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import csv
 import os
+from xml.sax.saxutils import escape
 from django.conf import settings
 
 # ReportLab for PDF exports
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from ecole_moderne.branding import get_reportlab_palette
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 
 from .models import (
-    Enseignant, AffectationClasse, PeriodeSalaire, 
-    EtatSalaire, DetailHeuresClasse, TypeEnseignant, PresenceEnseignant
+    Enseignant, AffectationClasse, PeriodeSalaire,
+    EtatSalaire, DetailHeuresClasse, ModeCalculHoraire, TypeEnseignant,
+    PresenceEnseignant,
+    AvanceSalaire,
+    ParametrePaie,
 )
 from .forms import (
     AffectationClasseForm,
+    AvanceSalaireForm,
     EnseignantForm,
     EtatSalaireAjustementForm,
+    ParametrePaieForm,
     PresenceForm,
 )
 from .services import (
+    appliquer_primes_bareme,
+    arrondir_heures,
+    arrondir_montant,
     calculer_etat_salaire,
     enseignants_eligibles,
+    initialiser_etats_salaire_periode,
     recalculer_salaire_ouvert_pour_date,
+    reconstruire_details_heures,
+    resume_pointage,
+    synthese_etats_salaire,
+    synchroniser_avances_enseignant,
 )
 from eleves.models import Ecole, Classe
-from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.utils import (
+    filter_by_user_school,
+    user_is_admin,
+    user_is_superadmin,
+    user_school,
+)
 from utilisateurs.permissions import can_add_teachers
 from ecole_moderne.security_decorators import delete_permission_required, require_school_object
 
@@ -51,11 +73,61 @@ def _ecole_utilisateur(request):
     """Compat: utiliser l'utilitaire centralisé"""
     return user_school(request.user)
 
+
+def _resume_classe_ou_fonction(enseignant):
+    """Retourne l'affectation lisible sans mélanger les différents profils."""
+    if enseignant.utilise_classe_principale:
+        return (
+            enseignant.classe_principale.nom
+            if enseignant.classe_principale_id else 'Classe non renseignée'
+        )
+    if enseignant.type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+        return enseignant.fonction or 'Fonction non renseignée'
+
+    aujourd_hui = timezone.localdate()
+    affectations = [
+        affectation.classe.nom
+        for affectation in enseignant.affectations.all()
+        if (
+            affectation.actif
+            and affectation.date_debut <= aujourd_hui
+            and (
+                affectation.date_fin is None
+                or affectation.date_fin >= aujourd_hui
+            )
+        )
+    ]
+    return ', '.join(affectations) or 'Aucune affectation'
+
+
+def _champs_paie(form):
+    return [
+        form[champ]
+        for champ in (
+            'matricule', 'prime_fonction', 'prime_performance',
+            'prime_exceptionnelle', 'distance_km',
+        )
+    ]
+
+
+def _clore_affectations_secondaires_si_necessaire(enseignant):
+    """Ferme les anciennes affectations lorsqu'un dossier quitte le secondaire."""
+    if enseignant.type_enseignant == TypeEnseignant.SECONDAIRE:
+        return
+    aujourd_hui = timezone.localdate()
+    for affectation in enseignant.affectations.filter(actif=True):
+        affectation.actif = False
+        affectation.date_fin = max(affectation.date_debut, aujourd_hui)
+        affectation.save(update_fields=['actif', 'date_fin', 'date_modification'])
+
 @login_required
 def tableau_bord(request):
     """Tableau de bord du module Salaires"""
     ecole_user = _ecole_utilisateur(request)
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
+    # Seul le super-administrateur dispose d'une vue globale. Un administrateur
+    # d'école reste limité à son établissement et un compte sans école ne voit
+    # aucune donnée d'un autre établissement.
+    restreindre = not request.user.is_superuser
 
     # Statistiques générales
     base_qs = Enseignant.objects.all()
@@ -67,6 +139,30 @@ def tableau_bord(request):
         'enseignants_taux_horaire': base_qs.filter(type_enseignant='SECONDAIRE').count(),
         'enseignants_salaire_fixe': base_qs.exclude(type_enseignant='SECONDAIRE').count(),
     }
+
+    avances_qs = filter_by_user_school(
+        AvanceSalaire.objects.all(), request.user, 'enseignant__ecole'
+    )
+    avances_qs = avances_qs.annotate(
+        deja_rembourse=Coalesce(
+            Sum(
+                'remboursements__montant',
+                filter=Q(remboursements__etat_salaire__valide=True),
+            ),
+            Value(Decimal('0')),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        )
+    )
+    stats['avances_en_cours'] = avances_qs.filter(
+        montant__gt=F('deja_rembourse')
+    ).count()
+    stats['solde_avances'] = sum(
+        (
+            max(avance.montant - avance.deja_rembourse, Decimal('0'))
+            for avance in avances_qs
+        ),
+        Decimal('0'),
+    )
     
     # Période courante
     periode_courante = None
@@ -87,9 +183,12 @@ def tableau_bord(request):
     
     # Statistiques par école
     stats_ecoles = []
-    ecoles_iter = Ecole.objects.all()
-    if restreindre:
-        ecoles_iter = ecoles_iter.filter(id=ecole_user.id)
+    if request.user.is_superuser:
+        ecoles_iter = Ecole.objects.all()
+    elif ecole_user is not None:
+        ecoles_iter = Ecole.objects.filter(id=ecole_user.id)
+    else:
+        ecoles_iter = Ecole.objects.none()
     for ecole in ecoles_iter:
         enseignants_ecole = Enseignant.objects.filter(ecole=ecole, statut='ACTIF')
         stats_ecoles.append({
@@ -108,7 +207,7 @@ def tableau_bord(request):
     if restreindre:
         enseignants_base = enseignants_base.filter(ecole=ecole_user)
     enseignants_sans_affectation = (
-        enseignants_base
+        enseignants_base.filter(type_enseignant=TypeEnseignant.SECONDAIRE)
         .annotate(
             nb_actives=Count(
                 'affectations',
@@ -128,6 +227,24 @@ def tableau_bord(request):
             'type': 'warning',
             'message': f'{enseignants_sans_affectation} enseignant(s) sans affectation de classe',
             'action': 'Gérer les affectations'
+        })
+
+    enseignants_sans_classe = enseignants_base.filter(
+        type_enseignant__in=[
+            TypeEnseignant.GARDERIE,
+            TypeEnseignant.MATERNELLE,
+            TypeEnseignant.PRIMAIRE,
+        ],
+        classe_principale__isnull=True,
+    ).count()
+    if enseignants_sans_classe > 0:
+        alertes.append({
+            'type': 'warning',
+            'message': (
+                f'{enseignants_sans_classe} enseignant(s) de garderie, '
+                'maternelle ou primaire sans classe principale'
+            ),
+            'action': 'Compléter les dossiers',
         })
     
     # Vérifier les périodes non clôturées
@@ -157,7 +274,7 @@ def tableau_bord(request):
 def liste_enseignants(request):
     """Liste des enseignants avec filtres"""
     ecole_user = _ecole_utilisateur(request)
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
+    restreindre = not user_is_superadmin(request.user)
 
     # Récupération des paramètres de filtrage
     search = request.GET.get('search', '')
@@ -166,7 +283,9 @@ def liste_enseignants(request):
     statut = request.GET.get('statut', '')
     
     # Construction de la requête
-    enseignants = Enseignant.objects.select_related('ecole').prefetch_related('affectations__classe')
+    enseignants = Enseignant.objects.select_related(
+        'ecole', 'classe_principale'
+    ).prefetch_related('affectations__classe')
     if restreindre:
         enseignants = enseignants.filter(ecole=ecole_user)
     
@@ -231,8 +350,10 @@ def export_enseignants_csv(request):
     statut = request.GET.get('statut', '')
 
     ecole_user = _ecole_utilisateur(request)
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
-    enseignants = Enseignant.objects.select_related('ecole')
+    restreindre = not user_is_superadmin(request.user)
+    enseignants = Enseignant.objects.select_related(
+        'ecole', 'classe_principale'
+    ).prefetch_related('affectations__classe')
     if restreindre:
         enseignants = enseignants.filter(ecole=ecole_user)
     if search:
@@ -253,7 +374,7 @@ def export_enseignants_csv(request):
     writer = csv.writer(response)
     writer.writerow([
         'Ecole', 'Nom', 'Prénoms', 'Email', 'Téléphone', 'Type', 'Statut',
-        'Salaire Fixe', 'Taux Horaire', 'Heures Mensuelles'
+        'Classe / Fonction', 'Salaire Fixe', 'Taux Horaire', 'Heures Mensuelles'
     ])
 
     for ens in enseignants.order_by('ecole__nom', 'nom'):
@@ -265,6 +386,7 @@ def export_enseignants_csv(request):
             getattr(ens, 'telephone', ''),
             ens.type_enseignant,
             ens.statut,
+            _resume_classe_ou_fonction(ens),
             ens.salaire_fixe or '',
             ens.taux_horaire or '',
             ens.heures_mensuelles or ''
@@ -283,8 +405,11 @@ def export_enseignants_pdf(request):
     statut = request.GET.get('statut', '')
 
     ecole_user = _ecole_utilisateur(request)
-    restreindre = not user_is_admin(request.user) and ecole_user is not None
-    enseignants = Enseignant.objects.select_related('ecole')
+    palette = get_reportlab_palette(ecole_user)
+    restreindre = not user_is_superadmin(request.user)
+    enseignants = Enseignant.objects.select_related(
+        'ecole', 'classe_principale'
+    ).prefetch_related('affectations__classe')
     if restreindre:
         enseignants = enseignants.filter(ecole=ecole_user)
     if search:
@@ -308,6 +433,7 @@ def export_enseignants_pdf(request):
     doc = SimpleDocTemplate(response, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=60, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
+    styles['Title'].textColor = palette['primary']
     cell_style = ParagraphStyle(
         name='Cell',
         parent=styles['Normal'],
@@ -322,7 +448,7 @@ def export_enseignants_pdf(request):
     # Table avec largeurs de colonnes et wrap des textes
     data = [[
         'École', 'Nom', 'Prénoms', 'Email', 'Téléphone', 'Type', 'Statut',
-        'Salaire Fixe', 'Taux Horaire', 'Heures Mensuelles'
+        'Classe / Fonction', 'Salaire Fixe', 'Taux Horaire', 'Heures Mensuelles'
     ]]
 
     def P(txt):
@@ -353,32 +479,34 @@ def export_enseignants_pdf(request):
             P(getattr(ens, 'telephone', '')),
             P(ens.type_enseignant),
             P(ens.statut),
+            P(_resume_classe_ou_fonction(ens)),
             f"{ens.salaire_fixe:,}".replace(',', ' ') if ens.salaire_fixe is not None else '',
             f"{ens.taux_horaire:,}".replace(',', ' ') if ens.taux_horaire is not None else '',
             f"{ens.heures_mensuelles:,}".replace(',', ' ') if ens.heures_mensuelles is not None else ''
         ])
 
     col_widths = [
-        3.4*cm,  # École (élargi pour éviter le retour à la ligne)
-        2.6*cm,  # Nom
-        3.2*cm,  # Prénoms
-        4.2*cm,  # Email
-        2.6*cm,  # Téléphone
-        2.6*cm,  # Type
-        2.2*cm,  # Statut
-        2.6*cm,  # Salaire Fixe
-        2.6*cm,  # Taux Horaire
-        2.3*cm,  # Heures Mensuelles
+        3.0*cm,  # École
+        2.2*cm,  # Nom
+        2.6*cm,  # Prénoms
+        3.1*cm,  # Email
+        2.2*cm,  # Téléphone
+        2.1*cm,  # Type
+        1.7*cm,  # Statut
+        3.0*cm,  # Classe / Fonction
+        2.2*cm,  # Salaire Fixe
+        2.2*cm,  # Taux Horaire
+        1.8*cm,  # Heures Mensuelles
     ]
 
     table = Table(data, repeatRows=1, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('BACKGROUND', (0,0), (-1,0), palette['header']),
+        ('TEXTCOLOR', (0,0), (-1,0), palette['header_text']),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,0), 8),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
+        ('GRID', (0,0), (-1,-1), 0.25, palette['border']),
         # Le corps utilise ParagraphStyle(Cell) à 7pt; on maintient ici pour les cellules non-Paragraph
         ('FONTSIZE', (0,1), (-1,-1), 7),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -448,7 +576,7 @@ def detail_enseignant(request, enseignant_id):
     """Détail d'un enseignant"""
     ecole_user = _ecole_utilisateur(request)
     qs = Enseignant.objects.all()
-    if not user_is_admin(request.user) and ecole_user is not None:
+    if not user_is_superadmin(request.user):
         qs = qs.filter(ecole=ecole_user)
     
     try:
@@ -479,6 +607,12 @@ def detail_enseignant(request, enseignant_id):
     etats_salaire = enseignant.etats_salaire.select_related(
         'periode'
     ).order_by('-periode__annee', '-periode__mois')[:12]
+
+    avances_salaire = list(
+        enseignant.avances_salaire.select_related('periode_prevue')
+        .prefetch_related('remboursements')
+        .order_by('-date_avance', '-id')[:10]
+    )
     
     # Statistiques
     stats = {
@@ -501,6 +635,7 @@ def detail_enseignant(request, enseignant_id):
         'affectations_actuelles': affectations_actuelles,
         'historique_affectations': historique_affectations,
         'etats_salaire': etats_salaire,
+        'avances_salaire': avances_salaire,
         'stats': stats,
     }
     
@@ -513,15 +648,34 @@ def ajouter_affectation(request, enseignant_id):
     """Créer une affectation de classe pour un enseignant"""
     ecole_user = _ecole_utilisateur(request)
     qs = Enseignant.objects.all()
-    if not user_is_admin(request.user) and ecole_user is not None:
+    if not user_is_superadmin(request.user):
         qs = qs.filter(ecole=ecole_user)
     enseignant = get_object_or_404(qs, id=enseignant_id)
+
+    if enseignant.type_enseignant != TypeEnseignant.SECONDAIRE:
+        messages.info(
+            request,
+            "Utilisez le champ « Classe principale » pour la garderie, "
+            "la maternelle et le primaire."
+        )
+        return redirect('salaires:modifier_enseignant', enseignant_id=enseignant.id)
 
     if request.method == 'POST':
         form = AffectationClasseForm(request.POST, enseignant=enseignant)
         if form.is_valid():
-            form.save()
-            messages.success(request, 'Affectation créée avec succès.')
+            with transaction.atomic():
+                form.save()
+                _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
+                    enseignant, timezone.localdate(), request.user
+                )
+            messages.success(
+                request,
+                'Affectation créée avec succès.'
+                + (
+                    ' Le salaire du mois ouvert a été recalculé.'
+                    if salaire_recalcule else ''
+                )
+            )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire.")
@@ -674,12 +828,13 @@ def etats_salaire(request):
         ecoles = ecoles.filter(id=ecole_user.id)
     
     # Statistiques des résultats filtrés
-    totaux = {
-        'total_etats': etats.count(),
-        'montant_total': etats.aggregate(total=Sum('salaire_net'))['total'] or 0,
+    totaux = synthese_etats_salaire(etats)
+    # Clés historiques conservées pour les cartes déjà présentes.
+    totaux.update({
+        'montant_total': totaux['total_net'],
         'en_attente': etats.filter(valide=False).count(),
         'payes': etats.filter(paye=True).count(),
-    }
+    })
     
     context = {
         'page_obj': page_obj,
@@ -732,13 +887,18 @@ def export_etats_salaire_csv(request):
 
     etats = etats.order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
 
+    synthese = synthese_etats_salaire(etats)
+
     # Générer le CSV
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = 'attachment; filename="etats_salaire.csv"'
     writer = csv.writer(response)
     writer.writerow([
         'Ecole', 'Periode', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
+        'Matricule', 'Salaire Base',
+        *[libelle for _, libelle in EtatSalaire.RUBRIQUES_PRIMES],
+        'Primes', 'Retenues', 'Avances déduites',
+        'Salaire Net', 'Total Heures', 'Date Calcul'
     ])
 
     for e in etats:
@@ -749,11 +909,29 @@ def export_etats_salaire_csv(request):
             getattr(e.enseignant, 'type_enseignant', ''),
             'Oui' if e.valide else 'Non',
             'Oui' if e.paye else 'Non',
+            e.enseignant.matricule,
             e.salaire_base,
+            *[getattr(e, champ) for champ, _ in EtatSalaire.RUBRIQUES_PRIMES],
+            e.primes,
+            e.deductions,
+            e.avances_deduites,
             e.salaire_net,
             e.total_heures if e.total_heures is not None else '',
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
+
+    writer.writerow([
+        'TOTAL CUMULÉ', '', f"{synthese['total_etats']} salaire(s)", '', '', '',
+        '',
+        synthese['total_salaire_base'],
+        *[''] * len(EtatSalaire.RUBRIQUES_PRIMES),
+        synthese['total_primes'],
+        synthese['total_deductions'],
+        synthese['total_avances'],
+        synthese['total_net'],
+        synthese['total_heures'],
+        '',
+    ])
 
     return response
 
@@ -790,6 +968,7 @@ def export_etats_salaire_pdf(request):
         )
 
     etats = etats.order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
+    synthese = synthese_etats_salaire(etats)
 
     # Préparer la réponse HTTP
     response = HttpResponse(content_type='application/pdf')
@@ -800,39 +979,140 @@ def export_etats_salaire_pdf(request):
     elements = []
     styles = getSampleStyleSheet()
 
-    title_text = "États de salaire"
+    periode_label = ''
+    periode_obj = None
+    if periode_id:
+        periode_obj = (
+            PeriodeSalaire.objects.select_related('ecole')
+            .filter(pk=periode_id)
+            .first()
+        )
+        if periode_obj:
+            periode_label = periode_obj.nom_periode
+    ecole_document = periode_obj.ecole if periode_obj else ecole_user
+    palette = get_reportlab_palette(ecole_document)
+    styles['Title'].textColor = palette['primary']
+    title_text = (
+        f"État de salaire mensuel - {periode_label}"
+        if periode_label else "États de salaire cumulés"
+    )
     elements.append(Paragraph(title_text, styles['Title']))
     elements.append(Spacer(1, 0.5*cm))
 
+    resume = Table(
+        [[
+            f"Salaires disponibles : {synthese['total_etats']}",
+            f"Base : {synthese['total_salaire_base']:,.0f} GNF".replace(',', ' '),
+            f"Primes : {synthese['total_primes']:,.0f} GNF".replace(',', ' '),
+            f"Retenues + avances : {(synthese['total_deductions'] + synthese['total_avances']):,.0f} GNF".replace(',', ' '),
+            f"TOTAL NET : {synthese['total_net']:,.0f} GNF".replace(',', ' '),
+        ]],
+        colWidths=[4.1*cm, 4.2*cm, 3.8*cm, 5.2*cm, 4.8*cm],
+    )
+    resume.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-2, 0), palette['primary_soft']),
+        ('BACKGROUND', (-1, 0), (-1, 0), palette['card_success_soft']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['text']),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 8),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        ('BOX', (0, 0), (-1, 0), 0.5, palette['border']),
+        ('INNERGRID', (0, 0), (-1, 0), 0.25, palette['table']),
+        ('TOPPADDING', (0, 0), (-1, 0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 7),
+    ]))
+    elements.append(resume)
+    elements.append(Spacer(1, 0.4*cm))
+
     # Table
-    data = [[
-        'École', 'Période', 'Enseignant', 'Type', 'Valide', 'Payé',
-        'Salaire Base', 'Salaire Net', 'Total Heures', 'Date Calcul'
-    ]]
+    cellule_style = ParagraphStyle(
+        'EtatSalaireCellule',
+        parent=styles['BodyText'],
+        fontName='Helvetica',
+        fontSize=6.4,
+        leading=7.4,
+        alignment=1,
+        spaceAfter=0,
+        spaceBefore=0,
+    )
+    entete_style = ParagraphStyle(
+        'EtatSalaireEntete',
+        parent=cellule_style,
+        fontName='Helvetica-Bold',
+        fontSize=6.3,
+        leading=7.2,
+        textColor=palette['header_text'],
+    )
+
+    def cellule(texte, style=cellule_style):
+        return Paragraph(escape(str(texte)), style)
+
+    def montant_pdf(montant):
+        return f"{Decimal(montant or 0):,.0f}".replace(',', ' ')
+
+    entetes = [
+        'École', 'Période', 'Enseignant', 'Type', 'Validé', 'Payé',
+        'Salaire base', 'Primes', 'Retenues', 'Avances',
+        'Salaire net', 'Heures', 'Date calcul'
+    ]
+    data = [[cellule(texte, entete_style) for texte in entetes]]
     for e in etats:
         data.append([
-            getattr(e.periode.ecole, 'nom', ''),
-            f"{e.periode.mois:02d}/{e.periode.annee}",
-            getattr(e.enseignant, 'nom_complet', str(e.enseignant)),
-            getattr(e.enseignant, 'type_enseignant', ''),
-            'Oui' if e.valide else 'Non',
-            'Oui' if e.paye else 'Non',
-            e.salaire_base,
-            e.salaire_net,
-            e.total_heures if e.total_heures is not None else '',
-            e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
+            cellule(getattr(e.periode.ecole, 'nom', '')),
+            cellule(f"{e.periode.mois:02d}/{e.periode.annee}"),
+            cellule(getattr(e.enseignant, 'nom_complet', str(e.enseignant))),
+            cellule(e.enseignant.get_type_enseignant_display()),
+            cellule('Oui' if e.valide else 'Non'),
+            cellule('Oui' if e.paye else 'Non'),
+            cellule(montant_pdf(e.salaire_base)),
+            cellule(montant_pdf(e.primes)),
+            cellule(montant_pdf(e.deductions)),
+            cellule(montant_pdf(e.avances_deduites)),
+            cellule(montant_pdf(e.salaire_net)),
+            cellule(e.total_heures if e.total_heures is not None else '-'),
+            cellule(e.date_calcul.strftime('%d/%m/%Y') if e.date_calcul else '-'),
         ])
 
-    table = Table(data, repeatRows=1)
+    data.append([
+        cellule('TOTAL', entete_style), '',
+        cellule(f"{synthese['total_etats']} salaire(s)", entete_style),
+        '', '', '',
+        cellule(montant_pdf(synthese['total_salaire_base']), entete_style),
+        cellule(montant_pdf(synthese['total_primes']), entete_style),
+        cellule(montant_pdf(synthese['total_deductions']), entete_style),
+        cellule(montant_pdf(synthese['total_avances']), entete_style),
+        cellule(montant_pdf(synthese['total_net']), entete_style),
+        cellule(f"{synthese['total_heures']:.2f}", entete_style),
+        '',
+    ])
+
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[
+            3.4*cm, 1.35*cm, 2.7*cm, 1.9*cm, 1.05*cm, 0.95*cm,
+            2.05*cm, 1.45*cm, 1.55*cm, 1.45*cm, 2.05*cm, 1.15*cm,
+            1.7*cm,
+        ],
+        hAlign='CENTER',
+    )
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+        ('BACKGROUND', (0,0), (-1,0), palette['header']),
+        ('TEXTCOLOR', (0,0), (-1,0), palette['header_text']),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('FONTSIZE', (0,0), (-1,0), 6.3),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('GRID', (0,0), (-1,-1), 0.25, palette['border']),
+        ('FONTSIZE', (0,1), (-1,-1), 6.4),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LEFTPADDING', (0,0), (-1,-1), 2),
+        ('RIGHTPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('BACKGROUND', (0,-1), (-1,-1), palette['card_success_soft']),
+        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+        ('LINEABOVE', (0,-1), (-1,-1), 1, palette['card_success']),
     ]))
     elements.append(table)
 
@@ -846,12 +1126,18 @@ def export_etats_salaire_pdf(request):
         # Chercher logo d'école prioritaire
         school_logo_path = None
         try:
-            if ecole_user and getattr(ecole_user, 'logo', None) and hasattr(ecole_user.logo, 'path') and os.path.exists(ecole_user.logo.path):
-                school_logo_path = ecole_user.logo.path
+            if ecole_document and getattr(ecole_document, 'logo', None) and hasattr(ecole_document.logo, 'path') and os.path.exists(ecole_document.logo.path):
+                school_logo_path = ecole_document.logo.path
         except Exception:
             school_logo_path = None
         if not school_logo_path:
-            school_logo_path = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
+            for nom_logo in ('le-jourdain.jpg', 'logo.jpeg', 'logo.png'):
+                candidat = os.path.join(
+                    getattr(settings, 'BASE_DIR', ''), 'static', 'logos', nom_logo
+                )
+                if os.path.exists(candidat):
+                    school_logo_path = candidat
+                    break
 
         # En-tête avec logo
         try:
@@ -860,7 +1146,7 @@ def export_etats_salaire_pdf(request):
         except Exception:
             pass
         canvas.setFont('Helvetica-Bold', 8)
-        school_label = getattr(ecole_user, 'nom', None) or title_text
+        school_label = getattr(ecole_document, 'nom', None) or title_text
         canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, school_label)
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
@@ -935,13 +1221,15 @@ def calculer_salaires(request, periode_id):
             f"{exc}",
         )
     
-    return redirect('salaires:etats_salaire')
+    return redirect(
+        f"{reverse('salaires:etats_salaire')}?periode={periode_id}"
+    )
 
 
 @login_required
 @require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
 def ajuster_etat_salaire(request, etat_id):
-    """Modifier les primes, retenues et observations avant validation."""
+    """Modifier les éléments d'un salaire avant sa validation finale."""
     etat = get_object_or_404(
         EtatSalaire.objects.select_related('enseignant', 'periode'), id=etat_id
     )
@@ -962,23 +1250,84 @@ def ajuster_etat_salaire(request, etat_id):
                     messages.error(request, "Cet état ne peut plus être ajusté.")
                     return redirect('salaires:etats_salaire')
 
-                etat_verrouille.primes = form.cleaned_data['primes']
+                ancien_total = arrondir_heures(etat_verrouille.total_heures)
+                ancien_taux = arrondir_montant(
+                    etat_verrouille.taux_horaire_applique
+                )
+
+                # Libérer d'abord les avances provisoirement imputées. Elles
+                # seront rejouées après le nouveau calcul, ce qui permet aussi
+                # de diminuer un salaire sans conserver une retenue devenue
+                # supérieure au brut.
+                etat_verrouille.remboursements_avances.all().delete()
+                etat_verrouille.avances_deduites = Decimal('0')
+
+                etat_verrouille.salaire_base = form.cleaned_data['salaire_base']
+                if etat_verrouille.enseignant.est_taux_horaire:
+                    nouveau_total = arrondir_heures(
+                        form.cleaned_data['total_heures']
+                    )
+                    nouveau_taux = arrondir_montant(
+                        form.cleaned_data['taux_horaire_applique']
+                    )
+                    etat_verrouille.total_heures = nouveau_total
+                    etat_verrouille.taux_horaire_applique = nouveau_taux
+                    etat_verrouille.salaire_base = arrondir_montant(
+                        nouveau_total * nouveau_taux
+                    )
+                    if (
+                        nouveau_total != ancien_total
+                        or nouveau_taux != ancien_taux
+                    ):
+                        etat_verrouille.mode_calcul_heures = (
+                            ModeCalculHoraire.MANUEL
+                        )
+                else:
+                    etat_verrouille.total_heures = None
+                    etat_verrouille.taux_horaire_applique = None
+                    etat_verrouille.mode_calcul_heures = ''
+
+                etat_verrouille.jours_presence = resume_pointage(
+                    etat_verrouille.enseignant,
+                    etat_verrouille.periode,
+                )['jours_presence']
+                etat_verrouille.heures_revision = form.cleaned_data['heures_revision']
+                if request.POST.get('reappliquer_bareme'):
+                    etat_verrouille.primes_ajustees = False
+                    appliquer_primes_bareme(etat_verrouille)
+                else:
+                    for champ, _ in EtatSalaire.RUBRIQUES_PRIMES:
+                        setattr(etat_verrouille, champ, form.cleaned_data[champ])
+                    etat_verrouille.primes = Decimal('0')
+                    etat_verrouille.primes_ajustees = True
                 etat_verrouille.deductions = form.cleaned_data['deductions']
                 etat_verrouille.observations = form.cleaned_data['observations']
                 etat_verrouille.save()
+                reconstruire_details_heures(etat_verrouille)
+                synchroniser_avances_enseignant(etat_verrouille.enseignant)
 
             messages.success(
                 request,
-                f"Primes et retenues de {etat.enseignant.nom_complet} mises à jour.",
+                f"Salaire de {etat.enseignant.nom_complet} recalculé et mis à jour.",
             )
-            return redirect('salaires:etats_salaire')
+            return redirect(
+                f"{reverse('salaires:etats_salaire')}?periode={etat.periode_id}"
+            )
     else:
         form = EtatSalaireAjustementForm(instance=etat)
 
+    parametre = ParametrePaie.pour_ecole(etat.periode.ecole)
     return render(
         request,
         'salaires/ajuster_etat_salaire.html',
-        {'form': form, 'etat': etat},
+        {
+            'form': form,
+            'etat': etat,
+            'parametre': parametre,
+            'champs_primes': [
+                form[champ] for champ, _ in EtatSalaire.RUBRIQUES_PRIMES
+            ],
+        },
     )
 
 
@@ -999,6 +1348,10 @@ def valider_etat_salaire(request, etat_id):
             messages.error(request, "Cet état de salaire ne peut pas être validé.")
             return redirect('salaires:etats_salaire')
 
+        # Figer l'imputation exacte des avances au moment de la validation.
+        synchroniser_avances_enseignant(etat.enseignant)
+        etat.refresh_from_db()
+
         etat.valide = True
         etat.valide_par = request.user
         etat.date_validation = timezone.now()
@@ -1010,6 +1363,182 @@ def valider_etat_salaire(request, etat_id):
     )
 
     return redirect('salaires:etats_salaire')
+
+
+def _avances_annotees(request):
+    avances = AvanceSalaire.objects.select_related(
+        'enseignant', 'enseignant__ecole', 'periode_prevue', 'cree_par'
+    )
+    avances = filter_by_user_school(
+        avances, request.user, 'enseignant__ecole'
+    )
+    return avances.annotate(
+        montant_rembourse_calc=Coalesce(
+            Sum(
+                'remboursements__montant',
+                filter=Q(remboursements__etat_salaire__valide=True),
+            ),
+            Value(Decimal('0')),
+            output_field=DecimalField(max_digits=12, decimal_places=2),
+        )
+    )
+
+
+@login_required
+def liste_avances(request):
+    """Journal filtrable des avances et de leur récupération."""
+    avances = _avances_annotees(request)
+    search = (request.GET.get('search') or '').strip()
+    enseignant_id = request.GET.get('enseignant', '')
+    statut = request.GET.get('statut', '')
+
+    if search:
+        avances = avances.filter(
+            Q(enseignant__nom__icontains=search)
+            | Q(enseignant__prenoms__icontains=search)
+            | Q(reference_externe__icontains=search)
+            | Q(motif__icontains=search)
+        )
+    if enseignant_id:
+        avances = avances.filter(enseignant_id=enseignant_id)
+    if statut == 'soldee':
+        avances = avances.filter(montant__lte=F('montant_rembourse_calc'))
+    elif statut == 'en_cours':
+        avances = avances.filter(montant__gt=F('montant_rembourse_calc'))
+
+    avances = list(avances.order_by('-date_avance', '-id'))
+    synthese = {
+        'total': sum((avance.montant for avance in avances), Decimal('0')),
+        'rembourse': sum(
+            (avance.montant_rembourse_calc for avance in avances), Decimal('0')
+        ),
+    }
+    synthese['reste'] = max(
+        synthese['total'] - synthese['rembourse'], Decimal('0')
+    )
+    synthese['nombre'] = len(avances)
+
+    paginator = Paginator(avances, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    for avance in page_obj:
+        avance.solde_calcule = max(
+            avance.montant - avance.montant_rembourse_calc, Decimal('0')
+        )
+
+    enseignants = filter_by_user_school(
+        Enseignant.objects.filter(statut='ACTIF'), request.user
+    )
+
+    return render(request, 'salaires/avances_liste.html', {
+        'page_obj': page_obj,
+        'synthese': synthese,
+        'enseignants': enseignants.order_by('nom', 'prenoms'),
+        'statut_selectionne': statut,
+        'enseignant_selectionne': enseignant_id,
+        'search': search,
+    })
+
+
+@login_required
+def ajouter_avance(request):
+    ecole_user = _ecole_utilisateur(request)
+    enseignant = None
+    enseignant_id = request.GET.get('enseignant') or request.POST.get('enseignant_cible')
+    if enseignant_id:
+        qs = Enseignant.objects.all()
+        if not user_is_admin(request.user) and ecole_user is not None:
+            qs = qs.filter(ecole=ecole_user)
+        enseignant = get_object_or_404(qs, pk=enseignant_id)
+
+    if request.method == 'POST':
+        form = AvanceSalaireForm(
+            request.POST, ecole=ecole_user, enseignant=enseignant
+        )
+        if form.is_valid():
+            with transaction.atomic():
+                avance = form.save(commit=False)
+                avance.cree_par = request.user
+                avance.save()
+                synchroniser_avances_enseignant(avance.enseignant)
+            messages.success(
+                request,
+                (
+                    f"Avance de {avance.montant:,.0f} GNF enregistrée pour "
+                    f"{avance.enseignant.nom_complet}."
+                ).replace(',', ' '),
+            )
+            return redirect('salaires:liste_avances')
+    else:
+        form = AvanceSalaireForm(ecole=ecole_user, enseignant=enseignant)
+        form.fields['date_avance'].initial = timezone.localdate()
+
+    return render(request, 'salaires/avance_form.html', {
+        'form': form,
+        'titre': 'Enregistrer une avance sur salaire',
+        'enseignant_cible': enseignant,
+    })
+
+
+@login_required
+@require_school_object(model=AvanceSalaire, pk_kwarg='avance_id', field_path='enseignant__ecole')
+def modifier_avance(request, avance_id):
+    avance = get_object_or_404(
+        AvanceSalaire.objects.select_related('enseignant', 'periode_prevue'),
+        pk=avance_id,
+    )
+    if not avance.est_modifiable:
+        messages.error(
+            request,
+            "Cette avance a déjà été retenue sur un salaire validé et ne peut plus être modifiée.",
+        )
+        return redirect('salaires:liste_avances')
+
+    if request.method == 'POST':
+        form = AvanceSalaireForm(
+            request.POST, instance=avance, enseignant=avance.enseignant
+        )
+        if form.is_valid():
+            with transaction.atomic():
+                avance_verrouille = AvanceSalaire.objects.select_for_update().get(pk=avance.pk)
+                if not avance_verrouille.est_modifiable:
+                    messages.error(request, "Cette avance vient d'être figée par une paie validée.")
+                    return redirect('salaires:liste_avances')
+                avance = form.save()
+                synchroniser_avances_enseignant(avance.enseignant)
+            messages.success(request, "Avance mise à jour et salaires recalculés.")
+            return redirect('salaires:liste_avances')
+    else:
+        form = AvanceSalaireForm(instance=avance, enseignant=avance.enseignant)
+
+    return render(request, 'salaires/avance_form.html', {
+        'form': form,
+        'titre': "Modifier l'avance sur salaire",
+        'avance': avance,
+        'enseignant_cible': avance.enseignant,
+    })
+
+
+@login_required
+@require_POST
+@require_school_object(model=AvanceSalaire, pk_kwarg='avance_id', field_path='enseignant__ecole')
+def supprimer_avance(request, avance_id):
+    with transaction.atomic():
+        avance = get_object_or_404(
+            AvanceSalaire.objects.select_for_update().select_related('enseignant'),
+            pk=avance_id,
+        )
+        if not avance.est_modifiable:
+            messages.error(
+                request,
+                "Suppression impossible : cette avance figure déjà sur un salaire validé.",
+            )
+            return redirect('salaires:liste_avances')
+        enseignant = avance.enseignant
+        avance.delete()
+        synchroniser_avances_enseignant(enseignant)
+
+    messages.success(request, "Avance supprimée et salaires recalculés.")
+    return redirect('salaires:liste_avances')
 
 
 @login_required
@@ -1043,225 +1572,6 @@ def marquer_paye(request, etat_id):
 
 
 @login_required
-@require_school_object(model=EtatSalaire, pk_kwarg='etat_id', field_path='periode__ecole')
-def fiche_paie_pdf(request, etat_id):
-    """Génère une fiche de paie PDF pour un état de salaire"""
-    from reportlab.pdfgen import canvas
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import cm
-    from reportlab.lib import colors
-    from reportlab.platypus import Table, TableStyle
-    from django.http import HttpResponse
-    from datetime import datetime
-    
-    etat = get_object_or_404(EtatSalaire, id=etat_id)
-    
-    # Vérifier les permissions (double vérification en plus du décorateur)
-    ecole_user = _ecole_utilisateur(request)
-    if not user_is_admin(request.user) and ecole_user and etat.periode.ecole != ecole_user:
-        raise Http404("État de salaire non trouvé")
-    
-    # Créer la réponse HTTP
-    response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="fiche_paie_{etat.enseignant.nom}_{etat.periode.mois}_{etat.periode.annee}.pdf"'
-    
-    # Créer le PDF
-    p = canvas.Canvas(response, pagesize=A4)
-    width, height = A4
-    
-    # Ajouter le logo en filigrane (spécifique à l'école de l'utilisateur)
-    from ecole_moderne.pdf_utils import draw_logo_watermark
-    draw_logo_watermark(p, width, height, opacity=0.06, rotate=30, scale=1.2, ecole=_ecole_utilisateur(request))
-    
-    # En-tête avec logo et coordonnées dynamiques de l'école de la période
-    ecole_fp = getattr(getattr(etat, 'periode', None), 'ecole', None)
-    try:
-        header_logo_path = None
-        # Priorité: logo de l'école si présent
-        if ecole_fp is not None and hasattr(ecole_fp, 'logo'):
-            school_logo_path = getattr(getattr(ecole_fp, 'logo', None), 'path', None)
-            if school_logo_path and os.path.exists(school_logo_path):
-                header_logo_path = school_logo_path
-        # Fallback: logo statique
-        if not header_logo_path:
-            from django.contrib.staticfiles import finders
-            header_logo_path = finders.find('logos/logo.png')
-        if header_logo_path:
-            p.drawImage(header_logo_path, 2*cm, height-4*cm, width=3*cm, height=2*cm, preserveAspectRatio=True, mask='auto')
-    except Exception:
-        pass
-
-    # En-tête: Nom de l'école et coordonnées (à droite du logo)
-    y_header = height - 2*cm
-    try:
-        if ecole_fp is not None:
-            # Nom de l'école en gras
-            p.setFont('Helvetica-Bold', 14)
-            p.drawString(6*cm, y_header, f"{getattr(ecole_fp, 'nom', '')}")
-            y_header -= 0.5*cm
-            
-            # Coordonnées en plus petit
-            p.setFont('Helvetica', 9)
-            adr = getattr(ecole_fp, 'adresse', '') or ''
-            tel = getattr(ecole_fp, 'telephone', '') or ''
-            email = getattr(ecole_fp, 'email', '') or ''
-            dirc = getattr(ecole_fp, 'directeur', '') or ''
-            
-            if adr:
-                p.drawString(6*cm, y_header, f"Adresse: {adr}")
-                y_header -= 0.4*cm
-            if tel:
-                p.drawString(6*cm, y_header, f"Tél: {tel}")
-                y_header -= 0.4*cm
-            if email:
-                p.drawString(6*cm, y_header, f"Email: {email}")
-                y_header -= 0.4*cm
-            if dirc:
-                p.drawString(6*cm, y_header, f"Directeur: {dirc}")
-    except Exception:
-        pass
-    
-    # Ligne de séparation
-    p.setStrokeColor(colors.grey)
-    p.line(2*cm, height - 4.5*cm, width - 2*cm, height - 4.5*cm)
-    
-    # Titre FICHE DE PAIE centré
-    p.setFont("Helvetica-Bold", 16)
-    fiche_text = f"FICHE DE PAIE - {etat.periode.mois:02d}/{etat.periode.annee}"
-    p.drawCentredString(width/2, height - 5.2*cm, fiche_text)
-    
-    # Informations période
-    p.setFont("Helvetica", 10)
-    p.drawString(2*cm, height - 5.8*cm, f"Date d'édition: {datetime.now().strftime('%d/%m/%Y')}")
-    
-    # Informations enseignant
-    y_pos = height - 6.5*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "INFORMATIONS ENSEIGNANT")
-    
-    y_pos -= 0.8*cm
-    p.setFont("Helvetica", 10)
-    p.drawString(2*cm, y_pos, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Téléphone: {etat.enseignant.telephone or 'Non renseigné'}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Email: {etat.enseignant.email or 'Non renseigné'}")
-    y_pos -= 0.5*cm
-    p.drawString(2*cm, y_pos, f"Type: {'Salaire fixe' if etat.enseignant.est_salaire_fixe else 'Taux horaire'}")
-    
-    # Détails du salaire
-    y_pos -= 1.5*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "DÉTAILS DU SALAIRE")
-    
-    # Tableau des montants
-    data = [
-        ['Élément', 'Montant (GNF)'],
-        ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
-    ]
-    
-    if etat.total_heures:
-        data.append(['Heures travaillées', f"{etat.total_heures}h"])
-        data.append(['Taux horaire', f"{etat.taux_horaire_applique or 0:,.0f}".replace(',', ' ')])
-    
-    if etat.primes:
-        data.append(['Primes', f"{etat.primes:,.0f}".replace(',', ' ')])
-    
-    if etat.deductions:
-        data.append(['Déductions', f"-{etat.deductions:,.0f}".replace(',', ' ')])
-    
-    data.append(['SALAIRE NET', f"{etat.salaire_net:,.0f}".replace(',', ' ')])
-    
-    # Créer le tableau
-    y_pos -= 0.8*cm
-    table = Table(data, colWidths=[8*cm, 4*cm])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    table.wrapOn(p, width, height)
-    table.drawOn(p, 2*cm, y_pos - len(data) * 0.6*cm)
-    
-    # Statut
-    y_pos -= (len(data) + 2) * 0.6*cm
-    p.setFont("Helvetica-Bold", 10)
-    statut_text = "VALIDÉ" if etat.valide else "EN ATTENTE DE VALIDATION"
-    if etat.paye:
-        statut_text += " - PAYÉ"
-    p.drawString(2*cm, y_pos, f"Statut: {statut_text}")
-    
-    if etat.valide and etat.date_validation:
-        y_pos -= 0.5*cm
-        p.setFont("Helvetica", 9)
-        p.drawString(2*cm, y_pos, f"Validé le {etat.date_validation.strftime('%d/%m/%Y')} par {etat.valide_par}")
-    
-    if etat.paye and etat.date_paiement:
-        y_pos -= 0.5*cm
-        p.drawString(2*cm, y_pos, f"Payé le {etat.date_paiement.strftime('%d/%m/%Y')}")
-    
-    # Section signatures
-    y_pos -= 3*cm
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(2*cm, y_pos, "SIGNATURES")
-    
-    # Ligne de séparation
-    y_pos -= 0.5*cm
-    p.line(2*cm, y_pos, width-2*cm, y_pos)
-    
-    # Signatures côte à côte
-    y_pos -= 1*cm
-    
-    # Signature enseignant (gauche)
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(2*cm, y_pos, "L'ENSEIGNANT")
-    p.setFont("Helvetica", 9)
-    p.drawString(2*cm, y_pos-0.4*cm, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
-    
-    # Cadre pour signature enseignant
-    signature_width = 6*cm
-    signature_height = 2*cm
-    p.rect(2*cm, y_pos-3*cm, signature_width, signature_height)
-    p.setFont("Helvetica", 8)
-    p.drawString(2*cm + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
-    
-    # Signature comptable (droite)
-    comptable_x = width - 8*cm
-    p.setFont("Helvetica-Bold", 10)
-    p.drawString(comptable_x, y_pos, "LE COMPTABLE")
-    p.setFont("Helvetica", 9)
-    if etat.calcule_par:
-        p.drawString(comptable_x, y_pos-0.4*cm, f"Nom: {etat.calcule_par.get_full_name() or etat.calcule_par.username}")
-    else:
-        p.drawString(comptable_x, y_pos-0.4*cm, "Nom: _________________")
-    
-    # Cadre pour signature comptable
-    p.rect(comptable_x, y_pos-3*cm, signature_width, signature_height)
-    p.setFont("Helvetica", 8)
-    p.drawString(comptable_x + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
-    
-    # Pied de page
-    p.setFont("Helvetica", 8)
-    p.drawString(2*cm, 2*cm, f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
-    p.drawString(2*cm, 1.5*cm, "Ce document est confidentiel et ne doit pas être divulgué à des tiers.")
-    
-    p.showPage()
-    p.save()
-    
-    return response
-
-
-@login_required
 def gestion_periodes(request):
     """Gestion des périodes de salaire"""
     
@@ -1271,7 +1581,47 @@ def gestion_periodes(request):
     statut = request.GET.get('statut', '')  # 'cloture' | 'ouvert' | ''
     
     # Construction de la requête
-    periodes = PeriodeSalaire.objects.select_related('ecole').prefetch_related('etats_salaire')
+    periodes = (
+        PeriodeSalaire.objects.select_related('ecole')
+        .annotate(
+            nombre_etats=Count('etats_salaire', distinct=True),
+            etats_valides=Count(
+                'etats_salaire',
+                filter=Q(etats_salaire__valide=True),
+                distinct=True,
+            ),
+            etats_payes=Count(
+                'etats_salaire',
+                filter=Q(etats_salaire__paye=True),
+                distinct=True,
+            ),
+            total_salaire_base=Coalesce(
+                Sum('etats_salaire__salaire_base'),
+                Value(Decimal('0')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            total_primes=Coalesce(
+                Sum('etats_salaire__primes'),
+                Value(Decimal('0')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            total_retenues=Coalesce(
+                Sum('etats_salaire__deductions'),
+                Value(Decimal('0')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            total_avances=Coalesce(
+                Sum('etats_salaire__avances_deduites'),
+                Value(Decimal('0')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+            total_net=Coalesce(
+                Sum('etats_salaire__salaire_net'),
+                Value(Decimal('0')),
+                output_field=DecimalField(max_digits=14, decimal_places=2),
+            ),
+        )
+    )
 
     # Restriction par école pour les non-admins
     ecole_user = _ecole_utilisateur(request)
@@ -1303,18 +1653,7 @@ def gestion_periodes(request):
         fallback_ids = list(
             fallback_base.order_by('-annee', '-mois').values_list('id', flat=True)[:6]
         )
-        periodes = (
-            PeriodeSalaire.objects
-            .select_related('ecole')
-            .prefetch_related('etats_salaire')
-            .filter(id__in=fallback_ids)
-            .order_by('-annee', '-mois')
-        )
-    
-    # Ajout des statistiques pour chaque période
-    for periode in periodes:
-        periode.etats_valides = periode.etats_salaire.filter(valide=True).count()
-        periode.etats_payes = periode.etats_salaire.filter(paye=True).count()
+        periodes = periodes.filter(id__in=fallback_ids).order_by('-annee', '-mois')
     
     # Pagination
     paginator = Paginator(periodes, 15)
@@ -1328,7 +1667,6 @@ def gestion_periodes(request):
     annees_disponibles = PeriodeSalaire.objects.values_list('annee', flat=True).distinct().order_by('-annee')
     
     # Statistiques
-    from django.db.models import Count
     # Utiliser une requête de base non-slicée pour les stats globales si besoin
     base_stats_qs = PeriodeSalaire.objects.all()
     if restreindre and ecole_user:
@@ -1428,6 +1766,7 @@ def rapport_paiements(request):
 def export_rapport_paiements_pdf(request):
     """Export PDF du rapport des salaires payés (paysage)."""
     ecole_user = _ecole_utilisateur(request)
+    palette = get_reportlab_palette(ecole_user)
     restreindre = not user_is_admin(request.user) and ecole_user is not None
 
     annee = request.GET.get('annee', '')
@@ -1467,6 +1806,7 @@ def export_rapport_paiements_pdf(request):
     doc = WatermarkDocTemplate(response, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=60, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
+    styles['Title'].textColor = palette['primary']
     
     # Ajouter le logo en en-tête
     try:
@@ -1497,10 +1837,11 @@ def export_rapport_paiements_pdf(request):
 
     table = Table(data, repeatRows=1)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('BACKGROUND', (0,0), (-1,0), palette['header']),
+        ('TEXTCOLOR', (0,0), (-1,0), palette['header_text']),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('ALIGN', (0,0), (-1,0), 'CENTER'),
-        ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
+        ('GRID', (0,0), (-1,-1), 0.25, palette['border']),
         ('FONTSIZE', (0,0), (-1,0), 10),
         ('FONTSIZE', (0,1), (-1,-1), 9),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -1608,18 +1949,28 @@ def creer_periode(request):
                 )
                 return redirect('salaires:gestion_periodes')
             
-            # Créer la nouvelle période
-            nouvelle_periode = PeriodeSalaire.objects.create(
-                mois=mois,
-                annee=annee,
-                ecole=ecole,
-                nombre_semaines=nombre_semaines,
-                cree_par=request.user
-            )
+            # La période et les états groupés sont créés ensemble : en cas
+            # d'erreur de calcul, aucune période partielle n'est conservée.
+            with transaction.atomic():
+                nouvelle_periode = PeriodeSalaire.objects.create(
+                    mois=mois,
+                    annee=annee,
+                    ecole=ecole,
+                    nombre_semaines=nombre_semaines,
+                    cree_par=request.user
+                )
+                etats_initialises = initialiser_etats_salaire_periode(
+                    nouvelle_periode, request.user
+                )
             
             messages.success(
-                request, 
-                f"Période {nouvelle_periode} créée avec succès !"
+                request,
+                f"Période {nouvelle_periode} créée avec succès : "
+                f"{len(etats_initialises)} salaire(s) récupéré(s), pour un total de "
+                f"{sum((etat.salaire_net for etat in etats_initialises), Decimal('0')):,.0f} GNF."
+            )
+            return redirect(
+                f"{reverse('salaires:etats_salaire')}?periode={nouvelle_periode.id}"
             )
             
         except (ValueError, TypeError, InvalidOperation):
@@ -1670,19 +2021,25 @@ def cloturer_periode(request, periode_id):
             ).exists()
             
             if not periode_suivante_existe:
-                # Créer automatiquement la période suivante
-                nouvelle_periode = PeriodeSalaire.objects.create(
-                    mois=mois_suivant,
-                    annee=annee_suivante,
-                    ecole=periode.ecole,
-                    nombre_semaines=periode.nombre_semaines,  # Reprendre le même nombre de semaines
-                    cree_par=request.user
-                )
+                # Créer automatiquement la période suivante et son état
+                # mensuel complet pour tous les enseignants actifs.
+                with transaction.atomic():
+                    nouvelle_periode = PeriodeSalaire.objects.create(
+                        mois=mois_suivant,
+                        annee=annee_suivante,
+                        ecole=periode.ecole,
+                        nombre_semaines=periode.nombre_semaines,
+                        cree_par=request.user
+                    )
+                    etats_initialises = initialiser_etats_salaire_periode(
+                        nouvelle_periode, request.user
+                    )
                 
                 messages.success(
                     request, 
                     f"Période {periode} clôturée avec succès ! "
-                    f"Nouvelle période créée automatiquement : {nouvelle_periode}"
+                    f"Nouvelle période créée automatiquement : {nouvelle_periode} "
+                    f"avec {len(etats_initialises)} état(s) regroupé(s)."
                 )
             else:
                 messages.success(
@@ -1698,11 +2055,12 @@ def cloturer_periode(request, periode_id):
 
 
 @login_required
+@require_school_object(model=Enseignant, pk_kwarg='enseignant_id', field_path='ecole')
 def changer_statut_enseignant(request, enseignant_id):
     """Changement de statut d'un enseignant"""
     ecole_user = _ecole_utilisateur(request)
     qs = Enseignant.objects.all()
-    if not user_is_admin(request.user) and ecole_user is not None:
+    if not user_is_superadmin(request.user):
         qs = qs.filter(ecole=ecole_user)
     enseignant = get_object_or_404(qs, id=enseignant_id)
     
@@ -1732,12 +2090,13 @@ def changer_statut_enseignant(request, enseignant_id):
 def ajouter_enseignant(request):
     """Ajouter un nouvel enseignant"""
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, user=request.user)
+        form = EnseignantForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             with transaction.atomic():
                 enseignant = form.save(commit=False)
                 enseignant.cree_par = request.user
                 enseignant.save()
+                _clore_affectations_secondaires_si_necessaire(enseignant)
                 _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
                     enseignant, timezone.localdate(), request.user
                 )
@@ -1751,6 +2110,15 @@ def ajouter_enseignant(request):
                     else ""
                 )
             )
+            if enseignant.type_enseignant == TypeEnseignant.SECONDAIRE:
+                messages.info(
+                    request,
+                    "Ajoutez maintenant sa première affectation de classe, "
+                    "la matière et les heures hebdomadaires."
+                )
+                return redirect(
+                    'salaires:ajouter_affectation', enseignant_id=enseignant.id
+                )
             return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
         else:
             messages.error(request, "Veuillez corriger les erreurs dans le formulaire.")
@@ -1761,8 +2129,9 @@ def ajouter_enseignant(request):
         'form': form,
         'title': 'Ajouter un Enseignant',
         'submit_text': 'Créer l\'Enseignant',
+        'champs_paie': _champs_paie(form),
     }
-    
+
     return render(request, 'salaires/ajouter_enseignant.html', context)
 
 
@@ -1771,15 +2140,16 @@ def modifier_enseignant(request, enseignant_id):
     """Modifier un enseignant existant"""
     ecole_user = _ecole_utilisateur(request)
     qs = Enseignant.objects.all()
-    if not user_is_admin(request.user) and ecole_user is not None:
+    if not user_is_superadmin(request.user):
         qs = qs.filter(ecole=ecole_user)
     enseignant = get_object_or_404(qs, id=enseignant_id)
     
     if request.method == 'POST':
-        form = EnseignantForm(request.POST, instance=enseignant, user=request.user)
+        form = EnseignantForm(request.POST, request.FILES, instance=enseignant, user=request.user)
         if form.is_valid():
             with transaction.atomic():
                 enseignant = form.save()
+                _clore_affectations_secondaires_si_necessaire(enseignant)
                 _, salaire_recalcule = recalculer_salaire_ouvert_pour_date(
                     enseignant, timezone.localdate(), request.user
                 )
@@ -1803,6 +2173,7 @@ def modifier_enseignant(request, enseignant_id):
         'enseignant': enseignant,
         'title': f'Modifier {enseignant.nom_complet}',
         'submit_text': 'Enregistrer les Modifications',
+        'champs_paie': _champs_paie(form),
     }
     
     return render(request, 'salaires/ajouter_enseignant.html', context)

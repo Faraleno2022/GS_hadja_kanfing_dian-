@@ -91,6 +91,8 @@ def annee_scolaire_coherente(annee_actuelle, date_paiement):
     de la liste et ne comptait plus dans aucun solde. On ne la recalcule donc
     que si la date corrigée sort de la période de l'année figée.
     """
+    from ecole_moderne.validators import normaliser_annee_scolaire
+    annee_actuelle = normaliser_annee_scolaire(annee_actuelle)
     debut, fin = school_year_bounds(annee_actuelle)
     if debut and fin and date_paiement and debut <= date_paiement <= fin:
         return annee_actuelle
@@ -213,78 +215,18 @@ def preparer_ventilation_remises(paiement, remises, tranches, base_calcul):
 
 
 @transaction.atomic
-def recalculer_remises_paiement(paiement):
-    """Réajuste les remises après la correction d'un paiement.
-
-    Cette fonction conserve les choix et motifs, mais recalcule les bases et la
-    ventilation. Elle empêche aussi un ancien cumul de remises de dépasser le
-    montant des tranches concernées.
-    """
+def recalculer_remises_paiement(paiement, *, ajuster_montant=True):
+    """Recalcule le reçu corrigé et toutes les remises de son année."""
     from .models import PaiementRemise
-    from .remise_utils import bases_par_tranche, normaliser_tranches
+    from .recalcul_remises import recalculer_remises_echeancier
 
-    liens = list(
-        PaiementRemise.objects.select_for_update()
-        .select_related('remise')
-        .filter(paiement=paiement)
-        .order_by('id')
-    )
-    # Une remise déduite du reçu a amputé son montant. Recalculer la remise sans
-    # re-dériver le reçu laisserait un net incohérent avec la remise accordée.
-    deja_deduit = sum(
-        (_decimal(lien.montant_remise) for lien in liens if lien.deduite_du_paiement),
-        ZERO,
-    )
-    paiement._montant_brut_fige = _decimal(paiement.montant) + deja_deduit
-
-    capacites_globales = None
-    for lien in liens:
-        numeros = normaliser_tranches(lien.tranches_appliquees)
-        bases_mode = bases_par_tranche(paiement, lien.base_calcul)
-        dues = bases_par_tranche(paiement, 'TRANCHE')
-        if capacites_globales is None:
-            capacites_globales = {
-                numero: max(ZERO, _decimal(dues.get(numero, 0)))
-                for numero in (1, 2, 3)
-            }
-        capacites = {
-            numero: min(
-                capacites_globales.get(numero, ZERO),
-                max(ZERO, _decimal(bases_mode.get(numero, 0))),
-            )
-            for numero in numeros
-        }
-        base_totale = sum(
-            (max(ZERO, _decimal(bases_mode.get(numero, 0))) for numero in numeros),
-            ZERO,
+    echeancier = paiement.echeancier_annuel
+    if echeancier:
+        recalculer_remises_echeancier(
+            echeancier, paiement_corrige=paiement if ajuster_montant else None,
         )
-        nominal = lien.remise.calculer_remise(base_totale)
-        ventilation = repartir_montant_sur_tranches(
-            min(nominal, sum(capacites.values(), ZERO)), capacites, numeros
-        )
-        for numero in numeros:
-            capacites_globales[numero] -= ventilation[numero]
-        lien.montant_base = base_totale
-        lien.montant_remise = sum(ventilation.values(), ZERO)
-        lien.montant_tranche_1 = ventilation[1]
-        lien.montant_tranche_2 = ventilation[2]
-        lien.montant_tranche_3 = ventilation[3]
-        lien.save(update_fields=[
-            'montant_base', 'montant_remise', 'montant_tranche_1',
-            'montant_tranche_2', 'montant_tranche_3',
-        ])
-
-    brut = paiement._montant_brut_fige
-    del paiement._montant_brut_fige
-
-    nouveau_deduit = sum(
-        (_decimal(lien.montant_remise) for lien in liens if lien.deduite_du_paiement),
-        ZERO,
-    )
-    if deja_deduit != nouveau_deduit:
-        paiement.montant = max(ZERO, brut - nouveau_deduit)
-        paiement.save()
-    return liens
+        paiement.refresh_from_db()
+    return list(PaiementRemise.objects.filter(paiement=paiement).order_by('pk'))
 
 
 def paiements_valides_echeancier(echeancier, date_limite=None):
@@ -302,7 +244,7 @@ def paiements_valides_echeancier(echeancier, date_limite=None):
     qs = qs.filter(Q(annee_scolaire=echeancier.annee_scolaire) | legacy)
     if date_limite is not None:
         qs = qs.filter(date_paiement__lte=date_limite)
-    return qs.order_by('date_validation', 'id')
+    return qs.order_by('date_paiement', 'date_creation', 'pk')
 
 
 def paiements_annee_incoherente(echeancier, date_limite=None):

@@ -21,6 +21,7 @@ from salaires.models import Enseignant, EtatSalaire
 from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from django.contrib.staticfiles import finders
 from django.conf import settings
+from ecole_moderne.branding import get_reportlab_palette
 
 
 def _get_logo_path(ecole=None):
@@ -87,6 +88,7 @@ def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
     # donc invisible.
     width, height = getattr(doc, 'pagesize', None) or A4
     logo_path = _get_logo_path(ecole)
+    palette = get_reportlab_palette(ecole)
 
     c.saveState()
     try:
@@ -132,7 +134,7 @@ def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
 
         # Titre à droite du logo avec taille réduite
-        c.setFillColor(colors.HexColor('#0d47a1'))
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12)
         school_name = (getattr(ecole, 'nom', None) or "").strip() or "Rapport"
         # Si un titre explicite est fourni par l'appelant, l'afficher à droite
@@ -142,7 +144,7 @@ def _draw_header_and_watermark(c, doc, ecole=None, titre_override=None):
         c.drawString(margin_x + 70, height - margin_y - 10, header_text)
 
         # Ligne de séparation
-        c.setStrokeColor(colors.HexColor('#0d47a1'))
+        c.setStrokeColor(palette['secondary'])
         c.setLineWidth(0.7)
         c.line(margin_x, height - margin_y - 38, width - margin_x, height - margin_y - 38)
     finally:
@@ -152,14 +154,15 @@ def remises_par_categorie(paiements_qs):
     """Retourne {libellé du motif: montant total} des remises appliquées aux
     paiements donnés, en respectant l'ordre de RemiseReduction.MOTIF_CHOICES."""
     motif_labels = dict(RemiseReduction.MOTIF_CHOICES)
-    ordre_motifs = [code for code, _label in RemiseReduction.MOTIF_CHOICES]
+    motif_labels['REVISION'] = 'Frais de révision (réduction de scolarité)'
+    ordre_motifs = [code for code, _label in RemiseReduction.MOTIF_CHOICES] + ['REVISION']
     totaux_par_code = {}
     for row in (
         PaiementRemise.objects.filter(paiement__in=paiements_qs)
-        .values('remise__motif')
+        .values('remise__motif', 'origine_revision')
         .annotate(total=Sum('montant_remise'))
     ):
-        code = row.get('remise__motif') or 'AUTRE'
+        code = 'REVISION' if row['origine_revision'] else (row.get('remise__motif') or 'AUTRE')
         totaux_par_code[code] = totaux_par_code.get(code, Decimal('0')) + (row.get('total') or Decimal('0'))
 
     return {

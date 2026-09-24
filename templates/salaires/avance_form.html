@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}{{ titre }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-xl-8 col-lg-9">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-1"><i class="fas fa-hand-holding-usd text-warning me-2"></i>{{ titre }}</h1>
+                    <p class="text-muted mb-0">L'avance sera automatiquement déduite du salaire de la période choisie.</p>
+                </div>
+                <a href="{% url 'salaires:liste_avances' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-1"></i> Retour
+                </a>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white py-3">
+                    <strong>Informations de l'avance</strong>
+                </div>
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {% if enseignant_cible %}
+                        <input type="hidden" name="enseignant_cible" value="{{ enseignant_cible.id }}">
+                        {% endif %}
+                        <div class="row g-3">
+                            {% for field in form %}
+                            <div class="{% if field.name == 'motif' %}col-12{% else %}col-md-6{% endif %}">
+                                <label class="form-label fw-semibold" for="{{ field.id_for_label }}">
+                                    {{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}
+                                </label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="alert alert-info mt-4 mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Si l'avance dépasse le salaire disponible, le reliquat sera automatiquement reporté sur les périodes suivantes.
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <a href="{% url 'salaires:liste_avances' %}" class="btn btn-light">Annuler</a>
+                            <button type="submit" class="btn btn-warning px-4">
+                                <i class="fas fa-save me-1"></i> Enregistrer et recalculer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

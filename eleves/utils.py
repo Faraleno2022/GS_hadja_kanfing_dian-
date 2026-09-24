@@ -153,4 +153,9 @@ def valider_compte_utilisateur(user, ecole=None, telephone='', adresse=''):
                 profil.ecole = ecole
             profil.save()
 
+        # La validation du créateur active le compte principal et ses fonctions.
+        if ecole and ecole.created_by_id == user.pk:
+            from utilisateurs.services import attribuer_compte_principal
+            profil = attribuer_compte_principal(profil, ecole)
+
     return profil

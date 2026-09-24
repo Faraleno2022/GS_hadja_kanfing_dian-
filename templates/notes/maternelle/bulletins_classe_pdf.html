@@ -19,7 +19,7 @@
             font-family: 'Segoe UI', Arial, sans-serif;
             font-size: 10pt;
             line-height: 1.3;
-            color: #333;
+            color: {{ school_branding.text }};
         }
         
         .bulletin-page {
@@ -27,7 +27,7 @@
             min-height: 277mm;
             margin: 0 auto;
             padding: 6mm;
-            border: 2px solid #2c3e50;
+            border: 2px solid {{ school_branding.primary }};
             position: relative;
             page-break-after: always;
         }
@@ -41,7 +41,7 @@
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 10px;
-            border-bottom: 2px solid #3498db;
+            border-bottom: 2px solid {{ school_branding.secondary }};
             padding-bottom: 8px;
         }
         
@@ -65,7 +65,7 @@
         .republique {
             font-size: 12pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
         }
         
         .devise {
@@ -78,14 +78,14 @@
         .ecole-nom {
             font-size: 11pt;
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.primary }};
             text-transform: uppercase;
         }
         
         .bulletin-titre {
             font-size: 13pt;
             font-weight: bold;
-            color: #e74c3c;
+            color: {{ school_branding.accent }};
         }
         
         .photo-section {
@@ -117,7 +117,7 @@
             padding: 6px 10px;
             border-radius: 5px;
             margin-bottom: 10px;
-            border-left: 3px solid #3498db;
+            border-left: 3px solid {{ school_branding.secondary }};
             font-size: 9pt;
         }
         
@@ -145,8 +145,8 @@
         }
         
         .section-title {
-            background: linear-gradient(90deg, #2c3e50, #34495e);
-            color: white;
+            background: linear-gradient(90deg, {{ school_branding.primary }}, {{ school_branding.secondary }});
+            color: {{ school_branding.primary_text }};
             padding: 5px 10px;
             font-size: 9pt;
             font-weight: bold;
@@ -160,16 +160,16 @@
         }
         
         .notes-table th, .notes-table td {
-            border: 1px solid #bdc3c7;
+            border: 1px solid {{ school_branding.border }};
             padding: 4px 6px;
             text-align: center;
             font-size: 9pt;
         }
         
         .notes-table thead th {
-            background: #ecf0f1;
+            background: {{ school_branding.table }};
             font-weight: bold;
-            color: #2c3e50;
+            color: {{ school_branding.text }};
         }
         
         .notes-table tbody td:first-child {
@@ -191,14 +191,14 @@
             color: white;
         }
         
-        .lettre-a-plus, .lettre-a { background: #27ae60; }
-        .lettre-b-plus, .lettre-b { background: #3498db; }
-        .lettre-b-minus, .lettre-c { background: #f39c12; }
-        .lettre-d { background: #e74c3c; }
+        .lettre-a-plus, .lettre-a { background: {{ school_branding.mention_tb }}; }
+        .lettre-b-plus, .lettre-b { background: {{ school_branding.mention_bien }}; }
+        .lettre-b-minus, .lettre-c { background: {{ school_branding.mention_ab }}; }
+        .lettre-d { background: {{ school_branding.mention_insuffisant }}; }
         
         .resultat-box {
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-            color: white;
+            background: linear-gradient(135deg, {{ school_branding.primary }}, {{ school_branding.secondary }});
+            color: {{ school_branding.primary_text }};
             padding: 8px;
             border-radius: 5px;
             text-align: center;
@@ -213,7 +213,7 @@
         .moyenne-display {
             display: inline-block;
             background: white;
-            color: #2c3e50;
+            color: {{ school_branding.text }};
             padding: 5px 15px;
             border-radius: 5px;
             margin: 3px;
@@ -226,7 +226,7 @@
         
         .moyenne-label {
             font-size: 7pt;
-            color: #7f8c8d;
+            color: {{ school_branding.muted }};
         }
         
         .mention-badge {
@@ -239,20 +239,18 @@
             margin-top: 5px;
         }
         
-        .mention-excellent { background: #27ae60; }
-        .mention-tres-bien { background: #2ecc71; }
-        .mention-bien { background: #3498db; }
-        .mention-assez-bien { background: #17a2b8; }
-        .mention-moyen { background: #f39c12; }
-        .mention-passable { background: #e67e22; }
-        .mention-eprouve-des-difficultes { background: #e74c3c; }
+        .mention-excellent, .mention-tres-bien { background: {{ school_branding.mention_tb }}; }
+        .mention-bien, .mention-assez-bien { background: {{ school_branding.mention_bien }}; }
+        .mention-moyen { background: {{ school_branding.mention_ab }}; }
+        .mention-passable { background: {{ school_branding.mention_passable }}; }
+        .mention-eprouve-des-difficultes { background: {{ school_branding.mention_insuffisant }}; }
         
         .analyse-section, .recommandations-section {
             margin-bottom: 8px;
         }
         
         .section-content {
-            border: 1px solid #bdc3c7;
+            border: 1px solid {{ school_branding.border }};
             border-top: none;
             padding: 6px 10px;
             border-radius: 0 0 3px 3px;
@@ -260,12 +258,12 @@
         }
         
         .analyse-title {
-            background: linear-gradient(90deg, #17a2b8, #138496);
+            background: linear-gradient(90deg, {{ school_branding.secondary }}, {{ school_branding.primary }});
         }
         
         .recommandations-title {
-            background: linear-gradient(90deg, #ffc107, #e0a800);
-            color: #333;
+            background: linear-gradient(90deg, {{ school_branding.card_warning }}, {{ school_branding.secondary }});
+            color: {{ school_branding.card_warning_text }};
         }
         
         .item-list {
@@ -300,7 +298,7 @@
             justify-content: space-between;
             margin-top: 10px;
             padding-top: 8px;
-            border-top: 1px dashed #bdc3c7;
+            border-top: 1px dashed {{ school_branding.border }};
         }
         
         .signature-box {
@@ -324,7 +322,7 @@
             margin-top: 8px;
             text-align: center;
             font-size: 7pt;
-            color: #7f8c8d;
+            color: {{ school_branding.muted }};
         }
         
         /* Filigrane logo */

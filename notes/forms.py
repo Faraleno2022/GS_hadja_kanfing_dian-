@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.forms import ClearableFileInput
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, ThemeBulletin, ActiviteJournaliere, PieceJointeActivite
@@ -173,7 +175,7 @@ class NoteEleveForm(forms.ModelForm):
 
 
 class ThemeBulletinForm(forms.ModelForm):
-    """Formulaire pour personnaliser les couleurs du bulletin"""
+    """Formulaire de charte graphique pour l'interface et les documents."""
     
     class Meta:
         model = ThemeBulletin
@@ -181,6 +183,8 @@ class ThemeBulletinForm(forms.ModelForm):
             'nom', 'couleur_primaire', 'couleur_secondaire', 'couleur_accent',
             'couleur_texte_principal', 'couleur_texte_secondaire',
             'couleur_fond_header', 'couleur_fond_tableau', 'couleur_fond_carte',
+            'couleur_carte_primaire', 'couleur_carte_succes',
+            'couleur_carte_attention', 'couleur_carte_danger',
             'couleur_bordure', 'couleur_mention_tb', 'couleur_mention_bien',
             'couleur_mention_ab', 'couleur_mention_passable', 'couleur_mention_insuffisant',
             'actif', 'par_defaut'
@@ -222,6 +226,10 @@ class ThemeBulletinForm(forms.ModelForm):
                 'class': 'form-control',
                 'type': 'color'
             }),
+            'couleur_carte_primaire': forms.TextInput(attrs={'class': 'form-control', 'type': 'color'}),
+            'couleur_carte_succes': forms.TextInput(attrs={'class': 'form-control', 'type': 'color'}),
+            'couleur_carte_attention': forms.TextInput(attrs={'class': 'form-control', 'type': 'color'}),
+            'couleur_carte_danger': forms.TextInput(attrs={'class': 'form-control', 'type': 'color'}),
             'couleur_bordure': forms.TextInput(attrs={
                 'class': 'form-control',
                 'type': 'color'
@@ -253,6 +261,16 @@ class ThemeBulletinForm(forms.ModelForm):
                 'class': 'form-check-input'
             }),
         }
+
+    def clean(self):
+        cleaned = super().clean()
+        for field_name in self.Meta.fields:
+            if not field_name.startswith('couleur_'):
+                continue
+            value = (cleaned.get(field_name) or '').strip()
+            if not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+                self.add_error(field_name, "Utilisez une couleur au format #RRGGBB.")
+        return cleaned
 
 
 class ActiviteJournaliereForm(forms.ModelForm):

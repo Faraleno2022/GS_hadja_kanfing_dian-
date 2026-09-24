@@ -147,6 +147,14 @@
             <div class="col-md-4"><small>Reste avant ce reçu</small><div class="fw-bold text-danger" id="tarifReste">0 GNF</div></div>
           </div>
         </div>
+        <div class="mt-3">
+          <label class="form-label small-label" for="{{ form.reference_externe.id_for_label }}">
+            Référence externe du paiement <span class="text-muted fw-normal">(facultatif)</span>
+          </label>
+          {{ form.reference_externe }}
+          <div class="help-text">Numéro du reçu bancaire, mobile money ou autre justificatif externe.</div>
+          {% if form.reference_externe.errors %}<div class="text-danger small">{{ form.reference_externe.errors.0 }}</div>{% endif %}
+        </div>
       </div>
 
       <div class="form-section">

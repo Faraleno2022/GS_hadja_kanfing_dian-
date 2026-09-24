@@ -94,8 +94,8 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="badge {% if abo.statut == 'ACTIF' %}bg-success{% elif abo.statut == 'EXPIRE' %}bg-danger{% else %}bg-secondary{% endif %}">
-                                    {{ abo.get_statut_display }}
+                                <span class="badge {% if abo.statut_effectif == 'ACTIF' %}bg-success{% elif abo.statut_effectif == 'EXPIRE' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ abo.libelle_statut }}
                                 </span>
                             </td>
                             <td>

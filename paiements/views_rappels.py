@@ -21,7 +21,7 @@ from utilisateurs.utils import filter_by_user_school, user_school
 from utilisateurs.permissions import any_permission_required
 
 @login_required
-@any_permission_required(['can_manage_payments', 'can_view_payments'])
+@any_permission_required(['peut_valider_paiements', 'peut_consulter_rapports'])
 def gerer_rappels(request):
     """Vue principale pour gérer les rappels de paiement"""
     user_profil = getattr(request.user, 'profil', None)
@@ -36,8 +36,7 @@ def gerer_rappels(request):
     rappels = Relance.objects.select_related('eleve', 'eleve__classe', 'cree_par')
     
     # Filtrer par école si nécessaire
-    if ecole:
-        rappels = rappels.filter(eleve__classe__ecole=ecole)
+    rappels = filter_by_user_school(rappels, request.user, 'eleve__classe__ecole')
     
     # Appliquer les filtres
     if statut_filtre:
@@ -59,12 +58,11 @@ def gerer_rappels(request):
     page_obj = paginator.get_page(page_number)
     
     # Statistiques
-    stats = gestionnaire_rappels.obtenir_statistiques_rappels()
+    stats = gestionnaire_rappels.obtenir_statistiques_rappels(utilisateur=request.user)
     
     # Élèves en retard
     eleves_retard = gestionnaire_rappels.detecter_eleves_en_retard()
-    if ecole:
-        eleves_retard = eleves_retard.filter(eleve__classe__ecole=ecole)
+    eleves_retard = filter_by_user_school(eleves_retard, request.user, 'eleve__classe__ecole')
     
     context = {
         'titre_page': 'Gestion des Rappels de Paiement',
@@ -82,12 +80,17 @@ def gerer_rappels(request):
     return render(request, 'paiements/gerer_rappels.html', context)
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_valider_paiements'])
 def creer_rappels_automatiques(request):
     """Crée automatiquement des rappels pour les élèves en retard"""
     if request.method == 'POST':
         canal = request.POST.get('canal', 'SMS')
-        limite = int(request.POST.get('limite', 50))
+        try:
+            limite = int(request.POST.get('limite', 50))
+        except (TypeError, ValueError):
+            return HttpResponse("Limite invalide", status=400)
+        if not 1 <= limite <= 200 or canal not in dict(Relance.CANAL_CHOICES):
+            return HttpResponse("Canal invalide ou limite hors de 1 à 200", status=400)
         
         try:
             # Générer les rappels
@@ -122,10 +125,10 @@ def creer_rappels_automatiques(request):
     return redirect('paiements:gerer_rappels')
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_valider_paiements'])
 def creer_rappel_individuel(request, eleve_id):
     """Crée un rappel pour un élève spécifique"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole'), id=eleve_id)
     
     # Vérifier l'accès à l'école
     user_profil = getattr(request.user, 'profil', None)
@@ -164,7 +167,7 @@ def creer_rappel_individuel(request, eleve_id):
     return redirect('paiements:gerer_rappels')
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports'])
 def eleves_en_retard(request):
     """Liste des élèves en retard de paiement"""
     user_profil = getattr(request.user, 'profil', None)
@@ -173,8 +176,7 @@ def eleves_en_retard(request):
     # Récupérer les élèves en retard
     echeanciers_retard = gestionnaire_rappels.detecter_eleves_en_retard()
     
-    if ecole:
-        echeanciers_retard = echeanciers_retard.filter(eleve__classe__ecole=ecole)
+    echeanciers_retard = filter_by_user_school(echeanciers_retard, request.user, 'eleve__classe__ecole')
     
     # Filtres
     classe_filtre = request.GET.get('classe', '')
@@ -228,10 +230,10 @@ def eleves_en_retard(request):
     return render(request, 'paiements/eleves_en_retard.html', context)
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports'])
 def apercu_message_rappel(request, eleve_id):
     """Aperçu du message de rappel pour un élève"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole'), id=eleve_id)
     canal = request.GET.get('canal', 'SMS')
     
     try:
@@ -262,11 +264,14 @@ def apercu_message_rappel(request, eleve_id):
 
 @login_required
 @require_POST
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_valider_paiements'])
 def marquer_rappel_envoye(request, relance_id):
     """Marque un rappel comme envoyé"""
+    get_object_or_404(filter_by_user_school(Relance.objects.all(), request.user, 'eleve__classe__ecole'), pk=relance_id)
     try:
         data = json.loads(request.body)
+        if not isinstance(data, dict) or not isinstance(data.get('succes', True), bool):
+            return JsonResponse({'success': False, 'error': 'Données invalides'}, status=400)
         succes = data.get('succes', True)
         erreur = data.get('erreur', None)
         
@@ -277,6 +282,8 @@ def marquer_rappel_envoye(request, relance_id):
             'message': 'Statut mis à jour avec succès'
         })
         
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'success': False, 'error': 'JSON invalide'}, status=400)
     except Exception as e:
         return JsonResponse({
             'success': False,
@@ -284,56 +291,53 @@ def marquer_rappel_envoye(request, relance_id):
         })
 
 @login_required
-@any_permission_required(['can_view_payments'])
+@any_permission_required(['peut_consulter_rapports', 'peut_valider_paiements'])
 def statistiques_rappels(request):
-    """Page des statistiques des rappels"""
-    periode = int(request.GET.get('periode', 30))
-    
-    # Statistiques générales
-    stats = gestionnaire_rappels.obtenir_statistiques_rappels(periode)
-    
-    # Évolution des rappels (par semaine)
-    date_debut = timezone.now() - timedelta(days=periode)
-    rappels_par_semaine = []
-    
-    for i in range(0, periode, 7):
-        debut_semaine = date_debut + timedelta(days=i)
-        fin_semaine = debut_semaine + timedelta(days=6)
-        
-        nb_rappels = Relance.objects.filter(
-            date_creation__gte=debut_semaine,
-            date_creation__lte=fin_semaine
-        ).count()
-        
-        rappels_par_semaine.append({
-            'semaine': f"{debut_semaine.strftime('%d/%m')} - {fin_semaine.strftime('%d/%m')}",
-            'nb_rappels': nb_rappels
-        })
-    
-    # Top 10 des élèves avec le plus de rappels
-    top_eleves = (
-        Relance.objects
-        .filter(date_creation__gte=date_debut)
-        .values('eleve__nom', 'eleve__prenom', 'eleve__classe__nom')
-        .annotate(nb_rappels=Count('id'), solde_total=Sum('solde_estime'))
-        .order_by('-nb_rappels')[:10]
+    """Statistiques limitées à l'école de l'utilisateur et à la période choisie."""
+    try:
+        periode = int(request.GET.get('periode', 30))
+    except (TypeError, ValueError):
+        return HttpResponse("Période invalide", status=400)
+    if not 1 <= periode <= 366:
+        return HttpResponse("La période doit être comprise entre 1 et 366 jours", status=400)
+
+    maintenant = timezone.now()
+    date_debut = maintenant - timedelta(days=periode)
+    rappels = filter_by_user_school(
+        Relance.objects.filter(date_creation__gte=date_debut, date_creation__lte=maintenant),
+        request.user, 'eleve__classe__ecole',
     )
-    
-    context = {
-        'titre_page': 'Statistiques des Rappels',
-        'stats': stats,
-        'periode': periode,
-        'rappels_par_semaine': rappels_par_semaine,
-        'top_eleves': top_eleves,
+    stats = {
+        'total_rappels': rappels.count(),
+        'rappels_envoyes': rappels.filter(statut='ENVOYEE').count(),
+        'rappels_en_attente': rappels.filter(statut='ENREGISTREE').count(),
+        'rappels_echec': rappels.filter(statut='ECHEC').count(),
+        'eleves_concernes': rappels.values('eleve_id').distinct().count(),
     }
-    
-    return render(request, 'paiements/statistiques_rappels.html', context)
+    rappels_par_semaine = []
+    for i in range(0, periode, 7):
+        debut = date_debut + timedelta(days=i)
+        fin = min(debut + timedelta(days=7), maintenant)
+        semaine = rappels.filter(date_creation__gte=debut)
+        semaine = semaine.filter(date_creation__lte=fin) if fin == maintenant else semaine.filter(date_creation__lt=fin)
+        rappels_par_semaine.append({
+            'semaine': f"{debut.strftime('%d/%m')} - {fin.strftime('%d/%m')}",
+            'nb_rappels': semaine.count(),
+        })
+    top_eleves = (
+        rappels.values('eleve_id', 'eleve__nom', 'eleve__prenom', 'eleve__classe__nom')
+        .annotate(nb_rappels=Count('id')).order_by('-nb_rappels', 'eleve_id')[:10]
+    )
+    return render(request, 'paiements/statistiques_rappels.html', {
+        'titre_page': 'Statistiques des rappels', 'stats': stats, 'periode': periode,
+        'rappels_par_semaine': rappels_par_semaine, 'top_eleves': top_eleves,
+    })
 
 @login_required
-@any_permission_required(['can_manage_payments'])
+@any_permission_required(['peut_valider_paiements'])
 def supprimer_rappel(request, relance_id):
     """Supprime un rappel"""
-    relance = get_object_or_404(Relance, id=relance_id)
+    relance = get_object_or_404(filter_by_user_school(Relance.objects.all(), request.user, 'eleve__classe__ecole'), id=relance_id)
     
     # Vérifier l'accès
     user_profil = getattr(request.user, 'profil', None)

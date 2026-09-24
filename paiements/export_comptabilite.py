@@ -157,31 +157,33 @@ def export_comptabilite_pdf(request):
     from reportlab.lib.enums import TA_CENTER
 
     d = _collecter_donnees(request)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(d['ecole'])
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
                             topMargin=0.8 * cm, bottomMargin=0.8 * cm,
                             leftMargin=0.8 * cm, rightMargin=0.8 * cm)
     styles = getSampleStyleSheet()
     titre = ParagraphStyle('T', parent=styles['Heading1'], fontSize=14,
-                           textColor=colors.HexColor('#007bff'), alignment=TA_CENTER, spaceAfter=2)
+                           textColor=palette['primary'], alignment=TA_CENTER, spaceAfter=2)
     sous_titre = ParagraphStyle('ST', parent=styles['Normal'], fontSize=10,
                                 alignment=TA_CENTER, spaceAfter=8)
     section = ParagraphStyle('S', parent=styles['Heading2'], fontSize=12,
-                             textColor=colors.HexColor('#1a5276'), spaceBefore=8, spaceAfter=4)
+                             textColor=palette['secondary'], spaceBefore=8, spaceAfter=4)
     classe_style = ParagraphStyle('C', parent=styles['Heading3'], fontSize=10, spaceBefore=6, spaceAfter=2)
 
     def style_tableau(nb_lignes):
         return TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 7.5),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f4f6f7')]),
+            ('GRID', (0, 0), (-1, -1), 0.4, palette['border']),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, palette['table_alt']]),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ('BACKGROUND', (0, nb_lignes - 1), (-1, nb_lignes - 1), colors.HexColor('#d6eaf8')),
+            ('BACKGROUND', (0, nb_lignes - 1), (-1, nb_lignes - 1), palette['primary_soft']),
             ('FONTNAME', (0, nb_lignes - 1), (-1, nb_lignes - 1), 'Helvetica-Bold'),
         ])
 
@@ -198,13 +200,13 @@ def export_comptabilite_pdf(request):
         [str(d['nb_paiements']), _fmt_gnf(d['total_paiements']), str(d['nb_retards']),
          _fmt_gnf(d['total_retards']), str(d['nb_relances'])],
     ], colWidths=[5.4 * cm] * 5, style=TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a5276')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['secondary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['secondary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8.5),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.4, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 0.4, palette['border']),
         ('TOPPADDING', (0, 0), (-1, -1), 4),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
     ])))
@@ -223,14 +225,18 @@ def export_comptabilite_pdf(request):
             data.append([
                 p.numero_recu, p.date_paiement.strftime('%d/%m/%Y'),
                 p.eleve.matricule or '', f"{p.eleve.prenom} {p.eleve.nom}",
-                p.type_paiement.nom if p.type_paiement else '',
+                p.libelle_document,
                 p.mode_paiement.nom if p.mode_paiement else '',
                 _fmt_gnf(p.montant),
             ])
         data.append(['', '', '', '', '', 'SOUS-TOTAL', _fmt_gnf(sous_total)])
+        from xml.sax.saxutils import escape
+        cellule = ParagraphStyle('PaiementCell', parent=styles['Normal'], fontSize=7.5, leading=9)
+        cellule_entete = ParagraphStyle('PaiementHead', parent=cellule, textColor=palette['header_text'], fontName='Helvetica-Bold')
+        data = [[Paragraph(escape(str(value)), cellule_entete if index == 0 else cellule) for value in row] for index, row in enumerate(data)]
         elements.append(Table(
             data, repeatRows=1,
-            colWidths=[3.2 * cm, 2.4 * cm, 3.0 * cm, 7.4 * cm, 4.4 * cm, 3.6 * cm, 3.4 * cm],
+            colWidths=[v * cm for v in [2.7, 2.2, 2.8, 5.3, 6.0, 3.1, 2.8]],
             style=style_tableau(len(data))))
     if not d['paiements_par_classe']:
         elements.append(Paragraph("Aucun paiement validé sur la période.", styles['Normal']))
@@ -393,7 +399,7 @@ def export_comptabilite_excel(request):
             sous_total += p.montant or Decimal('0')
             valeurs = [classe.nom, p.numero_recu, p.date_paiement.strftime('%d/%m/%Y'),
                        p.eleve.matricule or '', f"{p.eleve.prenom} {p.eleve.nom}",
-                       p.type_paiement.nom if p.type_paiement else '',
+                       p.libelle_document,
                        p.mode_paiement.nom if p.mode_paiement else '', int(p.montant or 0)]
             for col, val in enumerate(valeurs, 1):
                 c = ws.cell(row=ligne, column=col, value=val)

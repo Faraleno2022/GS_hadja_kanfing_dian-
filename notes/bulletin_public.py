@@ -10,6 +10,7 @@ from django.conf import settings
 from django.http import HttpResponse, Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from ecole_moderne.branding import get_school_branding
 import logging
 
 from eleves.models import Eleve
@@ -120,7 +121,7 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
             generer_pdf_avec_filigrane
         )
         
-        eleve = get_object_or_404(Eleve, id=eleve_id)
+        eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
         classe_note = get_object_or_404(ClasseNote, id=classe_note_id)
         
         # Détecter si c'est une classe maternelle
@@ -199,7 +200,7 @@ def bulletin_public_pdf(request, eleve_id, classe_note_id, periode):
             
             if classe_eleve:
                 from eleves.models import Eleve as EleveModel
-                eleves_classe = list(EleveModel.objects.filter(classe=classe_eleve, statut='ACTIF'))
+                eleves_classe = list(EleveModel.pedagogiques.filter(classe=classe_eleve, statut='ACTIF'))
                 total_eleves = len(eleves_classe)
                 bulletin_data['total_eleves'] = total_eleves
                 
@@ -366,6 +367,7 @@ def _generer_bulletin_maternelle_public(request, eleve, classe_note, periode):
         'logo_base64': logo_base64,
         'photo_base64': photo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     # Générer le HTML avec le template maternelle v2

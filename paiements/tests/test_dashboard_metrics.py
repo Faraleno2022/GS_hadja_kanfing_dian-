@@ -290,6 +290,12 @@ class PaymentDashboardMetricsTests(TestCase):
         self.assertContains(response, "Inscriptions et réinscriptions")
         self.assertContains(response, 'data-category-card="scolarite"')
         self.assertContains(response, 'data-admission-card="reinscription"')
+        categories = {
+            item["key"]: item
+            for item in response.context["financial_metrics"]["categories"]
+        }
+        self.assertEqual(categories["bus"]["values"]["today"]["amount"], 10000)
+        self.assertEqual(categories["cantine"]["values"]["today"]["amount"], 5000)
 
     @patch("paiements.views.timezone.localdate", return_value=today)
     def test_ajax_actualise_les_cartes_detaillees(self, _mock_today):

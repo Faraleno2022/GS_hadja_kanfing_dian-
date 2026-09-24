@@ -297,9 +297,12 @@ def _subscription_metrics(model, user, today, starts):
 
 def build_payment_dashboard_metrics(user, today=None):
     """Construit des données prêtes pour le template et l'endpoint AJAX."""
+    from .payment_mutations import payment_mutation_metrics
+
     today = today or timezone.localdate()
     starts = _period_starts(today)
     payment_metrics = _payment_period_metrics(user, today, starts)
+    mutation_metrics = payment_mutation_metrics(user, today=today)
     bus_values, bus_late = _subscription_metrics(
         AbonnementBus, user, today, starts
     )
@@ -366,6 +369,30 @@ def build_payment_dashboard_metrics(user, today=None):
                 "values": payment_metrics["reinscription"],
                 "period_values": _ordered_period_values(
                     payment_metrics["reinscription"]
+                ),
+            },
+        ],
+        "mutations": [
+            {
+                "key": "modification",
+                "label": "Montants modifiés",
+                "description": "Valeurs enregistrées après correction",
+                "icon": "fa-pen-to-square",
+                "color": "warning",
+                "values": mutation_metrics["modification"],
+                "period_values": _ordered_period_values(
+                    mutation_metrics["modification"]
+                ),
+            },
+            {
+                "key": "suppression",
+                "label": "Montants supprimés",
+                "description": "Montants retirés de la comptabilité",
+                "icon": "fa-trash-can",
+                "color": "danger",
+                "values": mutation_metrics["suppression"],
+                "period_values": _ordered_period_values(
+                    mutation_metrics["suppression"]
                 ),
             },
         ],

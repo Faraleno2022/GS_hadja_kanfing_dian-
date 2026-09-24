@@ -189,6 +189,25 @@ def _base_qs_module(cle, user):
     return qs
 
 
+
+def _filtrer_lignes_recouvrement(qs, request, champ_principal):
+    from datetime import date
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        qs = qs.filter(Q(**{f'{champ_principal}__icontains': q}) | Q(observation__icontains=q))
+    debut = (request.GET.get('date_debut') or '').strip()
+    fin = (request.GET.get('date_fin') or '').strip()
+    debut = date.fromisoformat(debut) if debut else None
+    fin = date.fromisoformat(fin) if fin else None
+    if debut and fin and debut > fin:
+        raise ValueError("La date de début doit précéder la date de fin.")
+    if debut:
+        qs = qs.filter(date__gte=debut)
+    if fin:
+        qs = qs.filter(date__lte=fin)
+    return qs
+
+
 @login_required
 def liste_module_simple(request, cle):
     if cle not in MODULES_SIMPLES:
@@ -197,17 +216,12 @@ def liste_module_simple(request, cle):
     qs = _base_qs_module(cle, request.user).order_by('-date', '-date_creation')
 
     q = (request.GET.get('q') or '').strip()
-    if q:
-        qs = qs.filter(
-            Q(**{f"{cfg['champ_principal']}__icontains": q}) | Q(observation__icontains=q)
-        )
-
     date_debut = request.GET.get('date_debut') or ''
     date_fin = request.GET.get('date_fin') or ''
-    if date_debut:
-        qs = qs.filter(date__gte=date_debut)
-    if date_fin:
-        qs = qs.filter(date__lte=date_fin)
+    try:
+        qs = _filtrer_lignes_recouvrement(qs, request, cfg['champ_principal'])
+    except ValueError:
+        return HttpResponse("Période invalide : vérifiez les dates de début et de fin.", status=400)
 
     total_montant = qs.aggregate(total=Sum('montant'))['total'] or Decimal('0')
 
@@ -316,6 +330,11 @@ def export_module_simple_excel(request, cle):
         raise Http404()
     cfg = MODULES_SIMPLES[cle]
     qs = _base_qs_module(cle, request.user).order_by('-date')
+    try:
+        qs = _filtrer_lignes_recouvrement(qs, request, cfg['champ_principal'])
+    except ValueError:
+        return HttpResponse("Période invalide : vérifiez les dates de début et de fin.", status=400)
+
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -354,6 +373,11 @@ def export_module_simple_pdf(request, cle):
         raise Http404()
     cfg = MODULES_SIMPLES[cle]
     qs = _base_qs_module(cle, request.user).order_by('-date')
+    try:
+        qs = _filtrer_lignes_recouvrement(qs, request, cfg['champ_principal'])
+    except ValueError:
+        return HttpResponse("Période invalide : vérifiez les dates de début et de fin.", status=400)
+
 
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -364,9 +388,11 @@ def export_module_simple_pdf(request, cle):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(user_school(request.user))
     story = []
 
-    titre_style = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, alignment=1)
+    titre_style = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, alignment=1, textColor=palette['primary'])
     story.append(Paragraph(cfg['titre'], titre_style))
     story.append(Paragraph(f"Édité le {timezone.localdate().strftime('%d/%m/%Y')}", styles['Normal']))
     story.append(Spacer(1, 16))
@@ -385,12 +411,12 @@ def export_module_simple_pdf(request, cle):
 
     table = Table(data, colWidths=[70, 190, 90, 150])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0D6EFD')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#f1f1f1')),
+        ('GRID', (0, 0), (-1, -1), 0.5, palette['border']),
+        ('BACKGROUND', (0, -1), (-1, -1), palette['table']),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
     ]))
     story.append(table)
@@ -425,11 +451,11 @@ def liste_abonnements_informatique(request):
     filtre = (request.GET.get('filtre') or '').strip().lower()
     today = timezone.localdate()
     if filtre == 'actif':
-        qs = qs.filter(statut='ACTIF')
+        qs = qs.filter(statut='ACTIF', date_fin__gte=today)
     elif filtre == 'expire':
-        qs = qs.filter(statut='EXPIRE')
+        qs = qs.filter(Q(statut='EXPIRE') | Q(statut='ACTIF', date_fin__lt=today))
     elif filtre == 'proche_expiration':
-        qs = qs.filter(statut='ACTIF', date_fin__gte=today, date_fin__lte=today + timedelta(days=7))
+        qs = qs.filter(pk__in=[abo.pk for abo in qs if abo.est_proche_expiration])
 
     qs = qs.order_by('-updated_at')
     paginator = Paginator(qs, 25)
@@ -474,7 +500,7 @@ def recherche_eleve_informatique(request):
 @login_required
 def ajouter_abonnement_informatique(request):
     if request.method == 'POST':
-        form = AbonnementInformatiqueForm(request.POST)
+        form = AbonnementInformatiqueForm(request.POST, user=request.user)
         if form.is_valid():
             abonnement = form.save(commit=False)
             abonnement.cree_par = request.user
@@ -482,12 +508,12 @@ def ajouter_abonnement_informatique(request):
             messages.success(request, f"Abonnement informatique créé pour {abonnement.eleve}")
             return redirect('depenses:liste_abonnements_informatique')
     else:
-        form = AbonnementInformatiqueForm()
+        form = AbonnementInformatiqueForm(user=request.user)
         eleve_id = request.GET.get('eleve')
         if eleve_id:
             try:
-                form.initial['eleve'] = Eleve.objects.get(pk=eleve_id)
-            except Eleve.DoesNotExist:
+                form.initial['eleve'] = form.fields['eleve'].queryset.get(pk=eleve_id)
+            except (Eleve.DoesNotExist, ValueError, TypeError):
                 pass
 
     if not user_is_superadmin(request.user):
@@ -501,13 +527,13 @@ def ajouter_abonnement_informatique(request):
 def modifier_abonnement_informatique(request, pk):
     abonnement = get_object_or_404(AbonnementInformatique, pk=pk)
     if request.method == 'POST':
-        form = AbonnementInformatiqueForm(request.POST, instance=abonnement)
+        form = AbonnementInformatiqueForm(request.POST, instance=abonnement, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, f"Abonnement informatique modifié pour {abonnement.eleve}")
             return redirect('depenses:liste_abonnements_informatique')
     else:
-        form = AbonnementInformatiqueForm(instance=abonnement)
+        form = AbonnementInformatiqueForm(instance=abonnement, user=request.user)
 
     if not user_is_superadmin(request.user):
         form.fields['eleve'].queryset = filter_by_user_school(Eleve.objects.all(), request.user, 'classe__ecole')
@@ -536,14 +562,12 @@ def dashboard_informatique(request):
 
     today = timezone.localdate()
     total = qs.count()
-    actifs = qs.filter(statut='ACTIF').count()
-    expires = qs.filter(statut='EXPIRE').count()
+    actifs = qs.filter(statut='ACTIF', date_fin__gte=today).count()
+    expires = qs.filter(Q(statut='EXPIRE') | Q(statut='ACTIF', date_fin__lt=today)).count()
     suspendus = qs.filter(statut='SUSPENDU').count()
 
-    abonnements_expires = qs.filter(statut='ACTIF', date_fin__lt=today)
-    abonnements_proche_expiration = qs.filter(
-        statut='ACTIF', date_fin__gte=today, date_fin__lte=today + timedelta(days=7)
-    )
+    abonnements_expires = qs.filter(Q(statut='EXPIRE') | Q(statut='ACTIF', date_fin__lt=today))
+    abonnements_proche_expiration = qs.filter(pk__in=[abo.pk for abo in qs if abo.est_proche_expiration])
 
     montant_total = qs.filter(statut='ACTIF').aggregate(total=Sum('montant'))['total'] or Decimal('0')
 
@@ -585,10 +609,12 @@ def carte_abonnement_informatique_pdf(request, pk):
     x0 = (width - carte_w) / 2
     y0 = (height - carte_h) / 2
 
-    c.setFillColorRGB(0.05, 0.15, 0.35)
+    ecole_obj = getattr(getattr(abonnement.eleve, 'classe', None), 'ecole', None)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole_obj)
+    c.setFillColor(palette['header'])
     c.roundRect(x0, y0, carte_w, carte_h, 8, fill=1, stroke=0)
 
-    ecole_obj = getattr(getattr(abonnement.eleve, 'classe', None), 'ecole', None)
     logo_path = None
     try:
         if ecole_obj and getattr(ecole_obj, 'logo', None) and hasattr(ecole_obj.logo, 'path'):
@@ -605,7 +631,7 @@ def carte_abonnement_informatique_pdf(request, pk):
         except Exception:
             pass
 
-    c.setFillColorRGB(1, 1, 1)
+    c.setFillColor(palette['header_text'])
     c.setFont('Helvetica-Bold', 9)
     nom_ecole = ecole_obj.nom if ecole_obj and getattr(ecole_obj, 'nom', None) else 'MySchoolGN'
     c.drawString(x0 + 26, y0 + carte_h - 16, nom_ecole[:32])
@@ -619,7 +645,7 @@ def carte_abonnement_informatique_pdf(request, pk):
     classe_nom = abonnement.eleve.classe.nom if abonnement.eleve.classe else '-'
     c.drawString(x0 + 6, y0 + carte_h - 62, f"Classe : {classe_nom}")
     c.drawString(x0 + 6, y0 + carte_h - 74, f"Validité : {abonnement.date_debut.strftime('%d/%m/%Y')} au {abonnement.date_fin.strftime('%d/%m/%Y')}")
-    c.drawString(x0 + 6, y0 + carte_h - 84, f"Statut : {abonnement.get_statut_display()}")
+    c.drawString(x0 + 6, y0 + carte_h - 84, f"Statut : {abonnement.libelle_statut}")
 
     c.showPage()
     c.save()
@@ -656,7 +682,7 @@ def export_informatique_excel(request):
         ws.cell(row=row, column=4, value=float(abo.montant))
         ws.cell(row=row, column=5, value=abo.date_debut.strftime('%d/%m/%Y'))
         ws.cell(row=row, column=6, value=abo.date_fin.strftime('%d/%m/%Y'))
-        ws.cell(row=row, column=7, value=abo.get_statut_display())
+        ws.cell(row=row, column=7, value=abo.libelle_statut)
 
     for col in ws.columns:
         largeur = max((len(str(c.value)) for c in col if c.value is not None), default=10)
@@ -684,9 +710,11 @@ def export_informatique_pdf(request):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(user_school(request.user))
     story = []
 
-    titre_style = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, alignment=1)
+    titre_style = ParagraphStyle('Titre', parent=styles['Heading1'], fontSize=16, alignment=1, textColor=palette['primary'])
     story.append(Paragraph('Abonnements Informatique', titre_style))
     story.append(Paragraph(f"Édité le {timezone.localdate().strftime('%d/%m/%Y')}", styles['Normal']))
     story.append(Spacer(1, 16))
@@ -700,16 +728,16 @@ def export_informatique_pdf(request):
             f"{abo.montant:,.0f}".replace(',', ' '),
             abo.date_debut.strftime('%d/%m/%Y'),
             abo.date_fin.strftime('%d/%m/%Y'),
-            abo.get_statut_display(),
+            abo.libelle_statut,
         ])
 
     table = Table(data, colWidths=[55, 110, 60, 60, 55, 55, 50])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0D6EFD')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 7),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('GRID', (0, 0), (-1, -1), 0.5, palette['border']),
     ]))
     story.append(table)
 

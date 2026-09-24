@@ -26,6 +26,7 @@
                             <th>Classe</th>
                             <th>Responsable</th>
                             <th>Statut</th>
+                            <th>Test d'accueil</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -94,11 +95,28 @@
                                 <td>
                                     {% if eleve.statut == 'ACTIF' %}
                                         <span class="badge bg-success">{{ eleve.get_statut_display }}</span>
-                                    {% elif eleve.statut == 'SUSPENDU' %}
+                                    {% elif eleve.statut == 'SUSPENDU' or eleve.import_verrouille %}
                                         <span class="badge bg-warning">{{ eleve.get_statut_display }}</span>
                                     {% else %}
                                         <span class="badge bg-danger">{{ eleve.get_statut_display }}</span>
                                     {% endif %}
+                                </td>
+                                <td>
+                                    <form method="post" action="{% url 'eleves:pointer_test_accueil' eleve.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        {% if eleve.test_accueil_evalue %}
+                                            <input type="hidden" name="evalue" value="0">
+                                            <button type="submit" class="btn btn-sm btn-success" title="Cliquer pour marquer non évalué">
+                                                <i class="fas fa-check-circle me-1"></i>Évalué
+                                            </button>
+                                        {% else %}
+                                            <input type="hidden" name="evalue" value="1">
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Cliquer pour marquer évalué">
+                                                <i class="far fa-circle me-1"></i>Non évalué
+                                            </button>
+                                        {% endif %}
+                                    </form>
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm" role="group">
@@ -122,9 +140,17 @@
                                         <a href="{% url 'eleves:ticket_bus_pdf' eleve.id %}" class="btn btn-outline-warning btn-sm" title="Carte d'abonnement bus" target="_blank">
                                             <i class="fas fa-bus"></i> Bus
                                         </a>
-                                        <a href="{% url 'eleves:carte_cantine_pdf' eleve.id %}" class="btn btn-outline-danger btn-sm" title="Carte d'abonnement cantine" target="_blank">
-                                            <i class="fas fa-utensils"></i> Cantine
-                                        </a>
+                                        {% with abonnement_cantine=eleve.abonnements_cantine.first %}
+                                            {% if abonnement_cantine %}
+                                                <a href="{% url 'bus:carte_cantine_pdf' abonnement_cantine.id %}" class="btn btn-outline-danger btn-sm" title="Carte d'abonnement cantine" target="_blank">
+                                                    <i class="fas fa-utensils"></i> Cantine
+                                                </a>
+                                            {% else %}
+                                                <a href="{% url 'bus:creer_abonnement_cantine' %}?eleve={{ eleve.id }}" class="btn btn-outline-danger btn-sm" title="Créer l'abonnement cantine">
+                                                    <i class="fas fa-utensils"></i> Cantine
+                                                </a>
+                                            {% endif %}
+                                        {% endwith %}
                                         <a href="{% url 'eleves:carte_scolaire_preview' eleve.id %}" class="btn btn-outline-primary btn-sm" title="Carte scolaire">
                                             <i class="fas fa-id-card"></i> Carte
                                         </a>

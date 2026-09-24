@@ -262,34 +262,17 @@ class BienEtablissement(SyncTrackedModel):
     def __str__(self):
         return f"{self.code_bien} - {self.nom}"
 
-    def clean(self):
-        super().clean()
-        achetee = self.quantite_achetee or 0
-        utilisee = self.quantite_utilisee or 0
-        endommagee = self.quantite_endommagee or 0
-        if utilisee + endommagee > achetee:
-            raise ValidationError({
-                'quantite_endommagee': (
-                    "La quantité utilisée et la quantité gâtée ne peuvent pas "
-                    "dépasser la quantité achetée."
-                )
-            })
-
     def save(self, *args, **kwargs):
         self.valeur_acquisition = (
             Decimal(self.quantite_achetee or 0)
             * Decimal(self.prix_achat_unitaire or 0)
         )
+        if kwargs.get('update_fields') is not None:
+            champs = set(kwargs['update_fields'])
+            if champs & {'quantite_achetee', 'prix_achat_unitaire'}:
+                champs.add('valeur_acquisition')
+            kwargs['update_fields'] = champs
         super().save(*args, **kwargs)
-
-    @property
-    def quantite_disponible(self):
-        return max(
-            0,
-            (self.quantite_achetee or 0)
-            - (self.quantite_utilisee or 0)
-            - (self.quantite_endommagee or 0),
-        )
 
     @property
     def valeur_achat(self):
@@ -306,8 +289,14 @@ class BienEtablissement(SyncTrackedModel):
         return False
 
     @property
+    def quantite_gatee_effective(self):
+        # Les deux colonnes proviennent de deux versions du même suivi.
+        # Retenir la valeur renseignée sans doubler les enregistrements miroirs.
+        return max(self.quantite_gatee or 0, self.quantite_endommagee or 0)
+
+    @property
     def quantite_disponible(self):
-        return max(self.quantite_achetee - self.quantite_utilisee - self.quantite_gatee, 0)
+        return max((self.quantite_achetee or 0) - (self.quantite_utilisee or 0) - self.quantite_gatee_effective, 0)
 
     @property
     def valeur_totale_achat(self):
@@ -315,10 +304,11 @@ class BienEtablissement(SyncTrackedModel):
 
     def clean(self):
         super().clean()
-        if self.quantite_utilisee + self.quantite_gatee > self.quantite_achetee:
+        if (self.quantite_utilisee or 0) + self.quantite_gatee_effective > (self.quantite_achetee or 0):
             raise ValidationError(
                 "La quantité utilisée et la quantité gâtée ne peuvent pas dépasser la quantité achetée."
             )
+
 
 
 class ContributionPapierRame(SyncTrackedModel):

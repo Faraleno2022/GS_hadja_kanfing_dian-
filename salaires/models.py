@@ -17,6 +17,31 @@ class TypeEnseignant(models.TextChoices):
     ADMINISTRATEUR = 'ADMINISTRATEUR', 'Administrateur'
 
 
+NIVEAUX_GARDERIE = {'GARDERIE'}
+NIVEAUX_MATERNELLE = {
+    'TOUTE_PETITE_SECTION',
+    'PETITE_SECTION',
+    'MOYENNE_SECTION',
+    'GRANDE_SECTION',
+    'MATERNELLE',
+}
+NIVEAUX_PRIMAIRE = {
+    'PRIMAIRE_1', 'PRIMAIRE_2', 'PRIMAIRE_3',
+    'PRIMAIRE_4', 'PRIMAIRE_5', 'PRIMAIRE_6',
+}
+NIVEAUX_SECONDAIRE = {
+    'COLLEGE_7', 'COLLEGE_8', 'COLLEGE_9', 'COLLEGE_10',
+    'LYCEE_11', 'LYCEE_12', 'TERMINALE',
+}
+
+NIVEAUX_PAR_TYPE_ENSEIGNANT = {
+    TypeEnseignant.GARDERIE: NIVEAUX_GARDERIE,
+    TypeEnseignant.MATERNELLE: NIVEAUX_MATERNELLE,
+    TypeEnseignant.PRIMAIRE: NIVEAUX_PRIMAIRE,
+    TypeEnseignant.SECONDAIRE: NIVEAUX_SECONDAIRE,
+}
+
+
 class StatutEnseignant(models.TextChoices):
     """Statut de l'enseignant"""
     ACTIF = 'ACTIF', 'Actif'
@@ -30,6 +55,7 @@ class ModeCalculHoraire(models.TextChoices):
 
     POINTAGE = 'POINTAGE', 'Pointage arrivée / départ'
     MENSUEL = 'MENSUEL', 'Total mensuel global'
+    MANUEL = 'MANUEL', "Saisie manuelle sur l'état"
 
 
 class Enseignant(SyncTrackedModel):
@@ -41,6 +67,8 @@ class Enseignant(SyncTrackedModel):
     telephone = models.CharField(max_length=20, blank=True, verbose_name="Téléphone")
     email = models.EmailField(blank=True, verbose_name="Email")
     adresse = models.TextField(blank=True, verbose_name="Adresse")
+
+    photo = models.ImageField(upload_to="enseignants/photos/%Y/%m/", blank=True, verbose_name="Photo")
 
     # Informations professionnelles
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, verbose_name="École")
@@ -54,6 +82,23 @@ class Enseignant(SyncTrackedModel):
         choices=StatutEnseignant.choices,
         default=StatutEnseignant.ACTIF,
         verbose_name="Statut"
+    )
+    classe_principale = models.ForeignKey(
+        Classe,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='enseignants_principaux',
+        verbose_name="Classe principale",
+        help_text=(
+            "Classe tenue par l'enseignant en garderie, maternelle ou primaire."
+        ),
+    )
+    fonction = models.CharField(
+        max_length=150,
+        blank=True,
+        verbose_name="Fonction administrative",
+        help_text="Ex. Directeur, comptable, secrétaire ou surveillant général.",
     )
 
     # Rémunération
@@ -98,6 +143,48 @@ class Enseignant(SyncTrackedModel):
         ],
     )
 
+    # Identification et primes récurrentes (état de salaire / bulletin de paie)
+    matricule = models.CharField(
+        max_length=30,
+        blank=True,
+        verbose_name="Matricule",
+    )
+    prime_fonction = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Prime de fonction (GNF)",
+        help_text="Montant mensuel fixe reporté sur chaque état de salaire.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_performance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Prime de performance (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    prime_exceptionnelle = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Prime exceptionnelle (GNF)",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    distance_km = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Distance domicile-école (km)",
+        help_text="Sert au calcul de la prime d'éloignement.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    professeur_principal = models.BooleanField(
+        default=False,
+        verbose_name="Professeur principal",
+        help_text="Secondaire : ouvre droit à la prime de professeur principal.",
+    )
+
     # Dates
     date_embauche = models.DateField(verbose_name="Date d'embauche")
     date_creation = models.DateTimeField(auto_now_add=True)
@@ -138,8 +225,55 @@ class Enseignant(SyncTrackedModel):
             TypeEnseignant.ADMINISTRATEUR
         ]
 
+    @property
+    def utilise_classe_principale(self):
+        return self.type_enseignant in {
+            TypeEnseignant.GARDERIE,
+            TypeEnseignant.MATERNELLE,
+            TypeEnseignant.PRIMAIRE,
+        }
+
+    @property
+    def classe_ou_fonction(self):
+        """Libellé professionnel affiché dans les listes et les exports."""
+        if self.utilise_classe_principale:
+            return self.classe_principale.nom if self.classe_principale else ''
+        if self.type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+            return self.fonction
+        return ', '.join(
+            affectation.classe.nom
+            for affectation in self.affectations.all()
+            if affectation.actif
+        )
+
     def clean(self):
         super().clean()
+
+        if self.classe_principale_id:
+            if not self.utilise_classe_principale:
+                raise ValidationError({
+                    'classe_principale': (
+                        "La classe principale est réservée à la garderie, "
+                        "la maternelle et au primaire."
+                    )
+                })
+            if self.ecole_id != self.classe_principale.ecole_id:
+                raise ValidationError({
+                    'classe_principale': (
+                        "La classe principale doit appartenir à la même école "
+                        "que l'enseignant."
+                    )
+                })
+            niveaux_autorises = NIVEAUX_PAR_TYPE_ENSEIGNANT.get(
+                self.type_enseignant, set()
+            )
+            if self.classe_principale.niveau not in niveaux_autorises:
+                raise ValidationError({
+                    'classe_principale': (
+                        "Le niveau de cette classe ne correspond pas au type "
+                        "d'enseignant sélectionné."
+                    )
+                })
 
         if self.est_taux_horaire and not self.taux_horaire:
             raise ValidationError({
@@ -216,6 +350,117 @@ class Enseignant(SyncTrackedModel):
         """Retourne les heures mensuelles effectives (définies ou par défaut)"""
         return self.heures_mensuelles or self.get_heures_mensuelles_defaut()
 
+    @property
+    def categorie_paie(self):
+        """Regroupement utilisé par la masse salariale : Direction, Primaire ou Secondaire."""
+        return categorie_paie(self.type_enseignant)
+
+    def anciennete_annees(self, annee_reference):
+        """Ancienneté en années pleines de calendrier (année de paie - année d'embauche)."""
+        if not self.date_embauche:
+            return 0
+        return max(int(annee_reference) - self.date_embauche.year, 0)
+
+
+class CategoriePaie(models.TextChoices):
+    """Sections de la masse salariale (feuilles Direction / Primaire / Secondaire)."""
+
+    DIRECTION = 'DIRECTION', 'Direction'
+    PRIMAIRE = 'PRIMAIRE', 'Primaire'
+    SECONDAIRE = 'SECONDAIRE', 'Secondaire'
+
+
+def categorie_paie(type_enseignant):
+    if type_enseignant == TypeEnseignant.ADMINISTRATEUR:
+        return CategoriePaie.DIRECTION
+    if type_enseignant == TypeEnseignant.SECONDAIRE:
+        return CategoriePaie.SECONDAIRE
+    return CategoriePaie.PRIMAIRE
+
+
+def _montant(max_digits=12, **kwargs):
+    return models.DecimalField(
+        max_digits=max_digits,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        **kwargs,
+    )
+
+
+class ParametrePaie(SyncTrackedModel):
+    """Barèmes des primes et signataires des documents de paie d'une école."""
+
+    ecole = models.OneToOneField(
+        Ecole,
+        on_delete=models.CASCADE,
+        related_name='parametre_paie',
+        verbose_name="École",
+    )
+    jours_ouvrables = models.PositiveIntegerField(
+        default=20,
+        verbose_name="Jours ouvrables par mois",
+        validators=[MinValueValidator(1), MaxValueValidator(31)],
+    )
+    taux_anciennete_par_an = _montant(
+        default=Decimal('0'),
+        verbose_name="Prime d'ancienneté par année (GNF)",
+        help_text="Ex. 10 000 GNF par année d'ancienneté.",
+    )
+    taux_eloignement_par_km = _montant(
+        default=Decimal('0'),
+        verbose_name="Prime d'éloignement par km (GNF)",
+        help_text="Ex. 2 000 GNF par km.",
+    )
+    prime_craie_par_eleve = _montant(
+        default=Decimal('0'),
+        verbose_name="Prime de craie par élève de la classe (GNF)",
+        help_text="Garderie, maternelle et primaire : effectif de la classe principale × ce montant (ex. 500 GNF).",
+    )
+    prime_par_heure_revision = _montant(
+        default=Decimal('0'),
+        verbose_name="Prime par heure de révision (GNF)",
+        help_text="Ex. 10 000 GNF par heure.",
+    )
+    prime_professeur_principal = _montant(
+        default=Decimal('0'),
+        verbose_name="Prime de professeur principal (GNF)",
+        help_text="Ex. 50 000 GNF par mois.",
+    )
+
+    signataire_1_titre = models.CharField(max_length=80, default="La Fondation", blank=True, verbose_name="Signataire 1 - titre")
+    signataire_1_nom = models.CharField(max_length=120, blank=True, verbose_name="Signataire 1 - nom")
+    signataire_2_titre = models.CharField(max_length=80, default="Le Directeur Général", blank=True, verbose_name="Signataire 2 - titre")
+    signataire_2_nom = models.CharField(max_length=120, blank=True, verbose_name="Signataire 2 - nom")
+    signataire_3_titre = models.CharField(max_length=80, default="La Gestionnaire", blank=True, verbose_name="Signataire 3 - titre")
+    signataire_3_nom = models.CharField(max_length=120, blank=True, verbose_name="Signataire 3 - nom")
+    lieu_signature = models.CharField(max_length=80, blank=True, verbose_name="Lieu de signature")
+
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Paramètres de paie"
+        verbose_name_plural = "Paramètres de paie"
+
+    def __str__(self):
+        return f"Paramètres de paie - {self.ecole.nom}"
+
+    @classmethod
+    def pour_ecole(cls, ecole):
+        parametre, _ = cls.objects.get_or_create(ecole=ecole)
+        return parametre
+
+    @property
+    def signataires(self):
+        return [
+            (titre, nom)
+            for titre, nom in (
+                (self.signataire_1_titre, self.signataire_1_nom),
+                (self.signataire_2_titre, self.signataire_2_nom),
+                (self.signataire_3_titre, self.signataire_3_nom),
+            )
+            if titre or nom
+        ]
+
 
 class AffectationClasse(SyncTrackedModel):
     """Affectation d'un enseignant à une classe"""
@@ -279,6 +524,19 @@ class AffectationClasse(SyncTrackedModel):
         if self.enseignant.est_taux_horaire and not self.heures_par_semaine:
             raise ValidationError({
                 'heures_par_semaine': 'Le nombre d\'heures par semaine est obligatoire pour les enseignants du secondaire.'
+            })
+
+        if (
+            self.enseignant_id
+            and self.classe_id
+            and self.enseignant.type_enseignant == TypeEnseignant.SECONDAIRE
+            and self.classe.niveau not in NIVEAUX_SECONDAIRE
+        ):
+            raise ValidationError({
+                'classe': (
+                    "Une affectation secondaire doit utiliser une classe du "
+                    "collège ou du lycée."
+                )
             })
 
         if self.date_fin and self.date_fin < self.date_debut:
@@ -415,6 +673,13 @@ class EtatSalaire(SyncTrackedModel):
         help_text="Taux conservé au moment du calcul pour l'historique",
         validators=[MinValueValidator(Decimal('0'))],
     )
+    jours_presence = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Jours de présence",
+        help_text=(
+            "Nombre de jours présents ou en retard conservé au moment du calcul."
+        ),
+    )
 
     # Montants
     salaire_base = models.DecimalField(
@@ -428,13 +693,46 @@ class EtatSalaire(SyncTrackedModel):
         decimal_places=2,
         default=Decimal('0'),
         verbose_name="Primes",
+        help_text="Total des rubriques de primes, recalculé à chaque enregistrement.",
         validators=[MinValueValidator(Decimal('0'))],
+    )
+    # Rubriques du bulletin de paie (colonnes PRIMES de l'état Excel)
+    prime_fonction = _montant(default=Decimal('0'), verbose_name="Prime de fonction")
+    prime_craie = _montant(default=Decimal('0'), verbose_name="Prime de craie / révision")
+    prime_anciennete = _montant(default=Decimal('0'), verbose_name="Prime d'ancienneté")
+    prime_eloignement = _montant(default=Decimal('0'), verbose_name="Prime d'éloignement")
+    prime_performance = _montant(default=Decimal('0'), verbose_name="Prime de performance")
+    prime_exceptionnelle = _montant(default=Decimal('0'), verbose_name="Prime exceptionnelle")
+    heures_revision = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Heures de révision",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    effectif_classe = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Effectif de la classe",
+        help_text="Effectif retenu pour la prime de craie au moment du calcul.",
+    )
+    primes_ajustees = models.BooleanField(
+        default=False,
+        verbose_name="Primes saisies manuellement",
+        help_text="Si coché, un recalcul conserve les primes saisies sur cet état.",
     )
     deductions = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         default=Decimal('0'),
         verbose_name="Déductions",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
+    avances_deduites = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Avances déduites",
+        help_text="Montant des avances récupéré sur ce salaire",
         validators=[MinValueValidator(Decimal('0'))],
     )
     salaire_net = models.DecimalField(
@@ -495,11 +793,12 @@ class EtatSalaire(SyncTrackedModel):
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
+        avances_deduites = self.avances_deduites or Decimal('0')
         errors = {}
 
-        if deductions > salaire_base + primes:
+        if deductions + avances_deduites > salaire_base + primes:
             errors['deductions'] = (
-                'Les retenues ne peuvent pas dépasser le salaire de base et les primes.'
+                "Les retenues et avances ne peuvent pas dépasser le salaire de base et les primes."
             )
 
         if (
@@ -514,17 +813,59 @@ class EtatSalaire(SyncTrackedModel):
         if errors:
             raise ValidationError(errors)
 
+    RUBRIQUES_PRIMES = (
+        ('prime_fonction', 'Prime de fonction'),
+        ('prime_craie', 'Prime de craie/Révision'),
+        ('prime_anciennete', "Prime d'ancienneté"),
+        ('prime_eloignement', "Prime d'éloignement"),
+        ('prime_performance', 'Prime de performance'),
+        ('prime_exceptionnelle', 'Prime exceptionnelle'),
+    )
+
+    @property
+    def rubriques_primes(self):
+        return [
+            (libelle, getattr(self, champ) or Decimal('0'))
+            for champ, libelle in self.RUBRIQUES_PRIMES
+        ]
+
+    @property
+    def salaire_brut(self):
+        return (self.salaire_base or Decimal('0')) + (self.primes or Decimal('0'))
+
+    @property
+    def retenues_totales(self):
+        return (self.deductions or Decimal('0')) + (self.avances_deduites or Decimal('0'))
+
+    def _synchroniser_total_primes(self):
+        total = sum(
+            (getattr(self, champ) or Decimal('0') for champ, _ in self.RUBRIQUES_PRIMES),
+            Decimal('0'),
+        )
+        if total == 0 and (self.primes or Decimal('0')) > 0:
+            # Compatibilité : un ancien total global sans détail devient une
+            # prime exceptionnelle afin de ne rien perdre.
+            self.prime_exceptionnelle = self.primes
+            total = self.primes
+        self.primes = Decimal(total).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
     def save(self, *args, **kwargs):
+        self._synchroniser_total_primes()
         # Calcul automatique du salaire net
         salaire_base = self.salaire_base or Decimal('0')
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
-        self.salaire_net = (salaire_base + primes - deductions).quantize(
+        avances_deduites = self.avances_deduites or Decimal('0')
+        self.salaire_net = (
+            salaire_base + primes - deductions - avances_deduites
+        ).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP
         )
         self.full_clean()
         if kwargs.get('update_fields') is not None:
-            kwargs['update_fields'] = set(kwargs['update_fields']) | {'salaire_net'}
+            kwargs['update_fields'] = set(kwargs['update_fields']) | {
+                'salaire_net', 'primes', 'prime_exceptionnelle',
+            }
         super().save(*args, **kwargs)
 
     @property
@@ -549,6 +890,143 @@ class EtatSalaire(SyncTrackedModel):
     def peut_etre_paye(self):
         """Vérifie si l'état de salaire peut être marqué comme payé"""
         return self.valide and not self.paye
+
+
+class AvanceSalaire(SyncTrackedModel):
+    """Somme versée à un enseignant avant son règlement mensuel."""
+
+    enseignant = models.ForeignKey(
+        Enseignant,
+        on_delete=models.PROTECT,
+        related_name='avances_salaire',
+        verbose_name="Enseignant",
+    )
+    periode_prevue = models.ForeignKey(
+        PeriodeSalaire,
+        on_delete=models.PROTECT,
+        related_name='avances_salaire',
+        verbose_name="Première période de retenue",
+    )
+    date_avance = models.DateField(default=datetime.now, verbose_name="Date de l'avance")
+    montant = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name="Montant de l'avance (GNF)",
+    )
+    motif = models.TextField(verbose_name="Motif")
+    reference_externe = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name="Référence externe / numéro de reçu",
+    )
+    cree_par = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='avances_salaire_creees',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Avance sur salaire"
+        verbose_name_plural = "Avances sur salaire"
+        ordering = ['-date_avance', '-id']
+
+    def __str__(self):
+        return f"{self.enseignant.nom_complet} - {self.montant} GNF"
+
+    def clean(self):
+        super().clean()
+        if (
+            self.enseignant_id
+            and self.periode_prevue_id
+            and self.enseignant.ecole_id != self.periode_prevue.ecole_id
+        ):
+            raise ValidationError({
+                'periode_prevue': (
+                    "La période de retenue doit appartenir à l'école de l'enseignant."
+                )
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    @property
+    def montant_rembourse(self):
+        total = self.remboursements.aggregate(total=models.Sum('montant'))['total']
+        return (total or Decimal('0')).quantize(Decimal('0.01'))
+
+    @property
+    def solde_restant(self):
+        return max(self.montant - self.montant_rembourse, Decimal('0'))
+
+    @property
+    def est_soldee(self):
+        return self.solde_restant <= 0
+
+    @property
+    def est_modifiable(self):
+        return not self.remboursements.filter(
+            models.Q(etat_salaire__valide=True)
+            | models.Q(etat_salaire__paye=True)
+            | models.Q(etat_salaire__periode__cloturee=True)
+        ).exists()
+
+
+class RemboursementAvance(SyncTrackedModel):
+    """Imputation d'une avance sur un état de salaire précis."""
+
+    avance = models.ForeignKey(
+        AvanceSalaire,
+        on_delete=models.CASCADE,
+        related_name='remboursements',
+        verbose_name="Avance",
+    )
+    etat_salaire = models.ForeignKey(
+        EtatSalaire,
+        on_delete=models.CASCADE,
+        related_name='remboursements_avances',
+        verbose_name="État de salaire",
+    )
+    montant = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))],
+        verbose_name="Montant remboursé",
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Remboursement d'avance"
+        verbose_name_plural = "Remboursements d'avances"
+        ordering = ['etat_salaire__periode__annee', 'etat_salaire__periode__mois', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['avance', 'etat_salaire'],
+                name='unique_avance_par_etat_salaire',
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.avance} - {self.etat_salaire.periode.nom_periode}"
+
+    def clean(self):
+        super().clean()
+        if (
+            self.avance_id
+            and self.etat_salaire_id
+            and self.avance.enseignant_id != self.etat_salaire.enseignant_id
+        ):
+            raise ValidationError(
+                "L'avance et l'état de salaire doivent concerner le même enseignant."
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class PresenceEnseignant(SyncTrackedModel):
@@ -656,14 +1134,6 @@ class PresenceEnseignant(SyncTrackedModel):
                 errors['heures_travaillees'] = (
                     'Aucune heure travaillée ne peut être enregistrée pour ce statut.'
                 )
-        elif self.statut in {'PRESENT', 'RETARD'}:
-            if not (self.heure_arrivee and self.heure_depart) and not (
-                heures is not None and heures > 0
-            ):
-                errors['heures_travaillees'] = (
-                    "Renseignez les heures d'arrivée et de départ, ou le total travaillé."
-                )
-
         if errors:
             raise ValidationError(errors)
 

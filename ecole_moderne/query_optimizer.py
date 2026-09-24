@@ -9,6 +9,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def query_cache_token(queryset):
+    """Identifier aussi une requête vide sans compiler un SQL impossible."""
+    from django.core.exceptions import EmptyResultSet
+    try:
+        return hash(str(queryset.query))
+    except EmptyResultSet:
+        return 'empty'
+
+
 class QueryOptimizer:
     """
     Classe utilitaire pour optimiser les requêtes courantes
@@ -270,7 +279,7 @@ class PaginationOptimizer:
         from django.core.paginator import Paginator
         
         # Cache du count total
-        cache_key = f'pagination_count_{hash(str(queryset.query))}'
+        cache_key = f'pagination_count_{query_cache_token(queryset)}'
         total_count = cache.get(cache_key)
         
         if total_count is None:
@@ -279,7 +288,7 @@ class PaginationOptimizer:
         
         # Pagination avec count en cache
         paginator = Paginator(queryset, per_page)
-        paginator._count = total_count  # Override du count
+        paginator.count = total_count  # Override du count
         
         try:
             page_obj = paginator.page(page)

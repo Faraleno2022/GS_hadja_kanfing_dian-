@@ -21,6 +21,11 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
+      <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Affectation secondaire : choisissez une classe du collège ou du lycée,
+        puis indiquez la matière et le volume horaire hebdomadaire.
+      </div>
       <form method="post">
         {% csrf_token %}
         <div class="row g-3">

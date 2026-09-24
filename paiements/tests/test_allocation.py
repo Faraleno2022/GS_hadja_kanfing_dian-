@@ -88,7 +88,8 @@ class TestAllocationPaiements(TestCase):
     def _refresh(self):
         self.echeancier.refresh_from_db()
 
-    def test_inscription_plus_t1_puis_t2_puis_t3(self):
+    @patch("django.utils.timezone.localdate", return_value=date(2025, 1, 10))
+    def test_inscription_plus_t1_puis_t2_puis_t3(self, _today):
         # 1) Inscription + T1
         paiement1 = Paiement.objects.create(
             eleve=self.eleve,
@@ -99,6 +100,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2024, 9, 30),
             statut="VALIDE",
         )
+        _today.return_value = paiement1.date_paiement
         _allocate_combined_payment(paiement1, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
@@ -117,6 +119,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2025, 1, 15),
             statut="VALIDE",
         )
+        _today.return_value = paiement2.date_paiement
         _allocate_combined_payment(paiement2, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.tranche_2_payee, Decimal("500000"))
@@ -132,13 +135,15 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2025, 3, 10),
             statut="VALIDE",
         )
+        _today.return_value = paiement3.date_paiement
         _allocate_combined_payment(paiement3, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.tranche_3_payee, Decimal("500000"))
         self.assertEqual(self.echeancier.solde_restant, Decimal("0"))
         self.assertEqual(self.echeancier.statut, "PAYE_COMPLET")
 
-    def test_inscription_plus_t1_t2_puis_t3(self):
+    @patch("django.utils.timezone.localdate", return_value=date(2025, 1, 10))
+    def test_inscription_plus_t1_t2_puis_t3(self, _today):
         # 1) Inscription + T1 + T2
         paiement1 = Paiement.objects.create(
             eleve=self.eleve,
@@ -149,6 +154,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2024, 9, 30),
             statut="VALIDE",
         )
+        _today.return_value = paiement1.date_paiement
         _allocate_combined_payment(paiement1, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.frais_inscription_paye, Decimal("30000"))
@@ -167,6 +173,7 @@ class TestAllocationPaiements(TestCase):
             date_paiement=date(2025, 3, 10),
             statut="VALIDE",
         )
+        _today.return_value = paiement2.date_paiement
         _allocate_combined_payment(paiement2, self.echeancier)
         self._refresh()
         self.assertEqual(self.echeancier.tranche_3_payee, Decimal("500000"))
@@ -308,6 +315,7 @@ class TestAllocationPaiements(TestCase):
                 "type_paiement": type_t1.pk,
                 "mode_paiement": self.mode_especes.pk,
                 "montant": "700000",
+                "confirmation_paiement_superieur": "1",
                 "date_paiement": "2024-10-01",
                 "observations": "",
                 "reference_externe": "",
@@ -333,7 +341,8 @@ class TestAllocationPaiements(TestCase):
             ).exists()
         )
 
-    def test_pas_retard_le_jour_echeance_si_partiel(self):
+    @patch("django.utils.timezone.localdate", return_value=date(2025, 1, 10))
+    def test_pas_retard_le_jour_echeance_si_partiel(self, _today):
         """Un paiement partiel le jour exact de l'échéance ne doit pas être considéré en retard (strict >)."""
         # Payer l'inscription intégralement à sa date d'échéance
         paiement_insc = Paiement.objects.create(
@@ -366,7 +375,8 @@ class TestAllocationPaiements(TestCase):
         # Le jour J n'est pas > échéance, donc pas de retard
         self.assertEqual(self.echeancier.statut, "PAYE_PARTIEL")
 
-    def test_retard_lendemain_echeance_si_partiel(self):
+    @patch("django.utils.timezone.localdate", return_value=date(2025, 1, 11))
+    def test_retard_lendemain_echeance_si_partiel(self, _today):
         """Un paiement partiel le lendemain de l'échéance avec solde restant doit être EN_RETARD."""
         # Payer l'inscription pour éviter un retard dû à l'inscription
         paiement_insc = Paiement.objects.create(

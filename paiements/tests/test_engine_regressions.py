@@ -106,7 +106,6 @@ class MoteurPaiementRegressionsTests(TestCase):
         )
         _auto_validate_echeancier_for_eleve(
             self.eleve,
-            preserve_recorded=False,
             annee_scolaire='2025-2026',
             strict=True,
         )
@@ -121,7 +120,6 @@ class MoteurPaiementRegressionsTests(TestCase):
         self.creer_paiement('1000000', statut='VALIDE')
         _auto_validate_echeancier_for_eleve(
             self.eleve,
-            preserve_recorded=False,
             annee_scolaire='2025-2026',
             strict=True,
         )
@@ -132,7 +130,6 @@ class MoteurPaiementRegressionsTests(TestCase):
 
         _auto_validate_echeancier_for_eleve(
             self.eleve,
-            preserve_recorded=False,
             annee_scolaire='2026-2027',
             strict=True,
         )

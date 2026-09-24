@@ -88,7 +88,9 @@ def liste_abonnements(request):
             Q(eleve__matricule__icontains=q) |
             Q(zone__icontains=q) |
             Q(point_arret__icontains=q) |
-            Q(contact_parent__icontains=q)
+            Q(contact_parent__icontains=q) |
+            Q(numero_recu__icontains=q) |
+            Q(reference_externe__icontains=q)
         )
 
     # Appliquer le filtre de statut/échéance
@@ -477,11 +479,13 @@ def generer_recu_abonnement_pdf(request, abo_id):
 
     buffer = io.BytesIO(); c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
+    ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(ecole_obj)
 
     # Filigrane standardisé (logo centré, rotation légère, opacité 4%) — dynamique par école
     try:
         from ecole_moderne.pdf_utils import draw_logo_watermark
-        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
         draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5, ecole=ecole_obj)
     except Exception:
         pass
@@ -491,8 +495,6 @@ def generer_recu_abonnement_pdf(request, abo_id):
         from reportlab.lib.utils import ImageReader
         import os
         logo_path = None
-        ecole_obj = getattr(getattr(abo.eleve, 'classe', None), 'ecole', None)
-        
         # Essayer d'abord le logo de l'école
         if ecole_obj and hasattr(ecole_obj, 'logo'):
             school_logo_path = getattr(getattr(ecole_obj, 'logo', None), 'path', None)
@@ -514,6 +516,7 @@ def generer_recu_abonnement_pdf(request, abo_id):
         pass
 
     # Titre
+    c.setFillColor(palette['primary'])
     c.setFont('Helvetica-Bold', 18)
     title = 'REÇU ABONNEMENT BUS SCOLAIRE'
     tw = c.stringWidth(title, 'Helvetica-Bold', 18)
@@ -523,6 +526,7 @@ def generer_recu_abonnement_pdf(request, abo_id):
     try:
         ecole_nom = getattr(ecole_obj, 'nom', '')
         if ecole_nom:
+            c.setFillColor(palette['secondary'])
             c.setFont('Helvetica-Bold', 12)
             tw_ecole = c.stringWidth(ecole_nom, 'Helvetica-Bold', 12)
             c.drawString((width - tw_ecole)/2, height - 70, ecole_nom)
@@ -580,7 +584,9 @@ def generer_recu_abonnement_pdf(request, abo_id):
     c.setFont('Helvetica', 12)
     def line(lbl, val):
         nonlocal y
+        c.setFillColor(palette['primary'])
         c.setFont('Helvetica-Bold', 12); c.drawString(40, y, f"{lbl} :")
+        c.setFillColor(palette['text'])
         c.setFont('Helvetica', 12); c.drawString(200, y, str(val)); y -= 20
 
     el = abo.eleve
@@ -592,6 +598,8 @@ def generer_recu_abonnement_pdf(request, abo_id):
     line('Montant', f"{int(abo.montant):,}".replace(',', ' ') + ' GNF')
     line('Date de paiement', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
     line('Mode de paiement', getattr(abo.mode_paiement, 'nom', '') or 'Non renseigné')
+    if abo.reference_externe:
+        line('Référence externe', abo.reference_externe)
     if abo.grille_id:
         line('Grille appliquée', f"{abo.grille.zone} - {abo.grille.annee_scolaire}")
     else:
@@ -614,9 +622,9 @@ def generer_recu_abonnement_pdf(request, abo_id):
         y -= 22
 
         headers = [('TRANCHE', 40), ('ÉCHÉANCE', 150), ('DÛ', 260), ('PAYÉ', 365), ('RESTE', 465)]
-        c.setFillColor(colors.HexColor('#1f4e78'))
+        c.setFillColor(palette['header'])
         c.rect(38, y - 5, 520, 22, fill=1, stroke=0)
-        c.setFillColor(colors.white)
+        c.setFillColor(palette['header_text'])
         c.setFont('Helvetica-Bold', 8)
         for label, x_value in headers:
             c.drawString(x_value, y + 2, label)
@@ -641,29 +649,29 @@ def generer_recu_abonnement_pdf(request, abo_id):
             total_du += montant_du
             total_paye += montant_paye
             if code == abo.periodicite:
-                c.setFillColor(colors.HexColor('#e8f4fd'))
+                c.setFillColor(palette['primary_soft'])
                 c.rect(38, y - 5, 520, 20, fill=1, stroke=0)
-            c.setFillColor(colors.black)
+            c.setFillColor(palette['text'])
             c.setFont('Helvetica-Bold' if code == abo.periodicite else 'Helvetica', 8)
             c.drawString(40, y, label + (' (ce reçu)' if code == abo.periodicite else ''))
             c.drawString(150, y, echeance.strftime('%d/%m/%Y') if echeance else '—')
             c.drawRightString(340, y, f"{int(montant_du):,}".replace(',', ' '))
-            c.setFillColor(colors.HexColor('#198754'))
+            c.setFillColor(palette['card_success'])
             c.drawRightString(445, y, f"{int(montant_paye):,}".replace(',', ' '))
-            c.setFillColor(colors.HexColor('#dc3545') if reste else colors.HexColor('#198754'))
+            c.setFillColor(palette['card_danger'] if reste else palette['card_success'])
             c.drawRightString(555, y, 'Soldée' if not reste else f"{int(reste):,}".replace(',', ' '))
             y -= 20
 
         total_reste = max(total_du - total_paye, 0)
-        c.setFillColor(colors.HexColor('#f1f3f5'))
+        c.setFillColor(palette['table'])
         c.rect(38, y - 5, 520, 21, fill=1, stroke=0)
-        c.setFillColor(colors.black)
+        c.setFillColor(palette['text'])
         c.setFont('Helvetica-Bold', 8)
         c.drawString(40, y, 'TOTAL ANNÉE')
         c.drawRightString(340, y, f"{int(total_du):,}".replace(',', ' '))
-        c.setFillColor(colors.HexColor('#198754'))
+        c.setFillColor(palette['card_success'])
         c.drawRightString(445, y, f"{int(total_paye):,}".replace(',', ' '))
-        c.setFillColor(colors.HexColor('#dc3545') if total_reste else colors.HexColor('#198754'))
+        c.setFillColor(palette['card_danger'] if total_reste else palette['card_success'])
         c.drawRightString(555, y, f"{int(total_reste):,}".replace(',', ' '))
 
     c.showPage(); c.save(); pdf = buffer.getvalue(); buffer.close()

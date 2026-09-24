@@ -119,8 +119,33 @@
             <a href="{% url 'salaires:liste_presences' %}" class="btn btn-success me-2">
                 <i class="fas fa-user-check"></i> Pointage
             </a>
-            <a href="{% url 'salaires:etats_salaire' %}" class="btn btn-primary">
+            <a href="{% url 'salaires:liste_avances' %}" class="btn btn-warning me-2">
+                <i class="fas fa-hand-holding-usd"></i> Avances
+            </a>
+            <a href="{% url 'salaires:etats_salaire' %}" class="btn btn-primary me-2">
                 <i class="fas fa-list"></i> États de Salaire
+            </a>
+            <a href="{% url 'salaires:documents_paie' %}" class="btn btn-outline-primary">
+                <i class="fas fa-folder-open"></i> Documents de paie
+            </a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <a href="{% url 'salaires:liste_avances' %}?statut=en_cours" class="text-decoration-none">
+                <div class="stats-card border-start border-warning border-4">
+                    <div class="stats-number text-warning" data-target="{{ stats.avances_en_cours }}">{{ stats.avances_en_cours }}</div>
+                    <div class="stats-label">Avances en cours</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-6">
+            <a href="{% url 'salaires:liste_avances' %}?statut=en_cours" class="text-decoration-none">
+                <div class="stats-card border-start border-danger border-4">
+                    <div class="fs-2 fw-bold text-danger">{{ stats.solde_avances|floatformat:0|intcomma }} GNF</div>
+                    <div class="stats-label">Solde des avances à récupérer</div>
+                </div>
             </a>
         </div>
     </div>
@@ -129,25 +154,25 @@
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="stats-card">
-                <div class="stats-number" data-target="{{ stats.total_enseignants }}">0</div>
+                <div class="stats-number" data-target="{{ stats.total_enseignants }}">{{ stats.total_enseignants }}</div>
                 <div class="stats-label">Total Enseignants</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stats-card">
-                <div class="stats-number text-success" data-target="{{ stats.enseignants_actifs }}">0</div>
+                <div class="stats-number text-success" data-target="{{ stats.enseignants_actifs }}">{{ stats.enseignants_actifs }}</div>
                 <div class="stats-label">Enseignants Actifs</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stats-card">
-                <div class="stats-number text-info" data-target="{{ stats.enseignants_taux_horaire }}">0</div>
+                <div class="stats-number text-info" data-target="{{ stats.enseignants_taux_horaire }}">{{ stats.enseignants_taux_horaire }}</div>
                 <div class="stats-label">Taux Horaire</div>
             </div>
         </div>
         <div class="col-md-3">
             <div class="stats-card">
-                <div class="stats-number text-warning" data-target="{{ stats.enseignants_salaire_fixe }}">0</div>
+                <div class="stats-number text-warning" data-target="{{ stats.enseignants_salaire_fixe }}">{{ stats.enseignants_salaire_fixe }}</div>
                 <div class="stats-label">Salaire Fixe</div>
             </div>
         </div>
@@ -253,11 +278,20 @@
                     <a href="{% url 'salaires:etats_salaire' %}" class="btn btn-outline-success quick-action-btn">
                         <i class="fas fa-calculator"></i> Calculer les Salaires
                     </a>
+                    <a href="{% url 'salaires:ajouter_avance' %}" class="btn btn-outline-warning quick-action-btn">
+                        <i class="fas fa-hand-holding-usd"></i> Enregistrer une Avance
+                    </a>
                     <a href="{% url 'salaires:gestion_periodes' %}" class="btn btn-outline-info quick-action-btn">
                         <i class="fas fa-calendar-alt"></i> Gérer les Périodes
                     </a>
                     <a href="{% url 'salaires:rapport_presences' %}" class="btn btn-outline-secondary quick-action-btn">
                         <i class="fas fa-chart-bar"></i> Rapport Présences
+                    </a>
+                    <a href="{% url 'salaires:documents_paie' %}" class="btn btn-outline-primary quick-action-btn">
+                        <i class="fas fa-balance-scale"></i> Masse salariale &amp; bulletins
+                    </a>
+                    <a href="{% url 'salaires:parametres_paie' %}" class="btn btn-outline-secondary quick-action-btn">
+                        <i class="fas fa-sliders-h"></i> Barèmes des primes
                     </a>
                     <button class="btn btn-outline-warning quick-action-btn" onclick="exporterDonnees()">
                         <i class="fas fa-download"></i> Exporter les Données
@@ -355,6 +389,11 @@
         const statsNumbers = document.querySelectorAll('.stats-number[data-target]');
         statsNumbers.forEach(stat => {
             const target = parseInt(stat.getAttribute('data-target'));
+            if (!Number.isFinite(target) || target <= 0) {
+                stat.textContent = '0';
+                return;
+            }
+            stat.textContent = '0';
             let current = 0;
             const increment = Math.ceil(target / 30);
             

@@ -131,7 +131,7 @@ class ReportingTempsReelTests(TestCase):
         return_value=date(2026, 8, 2),
     )
     def test_rapport_comptable_affiche_les_donnees_recentes(self, _localdate):
-        response = self.client.get(reverse('paiements:rapport_comptable'))
+        response = self.client.get(reverse('paiements:rapport_comptable'), {'annee_scolaire': '2025-2026'})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['nombre_paiements'], 1)
@@ -157,11 +157,11 @@ class ReportingTempsReelTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(
             response,
-            'Voir le rapport comptable d\u00e9taill\u00e9',
+            'Rapport comptable',
         )
         self.assertContains(
             response,
-            f'href="{reverse("paiements:rapport_comptable")}"',
+            reverse("paiements:rapport_comptable"),
         )
 
     def test_soldes_prennent_une_annee_ayant_des_echeanciers(self):

@@ -28,6 +28,7 @@ from utilisateurs.utils import user_is_admin, user_is_superadmin, user_school
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
 from openpyxl.utils import get_column_letter
+from ecole_moderne.branding import get_reportlab_palette
 
 # Décorateur d'accès admin uniquement
 admin_required = user_passes_test(user_is_admin)
@@ -836,15 +837,9 @@ def generer_pdf_journalier(donnees, date_rapport):
 
     # Déterminer l'école de l'utilisateur (branding dynamique si restreint)
     from utilisateurs.utils import user_school
-    ecole_user = None
-    try:
-        # Note: on n'a pas directement request ici, mais ce générateur est appelé depuis des vues
-        # qui passent les données selon l'utilisateur. On tente de récupérer via contexte si disponible.
-        # Si indisponible, on laisse à None pour fallback générique.
-        import threading
-        ecole_user = None
-    except Exception:
-        ecole_user = None
+    school_ids = list((donnees.get('ecoles') or {}).keys())
+    ecole_user = Ecole.objects.filter(pk=school_ids[0]).first() if len(school_ids) == 1 else None
+    palette = get_reportlab_palette(ecole_user)
 
     class WatermarkDocTemplate(SimpleDocTemplate):
         def __init__(self, *args, **kwargs):
@@ -889,7 +884,7 @@ def generer_pdf_journalier(donnees, date_rapport):
         'TitreRapport',
         parent=styles['Heading1'],
         fontSize=18,
-        textColor=colors.darkblue,
+        textColor=palette['primary'],
         alignment=1  # Centré
     )
 
@@ -923,14 +918,14 @@ def generer_pdf_journalier(donnees, date_rapport):
 
         table = Table(data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['header']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['header_text']),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ('BACKGROUND', (0, 1), (-1, -1), palette['table_alt']),
+            ('GRID', (0, 0), (-1, -1), 1, palette['border'])
         ]))
 
         story.append(table)
@@ -955,13 +950,13 @@ def generer_pdf_journalier(donnees, date_rapport):
 
             class_table = Table(class_data, colWidths=[120, 60, 90, 90, 90, 90])
             class_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.black),
+                ('BACKGROUND', (0,0), (-1,0), palette['secondary']),
+                ('TEXTCOLOR', (0,0), (-1,0), palette['secondary_text']),
                 ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
                 ('ALIGN', (0,0), (0,-1), 'LEFT'),
                 ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
                 ('BOTTOMPADDING', (0,0), (-1,0), 6),
-                ('GRID', (0,0), (-1,-1), 0.25, colors.grey),
+                ('GRID', (0,0), (-1,-1), 0.25, palette['border']),
             ]))
             story.append(class_table)
             story.append(Spacer(1, 16))
@@ -977,13 +972,13 @@ def generer_pdf_journalier(donnees, date_rapport):
 
             remises_table = Table(remises_data, colWidths=[220, 120])
             remises_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), palette['secondary']),
+                ('TEXTCOLOR', (0, 0), (-1, 0), palette['secondary_text']),
                 ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
                 ('ALIGN', (0, 0), (0, -1), 'LEFT'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-                ('GRID', (0, 0), (-1, -1), 0.25, colors.grey),
+                ('GRID', (0, 0), (-1, -1), 0.25, palette['border']),
             ]))
             story.append(remises_table)
             story.append(Spacer(1, 16))
@@ -998,10 +993,10 @@ def generer_pdf_journalier(donnees, date_rapport):
     ]
     dep_table = Table(depenses_data, colWidths=[3*inch, 2*inch])
     dep_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, -1), palette['table']),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('GRID', (0, 0), (-1, -1), 1, palette['border'])
     ]))
     story.append(dep_table)
     story.append(Spacer(1, 16))
@@ -1026,10 +1021,10 @@ def generer_pdf_journalier(donnees, date_rapport):
 
     resume_table = Table(resume_data, colWidths=[3*inch, 2*inch])
     resume_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
+        ('BACKGROUND', (0, 0), (-1, -1), palette['primary_soft']),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ('GRID', (0, 0), (-1, -1), 1, palette['border'])
     ]))
 
     story.append(resume_table)
@@ -1054,18 +1049,16 @@ def rapport_remises_detaille(request):
     try:
         annee_debut = int(str(annee_active).split('-')[0])
     except (ValueError, TypeError, IndexError):
-        aujourd_hui = date.today()
+        aujourd_hui = django_timezone.localdate()
         annee_debut = aujourd_hui.year if aujourd_hui.month >= 9 else aujourd_hui.year - 1
 
-    if not date_debut:
-        date_debut = date(annee_debut, 9, 1)
-    else:
-        date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date()
-
-    if not date_fin:
-        date_fin = date.today()
-    else:
-        date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date()
+    try:
+        date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date() if date_debut else date(annee_debut, 7, 1)
+        date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date() if date_fin else django_timezone.localdate()
+    except (TypeError, ValueError):
+        return HttpResponse('Dates invalides. Format attendu : AAAA-MM-JJ.', status=400)
+    if date_debut > date_fin:
+        return HttpResponse('La date de début doit précéder la date de fin.', status=400)
 
     # Récupérer toutes les remises appliquées dans la période
     remises_appliquees = PaiementRemise.objects.filter(
@@ -1091,17 +1084,18 @@ def rapport_remises_detaille(request):
         total=Sum('montant_remise')
     )['total'] or Decimal('0')
 
-    total_montants_finals = remises_appliquees.aggregate(
-        total=Sum('paiement__montant')
-    )['total'] or Decimal('0')
+    # Un reçu ayant plusieurs remises ne compte qu'une fois dans l'encaissement.
+    total_montants_finals = Paiement.objects.filter(
+        pk__in=remises_appliquees.values('paiement_id')
+    ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
 
-    difference_totale = total_montants_finals - total_remises
+    total_couvert = total_montants_finals + total_remises
 
     # Statistiques des remises
     stats_remises = {
         'total_remises': total_remises,
         'total_montants_finals': total_montants_finals,
-        'difference_totale': difference_totale,
+        'total_couvert': total_couvert,
         'nombre_paiements_avec_remise': remises_appliquees.values('paiement').distinct().count(),
         'nombre_eleves_beneficiaires': remises_appliquees.values('paiement__eleve').distinct().count(),
     }

@@ -20,7 +20,7 @@ def _eleves_de_classe_note(classe_note):
     ).first()
     if not ce:
         return []
-    return list(Eleve.objects.filter(classe=ce, statut='ACTIF').order_by('prenom', 'nom'))
+    return list(Eleve.pedagogiques.filter(classe=ce, statut='ACTIF').order_by('prenom', 'nom'))
 
 
 def _classes_utilisateur(request):

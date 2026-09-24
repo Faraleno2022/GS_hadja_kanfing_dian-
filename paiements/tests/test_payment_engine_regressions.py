@@ -73,7 +73,7 @@ class PaymentEngineRegressionTests(TestCase):
     def test_une_remise_t3_ne_couvre_jamais_inscription(self):
         paiement = Paiement.objects.create(
             eleve=self.eleve, type_paiement=self.type_t3,
-            mode_paiement=self.mode, montant=Decimal('0'),
+            mode_paiement=self.mode, montant=Decimal('1'),
             date_paiement=date(2025, 10, 1), statut='VALIDE',
         )
         remise = RemiseReduction.objects.create(
@@ -92,6 +92,8 @@ class PaymentEngineRegressionTests(TestCase):
         )
 
         self.assertEqual(situation['retard_total'], Decimal('30000'))
+        # Le GNF encaissé sur une T3 déjà entièrement remise reste non alloué
+        # et ne doit surtout pas couvrir l'inscription.
         self.assertEqual(situation['solde_restant'], Decimal('730000'))
 
     def test_un_paiement_dune_ancienne_annee_nest_pas_rejoue(self):

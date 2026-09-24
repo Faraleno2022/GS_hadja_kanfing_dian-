@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.db import transaction
+from .services import synchroniser_echeancier_apres_changement_paiement, aligner_frais_admission
 from administration.admin_mixins import CorbeilleAdminMixin
 
 from .models import (
@@ -14,7 +16,6 @@ from .models import (
 )
 from .payment_engine import (
     annee_scolaire_coherente,
-    recalculer_echeancier,
     recalculer_remises_paiement,
 )
 
@@ -49,7 +50,9 @@ class PaiementsCorbeilleAdminMixin(CorbeilleAdminMixin):
         for contexte in contextes:
             ids.update(contexte or set())
         for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=ids):
-            recalculer_echeancier(echeancier)
+            synchroniser_echeancier_apres_changement_paiement(
+                echeancier.eleve_id, echeancier.annee_scolaire,
+            )
 
     def after_corbeille_delete(self, request, obj, context):
         self._recalculer_eleves([context])
@@ -64,6 +67,7 @@ class TypePaiementAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
     search_fields = ("nom",)
     list_filter = ("actif",)
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         eleve_ids = set()
         if change and obj.pk:
@@ -74,7 +78,9 @@ class TypePaiementAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
             )
         super().save_model(request, obj, form, change)
         for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=eleve_ids):
-            recalculer_echeancier(echeancier)
+            synchroniser_echeancier_apres_changement_paiement(
+                echeancier.eleve_id, echeancier.annee_scolaire,
+            )
 
 
 @admin.register(ModePaiement)
@@ -91,21 +97,23 @@ class PaiementAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
     list_filter = ("statut", "type_paiement", "mode_paiement")
     date_hierarchy = "date_paiement"
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
-        ancien_eleve_id = None
-        if change and obj.pk:
-            ancien_eleve_id = Paiement.objects.filter(pk=obj.pk).values_list(
-                'eleve_id', flat=True
-            ).first()
+        ancien = Paiement.objects.select_for_update().get(pk=obj.pk) if change else None
         if 'date_paiement' in getattr(form, 'changed_data', []):
-            obj.annee_scolaire = annee_scolaire_coherente(
-                obj.annee_scolaire, obj.date_paiement
-            )
+            obj.annee_scolaire = annee_scolaire_coherente(obj.annee_scolaire, obj.date_paiement)
         super().save_model(request, obj, form, change)
-        recalculer_remises_paiement(obj)
-        eleve_ids = {obj.eleve_id, ancien_eleve_id} - {None}
-        for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=eleve_ids):
-            recalculer_echeancier(echeancier)
+        echeancier = obj.echeancier_annuel
+        if echeancier and (ancien is None or ancien.type_paiement_id != obj.type_paiement_id):
+            aligner_frais_admission(echeancier, obj.type_paiement.nom)
+        recalculer_remises_paiement(
+            obj, ajuster_montant=ancien is not None and ancien.montant != obj.montant,
+        )
+        contextes = {(obj.eleve_id, obj.annee_scolaire)}
+        if ancien:
+            contextes.add((ancien.eleve_id, ancien.annee_scolaire))
+        for eleve_id, annee in sorted(contextes):
+            synchroniser_echeancier_apres_changement_paiement(eleve_id, annee)
 
 
 @admin.register(RemiseReduction)
@@ -114,6 +122,7 @@ class RemiseReductionAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
     search_fields = ("nom",)
     list_filter = ("type_remise", "motif", "actif")
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         paiements = list(
@@ -121,10 +130,11 @@ class RemiseReductionAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
         )
         eleve_ids = set()
         for paiement in paiements:
-            recalculer_remises_paiement(paiement)
             eleve_ids.add(paiement.eleve_id)
         for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=eleve_ids):
-            recalculer_echeancier(echeancier)
+            synchroniser_echeancier_apres_changement_paiement(
+                echeancier.eleve_id, echeancier.annee_scolaire,
+            )
 
 
 @admin.register(EcheancierPaiement)
@@ -132,9 +142,10 @@ class EcheancierPaiementAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
     list_display = ("eleve", "annee_scolaire", "statut", "total_du", "total_paye")
     search_fields = ("eleve__nom", "eleve__prenom", "eleve__matricule")
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
-        recalculer_echeancier(obj)
+        synchroniser_echeancier_apres_changement_paiement(obj.eleve_id, obj.annee_scolaire)
 
 
 @admin.register(TwilioInboundMessage)
@@ -173,9 +184,14 @@ class PaiementRemiseAdmin(PaiementsCorbeilleAdminMixin, admin.ModelAdmin):
     list_filter = ('base_calcul', 'motif', 'applique_tranche_1', 'applique_tranche_2', 'applique_tranche_3')
     search_fields = ('paiement__numero_recu', 'paiement__eleve__nom', 'remise__nom')
 
+    @transaction.atomic
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
-        recalculer_echeancier(obj.paiement.eleve)
+        from .recalcul_remises import memoriser_regle_remise
+        if not change or {'remise', 'base_calcul', 'applique_tranche_1', 'applique_tranche_2', 'applique_tranche_3'} & set(getattr(form, 'changed_data', [])):
+            obj.regle_calcul = memoriser_regle_remise(obj.remise, obj.base_calcul, obj.tranches_appliquees)
+            obj.save(update_fields=['regle_calcul'])
+        synchroniser_echeancier_apres_changement_paiement(obj.paiement.eleve_id, obj.paiement.annee_scolaire)
 
 
 @admin.register(Relance)

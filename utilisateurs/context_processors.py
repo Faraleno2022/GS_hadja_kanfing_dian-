@@ -1,12 +1,14 @@
 import os
 from .models import Profil
-from .permissions import get_user_permissions, check_comptable_restrictions
+from .permissions import get_user_permissions, check_comptable_restrictions, has_permission
+from ecole_moderne.branding import get_school_branding
 
 def user_context(request):
     """
     Ajoute des informations utilisateur au contexte global
     """
     context = {
+        'can_view_reports': False,
         'user_profil': None,
         'user_role': None,
         'user_ecole': None,
@@ -22,6 +24,7 @@ def user_context(request):
     }
 
     if request.user.is_authenticated:
+        context['can_view_reports'] = has_permission(request.user, 'peut_consulter_rapports')
         try:
             profil = request.user.profil
             context.update({
@@ -48,4 +51,5 @@ def user_context(request):
                 'user_restrictions': check_comptable_restrictions(request.user),
             })
 
+    context['school_branding'] = get_school_branding(context.get('user_ecole'))
     return context

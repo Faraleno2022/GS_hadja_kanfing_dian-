@@ -20,8 +20,12 @@
             <i class="fas fa-arrow-left me-1"></i>Retour à la liste
         </a>
         {% if paiement.statut == 'VALIDE' %}
+            <a href="{% url 'paiements:ticket_paiement_pdf' paiement.id %}" class="btn btn-outline-primary" target="_blank" rel="noopener"><i class="fas fa-receipt me-1"></i>Ticket de paiement</a>
             <a href="{% url 'paiements:generer_recu_pdf' paiement.id %}" class="btn btn-primary">
                 <i class="fas fa-file-pdf me-1"></i>Télécharger le reçu
+            </a>
+            <a href="{% url 'paiements:generer_carnet_paiement_pdf' paiement.id %}" class="btn btn-outline-primary">
+                <i class="fas fa-book-open me-1"></i>Carnet de paiement
             </a>
             <button type="button" class="btn btn-success" onclick="envoyerRecuWhatsApp()" data-paiement-id="{{ paiement.id }}">
                 <i class="fab fa-whatsapp me-1"></i>Envoyer par WhatsApp
@@ -63,6 +67,7 @@
 {% endblock %}
 
 {% block content %}
+{% if paiement.frais_revision_inclus %}<div class="alert alert-info"><strong>Frais de révision {% if paiement.statut == 'VALIDE' %}payés{% else %}sélectionnés{% endif %}.</strong> {{ paiement.precision_revision }}. Le montant encaissé reste inchangé. {% if paiement.statut == 'EN_ATTENTE' %}La réduction prendra effet à la validation.{% endif %}</div>{% endif %}
     <div class="row">
         <!-- Informations principales du paiement -->
         <div class="col-lg-8">

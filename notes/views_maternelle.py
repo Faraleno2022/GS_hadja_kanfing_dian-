@@ -8,6 +8,7 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.db import transaction
 from django.utils import timezone
+from ecole_moderne.branding import get_school_branding
 from datetime import datetime
 import json
 
@@ -70,7 +71,7 @@ def saisie_evaluation_maternelle(request):
                 annee_scolaire=classe_selectionnee.annee_scolaire
             ).first()
             if classe_eleves:
-                eleves = Eleve.objects.filter(
+                eleves = Eleve.pedagogiques.filter(
                     classe=classe_eleves,
                     statut='ACTIF'
                 ).order_by('nom', 'prenom')
@@ -114,7 +115,7 @@ def saisie_evaluation_maternelle(request):
 @login_required
 def saisie_eleve_maternelle(request, eleve_id):
     """Vue de saisie détaillée pour un élève"""
-    eleve = get_object_or_404(Eleve, id=eleve_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
     
     classe_id = request.GET.get('classe')
     trimestre = request.GET.get('trimestre', 'TRIMESTRE_1')
@@ -361,6 +362,7 @@ def bulletin_maternelle_pdf(request, evaluation_id):
         'logo_base64': logo_base64,
         'photo_base64': photo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     # Générer le HTML
@@ -475,6 +477,7 @@ def bulletins_classe_maternelle_pdf(request):
         'annee_scolaire': annee_scolaire,
         'logo_base64': logo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     # Générer le HTML
@@ -570,7 +573,7 @@ def api_get_eleves_classe(request):
             annee_scolaire=classe_note.annee_scolaire
         ).first()
         if classe_eleves:
-            eleves = Eleve.objects.filter(
+            eleves = Eleve.pedagogiques.filter(
                 classe=classe_eleves,
                 statut='ACTIF'
             ).order_by('nom', 'prenom').values('id', 'nom', 'prenom', 'matricule')

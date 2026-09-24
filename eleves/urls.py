@@ -1,5 +1,11 @@
 from django.urls import path
-from . import views
+from . import views, views_configuration
+from .views_repartition import repartir_importes
+from .views_evaluations import (
+    export_test_accueil_excel,
+    export_test_accueil_pdf,
+    pointer_test_accueil,
+)
 from .views_import import (
     importer_eleves,
     telecharger_template_eleves,
@@ -16,9 +22,15 @@ from .views_nouvelle_annee import (
 app_name = 'eleves'
 
 urlpatterns = [
+    path('classes/<int:classe_id>/modifier/', views_configuration.modifier_classe_configuration, name='modifier_classe_configuration'),
+    path('grilles/<int:grille_id>/modifier/', views_configuration.modifier_grille_tarifaire, name='modifier_grille_tarifaire'),
+    path('importes/repartir/', repartir_importes, name='repartir_importes'),
     # Liste et recherche des élèves
     path('', views.liste_eleves, name='liste_eleves'),
     path('liste/', views.liste_eleves, name='liste_eleves'),
+    path('<int:eleve_id>/test-accueil/', pointer_test_accueil, name='pointer_test_accueil'),
+    path('test-accueil/<str:status>/export/excel/', export_test_accueil_excel, name='export_test_accueil_excel'),
+    path('test-accueil/<str:status>/export/pdf/', export_test_accueil_pdf, name='export_test_accueil_pdf'),
 
     # Détails d'un élève
     path('<int:eleve_id>/', views.detail_eleve, name='detail_eleve'),
@@ -79,4 +91,7 @@ urlpatterns = [
     path('template-eleves/', telecharger_template_eleves, name='telecharger_template_eleves'),
     path('exporter/classe/<int:classe_id>/', exporter_eleves_classe, name='exporter_eleves_classe'),
     path('exporter/modele-import/', exporter_tous_eleves_import, name='exporter_tous_eleves_import'),
+    # Alias conservé pour les écrans et installations qui utilisent encore
+    # l'ancien nom de route.
+    path('exporter/tous-eleves/', exporter_tous_eleves_import, name='exporter_tous_eleves_template'),
 ]

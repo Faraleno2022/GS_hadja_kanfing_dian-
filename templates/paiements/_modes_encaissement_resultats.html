@@ -116,7 +116,7 @@
                         <div class="fw-semibold">{{ row.student }}</div>
                         <small class="text-muted">{{ row.matricule }} · {{ row.school_year }}</small>
                     </td>
-                    <td>{{ row.class }}</td>
+                    <td>{{ row.class }}<div class="small text-muted">{{ row.school_year }}</div></td>
                     <td class="text-end">
                         <div class="fw-bold text-success">{{ row.collected|floatformat:0|intcomma }} GNF</div>
                         <small class="text-muted">{{ row.operation_count }} opération{{ row.operation_count|pluralize }}</small>

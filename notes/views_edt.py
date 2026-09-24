@@ -8,9 +8,12 @@ le module Salaires.
 import calendar as _cal
 import io
 from datetime import date, datetime, time
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 
@@ -147,6 +150,8 @@ def emploi_du_temps_pdf(request):
 
     classe = get_object_or_404(ClasseNote, pk=request.GET.get('classe_id'))
     lignes, _ = _grille_edt(classe)
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(classe.ecole)
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4),
@@ -154,7 +159,7 @@ def emploi_du_temps_pdf(request):
                             leftMargin=1 * cm, rightMargin=1 * cm)
     styles = getSampleStyleSheet()
     titre = ParagraphStyle('T', parent=styles['Heading1'], fontSize=14,
-                           textColor=colors.HexColor('#007bff'), alignment=TA_CENTER)
+                           textColor=palette['primary'], alignment=TA_CENTER)
     cell_style = ParagraphStyle('C', parent=styles['Normal'], fontSize=7.5, alignment=TA_CENTER, leading=9)
 
     elements = [Paragraph(f"<b>{(classe.ecole.nom if classe.ecole else '').upper()}</b>", titre)]
@@ -185,11 +190,11 @@ def emploi_du_temps_pdf(request):
         colj = (page_w - col0) / len(JOURS)
         table = Table(data, colWidths=[col0] + [colj] * len(JOURS), repeatRows=1)
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+            ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#eef3f8')),
+            ('BACKGROUND', (0, 1), (0, -1), palette['table']),
             ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -334,7 +339,9 @@ def calendrier_professeurs(request):
 @login_required
 def pointage_professeurs(request):
     """Pointage entrée/sortie des professeurs pour une date donnée."""
-    from salaires.models import PresenceEnseignant
+    from salaires.models import ModeCalculHoraire, PresenceEnseignant
+    from salaires.services import recalculer_salaire_ouvert_pour_date
+
     profil = getattr(request.user, 'profil', None)
     ecole = profil.ecole if profil else None
 
@@ -346,18 +353,68 @@ def pointage_professeurs(request):
 
     if request.method == 'POST':
         maj = 0
+        salaires_recalcules = 0
         statuts = dict(PresenceEnseignant.STATUT_CHOICES)
-        for e in enseignants:
-            statut = (request.POST.get(f'statut_{e.id}') or 'PRESENT').strip()
-            if statut not in statuts:
-                statut = 'PRESENT'
-            arr = _parse_heure(request.POST.get(f'arrivee_{e.id}'))
-            dep = _parse_heure(request.POST.get(f'depart_{e.id}'))
-            PresenceEnseignant.objects.update_or_create(
-                enseignant=e, date=jour,
-                defaults={'statut': statut, 'heure_arrivee': arr, 'heure_depart': dep})
-            maj += 1
-        messages.success(request, f"Pointage enregistré pour {maj} professeur(s) — {jour:%d/%m/%Y}.")
+        try:
+            with transaction.atomic():
+                for e in enseignants:
+                    statut = (request.POST.get(f'statut_{e.id}') or 'PRESENT').strip()
+                    if statut not in statuts:
+                        statut = 'PRESENT'
+
+                    arrivee_brute = request.POST.get(f'arrivee_{e.id}') or ''
+                    depart_brut = request.POST.get(f'depart_{e.id}') or ''
+                    heures_brutes = (
+                        request.POST.get(f'heures_travaillees_{e.id}') or ''
+                    ).strip()
+                    heures = (
+                        Decimal(heures_brutes.replace(',', '.'))
+                        if heures_brutes else None
+                    )
+
+                    presence = (
+                        PresenceEnseignant.objects.select_for_update()
+                        .filter(enseignant=e, date=jour)
+                        .first()
+                    )
+                    if presence is None:
+                        presence = PresenceEnseignant(enseignant=e, date=jour)
+
+                    presence.statut = statut
+                    presence.heure_arrivee = _parse_heure(arrivee_brute)
+                    presence.heure_depart = _parse_heure(depart_brut)
+                    presence.heures_travaillees = heures
+                    presence.pointe_par = request.user
+                    presence.save()
+                    maj += 1
+
+                # Ce second écran de pointage doit produire exactement le même
+                # effet financier que celui du module Salaires.
+                for e in enseignants:
+                    if (
+                        e.est_taux_horaire
+                        and e.mode_calcul_horaire == ModeCalculHoraire.POINTAGE
+                    ):
+                        _, modifie = recalculer_salaire_ouvert_pour_date(
+                            e, jour, request.user
+                        )
+                        salaires_recalcules += int(modifie)
+        except (InvalidOperation, ValueError, ValidationError) as exc:
+            detail = '; '.join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
+            messages.error(
+                request,
+                "Pointage non enregistré. Les heures d'arrivée et de départ doivent "
+                "être saisies ensemble. Pour une simple présence, laissez-les toutes "
+                "les deux vides. "
+                f"Détail : {detail}",
+            )
+            return redirect(f"{request.path}?date={jour.isoformat()}")
+
+        messages.success(
+            request,
+            f"Pointage enregistré pour {maj} professeur(s) — {jour:%d/%m/%Y}. "
+            f"{salaires_recalcules} salaire(s) horaire(s) recalculé(s).",
+        )
         return redirect(f"{request.path}?date={jour.isoformat()}")
 
     lignes = []
@@ -368,6 +425,7 @@ def pointage_professeurs(request):
             'statut': p.statut if p else 'PRESENT',
             'arrivee': p.heure_arrivee.strftime('%H:%M') if p and p.heure_arrivee else '',
             'depart': p.heure_depart.strftime('%H:%M') if p and p.heure_depart else '',
+            'heures': p.heures_travaillees if p and p.heures_travaillees else '',
         })
 
     return render(request, 'notes/pointage_professeurs.html', {

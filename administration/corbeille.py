@@ -47,7 +47,16 @@ def _utilisateur(request, user=None):
 
 def instantane(instance):
     """Instantane serialisable d'une instance."""
-    return serialize_instance(instance)
+    data = serialize_instance(instance)
+    # Une archive locale conserve les auteurs et l'identité de synchronisation.
+    from django.contrib.auth import get_user_model
+    for field in instance._meta.concrete_fields:
+        if field.is_relation and field.remote_field.model == get_user_model():
+            pk = getattr(instance, field.attname)
+            data[field.name] = {'pk': pk} if pk else None
+    if hasattr(instance, 'sync_uuid'):
+        data['sync_uuid'] = str(instance.sync_uuid)
+    return data
 
 
 def collecter_objets_lies(instance, limite=1000):
@@ -67,25 +76,34 @@ def collecter_objets_lies(instance, limite=1000):
         pass
 
     lies = []
-    for modele, objets in collector.data.items():
+    # Les suppressions SQL directes ne figurent pas dans collector.data.
+    # Elles portent sur les feuilles, à restaurer après leurs parents.
+    groupes = [(qs.model, qs) for qs in collector.fast_deletes]
+    groupes.extend(collector.data.items())
+    vus = set()
+    for modele, objets in groupes:
         for obj in objets:
             if modele is type(instance) and obj.pk == instance.pk:
                 continue
-            if len(lies) >= limite:
+            cle = (modele._meta.label_lower, obj.pk)
+            if cle in vus:
+                continue
+            vus.add(cle)
+            if limite is not None and len(lies) >= limite:
                 return lies, True
             lies.append({
                 'model_label': model_label_for(obj),
                 'pk': obj.pk,
                 'libelle': str(obj)[:255],
-                'donnees': serialize_instance(obj),
+                'donnees': instantane(obj),
             })
     return lies, False
 
 
-def enregistrer_suppression(instance, request=None, user=None, objets_lies=None):
+def enregistrer_suppression(instance, request=None, user=None, objets_lies=None, motif=''):
     """Place une copie de l'objet dans la corbeille, avant sa suppression."""
     if objets_lies is None:
-        objets_lies, _tronque = collecter_objets_lies(instance)
+        objets_lies, _tronque = collecter_objets_lies(instance, limite=None)
 
     return ElementCorbeille.objects.create(
         type_operation=ElementCorbeille.SUPPRESSION,
@@ -94,6 +112,7 @@ def enregistrer_suppression(instance, request=None, user=None, objets_lies=None)
         libelle=str(instance)[:255],
         donnees_avant=instantane(instance),
         objets_lies=objets_lies or [],
+        motif=(motif or '')[:255],
         ecole=_ecole(instance),
         utilisateur=_utilisateur(request, user),
         adresse_ip=_ip(request),
@@ -141,50 +160,46 @@ def _modele(element):
 
 def _recalculer_paiements(instance):
     """Resynchronise les échéanciers après une restauration comptable."""
-    try:
-        from paiements.models import (
-            EcheancierPaiement,
-            ModePaiement,
-            Paiement,
-            PaiementRemise,
-            RemiseReduction,
-            TypePaiement,
+    from paiements.models import (
+        EcheancierPaiement,
+        ModePaiement,
+        Paiement,
+        PaiementRemise,
+        RemiseReduction,
+        TypePaiement,
+    )
+    from paiements.services import synchroniser_echeancier_apres_changement_paiement
+
+    from eleves.models import Eleve
+    eleve_ids = set()
+    if isinstance(instance, Eleve):
+        eleve_ids.add(instance.pk)
+    elif isinstance(instance, Paiement):
+        eleve_ids.add(instance.eleve_id)
+    elif isinstance(instance, PaiementRemise):
+        eleve_ids.add(instance.paiement.eleve_id)
+    elif isinstance(instance, EcheancierPaiement):
+        eleve_ids.add(instance.eleve_id)
+    elif isinstance(instance, RemiseReduction):
+        eleve_ids.update(
+            PaiementRemise.objects.filter(remise=instance).values_list(
+                'paiement__eleve_id', flat=True
+            )
         )
-        from paiements.payment_engine import (
-            recalculer_echeancier,
-            recalculer_remises_paiement,
+    elif isinstance(instance, (TypePaiement, ModePaiement)):
+        filtre = (
+            {'type_paiement': instance}
+            if isinstance(instance, TypePaiement)
+            else {'mode_paiement': instance}
+        )
+        eleve_ids.update(
+            Paiement.objects.filter(**filtre).values_list('eleve_id', flat=True)
         )
 
-        eleve_ids = set()
-        if isinstance(instance, Paiement):
-            recalculer_remises_paiement(instance)
-            eleve_ids.add(instance.eleve_id)
-        elif isinstance(instance, PaiementRemise):
-            eleve_ids.add(instance.paiement.eleve_id)
-        elif isinstance(instance, EcheancierPaiement):
-            eleve_ids.add(instance.eleve_id)
-        elif isinstance(instance, RemiseReduction):
-            eleve_ids.update(
-                PaiementRemise.objects.filter(remise=instance).values_list(
-                    'paiement__eleve_id', flat=True
-                )
-            )
-        elif isinstance(instance, (TypePaiement, ModePaiement)):
-            filtre = (
-                {'type_paiement': instance}
-                if isinstance(instance, TypePaiement)
-                else {'mode_paiement': instance}
-            )
-            eleve_ids.update(
-                Paiement.objects.filter(**filtre).values_list('eleve_id', flat=True)
-            )
-
-        for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=eleve_ids):
-            recalculer_echeancier(echeancier)
-    except Exception:
-        # La corbeille reste utilisable pour toutes les autres applications,
-        # même si le module paiements n'est pas installé ou est en migration.
-        return
+    for echeancier in EcheancierPaiement.objects.filter(eleve_id__in=eleve_ids):
+        synchroniser_echeancier_apres_changement_paiement(
+            echeancier.eleve_id, echeancier.annee_scolaire,
+        )
 
 
 def _appliquer_donnees(objet, modele, donnees, champs=None):
@@ -198,7 +213,15 @@ def _appliquer_donnees(objet, modele, donnees, champs=None):
         if field.name not in donnees:
             continue
 
-        valeur = deserialize_field(field, donnees[field.name])
+        from django.contrib.auth import get_user_model
+        raw = donnees[field.name]
+        if field.is_relation and field.remote_field.model == get_user_model():
+            pk = raw.get('pk') if isinstance(raw, dict) else None
+            valeur = get_user_model().objects.filter(pk=pk).first() if pk else None
+        else:
+            valeur = deserialize_field(field, raw)
+            if not field.is_relation:
+                valeur = field.to_python(valeur)
         if valeur is None and donnees[field.name] and field.is_relation:
             # La cible de la clé étrangère n'existe plus.
             ignores.append(field.verbose_name or field.name)
@@ -207,9 +230,21 @@ def _appliquer_donnees(objet, modele, donnees, champs=None):
     return ignores
 
 
+def _sauver_archive(objet, donnees):
+    objet.save(force_insert=True)
+    # auto_now_add ne doit pas transformer une ancienne relance en relance du jour.
+    dates = {}
+    for field in objet._meta.concrete_fields:
+        if field.name in CHAMPS_NON_RESTAURABLES and donnees.get(field.name):
+            dates[field.name] = field.to_python(donnees[field.name])
+    if dates:
+        type(objet).objects.filter(pk=objet.pk).update(**dates)
+
+
 @transaction.atomic
 def restaurer(element, request=None, user=None):
     """Recrée un objet supprimé. Retourne (objet, champs_ignores)."""
+    element = ElementCorbeille.objects.select_for_update().get(pk=element.pk)
     if element.restaure:
         raise CorbeilleError("Cet élément a déjà été restauré.")
     if element.type_operation != ElementCorbeille.SUPPRESSION:
@@ -226,28 +261,24 @@ def restaurer(element, request=None, user=None):
     ignores = _appliquer_donnees(objet, modele, element.donnees_avant)
     if element.objet_id:
         objet.pk = element.objet_id
-    objet.save(force_insert=True)
+    _sauver_archive(objet, element.donnees_avant)
 
     # Les objets liés ont été collectés dans l'ordre de suppression
     # (enfants d'abord) : on les recrée dans l'ordre inverse.
     for lie in reversed(element.objets_lies or []):
-        try:
-            modele_lie = _modele_depuis_label(lie.get('model_label'))
-        except CorbeilleError:
-            ignores.append(lie.get('libelle') or lie.get('model_label'))
-            continue
-
+        modele_lie = _modele_depuis_label(lie.get('model_label'))
         if lie.get('pk') and modele_lie.objects.filter(pk=lie['pk']).exists():
-            continue
-
+            raise CorbeilleError("Un élément lié existe déjà : restauration annulée.")
         enfant = modele_lie()
         ignores += _appliquer_donnees(enfant, modele_lie, lie.get('donnees') or {})
         if lie.get('pk'):
             enfant.pk = lie['pk']
         try:
-            enfant.save(force_insert=True)
+            _sauver_archive(enfant, lie.get('donnees') or {})
         except Exception as exc:
-            ignores.append(f"{lie.get('libelle') or modele_lie._meta.verbose_name} ({exc})")
+            raise CorbeilleError(
+                f"Restauration annulée : impossible de restaurer {lie.get('libelle') or modele_lie._meta.verbose_name}."
+            ) from exc
 
     element.restaure = True
     element.date_restauration = timezone.now()
@@ -262,6 +293,7 @@ def restaurer(element, request=None, user=None):
 @transaction.atomic
 def annuler_modification(element, request=None, user=None):
     """Réapplique l'état antérieur d'un objet modifié. Retourne (objet, champs_ignores)."""
+    element = ElementCorbeille.objects.select_for_update().get(pk=element.pk)
     if element.restaure:
         raise CorbeilleError("Cette modification a déjà été annulée.")
     if element.type_operation != ElementCorbeille.MODIFICATION:

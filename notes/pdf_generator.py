@@ -12,6 +12,7 @@ from io import BytesIO
 from django.http import HttpResponse
 import os
 from .calculs_moyennes import detecter_niveau_scolaire
+from ecole_moderne.branding import get_reportlab_palette
 
 
 def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
@@ -22,13 +23,15 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*cm, bottomMargin=1*cm)
     elements = []
     
+    palette = get_reportlab_palette(getattr(classe, 'ecole', None))
+
     # Styles
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=palette['primary'],
         spaceAfter=12,
         alignment=1  # Center
     )
@@ -152,8 +155,8 @@ def generer_bulletin_pdf(eleve_data, classe, periode, periode_libelle):
     notes_table = Table(notes_data, colWidths=[7*cm, 2*cm, 3*cm, 3*cm, 3*cm])
     notes_table.setStyle(TableStyle([
         # En-tête
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -230,13 +233,15 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     """
     elements = []
     
+    palette = get_reportlab_palette(getattr(classe, 'ecole', None))
+
     # Styles
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=palette['primary'],
         spaceAfter=12,
         alignment=1  # Center
     )
@@ -360,8 +365,8 @@ def generer_elements_bulletin(eleve_data, classe, periode, periode_libelle):
     notes_table = Table(notes_data, colWidths=[7*cm, 2*cm, 3*cm, 3*cm, 3*cm])
     notes_table.setStyle(TableStyle([
         # En-tête
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 11),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),

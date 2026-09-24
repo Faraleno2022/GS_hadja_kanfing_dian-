@@ -19,8 +19,13 @@ import os
 from io import BytesIO
 from PIL import Image as PILImage
 
+from ecole_moderne.branding import get_reportlab_palette
+
 def generer_note_rappel_eleve(eleve, response=None):
     """Génère une note de rappel pour un élève spécifique"""
+
+    ecole = eleve.classe.ecole
+    palette = get_reportlab_palette(ecole)
 
     if response is None:
         buffer = BytesIO()
@@ -45,7 +50,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=18,
-        textColor=colors.HexColor('#000000'),
+        textColor=palette['primary'],
         spaceAfter=30,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold'
@@ -58,6 +63,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         fontSize=12,
         leading=18,
         alignment=TA_JUSTIFY,
+        textColor=palette['text'],
         fontName='Helvetica'
     )
 
@@ -68,6 +74,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         fontSize=11,
         leading=16,
         alignment=TA_LEFT,
+        textColor=palette['muted'],
         fontName='Helvetica'
     )
 
@@ -92,7 +99,6 @@ def generer_note_rappel_eleve(eleve, response=None):
     elements.append(Spacer(1, 12))
 
     # Logo de l'école (si disponible)
-    ecole = eleve.classe.ecole
     logo_path = None
     if ecole.logo and os.path.exists(ecole.logo.path):
         logo_path = ecole.logo.path
@@ -268,7 +274,7 @@ def generer_note_rappel_eleve(eleve, response=None):
         parent=styles['Normal'],
         fontSize=9,
         alignment=TA_CENTER,
-        textColor=colors.HexColor('#555555'),
+        textColor=palette['muted'],
     )
     # Espace réduit pour remonter le NB
     elements.append(Spacer(1, 8))

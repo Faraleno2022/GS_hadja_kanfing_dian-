@@ -1,3 +1,4 @@
+from django.db.models.functions import Greatest
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
@@ -97,7 +98,7 @@ def dashboard_logistique(request):
         total_biens=Count('id'),
         somme_quantite_achetee=Sum('quantite_achetee'),
         somme_quantite_utilisee=Sum('quantite_utilisee'),
-        somme_quantite_gatee=Sum('quantite_gatee'),
+        somme_quantite_gatee=Sum(Greatest('quantite_gatee', 'quantite_endommagee')),
         valeur_totale=Sum(
             F('quantite_achetee') * F('prix_achat_unitaire'),
             output_field=DecimalField(max_digits=20, decimal_places=0),
@@ -303,7 +304,7 @@ def liste_biens(request):
         total=Count('id'),
         achetee=Sum('quantite_achetee'),
         utilisee=Sum('quantite_utilisee'),
-        gatee=Sum('quantite_gatee'),
+        gatee=Sum(Greatest('quantite_gatee', 'quantite_endommagee')),
     )
     stats = {key: value or 0 for key, value in stats.items()}
     stats['disponible'] = max(stats['achetee'] - stats['utilisee'] - stats['gatee'], 0)
@@ -329,6 +330,8 @@ def creer_bien(request):
         if form.is_valid():
             bien = form.save(commit=False)
             bien.cree_par = request.user
+            from utilisateurs.utils import user_school
+            bien.ecole = user_school(request.user)
 
             if not bien.code_bien:
                 today = date.today()

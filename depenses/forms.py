@@ -350,58 +350,7 @@ from .models_recouvrement import (
 )
 
 
-class DepenseCuisineForm(forms.ModelForm):
-    class Meta:
-        model = DepenseCuisine
-        fields = ['date', 'designation', 'montant', 'observation']
-        widgets = {
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
-            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
-            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
-        }
-
-    def clean_montant(self):
-        montant = self.cleaned_data.get('montant')
-        if montant is not None and montant <= 0:
-            raise ValidationError("Le montant doit être supérieur à 0.")
-        return montant
-
-
-class DepenseDocumentForm(forms.ModelForm):
-    class Meta:
-        model = DepenseDocument
-        fields = ['date', 'designation', 'montant', 'observation']
-        widgets = {
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'designation': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Désignation'}),
-            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
-            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
-        }
-
-    def clean_montant(self):
-        montant = self.cleaned_data.get('montant')
-        if montant is not None and montant <= 0:
-            raise ValidationError("Le montant doit être supérieur à 0.")
-        return montant
-
-
-class VersementForm(forms.ModelForm):
-    class Meta:
-        model = Versement
-        fields = ['date', 'montant', 'lieu_versement', 'observation']
-        widgets = {
-            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'montant': forms.NumberInput(attrs={'class': 'form-control', 'step': '1', 'min': '0', 'placeholder': 'Montant en GNF'}),
-            'lieu_versement': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Lieu de versement (banque, trésor...)'}),
-            'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Observation'}),
-        }
-
-    def clean_montant(self):
-        montant = self.cleaned_data.get('montant')
-        if montant is not None and montant <= 0:
-            raise ValidationError("Le montant doit être supérieur à 0.")
-        return montant
+from .forms_recouvrement import DepenseCuisineForm, DepenseDocumentForm, VersementForm
 
 
 class AbonnementInformatiqueForm(forms.ModelForm):
@@ -420,6 +369,20 @@ class AbonnementInformatiqueForm(forms.ModelForm):
             'alerte_avant_jours': forms.NumberInput(attrs={'class': 'form-control', 'value': 7}),
             'observation': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from utilisateurs.utils import filter_by_user_school
+        self.fields['eleve'].queryset = (
+            filter_by_user_school(Eleve.objects.all(), user, 'classe__ecole')
+            if user is not None else Eleve.objects.none()
+        )
+
+    def clean_montant(self):
+        montant = self.cleaned_data.get('montant')
+        if montant is not None and montant <= 0:
+            raise ValidationError("Le montant doit être supérieur à zéro.")
+        return montant
 
     def clean(self):
         cleaned_data = super().clean()
@@ -552,11 +515,22 @@ class BienEtablissementForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if self.instance.pk and not self.is_bound:
+            self.initial['quantite_gatee'] = self.instance.quantite_gatee_effective
         self.fields['code_bien'].required = False
         self.fields['code_bien'].widget.attrs['placeholder'] = 'Généré automatiquement si vide'
 
+    def clean(self):
+        data = super().clean()
+        if 'quantite_gatee' in data:
+            self.instance.quantite_endommagee = data['quantite_gatee']
+        if data.get('prix_achat_unitaire') is not None and data['prix_achat_unitaire'] < 0:
+            self.add_error('prix_achat_unitaire', "Le prix ne peut pas être négatif.")
+        return data
+
     def save(self, commit=True):
         instance = super().save(commit=False)
+        instance.quantite_endommagee = instance.quantite_gatee
         # Conserver le champ historique pour les anciennes éditions et exports.
         instance.valeur_acquisition = instance.valeur_totale_achat
         if commit:

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% block title %}Statistiques des rappels{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h1 class="h3">Statistiques des rappels</h1>
+  <form method="get" class="d-flex align-items-end gap-2 my-3">
+    <div><label for="periode" class="form-label">Période (jours)</label><input class="form-control" type="number" id="periode" name="periode" value="{{ periode }}" min="1" max="366" required></div>
+    <button type="submit" class="btn btn-primary">Actualiser</button>
+  </form>
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card card-body">Total des rappels<strong class="fs-3">{{ stats.total_rappels|intcomma }}</strong></div></div>
+    <div class="col-md-3"><div class="card card-body">Envoyés<strong class="fs-3">{{ stats.rappels_envoyes|intcomma }}</strong></div></div>
+    <div class="col-md-3"><div class="card card-body">En attente<strong class="fs-3">{{ stats.rappels_en_attente|intcomma }}</strong></div></div>
+    <div class="col-md-3"><div class="card card-body">En échec<strong class="fs-3">{{ stats.rappels_echec|intcomma }}</strong></div></div>
+  </div>
+  <p>{{ stats.eleves_concernes|intcomma }} élève{{ stats.eleves_concernes|pluralize }} concerné{{ stats.eleves_concernes|pluralize }}.</p>
+  <div class="row g-4">
+    <section class="col-lg-6"><h2 class="h5">Évolution par semaine</h2><div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">Semaine</th><th scope="col">Rappels</th></tr></thead><tbody>
+      {% for semaine in rappels_par_semaine %}<tr><td>{{ semaine.semaine }}</td><td>{{ semaine.nb_rappels|intcomma }}</td></tr>{% empty %}<tr><td colspan="2">Aucun rappel sur cette période.</td></tr>{% endfor %}
+    </tbody></table></div></section>
+    <section class="col-lg-6"><h2 class="h5">Élèves ayant reçu le plus de rappels</h2><div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">Élève</th><th scope="col">Classe</th><th scope="col">Rappels</th></tr></thead><tbody>
+      {% for eleve in top_eleves %}<tr><td>{{ eleve.eleve__prenom }} {{ eleve.eleve__nom }}</td><td>{{ eleve.eleve__classe__nom }}</td><td>{{ eleve.nb_rappels|intcomma }}</td></tr>{% empty %}<tr><td colspan="3">Aucun rappel sur cette période.</td></tr>{% endfor %}
+    </tbody></table></div></section>
+  </div>
+</div>
+{% endblock %}

@@ -18,6 +18,7 @@ from utilisateurs.utils import filter_by_user_school, user_school
 from eleves.utils_annee import get_annee_active
 from .calculs_moyennes import calculer_classement_classe, detecter_niveau_scolaire
 from .export_classement import formater_rang
+from ecole_moderne.branding import get_school_branding
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def _get_top1_par_classe(request, periode):
             if not classe_eleve:
                 continue
 
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF')
+            eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF')
             if not eleves.exists():
                 continue
 
@@ -148,7 +149,7 @@ def _get_top1_par_classe(request, periode):
                     continue
 
                 try:
-                    eleve = Eleve.objects.get(pk=eleve_id)
+                    eleve = Eleve.pedagogiques.get(pk=eleve_id)
                 except Eleve.DoesNotExist:
                     continue
 
@@ -243,6 +244,7 @@ def tableau_honneur(request):
         'niveau_filtre': niveau_filtre,
         'periode_label': _get_periode_label(periode) if periode else '',
         'ecole': ecole,
+        'school_branding': get_school_branding(ecole),
         'premiers': [],
         'premier_global': None,
     }
@@ -332,6 +334,7 @@ def tableau_honneur_pdf(request):
         'logo_base64': logo_base64,
         'annee_scolaire': annee_scolaire,
         'date_emission': datetime.now().strftime('%d/%m/%Y'),
+        'school_branding': get_school_branding(ecole),
     }
 
     html_content = render_to_string('notes/tableau_honneur_pdf.html', context, request=request)

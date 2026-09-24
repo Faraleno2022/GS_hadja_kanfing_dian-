@@ -53,7 +53,7 @@
                         <thead><tr><th>Bien</th><th>Achetée</th><th>Utilisée</th><th>Gâtée</th><th>Disponible</th></tr></thead>
                         <tbody>
                         {% for bien in derniers_biens %}
-                            <tr><td><strong>{{ bien.nom }}</strong><br><small class="text-muted">{{ bien.localisation }}</small></td><td>{{ bien.quantite_achetee }}</td><td>{{ bien.quantite_utilisee }}</td><td>{{ bien.quantite_gatee }}</td><td class="fw-bold text-success">{{ bien.quantite_disponible }}</td></tr>
+                            <tr><td><strong>{{ bien.nom }}</strong><br><small class="text-muted">{{ bien.localisation }}</small></td><td>{{ bien.quantite_achetee }}</td><td>{{ bien.quantite_utilisee }}</td><td>{{ bien.quantite_gatee_effective }}</td><td class="fw-bold text-success">{{ bien.quantite_disponible }}</td></tr>
                         {% empty %}<tr><td colspan="5" class="text-center text-muted py-4">Aucun bien enregistré</td></tr>{% endfor %}
                         </tbody>
                     </table>

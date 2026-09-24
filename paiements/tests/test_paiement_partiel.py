@@ -85,8 +85,10 @@ class PaiementPartielTest(TestCase):
 
         messages_texte = [str(m) for m in reponse.context['messages']]
         self.assertTrue(any('enregistré avec succès' in m for m in messages_texte))
-        self.assertTrue(any('Paiement partiel' in m for m in messages_texte))
-        self.assertFalse(any('confirmez' in m.lower() for m in messages_texte))
+        # Aucun message supplémentaire : le paiement partiel passe directement.
+        self.assertFalse(any('partiel' in m.lower() for m in messages_texte))
+        self.assertFalse(any('confirm' in m.lower() for m in messages_texte))
+        self.assertNotContains(reponse, 'CONFIRMATION REQUISE')
 
     def test_partiel_sur_inscription_seule_est_accepte_immediatement(self):
         """Frais d'inscription dus = 100000 ; on ne paie que 40000."""

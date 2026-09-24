@@ -36,7 +36,7 @@ for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
              'rapports', 'administration', 'bus', 'notes', 'presence', 'abonnements',
              'chatbot', 'ecole_moderne', 'synchronisation']:
     try:
-        hiddenimports += collect_submodules(_app)
+        hiddenimports += collect_submodules(_app, filter=lambda name: not any(part == 'tests' or part.startswith('test_') or part.startswith('tests_') for part in name.split('.')))
     except Exception:
         pass
 
@@ -202,7 +202,7 @@ _add_if_exists('staticfiles', 'staticfiles')
 
 # Templates et templatetags + migrations de chaque app
 for _app in ['eleves', 'paiements', 'depenses', 'salaires', 'utilisateurs',
-             'rapports', 'administration', 'bus', 'notes', 'abonnements', 'chatbot',
+             'rapports', 'administration', 'bus', 'notes', 'presence', 'abonnements', 'chatbot',
              'synchronisation']:
     _add_if_exists(os.path.join(_app, 'templates'), os.path.join(_app, 'templates'))
     _add_if_exists(os.path.join(_app, 'templatetags'), os.path.join(_app, 'templatetags'))

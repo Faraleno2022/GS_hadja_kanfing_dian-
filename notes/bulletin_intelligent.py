@@ -49,6 +49,8 @@ from .calculs import (
 from .classifier import classify
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import require_school_object
+from ecole_moderne.branding import get_reportlab_palette
+from .calculs_moyennes import detecter_niveau_scolaire
 
 
 class CalculateurBulletinIntelligent:
@@ -214,7 +216,7 @@ class CalculateurBulletinIntelligent:
             'mention': obtenir_mention_intelligente(moyenne_generale, self.niveau) if moyenne_generale else None,
             'appreciation': obtenir_appreciation_intelligente(moyenne_generale, self.eleve.prenom, self.niveau) if moyenne_generale else None,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count()
+            'total_eleves': Eleve.pedagogiques.filter(classe=self.eleve.classe, statut='ACTIF').count()
         }
     
     def _generer_bulletin_maternelle(self, matieres):
@@ -292,7 +294,7 @@ class CalculateurBulletinIntelligent:
             'mention': mention,
             'appreciation': appreciation,
             'rang': rang,
-            'total_eleves': Eleve.objects.filter(classe=self.eleve.classe, statut='ACTIF').count(),
+            'total_eleves': Eleve.pedagogiques.filter(classe=self.eleve.classe, statut='ACTIF').count(),
             'est_maternelle': True
         }
     
@@ -332,26 +334,27 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
     
-    # Couleurs du design (exactement comme le modèle)
-    BLEU_HEADER = colors.HexColor('#4a90d9')  # Bleu de l'en-tête du tableau
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')   # Fond des infos élève
-    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')  # Fond appréciation
-    VERT_MOY = colors.HexColor('#c8e6c9')     # Colonne MOY
-    ROUGE_PTS = colors.HexColor('#ffcdd2')    # Colonne PTS
+    # Palette de l'école (avec valeurs historiques de secours).
+    palette = get_reportlab_palette(ecole)
+    BLEU_HEADER = palette['primary']
+    BLEU_CLAIR = palette['primary_soft']
+    BLEU_APPRECIATION = palette['secondary_soft']
+    VERT_MOY = palette['card_success_soft']
+    ROUGE_PTS = palette['accent_soft']
     ROUGE_DRAPEAU = colors.HexColor('#CE1126')
     JAUNE_DRAPEAU = colors.HexColor('#FCD116')
     VERT_DRAPEAU = colors.HexColor('#009460')
-    GRIS_TOTAL = colors.HexColor('#37474f')   # Ligne total
+    GRIS_TOTAL = palette['header']
     
     # Couleurs des mentions
     MENTION_COLORS = {
-        'EXCELLENT': colors.HexColor('#1b5e20'),
-        'TRÈS BIEN': colors.HexColor('#2e7d32'),
-        'BIEN': colors.HexColor('#0277bd'),
-        'ASSEZ BIEN': colors.HexColor('#f9a825'),
-        'PASSABLE': colors.HexColor('#ef6c00'),
-        'INSUFFISANT': colors.HexColor('#c62828'),
-        'FAIBLE': colors.HexColor('#b71c1c'),
+        'EXCELLENT': palette['mention_tb'],
+        'TRÈS BIEN': palette['mention_tb'],
+        'BIEN': palette['mention_bien'],
+        'ASSEZ BIEN': palette['mention_ab'],
+        'PASSABLE': palette['mention_passable'],
+        'INSUFFISANT': palette['mention_insuffisant'],
+        'FAIBLE': palette['mention_insuffisant'],
     }
     
     # ===== FILIGRANE (logo en transparence au centre) =====
@@ -877,7 +880,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
     style = [
         # En-tête bleu
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), font_header),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -901,7 +904,7 @@ def generer_pdf_avec_filigrane(bulletin_data, logo_path=None, ecole=None):
         
         # Ligne TOTAL
         ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('TEXTCOLOR', (0, -1), (-1, -1), palette['header_text']),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, -1), (-1, -1), font_total),
     ]
@@ -1145,13 +1148,13 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     from reportlab.lib.units import cm
     from reportlab.platypus import Table, TableStyle
     
-    # Couleurs
-    BLEU_HEADER = colors.HexColor('#4a90d9')
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')
-    VERT_ACQUIS = colors.HexColor('#c8e6c9')
-    JAUNE_ENCOURS = colors.HexColor('#fff9c4')
-    ROUGE_NONACQUIS = colors.HexColor('#ffcdd2')
-    GRIS_TOTAL = colors.HexColor('#37474f')
+    palette = get_reportlab_palette(ecole)
+    BLEU_HEADER = palette['primary']
+    BLEU_CLAIR = palette['primary_soft']
+    VERT_ACQUIS = palette['card_success_soft']
+    JAUNE_ENCOURS = palette['card_warning_soft']
+    ROUGE_NONACQUIS = palette['card_danger_soft']
+    GRIS_TOTAL = palette['header']
     
     table_total_width = width - 2.4*cm
     margin_left = 1.2*cm
@@ -1221,7 +1224,7 @@ def _dessiner_bulletin_maternelle(c, bulletin_data, width, height, y, ecole):
     style = [
         # En-tête
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -1488,8 +1491,8 @@ def generer_excel(bulletin_data):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
     """Vue pour afficher le bulletin intelligent"""
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_note_id)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1517,8 +1520,8 @@ def bulletin_intelligent_view(request, eleve_id, classe_note_id, periode):
 @require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
     """Génère le bulletin en PDF avec filigrane"""
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_note_id)
     
     # Déterminer le système et le type de système pour l'affichage
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1586,7 +1589,7 @@ def bulletin_intelligent_pdf(request, eleve_id, classe_note_id, periode):
         ).first()
         
         if classe_eleve:
-            eleves_classe = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF'))
+            eleves_classe = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF'))
             total_eleves = len(eleves_classe)
             bulletin_data['total_eleves'] = total_eleves
             
@@ -1652,8 +1655,8 @@ def bulletin_intelligent_excel(request, eleve_id, classe_note_id, periode):
     if not EXCEL_AVAILABLE:
         return HttpResponse("Excel export n'est pas disponible", status=500)
     
-    eleve = get_object_or_404(Eleve, pk=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), pk=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_note_id)
     
     # Déterminer le système
     systeme = 'SEMESTRE' if 'SEMESTRE' in periode else 'TRIMESTRE'
@@ -1684,7 +1687,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     """Génère tous les bulletins d'une classe en un seul PDF - VERSION OPTIMISÉE"""
     import re
     
-    classe_note = get_object_or_404(ClasseNote, pk=classe_note_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_note_id)
     
     # Récupérer tous les élèves de la classe
     classe_eleve = Classe.objects.filter(
@@ -1696,7 +1699,7 @@ def bulletins_classe_pdf(request, classe_note_id, periode):
     if not classe_eleve:
         return HttpResponse("Classe non trouvée", status=404)
     
-    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
+    eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('nom', 'prenom'))
     
     if not eleves:
         return HttpResponse("Aucun élève dans cette classe", status=404)
@@ -1906,25 +1909,25 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     """Dessine un bulletin sur la page courante du canvas - fonction interne optimisée"""
     width, height = A4
     
-    # Couleurs du design (constantes)
-    BLEU_HEADER = colors.HexColor('#4a90d9')
-    BLEU_CLAIR = colors.HexColor('#e8f4fd')
-    BLEU_APPRECIATION = colors.HexColor('#d6eaf8')
-    VERT_MOY = colors.HexColor('#c8e6c9')
-    ROUGE_PTS = colors.HexColor('#ffcdd2')
+    palette = get_reportlab_palette(ecole)
+    BLEU_HEADER = palette['primary']
+    BLEU_CLAIR = palette['primary_soft']
+    BLEU_APPRECIATION = palette['secondary_soft']
+    VERT_MOY = palette['card_success_soft']
+    ROUGE_PTS = palette['accent_soft']
     ROUGE_DRAPEAU = colors.HexColor('#CE1126')
     JAUNE_DRAPEAU = colors.HexColor('#FCD116')
     VERT_DRAPEAU = colors.HexColor('#009460')
-    GRIS_TOTAL = colors.HexColor('#37474f')
+    GRIS_TOTAL = palette['header']
     
     MENTION_COLORS = {
-        'EXCELLENT': colors.HexColor('#1b5e20'),
-        'TRÈS BIEN': colors.HexColor('#2e7d32'),
-        'BIEN': colors.HexColor('#0277bd'),
-        'ASSEZ BIEN': colors.HexColor('#f9a825'),
-        'PASSABLE': colors.HexColor('#ef6c00'),
-        'INSUFFISANT': colors.HexColor('#c62828'),
-        'FAIBLE': colors.HexColor('#b71c1c'),
+        'EXCELLENT': palette['mention_tb'],
+        'TRÈS BIEN': palette['mention_tb'],
+        'BIEN': palette['mention_bien'],
+        'ASSEZ BIEN': palette['mention_ab'],
+        'PASSABLE': palette['mention_passable'],
+        'INSUFFISANT': palette['mention_insuffisant'],
+        'FAIBLE': palette['mention_insuffisant'],
     }
     
     # Utiliser le logo pré-chargé ou le charger si nécessaire
@@ -2335,7 +2338,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
     # Styles de base
     style = [
         ('BACKGROUND', (0, 0), (-1, 0), BLEU_HEADER),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 13),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
@@ -2351,7 +2354,7 @@ def _dessiner_bulletin_page(c, bulletin_data, logo_path, ecole, logo_reader=None
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f5f5f5')]),
         ('BACKGROUND', (0, -1), (-1, -1), GRIS_TOTAL),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('TEXTCOLOR', (0, -1), (-1, -1), palette['header_text']),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, -1), (-1, -1), 11),
     ]

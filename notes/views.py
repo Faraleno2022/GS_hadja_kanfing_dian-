@@ -1,3 +1,8 @@
+from .saisie_guineenne import classe_de_saisie
+import logging
+
+logger = logging.getLogger(__name__)
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
@@ -17,6 +22,7 @@ from datetime import datetime
 from eleves.models import Classe as ClasseEleve, Eleve
 from utilisateurs.utils import filter_by_user_school, user_school
 from ecole_moderne.security_decorators import admin_required, require_school_object
+from ecole_moderne.branding import get_school_branding
 from utilisateurs.permissions import any_permission_required, can_manage_notes
 from .forms import ClasseNoteForm, MatiereNoteForm, EvaluationForm, NoteEleveForm
 from .models import ClasseNote, MatiereNote, Evaluation, NoteEleve, NoteMensuelle, CompositionNote
@@ -385,7 +391,7 @@ def saisie_notes(request, evaluation_id):
             lignes = [l.strip() for l in donnees.splitlines() if l.strip()]
             ok, erreurs, maj, crees = 0, [], 0, 0
             # Restreindre aux élèves de la classe + école de l'évaluation
-            eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').filter(classe=evaluation.classe)
+            eleves_qs = Eleve.pedagogiques.select_related('classe', 'classe__ecole').filter(classe=evaluation.classe)
             eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
             # Index par matricule (upper)
             index_mat = { (e.matricule or '').strip().upper(): e for e in eleves_qs }
@@ -436,7 +442,7 @@ def saisie_notes(request, evaluation_id):
     else:
         form = NotesBulkForm()
     # Préparer un export des élèves de la classe avec matricules pour aide à la saisie
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     # Notes existantes pour cette évaluation (map JSON par élève)
     notes_qs = evaluation.notes.select_related('eleve')
@@ -471,7 +477,7 @@ def saisie_notes_individuelle(request, evaluation_id: int):
     )
 
     # Élèves de la classe (dans le périmètre école)
-    eleves_qs = Eleve.objects.select_related('classe').filter(classe=evaluation.classe)
+    eleves_qs = Eleve.pedagogiques.select_related('classe').filter(classe=evaluation.classe)
     eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
 
     # Notes existantes pour cette évaluation
@@ -517,7 +523,7 @@ def saisie_notes_simple(request, evaluation_id):
         ok, erreurs, maj, crees = 0, [], 0, 0
         
         # Restreindre aux élèves de la classe + école de l'évaluation
-        eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').filter(classe=evaluation.classe)
+        eleves_qs = Eleve.pedagogiques.select_related('classe', 'classe__ecole').filter(classe=evaluation.classe)
         eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
         
         for eleve in eleves_qs:
@@ -566,7 +572,7 @@ def saisie_notes_simple(request, evaluation_id):
         return redirect('notes:saisie_notes_simple', evaluation_id=evaluation.id)
     
     # GET: Afficher le formulaire
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     
     # Notes existantes pour cette évaluation
@@ -600,7 +606,7 @@ def ajax_sauvegarder_note(request):
         pk=evaluation_id,
     )
     eleve = get_object_or_404(
-        filter_by_user_school(Eleve.objects.select_related('classe'), request.user, 'classe__ecole'),
+        filter_by_user_school(Eleve.pedagogiques.select_related('classe'), request.user, 'classe__ecole'),
         pk=eleve_id,
         classe=evaluation.classe,
     )
@@ -640,7 +646,7 @@ def ajax_sauvegarder_notes_masse(request):
     )
 
     # Préparer les élèves de la classe
-    eleves_qs = Eleve.objects.filter(classe=evaluation.classe)
+    eleves_qs = Eleve.pedagogiques.filter(classe=evaluation.classe)
     eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
     index_eleves = {e.id: e for e in eleves_qs}
 
@@ -691,7 +697,7 @@ def ajax_supprimer_note(request):
         pk=evaluation_id,
     )
     eleve = get_object_or_404(
-        filter_by_user_school(Eleve.objects.select_related('classe'), request.user, 'classe__ecole'),
+        filter_by_user_school(Eleve.pedagogiques.select_related('classe'), request.user, 'classe__ecole'),
         pk=eleve_id,
         classe=evaluation.classe,
     )
@@ -723,7 +729,7 @@ def evaluation_detail(request, evaluation_id):
         pk=evaluation_id
     )
     # Élèves de la classe
-    eleves = Eleve.objects.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.select_related('classe').filter(classe=evaluation.classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     # Index des notes
     notes_map = {n.eleve_id: n for n in evaluation.notes.select_related('eleve')}
@@ -747,7 +753,7 @@ def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     """Génère un bulletin de notes PDF en utilisant le système intelligent"""
     # Sécuriser l'accès à la classe / élève
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.pedagogiques.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Trouver la ClasseNote correspondante
     from notes.models import ClasseNote
@@ -1027,7 +1033,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -1039,7 +1045,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -1112,7 +1118,7 @@ def imprimer_tableau_notes_pdf(request):
 def bulletins_mensuels_classe_pdf(request, classe_id: int, mois: int):
     """Génère en un seul PDF les bulletins mensuels de tous les élèves d'une classe (Collège/Lycée)."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -1269,7 +1275,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -1281,7 +1287,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -1354,7 +1360,7 @@ def imprimer_tableau_notes_pdf(request):
 def bulletins_semestre_classe_pdf(request, classe_id: int, semestre: int = 1):
     """Génère en un seul PDF les bulletins semestriels de tous les élèves d'une classe (Collège/Lycée)."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = Eleve.objects.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.select_related('classe').filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
@@ -1508,7 +1514,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -1520,7 +1526,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -1691,7 +1697,7 @@ def bulletin_mensuel_pdf(request, classe_id: int, eleve_id: int, mois: int):
     """
     # Sécuriser classe/élève
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.pedagogiques.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Matières actives
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
@@ -1854,7 +1860,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -1866,7 +1872,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -1943,7 +1949,7 @@ def bulletin_semestre_pdf(request, classe_id: int, eleve_id: int, semestre: int 
     """
     # Sécuriser classe/élève
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.pedagogiques.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Matières actives
     matieres = MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom')
@@ -2067,7 +2073,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -2079,7 +2085,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -2198,7 +2204,7 @@ def export_notes_excel(request, classe_id: int, matiere_id: int, trimestre: str 
     # Évaluations du trimestre pour cette matière
     evaluations = list(Evaluation.objects.filter(classe=classe, matiere=matiere, trimestre=trimestre).order_by('date', 'id'))
     # Élèves
-    eleves = Eleve.objects.filter(classe=classe).order_by('prenom', 'nom')
+    eleves = Eleve.pedagogiques.filter(classe=classe).order_by('prenom', 'nom')
     eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
 
     # Notes indexées par (eleve_id, evaluation_id)
@@ -2265,7 +2271,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -2277,7 +2283,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -2359,7 +2365,7 @@ def _moyenne_generale_semestrielle(eleve, matieres, annee_scolaire, semestre: in
 def export_admis_semestre_excel(request, classe_id: int, semestre: int = 1):
     """Export Excel de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.all(), request.user, 'ecole'), pk=classe_id)
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
+    eleves = filter_by_user_school(Eleve.pedagogiques.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
 
@@ -2408,7 +2414,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -2420,7 +2426,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -2493,7 +2499,7 @@ def imprimer_tableau_notes_pdf(request):
 def export_admis_semestre_pdf(request, classe_id: int, semestre: int = 1):
     """Export PDF de la liste des admis (moyenne générale semestrielle >= 10) pour une classe."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
+    eleves = filter_by_user_school(Eleve.pedagogiques.filter(classe=classe).order_by('prenom', 'nom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True))
     annee_scolaire = getattr(classe, 'annee_scolaire', None)
 
@@ -2580,7 +2586,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -2592,7 +2598,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -2672,7 +2678,7 @@ def _collect_evals_all_trimestres(classe, matieres):
 def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     """Bulletin annuel PDF (T1+T2+T3 cumulés) avec moyennes par matière, moyenne générale, rang, mention, signatures."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleve = get_object_or_404(filter_by_user_school(Eleve.objects.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
+    eleve = get_object_or_404(filter_by_user_school(Eleve.pedagogiques.select_related('classe', 'classe__ecole'), request.user, 'classe__ecole'), pk=eleve_id, classe=classe)
 
     # Trouver la ClasseNote correspondante pour MatiereNote
     from notes.models import ClasseNote
@@ -2869,7 +2875,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -2881,7 +2887,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -2954,7 +2960,7 @@ def imprimer_tableau_notes_pdf(request):
 def bulletins_annuels_classe_pdf(request, classe_id: int):
     """Bulletins annuels (T1+T2+T3) pour tous les élèves d'une classe en un seul PDF."""
     classe = get_object_or_404(filter_by_user_school(ClasseEleve.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
-    eleves = filter_by_user_school(Eleve.objects.filter(classe=classe).order_by('nom','prenom'), request.user, 'classe__ecole')
+    eleves = filter_by_user_school(Eleve.pedagogiques.filter(classe=classe).order_by('nom','prenom'), request.user, 'classe__ecole')
     matieres = list(MatiereClasse.objects.filter(classe=classe, ecole=classe.ecole, actif=True).order_by('nom'))
     evals_by_matiere = _collect_evals_all_trimestres(classe, matieres)
     
@@ -3128,7 +3134,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -3140,7 +3146,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -3459,7 +3465,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -3471,7 +3477,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -3680,7 +3686,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -3692,7 +3698,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -4090,7 +4096,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -4102,7 +4108,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -4179,7 +4185,7 @@ def carte_eleve_pdf(request, matricule):
     
     # Récupérer l'élève par matricule
     try:
-        eleve = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').get(matricule=matricule)
+        eleve = Eleve.pedagogiques.select_related('classe', 'classe__ecole', 'responsable_principal').get(matricule=matricule)
         
         # Vérifier les permissions (sauf pour superuser)
         if not request.user.is_superuser:
@@ -4514,7 +4520,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -4526,7 +4532,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -4699,7 +4705,7 @@ def statistiques(request):
             pass
     
     # Statistiques globales de l'école
-    total_eleves = Eleve.objects.filter(statut='ACTIF').count()
+    total_eleves = Eleve.pedagogiques.filter(statut='ACTIF').count()
     total_classes = ClasseEleve.objects.all().count()
     
     # Période sélectionnée (vide → défaut TRIMESTRE_1)
@@ -4730,11 +4736,11 @@ def statistiques(request):
         ).first()
         
         if classe_eleve:
-            eleves = Eleve.objects.filter(
+            eleves = Eleve.pedagogiques.filter(
                 classe=classe_eleve, statut='ACTIF'
             ).select_related('classe').order_by('prenom', 'nom')
         else:
-            eleves = Eleve.objects.none()
+            eleves = Eleve.pedagogiques.none()
 
         # Récupérer les matières de la classe
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True)
@@ -5066,7 +5072,7 @@ def gerer_classes(request):
 @login_required
 def modifier_classe(request, classe_id):
     """Modifier une classe"""
-    classe = get_object_or_404(ClasseNote, pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
     
     # Vérifier que l'utilisateur a accès à cette classe
     user_profil = getattr(request.user, 'profil', None)
@@ -5112,7 +5118,7 @@ def supprimer_classe(request, classe_id):
         return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
     
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         
         # Sécurité : Vérifier que la classe appartient à l'école de l'utilisateur
         user_profil = getattr(request.user, 'profil', None)
@@ -5162,7 +5168,7 @@ def gerer_matieres(request):
     matieres = []
     
     if classe_id:
-        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_selectionnee = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee).order_by('nom')
     
     # Traitement du formulaire d'ajout
@@ -5340,7 +5346,7 @@ def charger_matieres_defaut(request, classe_id):
     """Charger les matières par défaut pour une classe"""
     from notes.matieres_defaut import charger_matieres_pour_classe
     
-    classe = get_object_or_404(ClasseNote, pk=classe_id)
+    classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
     
     # Sécurité : Vérifier les permissions
     user_profil = getattr(request.user, 'profil', None)
@@ -5391,7 +5397,7 @@ def gerer_eleves(request):
     classe_id = request.GET.get('classe_id')
     classe_selectionnee = None
     classe_eleve_trouvee = None
-    eleves = Eleve.objects.none()
+    eleves = Eleve.pedagogiques.none()
     
     if classe_id:
         classe_selectionnee = get_object_or_404(
@@ -5402,7 +5408,7 @@ def gerer_eleves(request):
         )
         classe_eleve_trouvee = trouver_classe_eleve(classe_selectionnee)
         if classe_eleve_trouvee:
-            eleves = Eleve.objects.filter(
+            eleves = Eleve.pedagogiques.filter(
                 classe=classe_eleve_trouvee,
                 statut='ACTIF',
             ).select_related('classe').order_by('prenom', 'nom')
@@ -5476,7 +5482,7 @@ def saisir_notes(request):
     periodes_disponibles = []
 
     if classe_id:
-        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_selectionnee = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(
             classe=classe_selectionnee, actif=True
@@ -5582,39 +5588,13 @@ def saisir_notes(request):
             # Récupérer les élèves
             try:
                 # Mapping spécial pour les classes avec noms différents (même que consulter_notes)
-                mapping_classes = {
-                    61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
-                    59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
-                }
                 
-                if classe_selectionnee.id in mapping_classes:
-                    classe_eleve = ClasseEleve.objects.filter(
-                        id=mapping_classes[classe_selectionnee.id]
-                    ).first()
-                else:
-                    # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
-                    classe_eleve = ClasseEleve.objects.filter(
-                        nom=classe_selectionnee.nom,
-                        annee_scolaire=classe_selectionnee.annee_scolaire,
-                        ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
-                    ).first()
+                classe_eleve = classe_de_saisie(classe_selectionnee)
                 
                 if classe_eleve:
-                    eleves = Eleve.objects.filter(
+                    eleves = Eleve.pedagogiques.filter(
                         classe=classe_eleve, statut='ACTIF'
                     ).select_related('classe').order_by('prenom', 'nom')
-                else:
-                    # Recherche approximative
-                    nom_recherche = classe_selectionnee.nom.lower().replace('série', '').replace('année', '').strip()
-                    classes_similaires = ClasseEleve.objects.filter(
-                        nom__icontains=nom_recherche,
-                        ecole=classe_selectionnee.ecole
-                    )
-                    if classes_similaires.count() >= 1:
-                        classe_eleve = classes_similaires.first()
-                        eleves = Eleve.objects.filter(
-                            classe=classe_eleve, statut='ACTIF'
-                        ).select_related('classe').order_by('prenom', 'nom')
             except Exception:
                 pass
     
@@ -5822,10 +5802,13 @@ def liste_saisie_pdf(request):
         return HttpResponse("Paramètres manquants: classe_id, matiere_id et periode sont requis", status=400)
     
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
-        matiere = get_object_or_404(MatiereNote, pk=matiere_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
+        matiere = get_object_or_404(MatiereNote, pk=matiere_id, classe=classe)
     except Exception as e:
         return HttpResponse(f"Erreur lors de la récupération des données: {str(e)}", status=400)
+
+    from ecole_moderne.branding import get_reportlab_palette
+    palette = get_reportlab_palette(classe.ecole)
     
     # Déterminer le type de notation selon le niveau
     niveau_enseignement = classe.niveau_enseignement or 'SECONDAIRE'
@@ -5841,24 +5824,11 @@ def liste_saisie_pdf(request):
         note_sur = 20
     
     # Récupérer les élèves avec mapping spécial (même logique que saisir_notes et consulter_notes)
-    mapping_classes = {
-        61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
-        59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
-    }
     
-    if classe.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(
-            id=mapping_classes[classe.id]
-        ).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire,
-            ecole=classe.ecole
-        ).first()
+    classe_eleve = classe_de_saisie(classe)
     
     if classe_eleve:
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
     else:
         eleves = []
     
@@ -5873,7 +5843,7 @@ def liste_saisie_pdf(request):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        textColor=colors.HexColor('#007bff'),
+        textColor=palette['primary'],
         spaceAfter=12,
         alignment=TA_CENTER
     )
@@ -5918,8 +5888,8 @@ def liste_saisie_pdf(request):
     # Style du tableau
     table = Table(data, colWidths=col_widths)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#007bff')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('BACKGROUND', (0, 0), (-1, 0), palette['primary']),
+        ('TEXTCOLOR', (0, 0), (-1, 0), palette['primary_text']),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
@@ -5928,7 +5898,7 @@ def liste_saisie_pdf(request):
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [palette['card'], palette['table_alt']]),
     ]))
     
     elements.append(table)
@@ -5966,7 +5936,7 @@ def fiche_saisie_notes_pdf(request):
         return HttpResponse("Parametre classe_id requis", status=400)
 
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
     except Exception as e:
         return HttpResponse(f"Erreur: {str(e)}", status=400)
 
@@ -5977,29 +5947,12 @@ def fiche_saisie_notes_pdf(request):
         except Exception:
             pass
 
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
 
-    if classe.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire,
-            ecole=classe.ecole
-        ).first()
-
-        if not classe_eleve:
-            classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe.nom,
-                annee_scolaire=classe.annee_scolaire
-            ).first()
+    classe_eleve = classe_de_saisie(classe)
 
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
 
     if system_type == 'semestre':
         colonnes_periode1 = ['Octobre', 'Novembre', 'Decembre', 'Janvier', 'Moy. Cours', 'Composition']
@@ -6033,6 +5986,7 @@ def fiche_saisie_notes_pdf(request):
         'ecole': ecole,
         'annee_scolaire': classe.annee_scolaire,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
         'logo_base64': logo_base64,
     }
 
@@ -6078,35 +6032,18 @@ def fiche_report_notes_pdf(request):
         return HttpResponse("Parametre classe_id requis", status=400)
 
     try:
-        classe = get_object_or_404(ClasseNote, pk=classe_id)
+        classe = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
     except Exception as e:
         return HttpResponse(f"Erreur: {str(e)}", status=400)
 
     matieres = list(MatiereNote.objects.filter(classe=classe, actif=True).order_by('nom'))
 
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
 
-    if classe.id in mapping_classes:
-        classe_eleve = ClasseEleve.objects.filter(id=mapping_classes[classe.id]).first()
-    else:
-        classe_eleve = ClasseEleve.objects.filter(
-            nom=classe.nom,
-            annee_scolaire=classe.annee_scolaire,
-            ecole=classe.ecole
-        ).first()
-
-        if not classe_eleve:
-            classe_eleve = ClasseEleve.objects.filter(
-                nom__iexact=classe.nom,
-                annee_scolaire=classe.annee_scolaire
-            ).first()
+    classe_eleve = classe_de_saisie(classe)
 
     eleves = []
     if classe_eleve:
-        eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
+        eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom'))
 
     user_profil = getattr(request.user, 'profil', None)
     ecole = user_profil.ecole if user_profil else classe.ecole
@@ -6143,6 +6080,7 @@ def fiche_report_notes_pdf(request):
         'ecole': ecole,
         'annee_scolaire': classe.annee_scolaire,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
         'logo_base64': logo_base64,
         'periode': periode,
         'periode_display': periode_display,
@@ -6174,7 +6112,7 @@ def imprimer_tableau_notes_pdf(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         classe = classe_note.classe
         
         # Récupérer les matières
@@ -6186,7 +6124,7 @@ def imprimer_tableau_notes_pdf(request):
         
         # Récupérer les élèves
         from eleves.models import Eleve
-        eleves = Eleve.objects.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
+        eleves = Eleve.pedagogiques.filter(classe=classe, est_actif=True).order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -6361,7 +6299,7 @@ def sauvegarder_notes(request):
                         erreurs.append(f"ID élève invalide: {eleve_id}")
                         continue
                     
-                    eleve = Eleve.objects.get(pk=int(eleve_id_clean))
+                    eleve = Eleve.pedagogiques.get(pk=int(eleve_id_clean))
                     
                     # Traiter selon le type de note
                     if 'appreciation' in note_data:
@@ -6690,7 +6628,7 @@ def consulter_notes(request):
     est_primaire = False
     
     if classe_id:
-        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_selectionnee = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         niveau_enseignement = classe_selectionnee.niveau_enseignement
         matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
         
@@ -6741,26 +6679,12 @@ def consulter_notes(request):
         # Récupérer les élèves
         try:
             # Mapping spécial pour les classes avec noms différents
-            mapping_classes = {
-                61: 56,  # ClasseNote '12ème Année' -> ClasseEleve '12ÈME ANNÉE'
-                59: 8,   # ClasseNote '11ème Série littéraire' -> ClasseEleve '11ème série littéraire'
-            }
             
-            if classe_selectionnee.id in mapping_classes:
-                classe_eleve = ClasseEleve.objects.filter(
-                    id=mapping_classes[classe_selectionnee.id]
-                ).first()
-            else:
-                # Utiliser filter().first() au lieu de get() pour éviter MultipleObjectsReturned
-                classe_eleve = ClasseEleve.objects.filter(
-                    nom=classe_selectionnee.nom,
-                    annee_scolaire=classe_selectionnee.annee_scolaire,
-                    ecole=classe_selectionnee.ecole  # Filtrer par l'école de la classe
-                ).first()
+            classe_eleve = classe_de_saisie(classe_selectionnee)
             
             if classe_eleve:
                 # OPTIMISATION: Pré-charger les relations pour éviter N+1
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').select_related('classe').order_by('prenom', 'nom')
+                eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').select_related('classe').order_by('prenom', 'nom')
             else:
                 eleves = []
             
@@ -7146,7 +7070,7 @@ def bulletin_dynamique(request):
         
         # Essayer de trouver l'élève avec l'ID donné
         try:
-            return Eleve.objects.get(pk=eleve_id)
+            return Eleve.pedagogiques.get(pk=eleve_id)
         except Eleve.DoesNotExist:
             # Si l'élève n'existe pas, essayer des variations
             # Cas spécial : si l'ID ressemble à 1xxx mais qu'on a 1 xxx (espace)
@@ -7154,14 +7078,14 @@ def bulletin_dynamique(request):
                 # Essayer avec un zéro supplémentaire
                 with_zero = int(f"1{str(eleve_id)[1:]}")
                 try:
-                    return Eleve.objects.get(pk=with_zero)
+                    return Eleve.pedagogiques.get(pk=with_zero)
                 except Eleve.DoesNotExist:
                     pass
             
             # Essayer avec des zéros devant
             padded_id = int(f"{eleve_id:05d}")  # Au moins 5 chiffres
             try:
-                return Eleve.objects.get(pk=padded_id)
+                return Eleve.pedagogiques.get(pk=padded_id)
             except Eleve.DoesNotExist:
                 pass
             
@@ -7202,7 +7126,7 @@ def bulletin_dynamique(request):
     bulletin_data = None
     
     if classe_id:
-        classe_selectionnee = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_selectionnee = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         # Utiliser detecter_niveau_scolaire pour une détection cohérente avec les bulletins PDF
         from .calculs_moyennes import detecter_niveau_scolaire
         niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
@@ -7265,12 +7189,12 @@ def bulletin_dynamique(request):
             ).first()
         
         if classe_eleve:
-            eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+            eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
         else:
             try:
                 # Recherche approximative
                 pass
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+                eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
             except (ClasseEleve.DoesNotExist, ClasseEleve.MultipleObjectsReturned):
                 eleves = []
         
@@ -7761,7 +7685,7 @@ def sauvegarder_appreciations_maternelle(request):
                     if not all([eleve_id, matiere_id, trimestre]):
                         continue
 
-                    eleve = Eleve.objects.get(pk=eleve_id)
+                    eleve = Eleve.pedagogiques.get(pk=eleve_id)
                     matiere = MatiereNote.objects.get(pk=matiere_id)
                     # ── Sécurité: vérifier école ──
                     user_profil = getattr(request.user, 'profil', None)
@@ -7816,7 +7740,7 @@ def sauvegarder_appreciations_maternelle(request):
                 return JsonResponse({'success': False, 'error': 'Élève et matière requis'})
             
             try:
-                eleve = Eleve.objects.get(pk=eleve_id)
+                eleve = Eleve.pedagogiques.get(pk=eleve_id)
                 matiere = MatiereNote.objects.get(pk=matiere_id)
 
                 # ── Sécurité: vérifier école ──
@@ -7919,7 +7843,7 @@ def imprimer_tableau_notes_html(request):
     
     try:
         # Récupérer la classe et les données
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         # Vérifier si ClasseNote a un attribut classe ou classe_eleve
         if hasattr(classe_note, 'classe'):
             classe = classe_note.classe
@@ -7940,10 +7864,10 @@ def imprimer_tableau_notes_html(request):
         from eleves.models import Eleve
         # Si classe_note est une ClasseNote, utiliser classe_note.classe
         if hasattr(classe_note, 'classe') and classe_note.classe:
-            eleves = Eleve.objects.filter(classe=classe_note.classe, statut='actif').order_by('prenom', 'nom')
+            eleves = Eleve.pedagogiques.filter(classe=classe_note.classe, statut='actif').order_by('prenom', 'nom')
         else:
             # Sinon, essayer de récupérer les élèves directement
-            eleves = Eleve.objects.filter(statut='actif').order_by('prenom', 'nom')
+            eleves = Eleve.pedagogiques.filter(statut='actif').order_by('prenom', 'nom')
         
         # Calculer les moyennes et rangs
         classement_resultat = calculer_classement_classe(eleves, matieres, periode, 'mensuel')
@@ -8007,20 +7931,23 @@ def saisie_notes_simple(request):
     from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote, AppreciationMaternelle
     from .calculs_moyennes import detecter_niveau_scolaire
     
-    ecole = _get_ecole(request)
+    from .saisie_guineenne import classe_de_saisie
     
     # Récupérer les classes disponibles
-    classes = ClasseNote.objects.filter(ecole=ecole, actif=True).order_by('nom') if ecole else ClasseNote.objects.none()
+    classes = filter_by_user_school(ClasseNote.objects.filter(actif=True), request.user).order_by('nom')
     
     # Paramètres de recherche
     classe_id = request.GET.get('classe_id')
     eleve_id = request.GET.get('eleve_id')
     matiere_id = request.GET.get('matiere_id')
     
+    if any(value and (not value.isascii() or not value.isdecimal()) for value in (classe_id, eleve_id, matiere_id)):
+        return HttpResponse('Identifiant invalide', status=400)
+
     classe_selectionnee = None
     eleve_selectionne = None
     matiere_selectionnee = None
-    eleves = []
+    eleves = Eleve.pedagogiques.none()
     matieres = []
     notes_mensuelles = {}
     compositions = {}
@@ -8042,27 +7969,24 @@ def saisie_notes_simple(request):
     ]
     
     if classe_id:
-        classe_selectionnee = ClasseNote.objects.filter(id=classe_id, ecole=ecole).first()
+        classe_selectionnee = classes.filter(id=classe_id).first()
         
         if classe_selectionnee:
             # Détecter le niveau d'enseignement
-            niveau_enseignement = detecter_niveau_scolaire(classe_selectionnee.nom)
+            niveau_enseignement = classe_selectionnee.niveau_enseignement
+            system_type = 'semestre' if niveau_enseignement == 'SECONDAIRE' else 'trimestre'
             
             # Récupérer les élèves de la classe
-            classe_eleve = ClasseEleve.objects.filter(
-                nom=classe_selectionnee.nom,
-                annee_scolaire=classe_selectionnee.annee_scolaire,
-                ecole=ecole
-            ).first()
+            classe_eleve = classe_de_saisie(classe_selectionnee)
             
             if classe_eleve:
-                eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
+                eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')
             
             # Récupérer les matières
             matieres = MatiereNote.objects.filter(classe=classe_selectionnee, actif=True).order_by('nom')
     
     if eleve_id and classe_selectionnee:
-        eleve_selectionne = Eleve.objects.filter(id=eleve_id).first()
+        eleve_selectionne = eleves.filter(id=eleve_id).first()
     
     if matiere_id and classe_selectionnee:
         matiere_selectionnee = MatiereNote.objects.filter(id=matiere_id, classe=classe_selectionnee).first()
@@ -8151,141 +8075,9 @@ def saisie_notes_simple(request):
 
 @login_required
 def sauvegarder_notes_guineen(request):
-    """Sauvegarder notes guinéen - Notes mensuelles et compositions"""
-    from django.http import JsonResponse
-    from .models import ClasseNote, MatiereNote, NoteMensuelle, CompositionNote
-    from eleves.models import Eleve
-    import json
-    
-    if request.method != 'POST':
-        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
-    
-    try:
-        data = json.loads(request.body)
-        eleve_id = data.get('eleve_id')
-        matiere_id = data.get('matiere_id')
-        annee_scolaire = data.get('annee_scolaire')
-        notes_mois = data.get('notes_mois', {})  # Format: {mois: {note: X, absent: bool}}
-        compositions = data.get('compositions', {})  # Format: {compositionX: {note: X, absent: bool}}
-        
-        eleve = Eleve.objects.get(id=eleve_id)
-        matiere = MatiereNote.objects.get(id=matiere_id)
-
-        # ── Sécurité: vérifier que l'élève et la matière appartiennent à l'école ──
-        user_profil = getattr(request.user, 'profil', None)
-        ecole_user = user_profil.ecole if user_profil else None
-        if ecole_user and matiere.classe.ecole != ecole_user:
-            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cette matière'}, status=403)
-        if ecole_user and eleve.classe and eleve.classe.ecole != ecole_user:
-            return JsonResponse({'success': False, 'error': 'Accès non autorisé à cet élève'}, status=403)
-
-        # Utiliser l'année scolaire de la matière si non fournie
-        if not annee_scolaire:
-            annee_scolaire = matiere.classe.annee_scolaire
-
-        from .calculs_moyennes import detecter_niveau_scolaire
-        niveau_note = detecter_niveau_scolaire(matiere.classe.nom)
-        note_max = Decimal('10') if niveau_note == 'PRIMAIRE' else Decimal('20')
-
-        saved_count = 0
-        updated_count = 0
-
-        # Sauvegarder les notes mensuelles
-        for mois, note_data in notes_mois.items():
-            if note_data is not None:
-                try:
-                    note_value = note_data.get('note') if isinstance(note_data, dict) else note_data
-                    absent = note_data.get('absent', False) if isinstance(note_data, dict) else False
-                    
-                    if absent or (note_value is not None and note_value != ''):
-                        note_decimal = Decimal('0') if absent else Decimal(str(note_value).replace(',', '.'))
-                        if note_decimal < 0 or note_decimal > note_max:
-                            return JsonResponse({
-                                'success': False,
-                                'error': f'Note invalide: elle doit être entre 0 et {note_max}'
-                            }, status=400)
-                        obj, created = NoteMensuelle.objects.update_or_create(
-                            eleve=eleve,
-                            matiere=matiere,
-                            mois=mois.upper(),
-                            annee_scolaire=annee_scolaire,
-                            defaults={
-                                'note': note_decimal,
-                                'absent': absent
-                            }
-                        )
-                        if created:
-                            saved_count += 1
-                        else:
-                            updated_count += 1
-                except (ValueError, InvalidOperation):
-                    continue
-        
-        # Sauvegarder les compositions
-        periode_mapping = {
-            'composition1': 'TRIMESTRE_1',
-            'composition2': 'TRIMESTRE_2',
-            'composition3': 'TRIMESTRE_3',
-        }
-        
-        for key, comp_data in compositions.items():
-            if comp_data is not None and key in periode_mapping:
-                try:
-                    note_value = comp_data.get('note') if isinstance(comp_data, dict) else comp_data
-                    absent = comp_data.get('absent', False) if isinstance(comp_data, dict) else False
-                    
-                    if absent or (note_value is not None and note_value != ''):
-                        note_decimal = Decimal('0') if absent else Decimal(str(note_value).replace(',', '.'))
-                        if note_decimal < 0 or note_decimal > note_max:
-                            return JsonResponse({
-                                'success': False,
-                                'error': f'Note invalide: elle doit être entre 0 et {note_max}'
-                            }, status=400)
-                        obj, created = CompositionNote.objects.update_or_create(
-                            eleve=eleve,
-                            matiere=matiere,
-                            periode=periode_mapping[key],
-                            annee_scolaire=annee_scolaire,
-                            defaults={
-                                'note': note_decimal,
-                                'absent': absent
-                            }
-                        )
-                        if created:
-                            saved_count += 1
-                        else:
-                            updated_count += 1
-                except (ValueError, InvalidOperation):
-                    continue
-        
-        # Invalider le cache des rangs
-        try:
-            # Essayer d'invalider le cache avec pattern
-            cache_key = f"rangs_classe_{matiere.classe.id}_*"
-            if hasattr(cache, 'delete_pattern'):
-                cache.delete_pattern(cache_key)
-            else:
-                # Sinon, invalider les clés connues
-                for periode in ['OCTOBRE', 'NOVEMBRE', 'DECEMBRE', 'JANVIER', 'FEVRIER', 'MARS', 'AVRIL', 'MAI', 'JUIN']:
-                    cache.delete(f"rangs_classe_{matiere.classe.id}_periode_{periode}")
-        except Exception:
-            pass
-        
-        return JsonResponse({
-            'success': True,
-            'message': f'{saved_count} note(s) créée(s), {updated_count} mise(s) à jour',
-            'saved': saved_count,
-            'updated': updated_count
-        })
-        
-    except Eleve.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Élève non trouvé'}, status=404)
-    except MatiereNote.DoesNotExist:
-        return JsonResponse({'success': False, 'error': 'Matière non trouvée'}, status=404)
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'error': 'Données JSON invalides'}, status=400)
-    except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    """Valider toute la saisie et l'enregistrer dans une seule transaction."""
+    from .saisie_guineenne import enregistrer_notes_guineennes
+    return enregistrer_notes_guineennes(request)
 
 @login_required
 def imprimer_tableau_notes_pdf(request):
@@ -8304,7 +8096,7 @@ def imprimer_tableau_notes_pdf(request):
         return HttpResponse("Paramètres manquants", status=400)
     
     try:
-        classe_note = get_object_or_404(ClasseNote, pk=classe_id)
+        classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), pk=classe_id)
         matieres = MatiereNote.objects.filter(classe=classe_note, actif=True).order_by('nom')
         
         # Détecter si maternelle
@@ -8319,7 +8111,7 @@ def imprimer_tableau_notes_pdf(request):
             ecole=classe_note.ecole
         ).first()
         
-        eleves = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom') if classe_eleve else []
+        eleves = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom') if classe_eleve else []
         rangs_dict = calculer_rangs_classe_periode(classe_note, periode, use_cache=True)
         
         classement_data = []
@@ -8418,8 +8210,8 @@ def saisie_bulletin_maternelle(request, eleve_id, classe_id, trimestre):
     from .models import AppreciationMaternelle, BulletinMaternelle
     from eleves.models import Eleve
     
-    eleve = get_object_or_404(Eleve, id=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Récupérer ou créer le bulletin
     bulletin, created = BulletinMaternelle.objects.get_or_create(
@@ -8481,8 +8273,8 @@ def bulletin_maternelle_v2(request, eleve_id, classe_id, trimestre):
     from .utils_rangs import calculer_rangs_classe_periode
     from eleves.models import Eleve
     
-    eleve = get_object_or_404(Eleve, id=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Récupérer le bulletin (analyses/recommandations)
     bulletin = BulletinMaternelle.objects.filter(
@@ -8551,8 +8343,8 @@ def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
     import base64
     import os
     
-    eleve = get_object_or_404(Eleve, id=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Récupérer le bulletin
     bulletin = BulletinMaternelle.objects.filter(
@@ -8631,6 +8423,7 @@ def bulletin_maternelle_v2_pdf(request, eleve_id, classe_id, trimestre):
         'logo_base64': logo_base64,
         'photo_base64': photo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     html_content = render_to_string('notes/maternelle/bulletin_pdf.html', context)
@@ -8662,51 +8455,19 @@ def bulletins_classe_maternelle_v2_pdf(request):
         messages.error(request, "Veuillez sélectionner une classe")
         return redirect('notes:consulter_notes')
     
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Mapping des classes spéciales
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
     
     # Récupérer les élèves de la classe avec logique améliorée
     classe_eleves = None
     eleves = []
     
     try:
-        if classe_note.id in mapping_classes:
-            classe_eleves = Classe.objects.filter(id=mapping_classes[classe_note.id]).first()
-        else:
-            # Essayer avec nom exact, année et école
-            classe_eleves = Classe.objects.filter(
-                nom=classe_note.nom,
-                annee_scolaire=classe_note.annee_scolaire,
-                ecole=classe_note.ecole
-            ).first()
-            
-            if not classe_eleves:
-                # Essayer sans le filtre école
-                classe_eleves = Classe.objects.filter(
-                    nom__iexact=classe_note.nom,
-                    annee_scolaire=classe_note.annee_scolaire
-                ).first()
-            
-            if not classe_eleves:
-                # Essayer avec une correspondance partielle du nom
-                classe_eleves = Classe.objects.filter(
-                    nom__icontains=classe_note.nom.split()[0] if classe_note.nom else '',
-                    annee_scolaire=classe_note.annee_scolaire
-                ).first()
-            
-            if not classe_eleves:
-                # Dernier essai: chercher par nom uniquement (toutes années)
-                classe_eleves = Classe.objects.filter(
-                    nom__iexact=classe_note.nom
-                ).order_by('-annee_scolaire').first()
+        classe_eleves = classe_de_saisie(classe_note)
         
         if classe_eleves:
-            eleves = list(Eleve.objects.filter(
+            eleves = list(Eleve.pedagogiques.filter(
                 classe=classe_eleves,
                 statut='ACTIF'
             ).order_by('prenom', 'nom'))
@@ -8859,6 +8620,7 @@ def bulletins_classe_maternelle_v2_pdf(request):
         'annee_scolaire': classe_note.annee_scolaire,
         'logo_base64': logo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     html_content = render_to_string('notes/maternelle/bulletins_classe_pdf.html', context)
@@ -8886,51 +8648,19 @@ def fiches_recommandations_pdf(request):
         messages.error(request, "Veuillez sélectionner une classe")
         return redirect('notes:consulter_notes')
     
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Mapping des classes spéciales
-    mapping_classes = {
-        61: 56,
-        59: 8,
-    }
     
     # Récupérer les élèves de la classe
     classe_eleves = None
     eleves = []
     
     try:
-        if classe_note.id in mapping_classes:
-            classe_eleves = Classe.objects.filter(id=mapping_classes[classe_note.id]).first()
-        else:
-            # Essayer avec nom exact, année et école
-            classe_eleves = Classe.objects.filter(
-                nom=classe_note.nom,
-                annee_scolaire=classe_note.annee_scolaire,
-                ecole=classe_note.ecole
-            ).first()
-            
-            if not classe_eleves:
-                # Essayer sans le filtre école
-                classe_eleves = Classe.objects.filter(
-                    nom__iexact=classe_note.nom,
-                    annee_scolaire=classe_note.annee_scolaire
-                ).first()
-            
-            if not classe_eleves:
-                # Essayer avec une correspondance partielle du nom
-                classe_eleves = Classe.objects.filter(
-                    nom__icontains=classe_note.nom.split()[0] if classe_note.nom else '',
-                    annee_scolaire=classe_note.annee_scolaire
-                ).first()
-            
-            if not classe_eleves:
-                # Dernier essai: chercher par nom uniquement (toutes années)
-                classe_eleves = Classe.objects.filter(
-                    nom__iexact=classe_note.nom
-                ).order_by('-annee_scolaire').first()
+        classe_eleves = classe_de_saisie(classe_note)
         
         if classe_eleves:
-            eleves = list(Eleve.objects.filter(
+            eleves = list(Eleve.pedagogiques.filter(
                 classe=classe_eleves,
                 statut='ACTIF'
             ).order_by('prenom', 'nom'))
@@ -8984,6 +8714,7 @@ def fiches_recommandations_pdf(request):
         'annee_scolaire': classe_note.annee_scolaire,
         'logo_base64': logo_base64,
         'date_impression': timezone.now(),
+        'school_branding': get_school_branding(ecole),
     }
     
     # Générer le HTML
@@ -9011,8 +8742,8 @@ def bulletin_maternelle_modele2_pdf(request, eleve_id, classe_id, trimestre):
     import base64
     import os
     
-    eleve = get_object_or_404(Eleve, id=eleve_id)
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    eleve = get_object_or_404(Eleve.pedagogiques.all(), id=eleve_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Récupérer le bulletin
     bulletin = BulletinMaternelle.objects.filter(
@@ -9078,7 +8809,7 @@ def bulletin_maternelle_modele2_pdf(request, eleve_id, classe_id, trimestre):
         annee_scolaire=classe_note.annee_scolaire,
         ecole=classe_note.ecole
     ).first()
-    effectif = Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').count() if classe_eleve else 0
+    effectif = Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').count() if classe_eleve else 0
     
     # Encoder logo
     ecole = classe_note.ecole
@@ -9132,7 +8863,7 @@ def bulletins_classe_maternelle_modele2_pdf(request):
         messages.error(request, "Veuillez sélectionner une classe")
         return redirect('notes:consulter_notes')
     
-    classe_note = get_object_or_404(ClasseNote, id=classe_id)
+    classe_note = get_object_or_404(filter_by_user_school(ClasseNote.objects.all(), request.user), id=classe_id)
     
     # Récupérer les élèves
     classe_eleve = ClasseEleve.objects.filter(
@@ -9147,7 +8878,7 @@ def bulletins_classe_maternelle_modele2_pdf(request):
             annee_scolaire=classe_note.annee_scolaire
         ).first()
     
-    eleves = list(Eleve.objects.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')) if classe_eleve else []
+    eleves = list(Eleve.pedagogiques.filter(classe=classe_eleve, statut='ACTIF').order_by('prenom', 'nom')) if classe_eleve else []
     
     if not eleves:
         messages.warning(request, "Aucun élève trouvé dans cette classe.")
