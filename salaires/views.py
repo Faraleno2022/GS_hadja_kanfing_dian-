@@ -1006,8 +1006,8 @@ def etats_salaire(request):
     return render(request, 'salaires/etats_salaire.html', context)
 
 @login_required
-def export_etats_salaire_csv(request):
-    """Export CSV des états de salaire en respectant exactement les filtres de la vue liste."""
+def export_etats_salaire_excel(request):
+    """Export Excel des états de salaire en respectant exactement les filtres de la vue liste."""
     # Filtres identiques à etats_salaire()
     periode_id = request.GET.get('periode', '')
     ecole_id = request.GET.get('ecole', '')
@@ -1040,21 +1040,31 @@ def export_etats_salaire_csv(request):
 
     etats = etats.order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
 
-    # Générer le CSV
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = 'attachment; filename="etats_salaire.csv"'
-    writer = csv.writer(response)
-    writer.writerow([
+    # Générer le classeur Excel
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'États de salaire'
+    entetes = [
         'Ecole', 'Periode', 'Matricule', 'Enseignant', 'Type', 'Rubrique',
         'Valide', 'Payé', 'Jours travaillés', 'Salaire Base',
         'Prime Fonction', 'Prime Craie/Révision', 'Prime Ancienneté',
         'Prime Éloignement', 'Prime Performance', 'Prime Exceptionnelle',
         'Primes', 'Salaire Brut', 'Retenues', 'Avances', 'Salaire Net',
         'Jours Présence', 'Total Heures', 'Date Calcul'
-    ])
+    ]
+    ws.append(entetes)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor='1F4E78')
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    ws.freeze_panes = 'A2'
 
     for e in etats:
-        writer.writerow([
+        ws.append([
             getattr(e.periode.ecole, 'nom', ''),
             f"{e.periode.mois:02d}/{e.periode.annee}",
             e.enseignant.matricule,
@@ -1076,6 +1086,20 @@ def export_etats_salaire_csv(request):
             e.date_calcul.strftime('%Y-%m-%d %H:%M') if e.date_calcul else ''
         ])
 
+    # Montants au format nombre avec séparateur de milliers (colonnes J à U)
+    for row in ws.iter_rows(min_row=2, min_col=10, max_col=21):
+        for cell in row:
+            cell.number_format = '#,##0'
+    for idx, titre in enumerate(entetes, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = max(12, len(titre) + 2)
+    ws.column_dimensions['A'].width = 28
+    ws.column_dimensions['D'].width = 30
+
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = 'attachment; filename="etats_salaire.xlsx"'
+    wb.save(response)
     return response
 
 @login_required

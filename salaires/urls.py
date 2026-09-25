@@ -27,7 +27,7 @@ urlpatterns = [
     
     # États de salaire
     path('etats/', views.etats_salaire, name='etats_salaire'),
-    path('etats/export/csv/', views.export_etats_salaire_csv, name='export_etats_salaire_csv'),
+    path('etats/export/excel/', views.export_etats_salaire_excel, name='export_etats_salaire_excel'),
     path('etats/export/pdf/', views.export_etats_salaire_pdf, name='export_etats_salaire_pdf'),
     path('etats/<int:etat_id>/fiche-paie/', views.fiche_paie_pdf, name='fiche_paie_pdf'),
     path('calculer/<int:periode_id>/', views.calculer_salaires, name='calculer_salaires'),
