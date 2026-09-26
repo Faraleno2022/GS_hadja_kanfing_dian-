@@ -16,6 +16,8 @@ import io
 from eleves.models import Eleve
 from .models import AbonnementCantine
 from .forms import AbonnementCantineForm
+from .abonnements_eleve import reprise_cantine
+from .views_eleve import classes_autorisees
 from utilisateurs.utils import user_is_admin, user_is_superadmin, filter_by_user_school
 from utilisateurs.permissions import can_delete_subscriptions
 from ecole_moderne.security_decorators import require_school_object
@@ -193,16 +195,25 @@ def creer_abonnement_cantine(request):
     else:
         form = AbonnementCantineForm()
         
-        # Pré-remplir l'élève si fourni dans l'URL
+        # Pré-remplir l'élève si fourni dans l'URL, avec les informations de
+        # son dernier abonnement pour ne pas les ressaisir.
         eleve_id = request.GET.get('eleve')
-        if eleve_id:
-            try:
-                eleve = Eleve.objects.get(pk=eleve_id)
+        if eleve_id and eleve_id.isdigit():
+            eleve = filter_by_user_school(
+                Eleve.objects.select_related('responsable_principal'),
+                request.user,
+                'classe__ecole',
+            ).filter(pk=eleve_id).first()
+            if eleve:
                 form.initial['eleve'] = eleve
-                if eleve.responsable_principal:
-                    form.initial['contact_parent'] = eleve.responsable_principal.telephone
-            except Eleve.DoesNotExist:
-                pass
+                reprise = reprise_cantine(eleve)
+                for champ in (
+                    'type_repas', 'periodicite', 'montant', 'contact_parent',
+                    'regime_alimentaire', 'allergies', 'alerte_avant_jours',
+                    'date_debut', 'date_expiration',
+                ):
+                    if reprise.get(champ) not in (None, ''):
+                        form.initial[champ] = reprise[champ]
     
     # Filtrer les élèves par école de l'utilisateur
     # IMPORTANT: Seul le superuser peut voir toutes les écoles
@@ -216,6 +227,7 @@ def creer_abonnement_cantine(request):
     context = {
         'titre_page': 'Nouvel Abonnement Cantine',
         'form': form,
+        'classes': classes_autorisees(request.user),
     }
     return render(request, 'bus/cantine/form.html', context)
 

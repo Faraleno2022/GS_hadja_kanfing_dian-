@@ -33,7 +33,21 @@
                             </div>
                             <div class="card-body">
                                 <div class="row">
-                                    <div class="col-md-8">
+                                    {% if not abonnement %}
+                                    <div class="col-md-4">
+                                        <div class="mb-3">
+                                            <label class="form-label" for="classeFiltre">Classe</label>
+                                            <select id="classeFiltre" class="form-control">
+                                                <option value="">— Toutes les classes —</option>
+                                                {% for c in classes %}
+                                                <option value="{{ c.id }}">{{ c.nom }}{% if c.annee_scolaire %} ({{ c.annee_scolaire }}){% endif %}</option>
+                                                {% endfor %}
+                                            </select>
+                                            <small class="form-text text-muted">Choisissez la classe, puis l'élève.</small>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    <div class="{% if abonnement %}col-md-8{% else %}col-md-5{% endif %}">
                                         <div class="mb-3">
                                             <label class="form-label">Élève *</label>
                                             {{ form.eleve }}
@@ -42,7 +56,7 @@
                                             {% endif %}
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="{% if abonnement %}col-md-4{% else %}col-md-3{% endif %}">
                                         <div class="mb-3">
                                             <label class="form-label">Contact Parent</label>
                                             {{ form.contact_parent }}
@@ -53,6 +67,16 @@
                                     </div>
                                 </div>
                                 
+                                <!-- Élève déjà abonné : informations reprises -->
+                                <div id="reprise-info" style="display: none;">
+                                    <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                        <span id="reprise-texte"></span>
+                                        <a id="reprise-lien" href="#" class="btn btn-sm btn-outline-success" target="_blank">
+                                            <i class="fas fa-list"></i> Voir ses abonnements
+                                        </a>
+                                    </div>
+                                </div>
+
                                 <!-- Informations de l'élève (affichage automatique) -->
                                 <div id="eleve-info" class="alert alert-info" style="display: none;">
                                     <h6 class="mb-3"><i class="fas fa-info-circle"></i> Informations de l'élève</h6>
@@ -128,8 +152,9 @@
                                     </div>
                                     <div class="col-md-4">
                                         <div class="mb-3">
-                                            <label class="form-label">Date d'Expiration *</label>
+                                            <label class="form-label">Date d'Expiration</label>
                                             {{ form.date_expiration }}
+                                            <small class="form-text text-muted">Calculée selon la périodicité.</small>
                                             {% if form.date_expiration.errors %}
                                                 <div class="text-danger">{{ form.date_expiration.errors }}</div>
                                             {% endif %}
@@ -333,6 +358,122 @@ document.addEventListener('DOMContentLoaded', function() {
                     eleveInfoDiv.className = 'alert alert-info';
                 }, 3000);
             });
+    }
+
+    // ── Choix Classe → Élève et reprise du dernier abonnement ──────────────
+    const modeCreation = {{ abonnement|yesno:"false,true" }};
+    const classeFiltre = document.getElementById('classeFiltre');
+    const repriseInfo = document.getElementById('reprise-info');
+    const repriseTexte = document.getElementById('reprise-texte');
+    const repriseLien = document.getElementById('reprise-lien');
+    const urlElevesClasse = "{% url 'bus:eleves_classe_json' 999999 %}";
+    const urlReprise = "{% url 'bus:reprise_abonnement_json' 999999 'cantine' %}";
+    const urlAbonnementsEleve = "{% url 'bus:abonnements_eleve' 999999 %}";
+    const champ = (nom) => document.getElementById('id_' + nom);
+
+    function dateFr(iso) {
+        if (!iso) return '';
+        const [a, m, j] = iso.split('-');
+        return `${j}/${m}/${a}`;
+    }
+
+    function isoLocal(d) {
+        const p = (n) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+
+    function ajouterMois(d, n) {
+        let mois = d.getMonth() + n;
+        const annee = d.getFullYear() + Math.floor(mois / 12);
+        mois = ((mois % 12) + 12) % 12;
+        const dernierJour = new Date(annee, mois + 1, 0).getDate();
+        return new Date(annee, mois, Math.min(d.getDate(), dernierJour));
+    }
+
+    // Même règle que le serveur : dernier jour couvert par la périodicité.
+    function calculerExpiration() {
+        const debut = champ('date_debut'), per = champ('periodicite'), fin = champ('date_expiration');
+        if (!debut || !debut.value || !per || !fin) return;
+        const [a, m, j] = debut.value.split('-').map(Number);
+        let d = new Date(a, m - 1, j);
+        const mois = {MENSUEL: 1, TRIMESTRIEL: 3, ANNUEL: 12}[per.value];
+        if (per.value === 'HEBDOMADAIRE') d.setDate(d.getDate() + 7);
+        else if (per.value === 'JOURNALIER') d.setDate(d.getDate() + 1);
+        else d = ajouterMois(d, mois || 1);
+        d.setDate(d.getDate() - 1);
+        fin.value = isoLocal(d);
+    }
+    ['date_debut', 'periodicite'].forEach((nom) => {
+        const el = champ(nom);
+        if (el) el.addEventListener('change', calculerExpiration);
+    });
+
+    function afficherReprise(data) {
+        if (!repriseInfo) return;
+        if (data && data.existe) {
+            repriseTexte.innerHTML = `<i class="fas fa-redo"></i> <strong>Élève déjà abonné</strong> `
+                + `(${data.nb_abonnements} abonnement(s), dernier jusqu'au ${dateFr(data.derniere_expiration)}). `
+                + `Ses informations ont été reprises : vérifiez le montant puis enregistrez.`;
+            repriseLien.href = urlAbonnementsEleve.replace('999999', data.eleve.id);
+            repriseInfo.style.display = 'block';
+        } else {
+            repriseInfo.style.display = 'none';
+        }
+    }
+
+    async function chargerReprise(eleveId, remplir) {
+        if (!eleveId) { afficherReprise(null); return; }
+        try {
+            const resp = await fetch(urlReprise.replace('999999', eleveId), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error();
+            if (remplir) {
+                const champs = data.existe
+                    ? ['type_repas', 'periodicite', 'montant', 'contact_parent', 'regime_alimentaire',
+                       'allergies', 'alerte_avant_jours', 'date_debut', 'date_expiration']
+                    : ['contact_parent'];
+                champs.forEach((nom) => {
+                    const el = champ(nom);
+                    if (el && data[nom] !== undefined && data[nom] !== null && data[nom] !== '') el.value = data[nom];
+                });
+            }
+            if (classeFiltre && data.eleve.classe_id && !classeFiltre.value) {
+                classeFiltre.value = data.eleve.classe_id;
+            }
+            afficherReprise(data);
+        } catch (e) {
+            afficherReprise(null);
+        }
+    }
+
+    async function chargerElevesClasse(classeId) {
+        if (!classeId || !eleveSelect) return;
+        const resp = await fetch(urlElevesClasse.replace('999999', classeId), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const selection = eleveSelect.value;
+        eleveSelect.innerHTML = '<option value="">---------</option>';
+        data.eleves.forEach((e) => {
+            const opt = document.createElement('option');
+            opt.value = e.id;
+            opt.textContent = `${e.nom_complet} (${e.matricule})` + (e.abonne_cantine ? '  ✓ déjà abonné' : '');
+            eleveSelect.appendChild(opt);
+        });
+        eleveSelect.value = data.eleves.some((e) => String(e.id) === selection) ? selection : '';
+    }
+
+    if (modeCreation) {
+        if (classeFiltre) {
+            classeFiltre.addEventListener('change', function() { chargerElevesClasse(this.value); });
+        }
+        if (eleveSelect) {
+            eleveSelect.addEventListener('change', function() { chargerReprise(this.value, true); });
+            // Élève déjà choisi (lien depuis sa fiche ou formulaire renvoyé) :
+            // les champs sont déjà remplis, on affiche seulement le bandeau.
+            if (eleveSelect.value) chargerReprise(eleveSelect.value, false);
+        }
+        const fin = champ('date_expiration');
+        if (fin && !fin.value) calculerExpiration();
     }
 });
 </script>

@@ -17,6 +17,9 @@
                     <a href="{% url 'bus:tableau_bord_cantine' %}" class="btn btn-secondary">
                         <i class="fas fa-chart-line"></i> Tableau de Bord
                     </a>
+                    <a href="{% url 'bus:abonnements_eleve_choix' %}" class="btn btn-outline-dark">
+                        <i class="fas fa-user-graduate"></i> Abonnements d'un élève
+                    </a>
                     <a href="{% url 'bus:creer_abonnement_cantine' %}" class="btn btn-success">
                         <i class="fas fa-plus"></i> Nouvel Abonnement
                     </a>
@@ -151,6 +154,14 @@
                                     <a href="{% url 'bus:modifier_abonnement_cantine' abo.id %}"
                                        class="btn btn-primary" title="Modifier">
                                         <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'bus:abonnements_eleve' abo.eleve_id %}"
+                                       class="btn btn-dark" title="Tous ses abonnements / carnet">
+                                        <i class="fas fa-list"></i>
+                                    </a>
+                                    <a href="{% url 'bus:creer_abonnement_cantine' %}?eleve={{ abo.eleve_id }}"
+                                       class="btn btn-success" title="Réabonner cet élève">
+                                        <i class="fas fa-redo"></i>
                                     </a>
                                     <a href="{% url 'bus:supprimer_abonnement_cantine' abo.id %}" 
                                        class="btn btn-danger" title="Supprimer">

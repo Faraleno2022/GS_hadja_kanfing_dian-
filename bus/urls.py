@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import views_cantine
+from . import views_eleve
 from .whatsapp_bus import apercu_message_whatsapp_abonnement, apercu_message_whatsapp_expiration
 from .abonnement_public import abonnement_public_pdf
 
@@ -23,7 +24,16 @@ urlpatterns = [
     path('relances/envoyer/', views.envoyer_relances_bus, name='envoyer_relances_bus'),
     path('relances/export/excel/', views.export_relances_excel, name='export_relances_excel'),
     path('<int:abo_id>/recu/pdf/', views.generer_recu_abonnement_pdf, name='recu_pdf'),
-    
+
+    # Abonnements d'un élève (bus + cantine) : liste, exports, carnet
+    path('eleve/', views_eleve.choisir_eleve, name='abonnements_eleve_choix'),
+    path('eleve/<int:eleve_id>/abonnements/', views_eleve.abonnements_eleve, name='abonnements_eleve'),
+    path('eleve/<int:eleve_id>/abonnements/excel/', views_eleve.abonnements_eleve_excel, name='abonnements_eleve_excel'),
+    path('eleve/<int:eleve_id>/abonnements/pdf/', views_eleve.abonnements_eleve_pdf, name='abonnements_eleve_pdf'),
+    path('eleve/<int:eleve_id>/carnet/pdf/', views_eleve.carnet_abonnement_pdf, name='carnet_abonnement_pdf'),
+    path('api/classe/<int:classe_id>/eleves/', views_eleve.eleves_classe_json, name='eleves_classe_json'),
+    path('api/eleve/<int:eleve_id>/reprise/<str:service>/', views_eleve.reprise_abonnement_json, name='reprise_abonnement_json'),
+
     # Abonnements Cantine
     path('cantine/', views_cantine.tableau_bord_cantine, name='tableau_bord_cantine'),
     path('cantine/liste/', views_cantine.liste_abonnements_cantine, name='liste_abonnements_cantine'),

@@ -9,6 +9,7 @@
 {% if user.is_superuser or is_account_principal or user_profil.role == 'ADMIN' or user_profil.peut_gerer_grilles_tarifaires %}
 <a class="btn btn-outline-primary" href="{% url 'administration:grilles_bus' %}"><i class="fas fa-table me-1"></i>Grilles tarifaires</a>
 {% endif %}
+<a class="btn btn-outline-dark" href="{% url 'bus:abonnements_eleve_choix' %}"><i class="fas fa-user-graduate me-1"></i>Abonnements d'un élève</a>
 <a class="btn btn-success" href="{% url 'bus:nouveau' %}"><i class="fas fa-plus me-1"></i>Nouveau paiement bus</a>
 {% endblock %}
 {% block content %}
@@ -217,6 +218,8 @@
         <div class="btn-group btn-group-sm">
           <a class="btn btn-outline-primary" href="{% url 'bus:modifier' a.id %}" title="Modifier"><i class="fas fa-edit"></i></a>
           <a class="btn btn-outline-secondary" href="{% url 'bus:recu_pdf' a.id %}" target="_blank" title="Reçu PDF"><i class="fas fa-file-pdf"></i></a>
+          <a class="btn btn-outline-dark" href="{% url 'bus:abonnements_eleve' a.eleve_id %}" title="Tous ses abonnements / carnet"><i class="fas fa-list"></i></a>
+          <a class="btn btn-outline-success" href="{% url 'bus:nouveau' %}?eleve={{ a.eleve_id }}" title="Nouveau paiement pour cet élève"><i class="fas fa-redo"></i></a>
           <button type="button" class="btn btn-success" onclick="envoyerAbonnementWhatsApp({{ a.id }})" title="Envoyer par WhatsApp"><i class="fab fa-whatsapp"></i></button>
         </div>
       </td>

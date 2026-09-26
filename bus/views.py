@@ -18,6 +18,8 @@ import csv
 from eleves.models import Eleve
 from .models import AbonnementBus, GrilleTarifaireBus
 from .forms import AbonnementBusForm, GrilleTarifaireBusForm
+from .abonnements_eleve import completer_depuis_dernier_bus, reprise_bus
+from .views_eleve import classes_autorisees
 from utilisateurs.utils import user_is_superadmin, user_school, filter_by_user_school
 from utilisateurs.permissions import can_delete_subscriptions, permission_required
 from ecole_moderne.security_decorators import require_school_object
@@ -316,6 +318,16 @@ def abonnement_create(request):
             initial['eleve'] = eleves.get(id=int(eleve_id))
         except Exception:
             pass
+        else:
+            # Élève déjà abonné : reprendre grille, prochaine tranche et mode.
+            reprise = reprise_bus(initial['eleve'])
+            for champ, cle in (
+                ('grille', 'grille_id'),
+                ('periodicite', 'periodicite'),
+                ('mode_paiement', 'mode_paiement_id'),
+            ):
+                if reprise.get(cle):
+                    initial[champ] = reprise[cle]
     if request.method == 'POST':
         form = AbonnementBusForm(request.POST, ecole=ecole)
         if form.is_valid():
@@ -325,6 +337,7 @@ def abonnement_create(request):
             abo.zone = abo.grille.zone
             abo.annee_scolaire = abo.grille.annee_scolaire
             abo.date_expiration = _date_fin_grille(abo.grille, abo.date_debut)
+            completer_depuis_dernier_bus(abo)
             abo.save()
             messages.success(
                 request,
@@ -346,6 +359,7 @@ def abonnement_create(request):
         'form': form,
         'titre_page': 'Nouveau paiement Bus',
         'aucune_grille': not form.fields['grille'].queryset.exists(),
+        'classes': classes_autorisees(request.user),
     })
 
 

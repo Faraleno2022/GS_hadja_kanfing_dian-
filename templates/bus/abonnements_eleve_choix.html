@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}{{ titre_page }}{% endblock %}
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'bus:index' %}">Bus scolaire</a></li>
+<li class="breadcrumb-item active" aria-current="page">Abonnements d'un élève</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><i class="fas fa-user-graduate me-2"></i>Abonnements d'un élève</div>
+      <div class="card-body">
+        <p class="text-muted">Choisissez la classe puis l'élève pour voir tous ses abonnements (bus et cantine), les exporter ou éditer son carnet.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="classeFiltre">Classe</label>
+          <select id="classeFiltre" class="form-select">
+            <option value="">— Choisir la classe —</option>
+            {% for c in classes %}
+            <option value="{{ c.id }}">{{ c.nom }}{% if c.annee_scolaire %} ({{ c.annee_scolaire }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="eleveSelect">Élève</label>
+          <select id="eleveSelect" class="form-select" disabled>
+            <option value="">— Choisir d'abord la classe —</option>
+          </select>
+          <div class="form-text">B = abonné bus · C = abonné cantine</div>
+        </div>
+        <button id="ouvrirBtn" type="button" class="btn btn-primary" disabled><i class="fas fa-list me-1"></i>Voir ses abonnements</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const urlElevesClasse = "{% url 'bus:eleves_classe_json' 999999 %}";
+  const urlAbonnementsEleve = "{% url 'bus:abonnements_eleve' 999999 %}";
+  const classe = document.getElementById('classeFiltre');
+  const eleve = document.getElementById('eleveSelect');
+  const bouton = document.getElementById('ouvrirBtn');
+
+  classe.addEventListener('change', async function() {
+    eleve.innerHTML = '<option value="">— Choisir l\'élève —</option>';
+    eleve.disabled = !this.value;
+    bouton.disabled = true;
+    if (!this.value) return;
+    const resp = await fetch(urlElevesClasse.replace('999999', this.value), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    data.eleves.forEach((e) => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      const marques = [e.abonne_bus ? 'B' : '', e.abonne_cantine ? 'C' : ''].filter(Boolean).join(' ');
+      opt.textContent = `${e.nom_complet} (${e.matricule})` + (marques ? `  [${marques}]` : '');
+      eleve.appendChild(opt);
+    });
+  });
+  eleve.addEventListener('change', function() { bouton.disabled = !this.value; });
+  bouton.addEventListener('click', function() {
+    if (eleve.value) window.location.href = urlAbonnementsEleve.replace('999999', eleve.value);
+  });
+});
+</script>
+{% endblock %}

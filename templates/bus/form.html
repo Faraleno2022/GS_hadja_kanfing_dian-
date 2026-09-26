@@ -50,6 +50,24 @@
 
         <div class="row">
           {% if not form.instance.pk and not form.initial.eleve %}
+          <!-- Choix par classe puis élève -->
+          <div class="col-md-6 mb-3">
+            <label class="form-label small-label" for="classeFiltre">Classe</label>
+            <select id="classeFiltre" class="form-select">
+              <option value="">— Choisir la classe —</option>
+              {% for c in classes %}
+              <option value="{{ c.id }}">{{ c.nom }}{% if c.annee_scolaire %} ({{ c.annee_scolaire }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label small-label" for="eleveClasseSelect">Élève de la classe</label>
+            <select id="eleveClasseSelect" class="form-select" disabled>
+              <option value="">— Choisir d'abord la classe —</option>
+            </select>
+            <div class="help-text">✓ = élève déjà abonné : ses informations seront reprises.</div>
+          </div>
+
           <!-- Recherche par matricule -->
           <div class="col-md-6 mb-3">
             <label class="form-label small-label">Matricule de l'élève <span class="required-field">*</span></label>
@@ -105,6 +123,12 @@
       <!-- Paiement bus -->
       <div class="form-section">
         <h5 class="d-flex align-items-center"><i class="fas fa-bus me-2"></i>Paiement de l'abonnement bus</h5>
+        <div id="repriseInfo" style="display:none;">
+          <div class="alert alert-success d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span id="repriseTexte"></span>
+            <a id="repriseLien" href="#" class="btn btn-sm btn-outline-success" target="_blank"><i class="fas fa-list me-1"></i>Voir ses abonnements</a>
+          </div>
+        </div>
         <div class="row">
           <div class="col-md-6 mb-3">
             <label class="form-label small-label" for="{{ form.grille.id_for_label }}">Grille (zone et année) <span class="required-field">*</span></label>
@@ -242,8 +266,86 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     eleveInfoSection.style.display = 'block';
     eleveError && (eleveError.style.display = 'none');
+    chargerReprise(e.id, true);
+  }
+
+  // ── Élève déjà abonné : reprendre grille, prochaine tranche et mode ─────
+  const urlReprise = "{% url 'bus:reprise_abonnement_json' 999999 'bus' %}";
+  const urlElevesClasse = "{% url 'bus:eleves_classe_json' 999999 %}";
+  const urlAbonnementsEleve = "{% url 'bus:abonnements_eleve' 999999 %}";
+  const repriseInfo = document.getElementById('repriseInfo');
+  const repriseTexte = document.getElementById('repriseTexte');
+  const repriseLien = document.getElementById('repriseLien');
+  const modeSelect = document.getElementById('id_mode_paiement');
+  const classeFiltre = document.getElementById('classeFiltre');
+  const eleveClasseSelect = document.getElementById('eleveClasseSelect');
+
+  function dateFr(iso) {
+    if (!iso) return '';
+    const [a, m, j] = iso.split('-');
+    return `${j}/${m}/${a}`;
+  }
+
+  function choisirOption(select, valeur) {
+    if (!select || !valeur) return false;
+    const existe = Array.from(select.options).some(o => o.value === String(valeur));
+    if (existe) select.value = String(valeur);
+    return existe;
+  }
+
+  async function chargerReprise(eleveId, remplir) {
+    if (!eleveId) return;
+    try {
+      const resp = await fetch(urlReprise.replace('999999', eleveId), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error();
+      if (data.existe) {
+        if (remplir) {
+          choisirOption(grilleSelect, data.grille_id);
+          choisirOption(periodiciteSelect, data.periodicite);
+          choisirOption(modeSelect, data.mode_paiement_id);
+        }
+        let texte = `<i class="fas fa-redo me-1"></i><strong>Élève déjà abonné</strong> `
+          + `(${data.nb_abonnements} paiement(s), dernier le ${dateFr(data.dernier_paiement)}`
+          + (data.zone ? `, zone ${data.zone}` : '') + '). ';
+        texte += data.periodicite
+          ? 'La zone et la prochaine tranche à payer ont été reprises.'
+          : (data.grille_id ? 'Toutes les tranches de sa grille sont soldées.' : '');
+        repriseTexte.innerHTML = texte;
+        repriseLien.href = urlAbonnementsEleve.replace('999999', data.eleve.id);
+        repriseInfo.style.display = 'block';
+      } else {
+        repriseInfo.style.display = 'none';
+      }
+    } catch (e) {
+      repriseInfo.style.display = 'none';
+    }
     chargerTarif();
   }
+
+  classeFiltre && classeFiltre.addEventListener('change', async function() {
+    eleveClasseSelect.innerHTML = '<option value="">— Choisir l\'élève —</option>';
+    eleveClasseSelect.disabled = !this.value;
+    if (!this.value) return;
+    const resp = await fetch(urlElevesClasse.replace('999999', this.value), {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    data.eleves.forEach((e) => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.dataset.matricule = e.matricule;
+      opt.textContent = `${e.nom_complet} (${e.matricule})` + (e.abonne_bus ? '  ✓' : '');
+      eleveClasseSelect.appendChild(opt);
+    });
+  });
+
+  eleveClasseSelect && eleveClasseSelect.addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    if (opt && opt.dataset.matricule) {
+      if (matriculeInput) matriculeInput.value = opt.dataset.matricule;
+      fetchByMatricule(opt.dataset.matricule);
+    }
+  });
 
   async function fetchByMatricule(m) {
     try {
@@ -313,7 +415,13 @@ document.addEventListener('DOMContentLoaded', function() {
     montantInput.addEventListener('input', updateMontant);
     updateMontant();
   }
-  chargerTarif();
+  // Élève déjà fixé (lien depuis sa fiche) : les champs sont déjà repris
+  // par le serveur, on affiche seulement le bandeau.
+  if (!paiementEnModification && eleveSelect && eleveSelect.value) {
+    chargerReprise(eleveSelect.value, false);
+  } else {
+    chargerTarif();
+  }
 
   // Validation élève à la soumission
   form && form.addEventListener('submit', function(e) {

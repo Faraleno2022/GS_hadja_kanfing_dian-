@@ -178,3 +178,24 @@ class AbonnementCantineForm(forms.ModelForm):
             }),
             'observations': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['date_expiration'].required = False
+        self.fields['date_expiration'].help_text = (
+            "Laissée vide, elle est calculée d'après la date de début et la périodicité."
+        )
+
+    def clean(self):
+        from .abonnements_eleve import expiration_cantine
+
+        cleaned = super().clean()
+        debut = cleaned.get('date_debut')
+        if debut and not cleaned.get('date_expiration') and cleaned.get('periodicite'):
+            cleaned['date_expiration'] = expiration_cantine(cleaned['periodicite'], debut)
+        expiration = cleaned.get('date_expiration')
+        if debut and expiration and expiration < debut:
+            self.add_error('date_expiration', "La date d'expiration doit suivre la date de début.")
+        elif debut and not expiration:
+            self.add_error('date_expiration', "Indiquez la date d'expiration.")
+        return cleaned
