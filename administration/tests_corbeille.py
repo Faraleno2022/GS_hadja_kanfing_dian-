@@ -729,17 +729,18 @@ class PlancheCartesA4Test(TestCase):
     def test_huit_cartes_par_page_a4(self):
         from django.urls import reverse
 
-        vues = [
-            'eleves:tickets_retrait_classe_pdf',
-            'eleves:tickets_bus_classe_pdf',
-            'eleves:cartes_cantine_classe_pdf',
-            'eleves:cartes_scolaires_classe_pdf',
-        ]
-        for nom in vues:
+        # 9 cartes réparties 8 + 1 → 2 feuilles ; les cartes de retrait et de
+        # bus ont en plus une feuille de versos après chaque feuille de rectos.
+        vues = {
+            'eleves:tickets_retrait_classe_pdf': 4,
+            'eleves:tickets_bus_classe_pdf': 4,
+            'eleves:cartes_cantine_classe_pdf': 2,
+            'eleves:cartes_scolaires_classe_pdf': 2,
+        }
+        for nom, pages in vues.items():
             with self.subTest(planche=nom):
                 reponse = self.client.get(reverse(nom, args=[self.classe.pk]))
-                # 9 cartes réparties 8 + 1 → exactement 2 pages
-                self.assertEqual(self._nombre_de_pages(reponse), 2)
+                self.assertEqual(self._nombre_de_pages(reponse), pages)
 
     def test_format_page_a4(self):
         import io
