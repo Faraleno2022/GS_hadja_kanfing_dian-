@@ -55,6 +55,7 @@ def synthese_etats_salaire(etats):
         total_salaire_base=Sum('salaire_base'),
         total_primes=Sum('primes'),
         total_deductions=Sum('deductions'),
+        total_sanctions=Sum('imputation_sanctions'),
         total_avances=Sum('avances_deduites'),
         total_net=Sum('salaire_net'),
         total_heures=Sum('total_heures'),
@@ -63,6 +64,8 @@ def synthese_etats_salaire(etats):
         cle: arrondir_montant(valeur)
         for cle, valeur in cumuls.items()
     }
+    # Les sanctions (jours chômés) font partie des retenues affichées.
+    synthese['total_deductions'] += synthese['total_sanctions']
     synthese['total_etats'] = etats.count()
     synthese['total_brut'] = arrondir_montant(
         synthese['total_salaire_base'] + synthese['total_primes']
@@ -103,11 +106,32 @@ def resume_pointage(enseignant, periode):
         jours_presence=Count(
             'id', filter=Q(statut__in=STATUTS_JOURS_PRESENCE)
         ),
+        jours_chomes=Count(
+            'id', filter=Q(statut='ABSENT', justifie=False)
+        ),
     )
     return {
         'total_heures': arrondir_heures(resume['total_heures']),
         'jours_presence': resume['jours_presence'] or 0,
+        'jours_chomes': resume['jours_chomes'] or 0,
     }
+
+
+def heures_emploi_du_temps(enseignant, periode):
+    """Heures à prester du mois : Σ heures du jour × nombre de ce jour travaillé.
+
+    Reprend la colonne « Heures à prester » de la feuille Etat Prof final.
+    """
+    return arrondir_heures(sum(
+        (
+            heures * occurrences
+            for heures, occurrences in zip(
+                enseignant.heures_par_jour_semaine,
+                periode.occurrences_jours_semaine(),
+            )
+        ),
+        Decimal('0'),
+    ))
 
 
 def heures_reellement_travaillees(enseignant, periode):
@@ -118,6 +142,8 @@ def heures_pour_calcul(enseignant, periode):
     """Retourne les heures selon le mode explicitement choisi."""
     if enseignant.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
         return arrondir_heures(enseignant.heures_mensuelles)
+    if enseignant.mode_calcul_horaire == ModeCalculHoraire.HEBDOMADAIRE:
+        return heures_emploi_du_temps(enseignant, periode)
     return heures_reellement_travaillees(enseignant, periode)
 
 
@@ -228,6 +254,16 @@ def effectif_classe_principale(enseignant):
     return enseignant.classe_principale.eleves.filter(statut='ACTIF').count()
 
 
+def appliquer_sanctions(etat, parametre, jours_chomes=None):
+    """Imputation liée aux sanctions : jours chômés × retenue par jour."""
+    if jours_chomes is not None:
+        etat.jours_chomes = jours_chomes
+    etat.imputation_sanctions = arrondir_montant(
+        Decimal(etat.jours_chomes or 0) * parametre.retenue_par_jour_chome
+    )
+    return etat
+
+
 def appliquer_primes_bareme(etat, parametre=None):
     """Calcule les rubriques de primes selon les barèmes de l'école.
 
@@ -237,7 +273,9 @@ def appliquer_primes_bareme(etat, parametre=None):
     - craie : effectif de la classe × taux par élève (garderie à primaire),
       ou heures de révision × taux horaire de révision (secondaire) ;
     - fonction : prime fixe du dossier (+ prime de professeur principal au secondaire) ;
-    - performance et exceptionnelle : montants fixes du dossier.
+    - performance et exceptionnelle : montants fixes du dossier ;
+    - sanctions : jours chômés (absences non justifiées pointées) × retenue
+      par jour chômé.
 
     Un état dont les primes ont été saisies à la main est laissé intact.
     """
@@ -247,6 +285,9 @@ def appliquer_primes_bareme(etat, parametre=None):
     enseignant = etat.enseignant
     if parametre is None:
         parametre = ParametrePaie.pour_ecole(etat.periode.ecole)
+    appliquer_sanctions(
+        etat, parametre, resume_pointage(enseignant, etat.periode)['jours_chomes']
+    )
 
     prime_fonction = enseignant.prime_fonction or Decimal('0')
     if enseignant.est_taux_horaire:
@@ -300,7 +341,8 @@ def synchroniser_avances_etat(etat):
     disponible = max(
         (etat.salaire_base or Decimal('0'))
         + (etat.primes or Decimal('0'))
-        - (etat.deductions or Decimal('0')),
+        - (etat.deductions or Decimal('0'))
+        - (etat.imputation_sanctions or Decimal('0')),
         Decimal('0'),
     )
     total_impute = Decimal('0')
@@ -394,8 +436,17 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
     appliquer_primes_bareme(etat)
 
     if enseignant.est_taux_horaire:
+        etat.heures_a_prester = None
         if enseignant.mode_calcul_horaire == ModeCalculHoraire.MENSUEL:
             total_heures = arrondir_heures(enseignant.heures_mensuelles)
+        elif enseignant.mode_calcul_horaire == ModeCalculHoraire.HEBDOMADAIRE:
+            # Heures prestées = heures à prester - heures d'absence (saisies
+            # sur l'état et conservées d'un recalcul à l'autre).
+            etat.heures_a_prester = heures_emploi_du_temps(enseignant, periode)
+            total_heures = max(
+                etat.heures_a_prester - (etat.heures_absence or Decimal('0')),
+                Decimal('0'),
+            )
         else:
             total_heures = pointage['total_heures']
         taux_horaire = enseignant.taux_horaire or Decimal('0')
@@ -408,6 +459,7 @@ def calculer_etat_salaire(enseignant, periode, utilisateur):
         reconstruire_details_heures(etat)
     else:
         etat.total_heures = None
+        etat.heures_a_prester = None
         etat.mode_calcul_heures = ''
         etat.taux_horaire_applique = None
         etat.salaire_base = salaire_fixe_proratise(enseignant, periode)
@@ -497,7 +549,8 @@ def etats_par_categorie(etats):
             'total_base': total('salaire_base'),
             'total_primes': total('primes'),
             'total_brut': total('salaire_base') + total('primes'),
-            'total_deductions': total('deductions'),
+            'total_deductions': total('deductions') + total('imputation_sanctions'),
+            'total_sanctions': total('imputation_sanctions'),
             'total_avances': total('avances_deduites'),
             'total_net': total('salaire_net'),
             'totaux_rubriques': {
@@ -519,6 +572,7 @@ def masse_salariale(periode):
         'total_brut': sum((s['total_brut'] for s in sections), Decimal('0')),
         'total_avances': sum((s['total_avances'] for s in sections), Decimal('0')),
         'total_deductions': sum((s['total_deductions'] for s in sections), Decimal('0')),
+        'total_sanctions': sum((s['total_sanctions'] for s in sections), Decimal('0')),
         'total_net': sum((s['total_net'] for s in sections), Decimal('0')),
     }
     return sections, totaux

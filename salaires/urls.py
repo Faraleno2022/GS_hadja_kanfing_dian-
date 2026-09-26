@@ -36,6 +36,7 @@ urlpatterns = [
     # Documents de paie (classeur mensuel : état détaillé, masse salariale, acomptes, émargement, bulletins)
     path('documents/', documents_paie.documents_paie, name='documents_paie'),
     path('parametres/', documents_paie.parametres_paie, name='parametres_paie'),
+    path('periodes/<int:periode_id>/calendrier/', documents_paie.calendrier_periode, name='calendrier_periode'),
     path('periodes/<int:periode_id>/etat-detaille/pdf/', documents_paie.etat_salaire_detaille_pdf, name='etat_salaire_detaille_pdf'),
     path('periodes/<int:periode_id>/masse-salariale/pdf/', documents_paie.masse_salariale_pdf, name='masse_salariale_pdf'),
     path('periodes/<int:periode_id>/acomptes/pdf/', documents_paie.acomptes_pdf, name='acomptes_pdf'),

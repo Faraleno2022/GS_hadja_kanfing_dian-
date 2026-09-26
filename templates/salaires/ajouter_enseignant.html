@@ -515,6 +515,51 @@
                             {% endif %}
                         </div>
                     </div>
+
+                    <div class="col-12">
+                        <div class="form-group salary-fields" id="emploi-du-temps-field">
+                            <label class="form-label">
+                                Heures de cours par jour de la semaine
+                                <i class="fas fa-calendar-week text-info ms-1"></i>
+                            </label>
+                            <div class="row g-2">
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_lundi.id_for_label }}" class="form-label small mb-1">{{ form.heures_lundi.label }}</label>
+                                {{ form.heures_lundi }}
+                                {% for error in form.heures_lundi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_mardi.id_for_label }}" class="form-label small mb-1">{{ form.heures_mardi.label }}</label>
+                                {{ form.heures_mardi }}
+                                {% for error in form.heures_mardi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_mercredi.id_for_label }}" class="form-label small mb-1">{{ form.heures_mercredi.label }}</label>
+                                {{ form.heures_mercredi }}
+                                {% for error in form.heures_mercredi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_jeudi.id_for_label }}" class="form-label small mb-1">{{ form.heures_jeudi.label }}</label>
+                                {{ form.heures_jeudi }}
+                                {% for error in form.heures_jeudi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_vendredi.id_for_label }}" class="form-label small mb-1">{{ form.heures_vendredi.label }}</label>
+                                {{ form.heures_vendredi }}
+                                {% for error in form.heures_vendredi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-4 col-md-2">
+                                <label for="{{ form.heures_samedi.id_for_label }}" class="form-label small mb-1">{{ form.heures_samedi.label }}</label>
+                                {{ form.heures_samedi }}
+                                {% for error in form.heures_samedi.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            </div>
+                            <div class="help-text">
+                                Heures à prester du mois = heures de chaque jour × nombre de ce jour travaillé dans le mois
+                                (modifiable par période dans « Documents de paie »). Les heures d'absence se saisissent sur l'état de salaire.
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -596,6 +641,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const tauxHoraireField = document.getElementById('taux-horaire-field');
     const modeCalculField = document.getElementById('mode-calcul-field');
     const heuresMensuellesField = document.getElementById('heures-mensuelles-field');
+    const emploiDuTempsField = document.getElementById('emploi-du-temps-field');
     const salaireFixeInput = document.getElementById('{{ form.salaire_fixe.id_for_label }}');
     const tauxHoraireInput = document.getElementById('{{ form.taux_horaire.id_for_label }}');
     const modeCalculSelect = document.getElementById('{{ form.mode_calcul_horaire.id_for_label }}');
@@ -614,6 +660,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const secondaire = typeEnseignantSelect.value === 'SECONDAIRE';
         const mensuel = modeCalculSelect.value === 'MENSUEL';
         afficher(heuresMensuellesField, secondaire && mensuel);
+        afficher(emploiDuTempsField, secondaire && modeCalculSelect.value === 'HEBDO');
         heuresMensuellesInput.required = secondaire && mensuel;
         if (secondaire && !mensuel) {
             heuresMensuellesInput.value = '';
@@ -651,6 +698,7 @@ document.addEventListener('DOMContentLoaded', function() {
             afficher(tauxHoraireField, false);
             afficher(modeCalculField, false);
             afficher(heuresMensuellesField, false);
+            afficher(emploiDuTempsField, false);
             afficher(salaireFixeField, true);
             tauxHoraireInput.value = '';
             heuresMensuellesInput.value = '';
@@ -662,6 +710,7 @@ document.addEventListener('DOMContentLoaded', function() {
             afficher(tauxHoraireField, false);
             afficher(modeCalculField, false);
             afficher(heuresMensuellesField, false);
+            afficher(emploiDuTempsField, false);
         }
     }
     

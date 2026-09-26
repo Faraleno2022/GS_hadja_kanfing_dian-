@@ -12,7 +12,7 @@ class ParametrePaieAdmin(admin.ModelAdmin):
     list_display = [
         'ecole', 'taux_anciennete_par_an', 'taux_eloignement_par_km',
         'prime_craie_par_eleve', 'prime_par_heure_revision',
-        'prime_professeur_principal',
+        'prime_professeur_principal', 'retenue_par_jour_chome',
     ]
 
 

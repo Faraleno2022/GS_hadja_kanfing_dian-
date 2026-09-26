@@ -14,6 +14,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -33,7 +34,7 @@ from ecole_moderne.branding import get_reportlab_palette
 from ecole_moderne.security_decorators import require_school_object
 from utilisateurs.utils import filter_by_user_school, user_school
 
-from .forms import ParametrePaieForm
+from .forms import CalendrierPeriodeForm, ParametrePaieForm
 from .models import CategoriePaie, EtatSalaire, ParametrePaie, PeriodeSalaire
 from .montant_lettres import montant_en_lettres
 from .services import acomptes_periode, etats_par_categorie, masse_salariale
@@ -270,6 +271,33 @@ def parametres_paie(request):
 
 
 @login_required
+@require_school_object(model=PeriodeSalaire, pk_kwarg='periode_id', field_path='ecole')
+def calendrier_periode(request, periode_id):
+    """Nombre de lundis ... samedis travaillés (secondaire, emploi du temps)."""
+    periode = get_object_or_404(PeriodeSalaire.objects.select_related('ecole'), pk=periode_id)
+    if periode.cloturee:
+        messages.error(request, "Une période clôturée ne peut plus être modifiée.")
+        return redirect(f"{reverse('salaires:documents_paie')}?periode={periode.pk}")
+    if request.method == 'POST':
+        form = CalendrierPeriodeForm(request.POST, instance=periode)
+        if form.is_valid():
+            form.save()
+            messages.success(
+                request,
+                "Jours de cours enregistrés. Recalculez les salaires du secondaire "
+                "pour appliquer ce calendrier.",
+            )
+            return redirect(f"{reverse('salaires:etats_salaire')}?periode={periode.pk}")
+    else:
+        form = CalendrierPeriodeForm(instance=periode)
+    return render(request, 'salaires/calendrier_periode.html', {
+        'form': form,
+        'periode': periode,
+        'total_jours': sum(periode.occurrences_jours_semaine()),
+    })
+
+
+@login_required
 def documents_paie(request):
     """Masse salariale d'une période et accès aux documents imprimables."""
     periodes = filter_by_user_school(
@@ -317,12 +345,12 @@ def _tableau_section_fixe(section, parametre, styles, palette, largeur):
             e.date_embauche.year if e.date_embauche else '',
             e.anciennete_annees(etat.periode.annee),
             _p(_fonction(e), styles.cellule),
-            etat.jours_presence or parametre.jours_ouvrables,
+            etat.jours_travailles(parametre.jours_ouvrables),
             gnf(etat.salaire_base),
             gnf(etat.prime_fonction), gnf(etat.prime_craie), gnf(etat.prime_anciennete),
             gnf(etat.prime_eloignement), gnf(etat.prime_performance),
             gnf(etat.prime_exceptionnelle),
-            gnf(etat.salaire_brut), gnf(etat.avances_deduites), gnf(etat.deductions),
+            gnf(etat.salaire_brut), gnf(etat.avances_deduites), gnf(etat.retenues_hors_avances),
             gnf(etat.salaire_net),
         ])
     r = section['totaux_rubriques']
@@ -345,7 +373,7 @@ def _tableau_section_fixe(section, parametre, styles, palette, largeur):
     return table
 
 
-def _tableau_section_horaire(section, styles, palette, largeur):
+def _tableau_section_horaire(section, parametre, styles, palette, largeur):
     entetes = [
         'N°', 'Prénoms et Nom', 'Matri.', 'Matière(s)', 'Jours', 'Heures prestées',
         'Heures révision', 'Taux', 'Valeur des heures', 'Primes', 'Salaire brut',
@@ -363,7 +391,7 @@ def _tableau_section_horaire(section, styles, palette, largeur):
             _p(f"{e.prenoms} {e.nom}", styles.cellule),
             _p(e.matricule, styles.cellule_centre),
             _p(_fonction(e), styles.cellule),
-            etat.jours_presence,
+            etat.jours_travailles(parametre.jours_ouvrables),
             f"{etat.total_heures or 0:g}",
             f"{etat.heures_revision or 0:g}",
             gnf(etat.taux_horaire_applique),
@@ -371,7 +399,7 @@ def _tableau_section_horaire(section, styles, palette, largeur):
             gnf(etat.primes),
             gnf(etat.salaire_brut),
             gnf(etat.avances_deduites),
-            gnf(etat.deductions),
+            gnf(etat.retenues_hors_avances),
             gnf(etat.salaire_net),
         ])
     data.append([
@@ -415,7 +443,7 @@ def etat_salaire_detaille_pdf(request, periode_id):
         elements.append(Paragraph(f"Mois de : {_periode_libelle(periode)}", styles.sous_titre))
         elements.append(Spacer(1, 0.35 * cm))
         if section['categorie'] == CategoriePaie.SECONDAIRE:
-            elements.append(_tableau_section_horaire(section, styles, palette, largeur))
+            elements.append(_tableau_section_horaire(section, parametre, styles, palette, largeur))
         else:
             elements.append(_tableau_section_fixe(section, parametre, styles, palette, largeur))
         elements.append(Spacer(1, 0.35 * cm))
@@ -610,7 +638,7 @@ def _bulletin(etat, parametre, styles, palette, largeur):
         ['Prénoms et nom :', f"{e.prenoms} {e.nom}", 'Matricule :', e.matricule or '-'],
         ["Date d'embauche :", e.date_embauche.strftime('%d/%m/%Y') if e.date_embauche else '-',
          'Ancienneté :', f"{e.anciennete_annees(periode.annee)} an(s)"],
-        ['Fonction :', _fonction(e), 'Jours travaillés :', etat.jours_presence or parametre.jours_ouvrables],
+        ['Fonction :', _fonction(e), 'Jours travaillés :', etat.jours_travailles(parametre.jours_ouvrables)],
         ['Site :', e.categorie_paie.label, 'Brut / Net :', f"{gnf(etat.salaire_brut)} / {gnf(etat.salaire_net)} GNF"],
     ]
     table_infos = Table(
@@ -645,6 +673,14 @@ def _bulletin(etat, parametre, styles, palette, largeur):
         numero, _p('Avance sur salaire (acompte)', styles.cellule), '', '',
         gnf(etat.avances_deduites), gnf(solde),
     ])
+    if etat.imputation_sanctions:
+        numero += 1
+        solde -= etat.imputation_sanctions
+        data.append([
+            numero,
+            _p(f"Imputation liée aux sanctions ({etat.jours_chomes} jour(s) chômé(s))", styles.cellule),
+            '', '', gnf(etat.imputation_sanctions), gnf(solde),
+        ])
     numero += 1
     solde -= etat.deductions or Decimal('0')
     data.append([

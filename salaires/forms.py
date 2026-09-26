@@ -6,6 +6,7 @@ from .models import (
     AvanceSalaire,
     Enseignant,
     EtatSalaire,
+    JOURS_SEMAINE_PAIE,
     ModeCalculHoraire,
     NIVEAUX_GARDERIE,
     ParametrePaie,
@@ -35,6 +36,10 @@ class MontantGNFField(forms.DecimalField):
         return super().to_python(value)
 
 
+CHAMPS_HEURES_JOURS = [f'heures_{jour}' for jour, _, _ in JOURS_SEMAINE_PAIE]
+CHAMPS_OCCURRENCES_JOURS = [f'nb_{jour}s' for jour, _, _ in JOURS_SEMAINE_PAIE]
+
+
 class EnseignantForm(forms.ModelForm):
     """Formulaire pour créer/modifier un enseignant"""
 
@@ -48,8 +53,15 @@ class EnseignantForm(forms.ModelForm):
             'heures_mensuelles', 'date_embauche',
             'matricule', 'prime_fonction', 'prime_performance',
             'prime_exceptionnelle', 'distance_km', 'professeur_principal',
+            *CHAMPS_HEURES_JOURS,
         ]
         widgets = {
+            **{
+                champ: forms.NumberInput(attrs={
+                    'class': 'form-control', 'min': '0', 'max': '24', 'step': '0.5',
+                })
+                for champ in CHAMPS_HEURES_JOURS
+            },
             'photo': forms.ClearableFileInput(attrs={'class': 'form-control', 'accept': 'image/jpeg,image/png,image/webp'}),
             'nom': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -153,11 +165,15 @@ class EnseignantForm(forms.ModelForm):
             'prime_exceptionnelle': 'Prime exceptionnelle (GNF / mois)',
             'distance_km': 'Distance domicile-école (km)',
             'professeur_principal': 'Professeur principal (secondaire)',
+            **{
+                f'heures_{jour}': libelle
+                for jour, _, libelle in JOURS_SEMAINE_PAIE
+            },
         }
         help_texts = {
             'taux_horaire': 'Pour les enseignants du secondaire uniquement',
             'mode_calcul_horaire': (
-                "Choisissez le pointage arrivée/départ ou la saisie d'un total mensuel."
+                "Pointage arrivée/départ, total mensuel global ou emploi du temps hebdomadaire (heures du lundi au samedi)."
             ),
             'salaire_fixe': 'Pour garderie, maternelle, primaire et administrateurs',
             'heures_mensuelles': (
@@ -248,7 +264,10 @@ class EnseignantForm(forms.ModelForm):
         self.fields['mode_calcul_horaire'].choices = [
             (ModeCalculHoraire.POINTAGE, ModeCalculHoraire.POINTAGE.label),
             (ModeCalculHoraire.MENSUEL, ModeCalculHoraire.MENSUEL.label),
+            (ModeCalculHoraire.HEBDOMADAIRE, ModeCalculHoraire.HEBDOMADAIRE.label),
         ]
+        for champ in CHAMPS_HEURES_JOURS:
+            self.fields[champ].required = False
 
     def clean(self):
         cleaned_data = super().clean()
@@ -263,7 +282,7 @@ class EnseignantForm(forms.ModelForm):
         fonction = (cleaned_data.get('fonction') or '').strip()
         for champ in (
             'prime_fonction', 'prime_performance', 'prime_exceptionnelle',
-            'distance_km',
+            'distance_km', *CHAMPS_HEURES_JOURS,
         ):
             if cleaned_data.get(champ) is None:
                 cleaned_data[champ] = Decimal('0')
@@ -323,9 +342,19 @@ class EnseignantForm(forms.ModelForm):
                         "Le total d'heures mensuelles est obligatoire pour le mode mensuel global."
                     )
                 })
+            if (
+                mode_calcul == ModeCalculHoraire.HEBDOMADAIRE
+                and sum(cleaned_data[c] for c in CHAMPS_HEURES_JOURS) <= 0
+            ):
+                raise ValidationError({
+                    'heures_lundi': (
+                        "Renseignez les heures d'au moins un jour de la semaine "
+                        "pour le mode emploi du temps."
+                    )
+                })
             if salaire_fixe:
                 cleaned_data['salaire_fixe'] = None  # Effacer le salaire fixe
-            if mode_calcul == ModeCalculHoraire.POINTAGE:
+            if mode_calcul != ModeCalculHoraire.MENSUEL:
                 cleaned_data['heures_mensuelles'] = None
         elif type_enseignant:
             if not salaire_fixe:
@@ -336,6 +365,8 @@ class EnseignantForm(forms.ModelForm):
                 cleaned_data['taux_horaire'] = None  # Effacer le taux horaire
             cleaned_data['mode_calcul_horaire'] = ModeCalculHoraire.POINTAGE
             cleaned_data['heures_mensuelles'] = None
+            for champ in CHAMPS_HEURES_JOURS:
+                cleaned_data[champ] = Decimal('0')
 
         # Validation des heures mensuelles
         if heures_mensuelles is not None and heures_mensuelles <= 0:
@@ -564,9 +595,9 @@ class EtatSalaireAjustementForm(forms.ModelForm):
         model = EtatSalaire
         fields = [
             'salaire_base', 'taux_horaire_applique', 'total_heures',
-            'heures_revision',
+            'heures_absence', 'heures_revision',
             *RUBRIQUES_PRIMES_FORM,
-            'deductions', 'observations',
+            'jours_chomes', 'deductions', 'observations',
         ]
         widgets = {
             'salaire_base': forms.NumberInput(attrs={
@@ -581,6 +612,12 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             }),
             'heures_revision': forms.NumberInput(attrs={
                 'class': 'form-control', 'min': '0', 'step': '0.25'
+            }),
+            'heures_absence': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'step': '0.25'
+            }),
+            'jours_chomes': forms.NumberInput(attrs={
+                'class': 'form-control', 'min': '0', 'max': '31', 'step': '1'
             }),
             **{
                 champ: forms.NumberInput(attrs={
@@ -597,8 +634,10 @@ class EtatSalaireAjustementForm(forms.ModelForm):
             }),
         }
         labels = {
-            'deductions': 'Retenues / sanctions (GNF)',
+            'deductions': 'Autres retenues (GNF)',
             'heures_revision': 'Heures de révision',
+            'heures_absence': "Heures d'absence",
+            'jours_chomes': 'Jours chômés',
         }
 
     def __init__(self, *args, **kwargs):
@@ -616,6 +655,8 @@ class EtatSalaireAjustementForm(forms.ModelForm):
         self.fields['taux_horaire_applique'].required = False
         self.fields['total_heures'].required = False
         self.fields['heures_revision'].required = False
+        self.fields['heures_absence'].required = False
+        self.fields['jours_chomes'].required = False
         for champ in RUBRIQUES_PRIMES_FORM:
             self.fields[champ].required = False
 
@@ -634,9 +675,11 @@ class EtatSalaireAjustementForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        for champ in RUBRIQUES_PRIMES_FORM + ['heures_revision']:
+        for champ in RUBRIQUES_PRIMES_FORM + ['heures_revision', 'heures_absence']:
             if cleaned_data.get(champ) is None and champ not in self.errors:
                 cleaned_data[champ] = Decimal('0')
+        if cleaned_data.get('jours_chomes') is None and 'jours_chomes' not in self.errors:
+            cleaned_data['jours_chomes'] = 0
         primes = sum(
             (cleaned_data.get(champ) or Decimal('0') for champ in RUBRIQUES_PRIMES_FORM),
             Decimal('0'),
@@ -677,7 +720,18 @@ class EtatSalaireAjustementForm(forms.ModelForm):
                 salaire_base = self.instance.salaire_base or Decimal('0')
                 cleaned_data['salaire_base'] = salaire_base
 
-        if deductions > salaire_base + primes:
+        sanctions = Decimal('0')
+        if self.instance.periode_id:
+            sanctions = Decimal(cleaned_data.get('jours_chomes') or 0) * (
+                ParametrePaie.pour_ecole(self.instance.periode.ecole).retenue_par_jour_chome
+            )
+        cleaned_data['imputation_sanctions'] = sanctions
+        if sanctions > salaire_base + primes:
+            self.add_error(
+                'jours_chomes',
+                "L'imputation des jours chômés dépasse le salaire de base et les primes.",
+            )
+        elif deductions + sanctions > salaire_base + primes:
             self.add_error(
                 'deductions',
                 'Les retenues ne peuvent pas dépasser le salaire de base et les primes.',
@@ -690,12 +744,20 @@ class EtatSalaireAjustementForm(forms.ModelForm):
         # vue après l'ajustement. L'ancienne imputation ne doit donc pas faire
         # échouer la validation d'une baisse du salaire de base.
         avances_courantes = self.instance.avances_deduites
+        sanctions_courantes = self.instance.imputation_sanctions
         self.instance.avances_deduites = Decimal('0')
         self.instance.primes = self.cleaned_data.get('primes', self.instance.primes)
+        if 'jours_chomes' not in self.errors:
+            self.instance.imputation_sanctions = self.cleaned_data.get(
+                'imputation_sanctions', sanctions_courantes
+            )
+        else:
+            self.instance.imputation_sanctions = Decimal('0')
         try:
             super()._post_clean()
         finally:
             self.instance.avances_deduites = avances_courantes
+            self.instance.imputation_sanctions = sanctions_courantes
 
 
 class ParametrePaieForm(forms.ModelForm):
@@ -707,7 +769,7 @@ class ParametrePaieForm(forms.ModelForm):
             'jours_ouvrables',
             'taux_anciennete_par_an', 'taux_eloignement_par_km',
             'prime_craie_par_eleve', 'prime_par_heure_revision',
-            'prime_professeur_principal',
+            'prime_professeur_principal', 'retenue_par_jour_chome',
             'signataire_1_titre', 'signataire_1_nom',
             'signataire_2_titre', 'signataire_2_nom',
             'signataire_3_titre', 'signataire_3_nom',
@@ -786,3 +848,25 @@ class AvanceSalaireForm(forms.ModelForm):
         if len(motif) < 3:
             raise ValidationError("Précisez le motif de l'avance.")
         return motif
+
+
+class CalendrierPeriodeForm(forms.ModelForm):
+    """Nombre de lundis ... samedis réellement travaillés dans le mois."""
+
+    class Meta:
+        model = PeriodeSalaire
+        fields = CHAMPS_OCCURRENCES_JOURS
+        labels = {
+            f'nb_{jour}s': libelle for jour, _, libelle in JOURS_SEMAINE_PAIE
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        calendrier = self.instance.occurrences_calendrier()
+        for index, champ in enumerate(CHAMPS_OCCURRENCES_JOURS):
+            self.fields[champ].required = False
+            self.fields[champ].widget.attrs.update({
+                'class': 'form-control', 'min': '0', 'max': '6',
+                'placeholder': str(calendrier[index]),
+            })
+            self.fields[champ].help_text = f"Calendrier : {calendrier[index]}"

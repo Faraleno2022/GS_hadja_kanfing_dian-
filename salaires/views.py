@@ -41,6 +41,7 @@ from .forms import (
 )
 from .services import (
     appliquer_primes_bareme,
+    appliquer_sanctions,
     arrondir_heures,
     arrondir_montant,
     calculer_etat_salaire,
@@ -1267,6 +1268,23 @@ def ajuster_etat_salaire(request, etat_id):
                     nouveau_total = arrondir_heures(
                         form.cleaned_data['total_heures']
                     )
+                    nouvelle_absence = arrondir_heures(
+                        form.cleaned_data['heures_absence']
+                    )
+                    if (
+                        etat_verrouille.mode_calcul_heures
+                        == ModeCalculHoraire.HEBDOMADAIRE
+                        and nouveau_total == ancien_total
+                        and etat_verrouille.heures_a_prester is not None
+                    ):
+                        # Emploi du temps : heures prestées = heures à
+                        # prester - heures d'absence.
+                        nouveau_total = arrondir_heures(max(
+                            etat_verrouille.heures_a_prester - nouvelle_absence,
+                            Decimal('0'),
+                        ))
+                        ancien_total = nouveau_total
+                    etat_verrouille.heures_absence = nouvelle_absence
                     nouveau_taux = arrondir_montant(
                         form.cleaned_data['taux_horaire_applique']
                     )
@@ -1300,6 +1318,11 @@ def ajuster_etat_salaire(request, etat_id):
                         setattr(etat_verrouille, champ, form.cleaned_data[champ])
                     etat_verrouille.primes = Decimal('0')
                     etat_verrouille.primes_ajustees = True
+                    appliquer_sanctions(
+                        etat_verrouille,
+                        ParametrePaie.pour_ecole(etat_verrouille.periode.ecole),
+                        form.cleaned_data['jours_chomes'],
+                    )
                 etat_verrouille.deductions = form.cleaned_data['deductions']
                 etat_verrouille.observations = form.cleaned_data['observations']
                 etat_verrouille.save()

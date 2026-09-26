@@ -84,6 +84,18 @@
                                 <div class="form-text">Heures × taux horaire</div>
                                 {% for error in form.salaire_base.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                             </div>
+                            {% if etat.mode_calcul_heures == 'HEBDO' %}
+                            <div class="col-md-4">
+                                <label class="form-label">Heures à prester (emploi du temps)</label>
+                                <input type="text" class="form-control" id="heures-a-prester" value="{{ etat.heures_a_prester|stringformat:'s' }}" disabled>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="{{ form.heures_absence.id_for_label }}">Heures d'absence</label>
+                                {{ form.heures_absence }}
+                                <div class="form-text">Heures prestées = heures à prester - heures d'absence</div>
+                                {% for error in form.heures_absence.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            {% endif %}
                             {% else %}
                             <div class="col-md-6">
                                 <label class="form-label" for="{{ form.salaire_base.id_for_label }}">
@@ -134,7 +146,16 @@
 
                         <div class="row g-3 mt-1">
                             <div class="col-md-6">
-                                <label class="form-label" for="{{ form.deductions.id_for_label }}">Retenues / sanctions (GNF)</label>
+                                <label class="form-label" for="{{ form.jours_chomes.id_for_label }}">Jours chômés</label>
+                                {{ form.jours_chomes }}
+                                <div class="form-text">
+                                    Imputation liée aux sanctions : {{ parametre.retenue_par_jour_chome|floatformat:0|intcomma }} GNF par jour chômé
+                                    (actuellement {{ etat.imputation_sanctions|floatformat:0|intcomma }} GNF).
+                                </div>
+                                {% for error in form.jours_chomes.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="{{ form.deductions.id_for_label }}">Autres retenues (GNF)</label>
                                 {{ form.deductions }}
                                 {% for error in form.deductions.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                             </div>
@@ -176,6 +197,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const chalkBonus = document.getElementById('{{ form.prime_craie.id_for_label }}');
     const revisionRate = {{ parametre.prime_par_heure_revision|stringformat:"s" }};
     const deductions = document.getElementById('{{ form.deductions.id_for_label }}');
+    const idleDays = document.getElementById('{{ form.jours_chomes.id_for_label }}');
+    const idleDayRate = {{ parametre.retenue_par_jour_chome|stringformat:"s" }};
+    const absenceHours = document.getElementById('{{ form.heures_absence.id_for_label }}');
+    const hoursToTeach = document.getElementById('heures-a-prester');
     const estimatedNet = document.getElementById('estimated-net');
 
     const valueOf = (element) => Number.parseFloat(element?.value || '0') || 0;
@@ -191,6 +216,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (estimatedNet) {
             estimatedNet.textContent = formatGnf(
                 valueOf(salary) + bonuses - valueOf(deductions)
+                - valueOf(idleDays) * idleDayRate
             );
         }
     }
@@ -201,7 +227,13 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         refreshTotals();
     });
-    [salary, hours, rate, deductions, ...bonusInputs].forEach(function (element) {
+    absenceHours?.addEventListener('input', function () {
+        if (hoursToTeach && hours) {
+            hours.value = Math.max(valueOf(hoursToTeach) - valueOf(absenceHours), 0).toFixed(2);
+        }
+        refreshTotals();
+    });
+    [salary, hours, rate, deductions, idleDays, ...bonusInputs].forEach(function (element) {
         element?.addEventListener('input', refreshTotals);
     });
     refreshTotals();

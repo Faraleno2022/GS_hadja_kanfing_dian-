@@ -56,6 +56,36 @@ class ModeCalculHoraire(models.TextChoices):
     POINTAGE = 'POINTAGE', 'Pointage arrivée / départ'
     MENSUEL = 'MENSUEL', 'Total mensuel global'
     MANUEL = 'MANUEL', "Saisie manuelle sur l'état"
+    HEBDOMADAIRE = 'HEBDO', 'Emploi du temps hebdomadaire (L à S)'
+
+
+JOURS_SEMAINE_PAIE = (
+    ('lundi', 'L', 'Lundi'),
+    ('mardi', 'M', 'Mardi'),
+    ('mercredi', 'M', 'Mercredi'),
+    ('jeudi', 'J', 'Jeudi'),
+    ('vendredi', 'V', 'Vendredi'),
+    ('samedi', 'S', 'Samedi'),
+)
+
+
+def _heures_jour(libelle):
+    return models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name=f"Heures du {libelle.lower()}",
+        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('24'))],
+    )
+
+
+def _occurrences_jour(libelle):
+    return models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        verbose_name=f"Nombre de {libelle.lower()}s travaillés",
+        validators=[MaxValueValidator(6)],
+    )
 
 
 class Enseignant(SyncTrackedModel):
@@ -184,6 +214,13 @@ class Enseignant(SyncTrackedModel):
         verbose_name="Professeur principal",
         help_text="Secondaire : ouvre droit à la prime de professeur principal.",
     )
+    # Emploi du temps hebdomadaire (feuille « Etat Prof final », colonnes L à S)
+    heures_lundi = _heures_jour('Lundi')
+    heures_mardi = _heures_jour('Mardi')
+    heures_mercredi = _heures_jour('Mercredi')
+    heures_jeudi = _heures_jour('Jeudi')
+    heures_vendredi = _heures_jour('Vendredi')
+    heures_samedi = _heures_jour('Samedi')
 
     # Dates
     date_embauche = models.DateField(verbose_name="Date d'embauche")
@@ -291,6 +328,18 @@ class Enseignant(SyncTrackedModel):
                 )
             })
 
+        if (
+            self.est_taux_horaire
+            and self.mode_calcul_horaire == ModeCalculHoraire.HEBDOMADAIRE
+            and self.heures_hebdomadaires <= 0
+        ):
+            raise ValidationError({
+                'heures_lundi': (
+                    "Renseignez les heures d'au moins un jour de la semaine "
+                    "pour le mode emploi du temps."
+                )
+            })
+
         if self.est_salaire_fixe and not self.salaire_fixe:
             raise ValidationError({
                 'salaire_fixe': f'Le salaire fixe est obligatoire pour les {self.get_type_enseignant_display().lower()}.'
@@ -349,6 +398,18 @@ class Enseignant(SyncTrackedModel):
     def heures_mensuelles_effectives(self):
         """Retourne les heures mensuelles effectives (définies ou par défaut)"""
         return self.heures_mensuelles or self.get_heures_mensuelles_defaut()
+
+    @property
+    def heures_par_jour_semaine(self):
+        """Heures de cours du lundi au samedi, dans cet ordre."""
+        return [
+            getattr(self, f'heures_{jour}') or Decimal('0')
+            for jour, _, _ in JOURS_SEMAINE_PAIE
+        ]
+
+    @property
+    def heures_hebdomadaires(self):
+        return sum(self.heures_par_jour_semaine, Decimal('0'))
 
     @property
     def categorie_paie(self):
@@ -425,6 +486,14 @@ class ParametrePaie(SyncTrackedModel):
         default=Decimal('0'),
         verbose_name="Prime de professeur principal (GNF)",
         help_text="Ex. 50 000 GNF par mois.",
+    )
+    retenue_par_jour_chome = _montant(
+        default=Decimal('0'),
+        verbose_name="Imputation par jour chômé (GNF)",
+        help_text=(
+            "Sanction retenue pour chaque jour chômé (absence non justifiée), "
+            "ex. 30 000 GNF."
+        ),
     )
 
     signataire_1_titre = models.CharField(max_length=80, default="La Fondation", blank=True, verbose_name="Signataire 1 - titre")
@@ -580,6 +649,15 @@ class PeriodeSalaire(SyncTrackedModel):
         ],
     )
 
+    # Nombre de lundis, mardis... réellement travaillés dans le mois
+    # (vide = calendrier du mois). Sert au mode emploi du temps hebdomadaire.
+    nb_lundis = _occurrences_jour('Lundi')
+    nb_mardis = _occurrences_jour('Mardi')
+    nb_mercredis = _occurrences_jour('Mercredi')
+    nb_jeudis = _occurrences_jour('Jeudi')
+    nb_vendredis = _occurrences_jour('Vendredi')
+    nb_samedis = _occurrences_jour('Samedi')
+
     # Statut
     cloturee = models.BooleanField(
         default=False,
@@ -629,6 +707,26 @@ class PeriodeSalaire(SyncTrackedModel):
             'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
         ]
         return f"{mois_noms[self.mois]} {self.annee}"
+
+    def occurrences_calendrier(self):
+        """Nombre de lundis ... samedis du mois civil."""
+        from calendar import monthrange
+
+        premier_jour_semaine, nb_jours = monthrange(self.annee, self.mois)
+        compteurs = [0] * 7
+        for jour in range(nb_jours):
+            compteurs[(premier_jour_semaine + jour) % 7] += 1
+        return compteurs[:6]
+
+    def occurrences_jours_semaine(self):
+        """Nombre de lundis ... samedis travaillés (saisie ou calendrier)."""
+        calendrier = self.occurrences_calendrier()
+        return [
+            valeur if valeur is not None else calendrier[index]
+            for index, valeur in enumerate(
+                getattr(self, f'nb_{jour}s') for jour, _, _ in JOURS_SEMAINE_PAIE
+            )
+        ]
 
 
 class EtatSalaire(SyncTrackedModel):
@@ -715,6 +813,32 @@ class EtatSalaire(SyncTrackedModel):
         verbose_name="Effectif de la classe",
         help_text="Effectif retenu pour la prime de craie au moment du calcul.",
     )
+    jours_chomes = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Jours chômés",
+        help_text="Absences non justifiées du mois (jours travaillés = jours ouvrables - jours chômés).",
+    )
+    imputation_sanctions = _montant(
+        default=Decimal('0'),
+        verbose_name="Imputation liée aux sanctions",
+        help_text="Jours chômés × imputation par jour chômé des paramètres de paie.",
+    )
+    heures_a_prester = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="Heures à prester",
+        help_text="Emploi du temps hebdomadaire × nombre de jours travaillés du mois.",
+    )
+    heures_absence = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal('0'),
+        verbose_name="Heures d'absence",
+        help_text="Heures non prestées retirées des heures à prester.",
+        validators=[MinValueValidator(Decimal('0'))],
+    )
     primes_ajustees = models.BooleanField(
         default=False,
         verbose_name="Primes saisies manuellement",
@@ -794,9 +918,14 @@ class EtatSalaire(SyncTrackedModel):
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
         avances_deduites = self.avances_deduites or Decimal('0')
+        sanctions = self.imputation_sanctions or Decimal('0')
         errors = {}
 
-        if deductions + avances_deduites > salaire_base + primes:
+        if sanctions > salaire_base + primes:
+            errors['imputation_sanctions'] = (
+                "L'imputation liée aux sanctions ne peut pas dépasser le salaire brut."
+            )
+        elif deductions + avances_deduites + sanctions > salaire_base + primes:
             errors['deductions'] = (
                 "Les retenues et avances ne peuvent pas dépasser le salaire de base et les primes."
             )
@@ -835,7 +964,26 @@ class EtatSalaire(SyncTrackedModel):
 
     @property
     def retenues_totales(self):
-        return (self.deductions or Decimal('0')) + (self.avances_deduites or Decimal('0'))
+        return (
+            (self.deductions or Decimal('0'))
+            + (self.avances_deduites or Decimal('0'))
+            + (self.imputation_sanctions or Decimal('0'))
+        )
+
+    @property
+    def retenues_hors_avances(self):
+        """Retenues diverses + imputation liée aux sanctions."""
+        return (self.deductions or Decimal('0')) + (self.imputation_sanctions or Decimal('0'))
+
+    def jours_travailles(self, jours_ouvrables):
+        """Jours travaillés de l'état Excel : jours ouvrables - jours chômés.
+
+        Au secondaire en emploi du temps, la base est le nombre de jours de
+        cours du mois (somme des lundis ... samedis travaillés).
+        """
+        if self.mode_calcul_heures == ModeCalculHoraire.HEBDOMADAIRE:
+            jours_ouvrables = sum(self.periode.occurrences_jours_semaine())
+        return max(int(jours_ouvrables) - (self.jours_chomes or 0), 0)
 
     def _synchroniser_total_primes(self):
         total = sum(
@@ -856,8 +1004,9 @@ class EtatSalaire(SyncTrackedModel):
         primes = self.primes or Decimal('0')
         deductions = self.deductions or Decimal('0')
         avances_deduites = self.avances_deduites or Decimal('0')
+        sanctions = self.imputation_sanctions or Decimal('0')
         self.salaire_net = (
-            salaire_base + primes - deductions - avances_deduites
+            salaire_base + primes - deductions - avances_deduites - sanctions
         ).quantize(
             Decimal('0.01'), rounding=ROUND_HALF_UP
         )

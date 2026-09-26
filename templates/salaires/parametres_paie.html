@@ -27,7 +27,7 @@
                     </p>
                     <div class="row g-3 mb-4">
                         {% for field in form %}
-                        {% if forloop.counter <= 6 %}
+                        {% if forloop.counter <= 7 %}
                         <div class="col-md-6">
                             <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
                             {{ field }}
@@ -42,7 +42,7 @@
                     <p class="text-muted small">Affichés au bas des états de salaire, de la masse salariale, des acomptes et des fiches d'émargement.</p>
                     <div class="row g-3">
                         {% for field in form %}
-                        {% if forloop.counter > 6 %}
+                        {% if forloop.counter > 7 %}
                         <div class="col-md-6">
                             <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
                             {{ field }}
