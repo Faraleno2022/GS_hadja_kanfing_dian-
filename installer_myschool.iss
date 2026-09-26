@@ -16,7 +16,7 @@
 ;   - Mise à jour (préserve base de données, licences, médias, config)
 
 #ifndef MyAppVersion
-#define MyAppVersion "1.3.18"
+#define MyAppVersion "1.3.20"
 #endif
 
 #ifndef MyBuildDir
@@ -84,28 +84,16 @@ Name: "startmenuicon"; Description: "Créer une entrée dans le menu Démarrer";
 Name: "autostart";     Description: "Lancer MySchoolGN au démarrage de Windows"; GroupDescription: "Options :";   Flags: unchecked
 
 [InstallDelete]
-; Retirer uniquement les anciennes migrations applicatives qui ne font plus
-; partie de la branche principale. Inno Setup ne supprime pas automatiquement
-; un fichier disparu entre deux versions ; ces fichiers restaient donc charges
-; apres une mise a jour et pouvaient bloquer Django au demarrage.
-Type: files; Name: "{app}\_internal\paiements\migrations\0010_echeancier_nature_frais.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0011_paiementremise_portee_tranches.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0012_paiementremise_motif.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0013_paiement_annee_remise_ventilation.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0014_alter_echeancierpaiement_annee_scolaire_and_more.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0015_paiementremise_deduite_du_paiement.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0016_realigner_annee_paiements_ete.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\0017_echeancier_par_annee.py"
-Type: files; Name: "{app}\_internal\eleves\migrations\0017_alter_classe_annee_scolaire_and_more.py"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0010_echeancier_nature_frais.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0011_paiementremise_portee_tranches.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0012_paiementremise_motif.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0013_paiement_annee_remise_ventilation.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0014_alter_echeancierpaiement_annee_scolaire_and_more.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0015_paiementremise_deduite_du_paiement.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0016_realigner_annee_paiements_ete.*.pyc"
-Type: files; Name: "{app}\_internal\paiements\migrations\__pycache__\0017_echeancier_par_annee.*.pyc"
-Type: files; Name: "{app}\_internal\eleves\migrations\__pycache__\0017_alter_classe_annee_scolaire_and_more.*.pyc"
+; MISE A JOUR : repartir d'un dossier programme propre.
+; Inno Setup ne supprime pas les fichiers disparus entre deux versions : une
+; migration orpheline (ex. d'une autre branche) restait chargee et empechait
+; Django de demarrer ("dependencies reference nonexistent parent node").
+; Aucune donnee n'est concernee : la base, les medias, les licences, les
+; sauvegardes et la configuration vivent a la racine de {app}, et
+; PrepareToInstall sauvegarde aussi l'ancien emplacement _internal\db.sqlite3
+; et _internal\media avant cette etape (restaures par PromoteLegacyInternalData).
+Type: filesandordirs; Name: "{app}\_internal"
+Type: filesandordirs; Name: "{app}\__pycache__"
 
 [Files]
 ; Application compilée (tout le dossier dist\MySchoolGN)
