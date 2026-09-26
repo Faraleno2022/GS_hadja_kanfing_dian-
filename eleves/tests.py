@@ -252,3 +252,112 @@ class NouvelElevePaiementWorkflowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("nouvel_eleve_paiement_id", self.client.session)
         self.assertEqual(response.context["form"].fields["classe"].initial, self.classe.pk)
+
+
+class VersoCartesRetraitBusTests(SimpleTestCase):
+    """Verso des cartes de retrait et de bus : format, alignement, contenu."""
+
+    def setUp(self):
+        from reportlab.lib.units import mm
+
+        self.mm = mm
+        self.ecole = Ecole(nom="GROUPE SCOLAIRE HADJA KANFING DIANE")
+        self.classe = Classe(nom="CM1 A", ecole=self.ecole, annee_scolaire="2026-2027")
+
+    def _eleve(self, index, avec_second=True):
+        from .models import Responsable
+
+        principal = Responsable(prenom="Mamadou", nom=f"Diallo{index}", relation="PERE", telephone="+224620000000")
+        second = (
+            Responsable(prenom="Fatoumata", nom="Camara", relation="MERE", telephone="+224655111222")
+            if avec_second else None
+        )
+        return Eleve(
+            id=index, matricule=f"MAT{index:03d}", prenom="Aissatou", nom=f"Bah{index}",
+            classe=self.classe, responsable_principal=principal, responsable_secondaire=second,
+        )
+
+    def _planche(self, elements, verso):
+        """Génère une planche en relevant, page par page, les cadres des cartes et les textes."""
+        from unittest import mock
+
+        from django.http import HttpResponse
+        from reportlab.pdfgen import canvas as rl_canvas
+
+        from . import views
+
+        mm = self.mm
+        pages = [{"cadres": [], "textes": []}]
+
+        class Enregistreur(rl_canvas.Canvas):
+            def roundRect(self, x, y, w, h, r, stroke=1, fill=0):
+                if abs(w - 85.6 * mm) < 0.01 and abs(h - 53.98 * mm) < 0.01 and stroke and not fill:
+                    pages[-1]["cadres"].append((round(x / mm, 2), round(y / mm, 2)))
+                return super().roundRect(x, y, w, h, r, stroke, fill)
+
+            def drawString(self, x, y, text, *args, **kwargs):
+                pages[-1]["textes"].append(text)
+                return super().drawString(x, y, text, *args, **kwargs)
+
+            def drawCentredString(self, x, y, text, *args, **kwargs):
+                pages[-1]["textes"].append(text)
+                return super().drawCentredString(x, y, text, *args, **kwargs)
+
+            def showPage(self):
+                super().showPage()
+                pages.append({"cadres": [], "textes": []})
+
+        with mock.patch.object(views.canvas, "Canvas", Enregistreur):
+            views._generer_planche_cartes(
+                HttpResponse(content_type="application/pdf"), elements,
+                lambda c, e, x, y, w, h, f, fb: views._dessiner_ticket_retrait(c, e, x, y, w, h, f, fb),
+                lambda c, e, x, y, w, h, f, fb: views._dessiner_ticket_verso(c, e, x, y, w, h, f, fb, verso),
+            )
+        return [page for page in pages if page["cadres"]]
+
+    def test_carte_seule_et_planche_ont_le_meme_format(self):
+        from . import views
+
+        largeur, hauteur, _ = views._grille_cartes_a4()
+        self.assertEqual(views._format_carte_cr80(), (largeur, hauteur))
+        self.assertAlmostEqual(largeur / self.mm, 85.6)
+        self.assertAlmostEqual(hauteur / self.mm, 53.98)
+
+    def test_chaque_verso_tombe_au_dos_de_son_recto(self):
+        from reportlab.lib.pagesizes import A4
+
+        pages = self._planche([self._eleve(i) for i in range(1, 11)], "retrait")
+
+        # Recto 1, verso 1, recto 2, verso 2
+        self.assertEqual([len(p["cadres"]) for p in pages], [8, 8, 2, 2])
+        largeur_page = A4[0] / self.mm
+        for recto, verso in ((pages[0], pages[1]), (pages[2], pages[3])):
+            for (xr, yr), (xv, yv) in zip(recto["cadres"], verso["cadres"]):
+                self.assertAlmostEqual(yv, yr, places=2)
+                self.assertAlmostEqual(xv, round(largeur_page - xr - 85.6, 2), places=1)
+
+    def test_verso_affiche_ecole_et_deux_personnes_autorisees(self):
+        pages = self._planche([self._eleve(1), self._eleve(2, avec_second=False)], "bus")
+        textes = " | ".join(pages[1]["textes"])
+
+        self.assertIn("HADJA KANFING", textes)
+        self.assertIn("MAMADOU DIALLO1", textes)
+        self.assertIn("FATOUMATA CAMARA", textes)
+        self.assertIn("+224620000000", textes)
+        self.assertIn("+224655111222", textes)
+        self.assertIn("Non renseignee", textes)
+
+    def test_nom_d_ecole_long_passe_sur_deux_lignes(self):
+        from . import views
+
+        font, font_bold = views._polices_cartes()
+        largeur = 85.6 * self.mm - 6 * self.mm
+        lignes, taille = views._ticket_lignes_titre(
+            "GROUPE SCOLAIRE HADJA KANFING DIANE DE CONAKRY", font_bold, largeur, 12, 6, 10
+        )
+        self.assertEqual(len(lignes), 2)
+        self.assertGreaterEqual(taille, 10)
+
+        lignes, taille = views._ticket_lignes_titre("GS KANFING", font_bold, largeur, 12, 6, 10)
+        self.assertEqual(lignes, ["GS KANFING"])
+        self.assertEqual(taille, 12)

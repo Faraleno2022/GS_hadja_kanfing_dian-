@@ -2953,23 +2953,15 @@ def generer_ticket_retrait_pdf(request, eleve_id):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ticket_retrait_{eleve.matricule}.pdf"'
     
-    # Format carte bancaire standard (86mm x 54mm)
-    from reportlab.lib.units import mm
-    width, height = 86*mm, 54*mm
-    
+    # Format carte bancaire standard, identique à la planche A4
+    width, height = _format_carte_cr80()
     c = canvas.Canvas(response, pagesize=(width, height))
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
+    main_font, main_font_bold = _polices_cartes()
+
+    # Page 1 : recto, page 2 : verso (même format, même position)
     _dessiner_ticket_retrait(c, eleve, 0, 0, width, height, main_font, main_font_bold)
+    c.showPage()
+    _dessiner_ticket_verso(c, eleve, 0, 0, width, height, main_font, main_font_bold, 'retrait')
     c.showPage()
     c.save()
 
@@ -3331,23 +3323,15 @@ def generer_ticket_bus_pdf(request, eleve_id):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="ticket_bus_{eleve.matricule}.pdf"'
     
-    # Format carte bancaire standard (86mm x 54mm)
-    from reportlab.lib.units import mm
-    width, height = 86*mm, 54*mm
-    
+    # Format carte bancaire standard, identique à la planche A4
+    width, height = _format_carte_cr80()
     c = canvas.Canvas(response, pagesize=(width, height))
-    
-    # Enregistrer les polices
-    try:
-        pdfmetrics.registerFont(TTFont('Arial', 'C:/Windows/Fonts/arial.ttf'))
-        pdfmetrics.registerFont(TTFont('Arial-Bold', 'C:/Windows/Fonts/arialbd.ttf'))
-        main_font = 'Arial'
-        main_font_bold = 'Arial-Bold'
-    except:
-        main_font = 'Helvetica'
-        main_font_bold = 'Helvetica-Bold'
-    
+    main_font, main_font_bold = _polices_cartes()
+
+    # Page 1 : recto, page 2 : verso (même format, même position)
     _dessiner_ticket_bus(c, eleve, abonnement, 0, 0, width, height, main_font, main_font_bold)
+    c.showPage()
+    _dessiner_ticket_verso(c, eleve, 0, 0, width, height, main_font, main_font_bold, 'bus')
     c.showPage()
     c.save()
 
@@ -3396,9 +3380,8 @@ def generer_ticket_cantine_pdf(request, eleve_id):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="carte_cantine_{eleve.matricule}.pdf"'
 
-    # Format carte bancaire standard (86mm x 54mm)
-    from reportlab.lib.units import mm
-    width, height = 86 * mm, 54 * mm
+    # Format carte bancaire standard, identique à la planche A4
+    width, height = _format_carte_cr80()
 
     c = canvas.Canvas(response, pagesize=(width, height))
     main_font, main_font_bold = _polices_cartes()
@@ -3429,6 +3412,16 @@ CARTE_COLONNES_A4 = 2
 CARTE_LIGNES_A4 = 4
 
 
+def _format_carte_cr80():
+    """Retourne (largeur, hauteur) d'une carte bancaire standard (85,6 x 53,98 mm).
+
+    Le même format sert pour la carte seule et pour la planche A4, au recto
+    comme au verso.
+    """
+    from reportlab.lib.units import mm
+    return 85.6 * mm, 53.98 * mm
+
+
 def _grille_cartes_a4():
     """Retourne (largeur, hauteur, positions) pour 8 cartes CR80 sur une A4.
 
@@ -3439,8 +3432,7 @@ def _grille_cartes_a4():
     from reportlab.lib.units import mm
 
     page_width, page_height = A4
-    card_width = 85.6 * mm
-    card_height = 53.98 * mm
+    card_width, card_height = _format_carte_cr80()
     h_spacing = 5 * mm
     v_spacing = 5 * mm
 
@@ -3467,28 +3459,49 @@ def _polices_cartes():
         return 'Helvetica', 'Helvetica-Bold'
 
 
-def _generer_planche_cartes(response, elements, dessiner):
+def _positions_verso_a4(positions, card_width):
+    """Positions des versos pour une impression recto verso bord long.
+
+    En retournant la feuille sur son bord long, la page est inversée de
+    gauche à droite : chaque verso est placé en miroir horizontal de son recto
+    (même hauteur, colonnes échangées) pour tomber exactement au dos.
+    """
+    from reportlab.lib.pagesizes import A4
+
+    page_width = A4[0]
+    return [(page_width - x - card_width, y) for x, y in positions]
+
+
+def _generer_planche_cartes(response, elements, dessiner, dessiner_verso=None):
     """Dessine une planche de cartes (8 par page A4).
 
     ``elements`` est une liste d'éléments quelconques ; ``dessiner`` reçoit
     ``(canvas, element, x, y, largeur, hauteur, police, police_grasse)``.
+    Si ``dessiner_verso`` est fourni (même signature), chaque feuille de
+    rectos est suivie de la feuille des versos correspondants, placés en
+    miroir pour une impression recto verso bord long.
     """
     from reportlab.lib.pagesizes import A4
 
     card_width, card_height, positions = _grille_cartes_a4()
+    positions_verso = _positions_verso_a4(positions, card_width)
     main_font, main_font_bold = _polices_cartes()
 
     c = canvas.Canvas(response, pagesize=A4)
-    total = len(elements)
 
-    for index, element in enumerate(elements):
-        x, y = positions[index % CARTES_PAR_PAGE_A4]
-        dessiner(c, element, x, y, card_width, card_height, main_font, main_font_bold)
+    for debut in range(0, len(elements), CARTES_PAR_PAGE_A4):
+        feuille = elements[debut:debut + CARTES_PAR_PAGE_A4]
+        for index, element in enumerate(feuille):
+            x, y = positions[index]
+            dessiner(c, element, x, y, card_width, card_height, main_font, main_font_bold)
+        c.showPage()
 
-        if (index + 1) % CARTES_PAR_PAGE_A4 == 0 and (index + 1) < total:
+        if dessiner_verso:
+            for index, element in enumerate(feuille):
+                x, y = positions_verso[index]
+                dessiner_verso(c, element, x, y, card_width, card_height, main_font, main_font_bold)
             c.showPage()
 
-    c.showPage()
     c.save()
     return response
 
@@ -3527,6 +3540,7 @@ def generer_tickets_retrait_classe_pdf(request, classe_id):
     return _generer_planche_cartes(
         response, eleves,
         lambda c, eleve, x, y, w, h, f, fb: _dessiner_ticket_retrait(c, eleve, x, y, w, h, f, fb),
+        lambda c, eleve, x, y, w, h, f, fb: _dessiner_ticket_verso(c, eleve, x, y, w, h, f, fb, 'retrait'),
     )
 
 
@@ -3571,6 +3585,7 @@ def generer_tickets_bus_classe_pdf(request, classe_id):
     return _generer_planche_cartes(
         response, cartes,
         lambda c, item, x, y, w, h, f, fb: _dessiner_ticket_bus(c, item[0], item[1], x, y, w, h, f, fb),
+        lambda c, item, x, y, w, h, f, fb: _dessiner_ticket_verso(c, item[0], x, y, w, h, f, fb, 'bus'),
     )
 
 
@@ -3924,6 +3939,160 @@ def _dessiner_ticket_bus(c, eleve, abonnement, x, y, width, height, main_font, m
         c, eleve, x, y, width, height, main_font, main_font_bold,
         'CARTE BUS', 'bus', rows, 'BUS'
     )
+
+
+def _ticket_lignes_titre(texte, font_name, max_width, max_size, min_size, seuil_une_ligne):
+    """Découpe un titre en 1 ou 2 lignes et retourne (lignes, taille).
+
+    On garde une seule ligne tant qu'elle tient à ``seuil_une_ligne`` points
+    ou plus ; sinon on coupe entre deux mots pour garder de gros caractères.
+    """
+    def taille_pour(lignes):
+        size = max_size
+        while size > min_size and any(pdfmetrics.stringWidth(l, font_name, size) > max_width for l in lignes):
+            size -= 0.5
+        return size
+
+    size = taille_pour([texte])
+    mots = texte.split()
+    if size >= seuil_une_ligne or len(mots) < 2:
+        return [texte], size
+
+    meilleure = None
+    for coupe in range(1, len(mots)):
+        lignes = [' '.join(mots[:coupe]), ' '.join(mots[coupe:])]
+        taille = taille_pour(lignes)
+        largeur = max(pdfmetrics.stringWidth(l, font_name, taille) for l in lignes)
+        if meilleure is None or (taille, -largeur) > (meilleure[1], -meilleure[2]):
+            meilleure = (lignes, taille, largeur)
+    if meilleure[1] <= size:
+        return [texte], size
+    return meilleure[0], meilleure[1]
+
+
+def _personnes_autorisees(eleve):
+    """Les deux personnes autorisées : responsables principal et secondaire."""
+    personnes = []
+    for champ in ('responsable_principal', 'responsable_secondaire'):
+        responsable = getattr(eleve, champ, None)
+        if not responsable:
+            personnes.append(None)
+            continue
+        nom = _ticket_safe_text(
+            getattr(responsable, 'nom_complet', None)
+            or f"{getattr(responsable, 'prenom', '')} {getattr(responsable, 'nom', '')}",
+            'Non renseignee',
+        )
+        try:
+            lien = responsable.get_relation_display()
+        except Exception:
+            lien = getattr(responsable, 'relation', '')
+        personnes.append({
+            'nom': nom.upper(),
+            'telephone': _ticket_safe_text(getattr(responsable, 'telephone', None)),
+            'lien': _ticket_safe_text(lien, ''),
+        })
+    return personnes
+
+
+def _dessiner_ticket_verso(c, eleve, x, y, width, height, main_font, main_font_bold, type_carte):
+    """Verso des cartes de retrait et de bus.
+
+    Même format et même cadre que le recto : logo de l'école centré en haut,
+    nom de l'école en gros caractères gras, puis les deux personnes
+    autorisées (nom et téléphone) en bas.
+    """
+    c.saveState()
+    from reportlab.lib.units import mm
+
+    ecole = eleve.classe.ecole
+    palette = palette_carte(ecole, type_carte)
+    primary = palette['primary']
+    dark = '#0f172a'
+    muted = '#64748b'
+    radius = 4.5
+    margin = 3 * mm
+    cx = x + width / 2
+
+    school_name = _ticket_safe_text(getattr(ecole, 'nom', '')).upper()
+
+    # Cadre identique au recto
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor(palette['line']))
+    c.setLineWidth(0.7)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=1)
+
+    # Logo en haut, centré (ou initiales dans un cercle)
+    logo_size = 14 * mm
+    logo_x = cx - logo_size / 2
+    logo_y = y + height - 2.5 * mm - logo_size
+    logo_dessine = False
+    try:
+        if ecole.logo and hasattr(ecole.logo, 'path') and os.path.exists(ecole.logo.path):
+            c.drawImage(
+                ecole.logo.path, logo_x, logo_y, logo_size, logo_size,
+                preserveAspectRatio=True, anchor='c', mask='auto',
+            )
+            logo_dessine = True
+    except Exception:
+        logo_dessine = False
+    if not logo_dessine:
+        initiales = ''.join(mot[:1] for mot in school_name.split()[:3]) or 'EC'
+        c.setFillColor(colors.HexColor(palette['soft']))
+        c.setStrokeColor(colors.HexColor(primary))
+        c.setLineWidth(1)
+        c.circle(cx, logo_y + logo_size / 2, logo_size / 2, stroke=1, fill=1)
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(main_font_bold, 13)
+        c.drawCentredString(cx, logo_y + logo_size / 2 - 4.5, initiales)
+
+    # Nom de l'école en gros caractères gras, sur 2 lignes si nécessaire
+    lignes, taille = _ticket_lignes_titre(
+        school_name, main_font_bold, width - 2 * margin, 12, 6, 10
+    )
+    interligne = taille * 1.1
+    zone_haut = logo_y - 1.2 * mm
+    zone_bas = y + 21 * mm
+    bloc = interligne * (len(lignes) - 1) + taille * 0.72
+    base = zone_bas + (zone_haut - zone_bas + bloc) / 2 - taille * 0.72
+    c.setFillColor(colors.HexColor(primary))
+    c.setFont(main_font_bold, taille)
+    for i, ligne in enumerate(lignes):
+        c.drawCentredString(cx, base - i * interligne, ligne)
+
+    # Personnes autorisées, deux cadres côte à côte en bas
+    c.setFillColor(colors.HexColor(muted))
+    c.setFont(main_font_bold, 5.4)
+    c.drawCentredString(cx, y + 18.2 * mm, 'PERSONNES AUTORISEES')
+
+    gap = 2 * mm
+    box_w = (width - 2 * margin - gap) / 2
+    box_h = 14.5 * mm
+    box_y = y + 2.6 * mm
+    for i, personne in enumerate(_personnes_autorisees(eleve)):
+        bx = x + margin + i * (box_w + gap)
+        c.setFillColor(colors.HexColor(palette['soft']))
+        c.setStrokeColor(colors.HexColor(palette['line']))
+        c.setLineWidth(0.6)
+        c.roundRect(bx, box_y, box_w, box_h, 3, stroke=1, fill=1)
+
+        tx = bx + 1.8 * mm
+        tw = box_w - 3.6 * mm
+        c.setFillColor(colors.HexColor(primary))
+        c.setFont(main_font_bold, 5)
+        c.drawString(tx, box_y + box_h - 3.3 * mm, f'PERSONNE {i + 1}')
+        if personne:
+            _ticket_fit_text(c, personne['nom'], tx, box_y + box_h - 7 * mm, tw, main_font_bold, 7.4, 4.8, dark)
+            _ticket_fit_text(c, personne['telephone'], tx, box_y + 4.2 * mm, tw, main_font_bold, 7, 4.8, dark)
+            if personne['lien']:
+                _ticket_fit_text(c, personne['lien'], tx, box_y + 1.4 * mm, tw, main_font, 5.2, 4.2, muted)
+        else:
+            _ticket_fit_text(c, 'Non renseignee', tx, box_y + box_h / 2 - 2.5 * mm, tw, main_font, 6.5, 4.8, muted)
+
+    c.setStrokeColor(colors.HexColor(primary))
+    c.setLineWidth(0.9)
+    c.roundRect(x, y, width, height, radius, stroke=1, fill=0)
+    c.restoreState()
 
 
 def _dessiner_ticket_cantine(c, eleve, abonnement, x, y, width, height, main_font, main_font_bold):
